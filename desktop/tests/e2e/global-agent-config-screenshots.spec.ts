@@ -379,7 +379,9 @@ test.describe("global agent config screenshots", () => {
     );
   });
 
-  test("02-create-global-provider-shows-top-level-api-key", async ({
+  // Feature gone: Company Hire replaced directory creation and does not use the
+  // legacy global-agent defaults dialog. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
+  test.fixme("02-create-global-provider-shows-top-level-api-key", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -428,7 +430,7 @@ test.describe("global agent config screenshots", () => {
     await expect(advanced).toHaveAttribute("aria-expanded", "true");
   });
 
-  test("03-global-env-satisfies-required-key", async ({ page }) => {
+  test.fixme("03-global-env-satisfies-required-key", async ({ page }) => {
     await installMockBridge(page, {
       globalAgentConfig: {
         provider: "anthropic",
@@ -452,7 +454,9 @@ test.describe("global agent config screenshots", () => {
     });
   });
 
-  test("06-baked-defaults-labels-appear-in-create-dialog", async ({ page }) => {
+  test.fixme("06-baked-defaults-labels-appear-in-create-dialog", async ({
+    page,
+  }) => {
     await installMockBridge(page, {
       bakedBuildEnv: [
         {
@@ -491,7 +495,7 @@ test.describe("global agent config screenshots", () => {
     await expect(page.locator("#persona-model")).not.toBeVisible();
   });
 
-  test("07-explicit-global-defaults-override-baked-labels", async ({
+  test.fixme("07-explicit-global-defaults-override-baked-labels", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -536,7 +540,7 @@ test.describe("global agent config screenshots", () => {
   // Shot 04: Create gate BLOCKED — no per-agent provider, no global provider
   // set → submit button disabled (provider-default rule, Test 5 / shots 01/08
   // from agent-readiness-screenshots.spec.ts).
-  test("04-create-blocked-no-provider-no-global", async ({ page }) => {
+  test.fixme("04-create-blocked-no-provider-no-global", async ({ page }) => {
     // Default mock bridge has no global provider.
     await installMockBridge(page);
 
@@ -649,7 +653,7 @@ test.describe("global agent config screenshots", () => {
     });
   });
 
-  test("unset defaults persist the visible Buzz Agent fallback", async ({
+  test.fixme("unset defaults persist the visible Buzz Agent fallback", async ({
     page,
   }) => {
     await installMockBridge(page);
@@ -689,7 +693,7 @@ test.describe("global agent config screenshots", () => {
     });
   });
 
-  test("create defaults follow a preferred harness saved while open", async ({
+  test.fixme("create defaults follow a preferred harness saved while open", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -743,7 +747,7 @@ test.describe("global agent config screenshots", () => {
       .toBe("claude");
   });
 
-  test("missing global credentials show the unset defaults notice", async ({
+  test.fixme("missing global credentials show the unset defaults notice", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -767,7 +771,7 @@ test.describe("global agent config screenshots", () => {
     await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled();
   });
 
-  test("create exposes setup guidance when no harness is available", async ({
+  test.fixme("create exposes setup guidance when no harness is available", async ({
     page,
   }) => {
     await installMockBridge(page, {
@@ -793,7 +797,9 @@ test.describe("global agent config screenshots", () => {
     await expect(page.getByTestId("persona-dialog-submit")).toBeDisabled();
   });
 
-  test("create with a missing name has no footer message", async ({ page }) => {
+  test.fixme("create with a missing name has no footer message", async ({
+    page,
+  }) => {
     await installMockBridge(page);
 
     await page.goto("/");
@@ -810,7 +816,7 @@ test.describe("global agent config screenshots", () => {
 
   // Shot 05: Create gate ENABLED — global provider = anthropic provides a
   // default, so the empty per-agent provider is resolved → submit enabled.
-  test("05-create-enabled-with-global-provider", async ({ page }) => {
+  test.fixme("05-create-enabled-with-global-provider", async ({ page }) => {
     await installMockBridge(page, {
       globalAgentConfig: {
         provider: "anthropic",
@@ -858,7 +864,7 @@ test.describe("global agent config screenshots", () => {
   // permanently disabled with no explanation. Now the provider is not required,
   // the button is enabled, and — critically — no spurious provider reason is
   // shown in the footer. Create and Save share this rendering path.
-  test("09-cli-login-runtime-enabled-no-reason", async ({ page }) => {
+  test.fixme("09-cli-login-runtime-enabled-no-reason", async ({ page }) => {
     await installMockBridge(page, {
       acpRuntimesCatalog: CATALOG_WITH_CLAUDE,
     });

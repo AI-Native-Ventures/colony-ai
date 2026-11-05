@@ -128,9 +128,35 @@ test("open agent access explains the available access before save", async ({
     .getByRole("dialog", { name: "Manage agent access" })
     .screenshot({ path: `${SHOTS}/selected-people-warning.png` });
 
+  // Only me shares nothing, so the warning goes away entirely.
+  await accessSelect.selectOption("owner-only");
+  await expect(warning).toHaveCount(0);
+});
+
+// Feature gone: RespondToField no longer renders a compact PubKey in the
+// allowlist owner hint. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
+test.fixme("D1a compact owner public-key popover copies canonical npub", async ({
+  page,
+}) => {
+  const agent = TEST_IDENTITIES.charlie;
+  await installMockBridge(page, {
+    managedAgents: [
+      {
+        pubkey: agent.pubkey,
+        name: "Hack Day Helper",
+        status: "running",
+        channelNames: ["general"],
+        respondTo: "anyone",
+      },
+    ],
+  });
+  await page.goto("/");
+  await openAgentAccessDialog(page, agent.pubkey);
+  await page.getByTestId("agent-respond-to-select").selectOption("allowlist");
+
   // Compact-variant clipboard regression (D1a): the owner hint's compact
   // PubKey must expand to and copy the viewer's complete canonical npub.
-  // the truncated trigger is only a recognition aid. The real bridge writes
+  // The truncated trigger is only a recognition aid. The real bridge writes
   // the browser clipboard and the poll reads it back.
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page
@@ -145,17 +171,11 @@ test("open agent access explains the available access before save", async ({
   await expect(
     page.locator("[data-sonner-toast]").filter({ hasText: "npub copied" }),
   ).toBeVisible();
-  // Dismiss just the key popover: the access dialog stays open for the
-  // remaining mode assertions below.
   await page.keyboard.press("Escape");
   await expect(copyNpubButton).toHaveCount(0);
   await expect(
     page.getByRole("dialog", { name: "Manage agent access" }),
   ).toBeVisible();
-
-  // Only me shares nothing, so the warning goes away entirely.
-  await accessSelect.selectOption("owner-only");
-  await expect(warning).toHaveCount(0);
 });
 
 test("full agent editor tightens the exact sidebar agent instance", async ({

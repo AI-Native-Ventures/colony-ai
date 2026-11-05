@@ -493,6 +493,28 @@ export function formatRuntimeOptionLabel(runtime: AcpRuntimeCatalogEntry) {
   return `${runtime.label}${suffix}`;
 }
 
+/** A catalog option is selectable when it is ready or Colony can install it. */
+export function isHarnessOfferable(runtime: AcpRuntimeCatalogEntry) {
+  return runtime.availability === "available" || runtime.canAutoInstall;
+}
+
+/** Resolve a saved command to its catalog entry, including unavailable runtimes. */
+export function findPersonaRuntimeForCommand(
+  runtimes: readonly AcpRuntimeCatalogEntry[],
+  command: string,
+) {
+  const normalized = command.trim();
+  return (
+    runtimes.find((runtime) => runtime.command?.trim() === normalized) ??
+    runtimes.find((runtime) =>
+      runtime.commandCandidates?.some(
+        (candidate) => candidate.trim() === normalized,
+      ),
+    ) ??
+    runtimes.find((runtime) => runtime.id === normalized)
+  );
+}
+
 export function buildPersonaRuntimeDropdownOptions({
   defaultRuntimeId,
   isCreateMode,
@@ -514,6 +536,7 @@ export function buildPersonaRuntimeDropdownOptions({
     : isCreateMode
       ? "Choose a harness"
       : "No preference (use app default)";
+  const currentRuntime = runtime.trim();
   const runtimeDropdownOptions: PersonaDropdownOption[] = [
     ...(!isCreateMode
       ? [
@@ -523,7 +546,12 @@ export function buildPersonaRuntimeDropdownOptions({
           },
         ]
       : []),
-    ...sortPersonaRuntimes(runtimes).map((candidate) => ({
+    ...sortPersonaRuntimes(
+      runtimes.filter(
+        (candidate) =>
+          isHarnessOfferable(candidate) || candidate.id === currentRuntime,
+      ),
+    ).map((candidate) => ({
       disabled:
         isCreateMode &&
         defaultRuntimeId !== undefined &&
@@ -534,7 +562,6 @@ export function buildPersonaRuntimeDropdownOptions({
       value: candidate.id,
     })),
   ];
-  const currentRuntime = runtime.trim();
   if (
     currentRuntime.length > 0 &&
     !runtimeDropdownOptions.some((option) => option.value === currentRuntime)

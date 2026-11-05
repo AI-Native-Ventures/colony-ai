@@ -431,7 +431,163 @@ pub fn verify_token_matches(presented: &str, stored_hash: &[u8]) -> bool {
     presented_hash.as_slice().ct_eq(stored_hash).into()
 }
 
-/// What a Graph error code means for outreach.
+/// An account-wide Meta failure that can be recovered only by putting the same failed rows back
+/// into the normal queue. This table is intentionally separate from the sender's current
+/// failure handling so Slice 1 can recover historic rows without changing automatic send
+/// behavior. Queue pausing belongs to Slice 2.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccountRetryFailure {
+    /// `131042`: the WhatsApp Business Account payment method needs attention.
+    Payment,
+    /// `131031`: the WhatsApp Business Account is restricted or disabled.
+    Restricted,
+    /// `130429`: the sender reached Meta's account throughput limit.
+    Throughput,
+    /// `131048`: Meta applied a messaging or quality restriction to the sender.
+    SpamLimit,
+    /// `133010`: the connected sender phone number is not registered.
+    PhoneNotRegistered,
+    /// `133005`: the connected sender needs the correct two-step verification PIN.
+    TwoStepVerification,
+}
+
+impl AccountRetryFailure {
+    /// The documented Cloud API code that identifies this account-level refusal.
+    pub const fn code(self) -> i64 {
+        match self {
+            Self::Payment => 131_042,
+            Self::Restricted => 131_031,
+            Self::Throughput => 130_429,
+            Self::SpamLimit => 131_048,
+            Self::PhoneNotRegistered => 133_010,
+            Self::TwoStepVerification => 133_005,
+        }
+    }
+
+    /// Plain recovery copy for a failed-message chip. It deliberately names the owner action
+    /// rather than presenting Meta's raw error title as a diagnosis.
+    pub const fn summary(self) -> &'static str {
+        match self {
+            Self::Payment => {
+                "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again."
+            }
+            Self::Restricted => {
+                "Meta blocked this send: your WhatsApp Business account is restricted or disabled. Resolve Meta's account review, then send again."
+            }
+            Self::Throughput => {
+                "Meta stopped this send: your WhatsApp account reached its throughput limit. Wait for Meta's limit to recover, then send again."
+            }
+            Self::SpamLimit => {
+                "Meta blocked this send: your WhatsApp sender has a messaging restriction. Resolve it in WhatsApp Manager, then send again."
+            }
+            Self::PhoneNotRegistered => {
+                "Meta blocked this send: the connected WhatsApp phone number is not registered. Reconnect the sender number, then send again."
+            }
+            Self::TwoStepVerification => {
+                "Meta blocked this send: the WhatsApp phone number needs its correct two-step verification PIN. Repair it in WhatsApp Manager, then send again."
+            }
+        }
+    }
+}
+
+/// The only failed sends that a person can retry from Outreach. Account failures retry the
+/// affected queue together; documented temporary failures retry one row. All other failures are
+/// deliberately excluded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailureRetryScope {
+    /// The account prevented business-initiated sends.
+    Account(AccountRetryFailure),
+    /// A definite, documented temporary refusal for one row.
+    Temporary,
+    /// Never retry this row from the recovery UI.
+    Never,
+}
+
+impl FailureRetryScope {
+    /// Wire value consumed by the desktop. `None` prevents an older or unknown error from
+    /// gaining a retry button.
+    pub const fn wire(self) -> Option<&'static str> {
+        match self {
+            Self::Account(_) => Some("account"),
+            Self::Temporary => Some("temporary"),
+            Self::Never => None,
+        }
+    }
+}
+
+/// Classify a stored Meta code for recovery. Recipient-only errors such as `131026` never enter
+/// the account queue.
+pub fn retry_scope_for_error_code(code: Option<&str>) -> FailureRetryScope {
+    let Some(code) = code.and_then(|value| value.trim().parse::<i64>().ok()) else {
+        return FailureRetryScope::Never;
+    };
+    match code {
+        131_042 => FailureRetryScope::Account(AccountRetryFailure::Payment),
+        131_031 => FailureRetryScope::Account(AccountRetryFailure::Restricted),
+        130_429 => FailureRetryScope::Account(AccountRetryFailure::Throughput),
+        131_048 => FailureRetryScope::Account(AccountRetryFailure::SpamLimit),
+        133_010 => FailureRetryScope::Account(AccountRetryFailure::PhoneNotRegistered),
+        133_005 => FailureRetryScope::Account(AccountRetryFailure::TwoStepVerification),
+        131_056 | 133_004 => FailureRetryScope::Temporary,
+        _ => FailureRetryScope::Never,
+    }
+}
+
+/// The stored error-code values which the owner-wide recovery action may requeue. The database
+/// accepts this list as data, never user input, so the action cannot accidentally retry a
+/// recipient refusal.
+pub fn account_retry_error_codes() -> Vec<String> {
+    [
+        AccountRetryFailure::Payment,
+        AccountRetryFailure::Restricted,
+        AccountRetryFailure::Throughput,
+        AccountRetryFailure::SpamLimit,
+        AccountRetryFailure::PhoneNotRegistered,
+        AccountRetryFailure::TwoStepVerification,
+    ]
+    .into_iter()
+    .map(|failure| failure.code().to_string())
+    .collect()
+}
+
+/// Plain owner-facing explanation for a failed message. `None` leaves an unknown code's stored
+/// Graph title visible rather than inventing a recovery instruction.
+pub fn failure_summary_for_code(code: Option<&str>) -> Option<&'static str> {
+    let parsed = code.and_then(|value| value.trim().parse::<i64>().ok())?;
+    match parsed {
+        131_042 => Some(AccountRetryFailure::Payment.summary()),
+        131_031 => Some(AccountRetryFailure::Restricted.summary()),
+        130_429 => Some(AccountRetryFailure::Throughput.summary()),
+        131_048 => Some(AccountRetryFailure::SpamLimit.summary()),
+        133_010 => Some(AccountRetryFailure::PhoneNotRegistered.summary()),
+        133_005 => Some(AccountRetryFailure::TwoStepVerification.summary()),
+        131_056 => {
+            Some("Meta delayed this send: this phone number was contacted too recently. Try sending again later.")
+        }
+        133_004 => {
+            Some("Meta did not finish this send: its service is temporarily unavailable. Try sending again later.")
+        }
+        131_026 => Some("Meta blocked this send: this number is not available on WhatsApp."),
+        131_047 => Some(
+            "Meta blocked this send: the 24-hour reply window has closed. Use an approved template.",
+        ),
+        132_015 | 132_016 | 132_001 | 132_007 => Some(
+            "Meta blocked this send: the WhatsApp template is paused, disabled or unavailable.",
+        ),
+        190 | 102 | 10 | 200 => {
+            Some("Meta blocked this send: the WhatsApp access token needs to be reconnected.")
+        }
+        _ => None,
+    }
+}
+
+/// True only for a definite failure that the recovery UI may safely offer to retry.
+pub fn failure_can_retry(code: Option<&str>) -> bool {
+    !matches!(retry_scope_for_error_code(code), FailureRetryScope::Never)
+}
+
+/// What the sender does with a Graph error code today. This remains independent from the
+/// recovery scope until the Slice 2 queue-pause change lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureKind {
     /// Access token expired or revoked.
@@ -461,6 +617,49 @@ pub fn classify_failure_code(code: i64) -> FailureKind {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn payment_failures_are_not_generic_retries() {
+        assert!(
+            matches!(
+                retry_scope_for_error_code(Some("131042")),
+                FailureRetryScope::Account(AccountRetryFailure::Payment)
+            ),
+            "a Meta payment failure needs a deliberate recovery scope"
+        );
+    }
+
+    #[test]
+    fn retry_scope_only_includes_documented_account_and_temporary_refusals() {
+        assert_eq!(
+            retry_scope_for_error_code(Some("131042")),
+            FailureRetryScope::Account(AccountRetryFailure::Payment)
+        );
+        assert_eq!(
+            retry_scope_for_error_code(Some("131056")),
+            FailureRetryScope::Temporary
+        );
+        assert_eq!(
+            retry_scope_for_error_code(Some("131026")),
+            FailureRetryScope::Never,
+            "not-on-WhatsApp is a recipient failure, never a queue retry"
+        );
+        assert_eq!(
+            retry_scope_for_error_code(Some("131047")),
+            FailureRetryScope::Never,
+            "a closed reply window needs a different message type"
+        );
+        assert_eq!(
+            retry_scope_for_error_code(Some("131049")),
+            FailureRetryScope::Never,
+            "Meta engagement limits apply to one contact, never the account queue"
+        );
+        assert!(!failure_can_retry(Some("131026")));
+        assert!(!failure_can_retry(Some("131049")));
+        assert!(failure_can_retry(Some("131042")));
+        assert!(account_retry_error_codes().contains(&"131042".to_string()));
+        assert!(!account_retry_error_codes().contains(&"131026".to_string()));
+    }
 
     fn at(h: u32, m: u32, s: u32) -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 29, h, m, s)

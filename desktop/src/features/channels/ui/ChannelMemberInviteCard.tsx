@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { parsePubkeyInput } from "@/shared/lib/nostrUtils";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { useIsArchivedPredicate } from "@/features/identity-archive/hooks";
 import { useUserSearchQuery } from "@/features/profile/hooks";
 import type {
@@ -17,11 +17,12 @@ import {
 } from "@/features/company-asks/ui/askIcons";
 
 function formatSearchUserName(user: UserSearchResult) {
-  return (
-    user.displayName?.trim() ||
-    user.nip05Handle?.trim() ||
-    truncateNpub(user.pubkey)
-  );
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  }).text;
 }
 
 export function ChannelMemberInviteCard({
@@ -255,12 +256,12 @@ export function ChannelMemberInviteCard({
                         <ProfileAvatar
                           avatarUrl={null}
                           className="ask3-av size-7"
-                          label={truncateNpub(directInvitee.pubkey)}
+                          label={formatSearchUserName(directInvitee)}
                           pubkey={directInvitee.pubkey}
                         />
                         <span className="ask3-invite-result-name">
-                          {truncateNpub(directInvitee.pubkey)}
-                          <span className="ask3-hint"> by public key</span>
+                          {formatSearchUserName(directInvitee)}
+                          <span className="ask3-hint"> awaiting profile</span>
                         </span>
                         <span className="ask3-invite-result-add">Add</span>
                       </button>
@@ -334,7 +335,8 @@ export function ChannelMemberInviteCard({
         <div className="ask3-error">
           {submissionErrors.map((error) => (
             <p key={`${error.pubkey}-${error.error}`}>
-              {truncateNpub(error.pubkey)}: {error.error}
+              {resolveIdentityLabel({ pubkey: error.pubkey }).text}:{" "}
+              {error.error}
             </p>
           ))}
         </div>

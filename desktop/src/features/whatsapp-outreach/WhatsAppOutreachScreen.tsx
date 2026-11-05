@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Settings, UserRound } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import {
   customerRecordForContact,
@@ -42,13 +42,12 @@ import {
   useWhatsAppSendNowBatchIds,
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
+import { WhatsAppResumeAndRetryAction } from "./WhatsAppRetryActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import {
-  whatsappInitials,
-  WhatsAppThreadMessage,
-} from "./WhatsAppThreadMessage";
+import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
 import { WhatsAppOutreachContactRow } from "./WhatsAppOutreachContactRow";
+import { WhatsAppThreadAvatar } from "./WhatsAppThreadAvatar";
 import {
   type ContactFilter,
   WhatsAppOutreachContactFilters,
@@ -169,6 +168,8 @@ export function WhatsAppOutreachScreen({
     pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
     ownerPubkey: profileQuery.data?.ownerPubkey,
   });
+  // Recovery carries the same owner/admin and managed-agent boundary as send-now.
+  const canRetrySend = canSendNow;
   const status = statusQuery.data;
   const progress = status
     ? getWhatsAppDailyCapProgress(
@@ -255,6 +256,12 @@ export function WhatsAppOutreachScreen({
           selectedContact.stageChangedAt ??
           thread?.contact.stageChangedAt ??
           null,
+        queuedFrom:
+          selectedContact.queuedFrom ?? thread?.contact.queuedFrom ?? null,
+        outreachStatus:
+          selectedContact.outreachStatus ??
+          thread?.contact.outreachStatus ??
+          null,
         lastContactedAt:
           selectedContact.lastContactedAt ??
           thread?.contact.lastContactedAt ??
@@ -262,6 +269,10 @@ export function WhatsAppOutreachScreen({
         lastOutboundState:
           selectedContact.lastOutboundState ??
           thread?.contact.lastOutboundState ??
+          null,
+        lastFailureSummary:
+          selectedContact.lastFailureSummary ??
+          thread?.contact.lastFailureSummary ??
           null,
         lastReplyAt:
           selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
@@ -292,16 +303,18 @@ export function WhatsAppOutreachScreen({
     const hasDraft = pendingDrafts.some((draft) => draft.waId === contact.waId);
     const matchesFilter =
       mode === "desk" && activeFilter === "needs-reply"
-        ? contact.unanswered || hasDraft
+        ? visibleContact.stage !== "queued" && (contact.unanswered || hasDraft)
         : mode === "desk" && activeFilter === "wants-call"
           ? contact.stage === "wants_call"
-          : activeFilter === "opted-out"
-            ? visibleStatus === "Opted out"
-            : activeFilter === "replied"
-              ? visibleStatus === "Replied"
-              : activeFilter === "sent"
-                ? visibleStatus === "Sent"
-                : true;
+          : activeFilter === "queued"
+            ? visibleContact.stage === "queued"
+            : activeFilter === "opted-out"
+              ? visibleStatus === "Opted out"
+              : activeFilter === "replied"
+                ? visibleStatus === "Replied"
+                : activeFilter === "sent"
+                  ? visibleStatus === "Sent"
+                  : true;
     const search = searchTerm.trim().toLocaleLowerCase();
     const matchesSearch =
       !search ||
@@ -621,6 +634,9 @@ export function WhatsAppOutreachScreen({
               <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
+            {canRetrySend && status.accountRetryCount > 0 ? (
+              <WhatsAppResumeAndRetryAction count={status.accountRetryCount} />
+            ) : null}
             <Tooltip disableHoverableContent>
               <TooltipTrigger asChild>
                 <button
@@ -677,9 +693,11 @@ export function WhatsAppOutreachScreen({
                 contact={rowContact}
                 hasDraft={hasDraft}
                 key={contact.waId}
+                logoUrl={identity.logoUrl}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
                 personName={identity.personName}
+                placePhotoUrl={identity.placePhotoUrl}
                 preview={preview}
                 selected={isSelected}
                 website={identity.website}
@@ -689,10 +707,10 @@ export function WhatsAppOutreachScreen({
               />
             ) : (
               <WhatsAppContactRow
-                businessName={identity.displayName}
                 canReviewBatch={Boolean(rowBatch)}
                 contact={rowContact}
                 hasDraft={hasDraft}
+                identity={identity}
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
@@ -726,13 +744,10 @@ export function WhatsAppOutreachScreen({
             >
               ‹
             </button>
-            <span aria-hidden="true" className="c3wa-thread-avatar">
-              {selectedContactIsAnonymous ? (
-                <UserRound aria-hidden="true" size={18} strokeWidth={1.8} />
-              ) : (
-                whatsappInitials(selectedIdentity?.displayName ?? "WhatsApp")
-              )}
-            </span>
+            <WhatsAppThreadAvatar
+              identity={selectedIdentity}
+              isAnonymous={selectedContactIsAnonymous}
+            />
             <div className="c3wa-thread-head-copy">
               <strong>
                 {selectedIdentity?.displayName ?? "WhatsApp contact"}
@@ -903,6 +918,8 @@ export function WhatsAppOutreachScreen({
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}
+                    canRetrySend={canRetrySend}
+                    accountRetryCount={status.accountRetryCount}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
                     onApproveDraft={approveDraft}

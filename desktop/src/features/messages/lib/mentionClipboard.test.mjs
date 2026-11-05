@@ -441,42 +441,57 @@ test("does not treat an uncapped label's ellipsis as a truncation", () => {
   assert.equal(matchChipTextToLabel("John…", "John Smith", "@"), "fragment");
 });
 
-test("whole compact mention labels are restored only for their declared exact key", () => {
+test("legacy compact mention labels rebind only their declared key without restoring it", () => {
   const key = `150b20bd${"a".repeat(52)}15dc`;
-  const label = `Scout (${key}) 2`;
+  const rawLabel = `Scout (${key}) 2`;
+  const safeLabel = "Scout (teammate) 2";
   // The npub compact a chip renders today, and the hex compact a chip copied
-  // before keys displayed as npub still carries: a whole chip in either
-  // form re-binds; nothing else does.
+  // before that switch still carries. A whole legacy chip still binds to the
+  // exact declared identity, but every current output uses the safe label.
   const npubCompact = "Scout (npub1z59…zwkg) 2";
   const legacyCompact = "Scout (150b20bd…15dc) 2";
 
   for (const compact of [npubCompact, legacyCompact]) {
-    assert.equal(matchChipTextToLabel(compact, label, "@", key), "truncated");
     assert.equal(
-      matchChipTextToLabel(`@${compact}`, label, "@", key),
+      matchChipTextToLabel(compact, rawLabel, "@", key),
+      "truncated",
+    );
+    assert.equal(
+      matchChipTextToLabel(`@${compact}`, rawLabel, "@", key),
       "truncated",
     );
   }
-  assert.equal(matchChipTextToLabel(npubCompact, label, "@"), "fragment");
+  assert.equal(matchChipTextToLabel(rawLabel, rawLabel, "@", key), "truncated");
+  assert.equal(matchChipTextToLabel(safeLabel, rawLabel, "@", key), "full");
+  assert.equal(matchChipTextToLabel(npubCompact, rawLabel, "@"), "fragment");
   assert.equal(
-    matchChipTextToLabel(npubCompact, label, "@", "b".repeat(64)),
+    matchChipTextToLabel(npubCompact, rawLabel, "@", "b".repeat(64)),
     "fragment",
   );
-  assert.equal(matchChipTextToLabel(npubCompact, label, "#", key), "fragment");
+  assert.equal(
+    matchChipTextToLabel(npubCompact, rawLabel, "#", key),
+    "fragment",
+  );
   // A different key's compact — npub or legacy hex — is text this record
   // never declared: tampered text never gains the identity's binding.
   assert.equal(
-    matchChipTextToLabel("Scout (npub1m6k…zuz0) 2", label, "@", key),
+    matchChipTextToLabel("Scout (npub1m6k…zuz0) 2", rawLabel, "@", key),
     "fragment",
   );
   assert.equal(
-    matchChipTextToLabel("Scout (deadbeef…beef) 2", label, "@", key),
+    matchChipTextToLabel("Scout (deadbeef…beef) 2", rawLabel, "@", key),
     "fragment",
   );
   // A dropped collision suffix is a partial chip, not a tolerated form.
   assert.equal(
-    matchChipTextToLabel("Scout (npub1z59…zwkg)", label, "@", key),
+    matchChipTextToLabel("Scout (npub1z59…zwkg)", rawLabel, "@", key),
     "fragment",
   );
-  assert.equal(matchChipTextToLabel("Scout", label, "@", key), "fragment");
+  assert.equal(matchChipTextToLabel("Scout", rawLabel, "@", key), "fragment");
+  assert.deepEqual(
+    parseMentionClipboardRecords(
+      `<span data-mention-pubkey="${key}" data-mention-label="${rawLabel}"></span>`,
+    ),
+    [{ label: safeLabel, pubkey: key, isAgent: false }],
+  );
 });

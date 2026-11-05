@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -25,6 +26,13 @@ const MAX_SCHEMA_BYTES: usize = 4096;
 const MARKER_FIELD_MAX: usize = 256;
 pub const MAX_MCP_SERVERS: usize = 16;
 const MAX_HOOK_RESULT_BYTES: usize = 16 * 1024;
+const COLONY_CREDITS_ENV: &[&str] = &[
+    "COLONY_CREDITS_GATEWAY",
+    "COLONY_CREDITS_SESSION_ID",
+    "COLONY_CREDITS_MODEL",
+    "BUZZ_AGENT_PROVIDER",
+    "BUZZ_AGENT_MODEL",
+];
 
 /// Byte budgets for a single tool result. `total` bounds everything the
 /// result may occupy in history (text + images); `text` bounds the text
@@ -89,12 +97,32 @@ const PASSTHROUGH_ENV: &[&str] = &[
     "BUZZ_PRIVATE_KEY",
     "BUZZ_RELAY_URL",
     "BUZZ_AUTH_TAG",
+    // Colony's managed free gateway is a provider route, not a customer API
+    // key. The first-party shell tool needs its short-lived session to invoke
+    // the local design CLI; do not expose it to other configured MCP servers.
+    "COLONY_CREDITS_GATEWAY",
+    "COLONY_CREDITS_SESSION_ID",
+    "COLONY_CREDITS_MODEL",
+    "BUZZ_AGENT_PROVIDER",
+    "BUZZ_AGENT_MODEL",
     // Agent display name — dev-mcp uses it as the git author name. On the
     // Desktop path this arrives via the wire `mcpServers[].env` declaration
     // (which wins here anyway); the allowlist entry covers ACP clients that
     // spawn buzz-agent without declaring it.
     "BUZZ_ACP_DISPLAY_NAME",
 ];
+
+fn should_passthrough_env(command: &str, key: &str) -> bool {
+    PASSTHROUGH_ENV.contains(&key)
+        && (!COLONY_CREDITS_ENV.contains(&key)
+            || Path::new(command)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.eq_ignore_ascii_case("buzz-dev-mcp")
+                        || name.eq_ignore_ascii_case("buzz-dev-mcp.exe")
+                }))
+}
 
 // Windows has no $TMPDIR/$HOME. TMP/TEMP/USERPROFILE are what
 // std::env::temp_dir() consults — without them it falls back to C:\Windows,
@@ -731,6 +759,9 @@ async fn spawn_one(
     cmd.args(&spec.args);
     cmd.env_clear();
     for k in PASSTHROUGH_ENV {
+        if !should_passthrough_env(&spec.command, k) {
+            continue;
+        }
         if let Ok(v) = std::env::var(k) {
             cmd.env(k, v);
         }
@@ -1053,6 +1084,20 @@ mod content_tests {
     #[test]
     fn passthrough_includes_buzz_owner_attestation() {
         assert!(PASSTHROUGH_ENV.contains(&"BUZZ_AUTH_TAG"));
+    }
+
+    #[test]
+    fn managed_credits_are_passed_only_to_colony_shell_tools() {
+        for var in COLONY_CREDITS_ENV {
+            assert!(
+                should_passthrough_env("/app/bin/buzz-dev-mcp", var),
+                "{var} must survive env_clear() for the local Open Design adapter"
+            );
+            assert!(
+                !should_passthrough_env("filesystem-mcp", var),
+                "{var} must not be exposed to unrelated MCP servers"
+            );
+        }
     }
 
     #[test]

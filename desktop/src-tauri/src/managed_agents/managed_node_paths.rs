@@ -46,9 +46,29 @@ pub(crate) fn buzz_managed_node_bin_path() -> Option<PathBuf> {
 
 pub(crate) const MANAGED_OPENCODE_VERSION: &str = "v1.19.2";
 
-/// Runtimes whose binary Colony downloads itself instead of running an installer.
+/// Versions pinned by `commands::agent_discovery::managed_codex` and its lockfile.
+pub(crate) const MANAGED_CODEX_RUNTIME_VERSION: &str = "codex-acp-2.1.1-codex-0.159.1";
+
+/// Runtimes whose complete binary tree Colony provisions instead of running
+/// vendor install commands.
 pub(crate) fn managed_binary_runtime(runtime_id: &str) -> bool {
-    runtime_id == "opencode"
+    match runtime_id {
+        "opencode" => managed_opencode_platform().is_some(),
+        "codex" => managed_codex_platform().is_some(),
+        _ => false,
+    }
+}
+
+pub(crate) fn managed_codex_platform() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("darwin-arm64"),
+        ("macos", "x86_64") => Some("darwin-x64"),
+        ("linux", "x86_64") => Some("linux-x64"),
+        ("linux", "aarch64") => Some("linux-arm64"),
+        ("windows", "x86_64") => Some("win32-x64"),
+        ("windows", "aarch64") => Some("win32-arm64"),
+        _ => None,
+    }
 }
 
 pub(crate) fn managed_opencode_platform() -> Option<&'static str> {
@@ -63,7 +83,7 @@ pub(crate) fn managed_opencode_platform() -> Option<&'static str> {
     }
 }
 
-/// Colony's own OpenCode folder for this platform (Start free).
+/// Colony's managed OpenCode folder for this platform, including legacy Start free records.
 pub(crate) fn buzz_managed_opencode_dir() -> Option<PathBuf> {
     let platform = managed_opencode_platform()?;
     dirs::data_dir().map(|dir| {
@@ -73,6 +93,22 @@ pub(crate) fn buzz_managed_opencode_dir() -> Option<PathBuf> {
             .join(MANAGED_OPENCODE_VERSION)
             .join(platform)
     })
+}
+
+/// Colony's private Node package tree for Codex and its ACP adapter.
+pub(crate) fn buzz_managed_codex_dir() -> Option<PathBuf> {
+    let platform = managed_codex_platform()?;
+    dirs::data_dir().map(|dir| {
+        dir.join("Colony")
+            .join("runtimes")
+            .join("codex")
+            .join(MANAGED_CODEX_RUNTIME_VERSION)
+            .join(platform)
+    })
+}
+
+pub(crate) fn buzz_managed_codex_bin_dir() -> Option<PathBuf> {
+    buzz_managed_codex_dir().map(|dir| dir.join("node_modules").join(".bin"))
 }
 
 pub(crate) fn buzz_managed_npm_bin_dir() -> Option<PathBuf> {
@@ -93,24 +129,32 @@ pub(crate) fn buzz_managed_command_path(command: &str, basename: &str) -> Option
         command,
         basename,
         buzz_managed_opencode_dir(),
+        buzz_managed_codex_bin_dir(),
         buzz_managed_npm_bin_dir(),
         buzz_managed_node_bin_dir(),
     )
 }
 
 /// Resolve a Colony-managed command from the given folders. Colony's own
-/// OpenCode folder is searched first, so Start free never runs another copy.
+/// OpenCode folder is searched first so legacy Start free records never run another copy.
 fn managed_command_path_in(
     command: &str,
     basename: &str,
     opencode_dir: Option<PathBuf>,
+    codex_bin_dir: Option<PathBuf>,
     npm_bin_dir: Option<PathBuf>,
     node_bin_dir: Option<PathBuf>,
 ) -> Option<PathBuf> {
     if command.contains(std::path::MAIN_SEPARATOR)
         || !matches!(
             command,
-            "codex-acp" | "claude-agent-acp" | "claude-code-acp" | "node" | "npm" | "opencode"
+            "codex"
+                | "codex-acp"
+                | "claude-agent-acp"
+                | "claude-code-acp"
+                | "node"
+                | "npm"
+                | "opencode"
         )
     {
         return None;
@@ -119,6 +163,9 @@ fn managed_command_path_in(
     let mut dirs = Vec::new();
     if command == "opencode" {
         dirs.extend(opencode_dir);
+    }
+    if matches!(command, "codex" | "codex-acp") {
+        dirs.extend(codex_bin_dir);
     }
     dirs.extend(npm_bin_dir);
     dirs.extend(node_bin_dir);
@@ -174,18 +221,20 @@ mod tests {
                 "opencode",
                 "opencode",
                 Some(opencode_dir.path().to_path_buf()),
+                None,
                 Some(npm_dir.path().to_path_buf()),
                 None,
             ),
             Some(ours)
         );
         // Without Colony's copy, nothing in our folders stands in for it but npm's.
-        assert!(managed_command_path_in("opencode", "opencode", None, None, None).is_none());
+        assert!(managed_command_path_in("opencode", "opencode", None, None, None, None).is_none());
         // Commands off the allow-list never resolve here.
         assert!(managed_command_path_in(
             "not-a-colony-tool",
             "opencode",
             Some(opencode_dir.path().to_path_buf()),
+            None,
             None,
             None,
         )
@@ -202,6 +251,7 @@ mod tests {
             Some(opencode_dir.path().to_path_buf()),
             None,
             None,
+            None,
         )
         .is_none());
     }
@@ -216,5 +266,43 @@ mod tests {
             text.contains("/Colony/runtimes/opencode/v1.19.2/"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn managed_codex_commands_prefer_colonys_pinned_runtime() {
+        let codex_dir = tempfile::tempdir().unwrap();
+        let npm_dir = tempfile::tempdir().unwrap();
+        let ours = executable(codex_dir.path(), "codex-acp");
+        executable(npm_dir.path(), "codex-acp");
+
+        assert_eq!(
+            managed_command_path_in(
+                "codex-acp",
+                "codex-acp",
+                None,
+                Some(codex_dir.path().to_path_buf()),
+                Some(npm_dir.path().to_path_buf()),
+                None,
+            ),
+            Some(ours)
+        );
+        assert!(
+            managed_command_path_in("codex-acp", "codex-acp", None, None, None, None).is_none()
+        );
+    }
+
+    #[test]
+    fn codex_runtime_folder_is_versioned_and_app_owned() {
+        assert_eq!(
+            MANAGED_CODEX_RUNTIME_VERSION,
+            "codex-acp-2.1.1-codex-0.159.1"
+        );
+        if let Some(dir) = buzz_managed_codex_dir() {
+            let text = dir.to_string_lossy().replace('\\', "/");
+            assert!(
+                text.contains("/Colony/runtimes/codex/codex-acp-2.1.1-codex-0.159.1/"),
+                "{text}"
+            );
+        }
     }
 }

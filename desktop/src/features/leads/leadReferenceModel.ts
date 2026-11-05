@@ -15,6 +15,9 @@ export type LeadTone = "neutral" | "green" | "blue" | "amber" | "red";
 export type LeadSummary = {
   leadId: string;
   name: string;
+  website: string | null;
+  logoUrl: string | null;
+  placePhotoUrl: string | null;
   /** `<vertical> · <location>`, whichever parts exist. */
   meta: string;
   stageLabel: string;
@@ -70,6 +73,15 @@ export function leadInitial(name: string): string {
   return letter ? letter.toLocaleUpperCase() : "?";
 }
 
+/** The first lead reference embedded in a searchable message body. */
+export function firstLeadReferenceId(content: string): string | null {
+  const match =
+    /buzz:\/\/lead\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:[?#][^\s<>]*)?/iu.exec(
+      content,
+    );
+  return match?.[1] ?? null;
+}
+
 export function leadMeta(prospect: ProspectHead["prospect"]): string {
   return [prospect.vertical, prospect.location]
     .map((part) => part?.trim())
@@ -84,6 +96,9 @@ export function summarizeLead(head: ProspectHead): LeadSummary | null {
   return {
     leadId: head.prospectId,
     name: prospect.party.displayName,
+    website: prospect.website,
+    logoUrl: prospect.logoUrl ?? null,
+    placePhotoUrl: prospect.placePhotoUrl ?? null,
     meta: leadMeta(prospect),
     stageLabel: leadStageLabel(prospect),
     stageTone: leadStageTone(prospect),

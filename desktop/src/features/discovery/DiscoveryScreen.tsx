@@ -6,7 +6,6 @@ import { campaignStatusLabel } from "./CampaignHelpers";
 import { DiscoveryBusinessCatalogue } from "./DiscoveryBusinessCatalogue";
 import {
   DiscoveryCampaignDialog,
-  DiscoveryCampaignListDialog,
   type PendingCampaign,
 } from "./DiscoveryCampaignDialogs";
 import {
@@ -20,6 +19,7 @@ import {
   industryTileColour,
 } from "./DiscoveryIcons";
 import { RunnerAvatar, useCurrentRunner } from "./DiscoveryRunner";
+import type { DiscoveryLocation } from "./discoveryLocation";
 import {
   useDiscoveryCampaign,
   type DiscoveryCampaign,
@@ -94,10 +94,6 @@ export function DiscoveryScreen() {
   const [pendingCampaign, setPendingCampaign] =
     React.useState<PendingCampaign | null>(null);
   const [campaignDialogOpen, setCampaignDialogOpen] = React.useState(false);
-  const [campaignListOpen, setCampaignListOpen] = React.useState(false);
-  const [campaignList, setCampaignList] = React.useState<DiscoveryCampaign[]>(
-    [],
-  );
   // The tag layer loads once when Discovery opens; the open search re-runs when it lands.
   const [tagsLoaded, setTagsLoaded] = React.useState(false);
   React.useEffect(() => {
@@ -165,6 +161,7 @@ export function DiscoveryScreen() {
   async function startCampaign(input: {
     name: string;
     location: string;
+    locationSelection: DiscoveryLocation;
     target: number;
     criteria: string;
   }) {
@@ -175,13 +172,6 @@ export function DiscoveryScreen() {
       runBy: dialogRunner,
     });
     setCampaignDialogOpen(false);
-    await navigate({ to: "/campaign" });
-  }
-
-  async function selectCampaign(campaignId: string) {
-    if (!provider) return;
-    await provider.select(campaignId);
-    setCampaignListOpen(false);
     await navigate({ to: "/campaign" });
   }
 
@@ -289,10 +279,7 @@ export function DiscoveryScreen() {
           {campaign && !compact ? (
             <ResumeSection
               campaign={campaign}
-              onAll={() => {
-                setCampaignList(provider?.getCampaigns() ?? []);
-                setCampaignListOpen(true);
-              }}
+              onAll={() => void navigate({ to: "/discovery/campaigns" })}
             />
           ) : null}
 
@@ -426,13 +413,6 @@ export function DiscoveryScreen() {
         pending={pendingCampaign}
         runner={dialogRunner}
         simulatedCosts={simulatedCosts}
-      />
-      <DiscoveryCampaignListDialog
-        campaigns={campaignList}
-        onOpenChange={setCampaignListOpen}
-        onSelect={(campaignId) => void selectCampaign(campaignId)}
-        onStartNew={() => setCampaignListOpen(false)}
-        open={campaignListOpen}
       />
     </>
   );

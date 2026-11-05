@@ -15,6 +15,7 @@ import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
 import { MessageAuthorWithIndicators } from "@/features/messages/ui/MessageAuthorWithIndicators";
+import { IdentityLabelText } from "@/features/profile/ui/IdentityLabelText";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
@@ -584,10 +585,15 @@ export const MessageRow = React.memo(
       <div className="flex shrink-0 items-start">{avatarNode}</div>
     );
 
-    const authorNode = message.pubkey ? (
-      <MessageAuthorText hoverUnderline>{message.author}</MessageAuthorText>
+    const authorText = message.authorIdentity ? (
+      <IdentityLabelText label={message.authorIdentity} />
     ) : (
-      <MessageAuthorText as="h3">{message.author}</MessageAuthorText>
+      message.author
+    );
+    const authorNode = message.pubkey ? (
+      <MessageAuthorText hoverUnderline>{authorText}</MessageAuthorText>
+    ) : (
+      <MessageAuthorText as="h3">{authorText}</MessageAuthorText>
     );
     const positionTitle = useMemberJobTitle(message.pubkey, !message.pending);
     // Their own title on the profile first, then the team position.
@@ -602,7 +608,7 @@ export const MessageRow = React.memo(
       <MessageAgentOwner
         isAgent={Boolean(message.isAgent)}
         jobTitle={jobTitle}
-        ownerLabel={message.ownerLabel}
+        ownerLabel={message.authorIdentity ? null : message.ownerLabel}
         ownerPubkey={message.ownerPubkey}
         selfName={selfName}
       />
@@ -1015,6 +1021,9 @@ export const MessageRow = React.memo(
     prev.message.pubkey === next.message.pubkey &&
     prev.message.body === next.message.body &&
     prev.message.author === next.message.author &&
+    prev.message.authorIdentity?.text === next.message.authorIdentity?.text &&
+    prev.message.authorIdentity?.ownerTooltip ===
+      next.message.authorIdentity?.ownerTooltip &&
     prev.message.isAgent === next.message.isAgent &&
     prev.message.ownerPubkey === next.message.ownerPubkey &&
     prev.message.ownerLabel === next.message.ownerLabel &&

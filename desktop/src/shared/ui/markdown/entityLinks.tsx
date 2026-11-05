@@ -1,6 +1,7 @@
 import type * as React from "react";
 
 import { LeadReferenceCard } from "@/features/leads/LeadReferenceCard";
+import { OutreachReferenceCard } from "@/features/discovery/OutreachReferenceCard";
 import {
   isEntityLink,
   parseEntityLink,
@@ -78,6 +79,16 @@ export function EntityLinkAnchor({
   if (parsed?.ok && parsed.value.type === "lead") {
     return (
       <LeadReferenceCard leadId={parsed.value.id} interactive={interactive} />
+    );
+  }
+  if (
+    parsed?.ok &&
+    (parsed.value.type === "list" ||
+      parsed.value.type === "campaign" ||
+      parsed.value.type === "template")
+  ) {
+    return (
+      <OutreachReferenceCard link={parsed.value} interactive={interactive} />
     );
   }
   return (

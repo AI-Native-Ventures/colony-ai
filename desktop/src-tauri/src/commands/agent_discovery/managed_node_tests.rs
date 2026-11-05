@@ -12,11 +12,8 @@ fn test_npm_eacces_hint_guidance_mentions_colony_private_dir() {
 #[test]
 fn test_rewrite_npm_install_uses_private_prefix() {
     assert_eq!(
-        rewrite_npm_global_install(
-            "npm install -g @agentclientprotocol/codex-acp",
-            "'/tmp/Buzz Node'"
-        ),
-        "npm install --global --prefix '/tmp/Buzz Node' @agentclientprotocol/codex-acp"
+        rewrite_npm_global_install("npm install -g @example/harness-acp", "'/tmp/Buzz Node'"),
+        "npm install --global --prefix '/tmp/Buzz Node' @example/harness-acp"
     );
 }
 
@@ -31,8 +28,8 @@ fn test_rewrite_npm_i_uses_private_prefix() {
 #[test]
 fn test_rewrite_npm_uninstall_uses_private_prefix() {
     assert_eq!(
-        rewrite_npm_global_install("npm uninstall -g @zed-industries/codex-acp", "'/tmp/buzz'"),
-        "npm uninstall --global --prefix '/tmp/buzz' @zed-industries/codex-acp"
+        rewrite_npm_global_install("npm uninstall -g @example/harness-acp", "'/tmp/buzz'"),
+        "npm uninstall --global --prefix '/tmp/buzz' @example/harness-acp"
     );
 }
 
@@ -478,4 +475,30 @@ fn test_managed_node_runtime_ready_returns_false_when_binary_absent() {
         !managed_node_runtime_ready(),
         "managed_node_runtime_ready must return false when the binary file does not exist"
     );
+}
+
+#[test]
+fn codex_managed_node_repair_only_targets_orphaned_app_owned_shims() {
+    let managed_bin = std::path::Path::new("/app-data/Colony/runtimes/codex/.bin");
+    let managed_shim = managed_bin.join("codex-acp");
+    let external_shim = std::path::Path::new("/usr/local/bin/codex-acp");
+
+    assert!(codex_shim_needs_managed_node_repair(
+        &managed_shim,
+        managed_bin,
+        true,
+        false,
+    ));
+    assert!(!codex_shim_needs_managed_node_repair(
+        &managed_shim,
+        managed_bin,
+        true,
+        true,
+    ));
+    assert!(!codex_shim_needs_managed_node_repair(
+        external_shim,
+        managed_bin,
+        true,
+        false,
+    ));
 }

@@ -97,6 +97,10 @@ import {
   KIND_PROSPECT_HEAD,
   KIND_SERVICE_ACTION,
   KIND_SERVICE_HEAD,
+  KIND_OUTREACH_LIST_ACTION,
+  KIND_OUTREACH_LIST_HEAD,
+  KIND_DISCOVERY_CAMPAIGN_ACTION,
+  KIND_DISCOVERY_CAMPAIGN_HEAD,
 } from "@/features/discovery/businessRecordContract";
 import {
   COLONY3_BUSINESS_PEOPLE,
@@ -108,6 +112,7 @@ import {
   REFERENCE_SALES_WINDOW_START_DAY_LABEL,
   REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
+  REFERENCE_RELAY_SELF_PUBKEY,
   referenceChannelLastMessageAt,
   colony3CedarLastMessageAt,
   colony3OliveLastMessageAt,
@@ -120,6 +125,7 @@ import {
   referenceSalesMessages,
   referenceSidebarChannelSeeds,
   referenceSidebarUnreadMessages,
+  outreachBoardChannelSeeds,
   referenceOliveHouseMessages,
   referenceSalesRecordEvents,
   seedReferenceSidebarStorage,
@@ -276,6 +282,9 @@ export type MockManagedAgentSeed = {
   systemPrompt?: string | null;
   /** Harness/runtime id pin; `null` = inherit from persona (native default). */
   runtime?: string | null;
+  /** Override the default catalog command for unavailable-runtime recovery specs. */
+  agentCommand?: string;
+  agentArgs?: string[];
   agentCommandOverride?: string | null;
   runningRuntimeId?: string | null;
   runningModel?: string | null;
@@ -708,12 +717,26 @@ type E2eConfig = {
     referenceWorkspace?: boolean;
     /** Rename the active reference business for a focused visual fixture. */
     referenceWorkspaceBusinessName?: string;
+    /** Set the signed-in display name for owner-specific reference boards. */
+    referenceWorkspaceDisplayName?: string;
     /** Seed long lead names for row and picker overflow assertions. */
     referenceWorkspaceLongLeadNames?: boolean;
     /** Add bounded synthetic lead rows for dense Leads screen proof. */
     referenceWorkspaceLeadCount?: number;
     /** Leave one reference lead's contact and value blank for visual proof. */
     referenceWorkspaceMissingLeadFields?: boolean;
+    /** Give Form & Field a phone for outreach-list mock browser flows. */
+    referenceWorkspaceOutreachReady?: boolean;
+    /** Seed the approved dense Leads selection board fixture. */
+    referenceWorkspaceOutreachBoard?: boolean;
+    /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
+    referenceWorkspaceOutreachSidebar?: boolean;
+    /** Limit global people search to explicitly seeded board identities. */
+    searchProfilesOnly?: boolean;
+    /** Seed the compact approved outreach mention-picker board fixture. */
+    referenceWorkspaceOutreachMentionBoard?: boolean;
+    /** Seed the Restaurants campaign board with forty-one mock prospects. */
+    referenceWorkspaceRestaurantsBoard?: boolean;
     whatsappGuesthouses?: boolean;
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
@@ -1884,6 +1907,8 @@ type MockSocket = {
 };
 
 const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
+  KIND_OUTREACH_LIST_ACTION,
+  KIND_DISCOVERY_CAMPAIGN_ACTION,
   KIND_CLIENT_ACTION,
   KIND_WORK_ITEM_ACTION,
   KIND_DELIVERABLE_VERSION,
@@ -1893,6 +1918,7 @@ const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
   KIND_MONEY_ADJUSTMENT,
   KIND_MONEY_FOLLOW_UP,
 ]);
+const DEFAULT_REFERENCE_RELAY_SELF = REFERENCE_RELAY_SELF_PUBKEY;
 
 function createMockRelayMembershipEvent(): RelayEvent {
   return createMockEvent(
@@ -2534,7 +2560,7 @@ const E2E_IDENTITY_OVERRIDE_STORAGE_KEY = "buzz:e2e-identity-override.v1";
 const MOCK_APP_VERSION = "0.0.0-e2e";
 const DEFAULT_MOCK_IDENTITY = {
   pubkey: "deadbeef".repeat(8),
-  display_name: "npub1mock...",
+  display_name: "Morgan",
 };
 const DEFAULT_REAL_IDENTITY = {
   privateKey:
@@ -2769,7 +2795,7 @@ function syncMockChannel(channel: MockChannel) {
 
   channel.participant_pubkeys = channel.members.map((member) => member.pubkey);
   channel.participants = channel.members.map(
-    (member) => member.display_name ?? member.pubkey.slice(0, 8),
+    (member) => member.display_name ?? "AI employee",
   );
 }
 
@@ -3516,8 +3542,9 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
   const catalogEntry = seed.runtime
     ? DEFAULT_RUNTIME_COMMAND[seed.runtime]
     : undefined;
-  const agentCommand = catalogEntry?.command ?? seed.runtime ?? "goose";
-  const agentArgs = catalogEntry?.args ?? ["acp"];
+  const agentCommand =
+    seed.agentCommand ?? catalogEntry?.command ?? seed.runtime ?? "goose";
+  const agentArgs = seed.agentArgs ?? catalogEntry?.args ?? ["acp"];
 
   return {
     pubkey: seed.pubkey,
@@ -3805,14 +3832,20 @@ function resetMockTeams(config?: E2eConfig) {
 function seedMockSearchProfiles(config?: E2eConfig) {
   for (const seed of config?.mock?.searchProfiles ?? []) {
     const pubkey = seed.pubkey.toLowerCase();
+    const existing = mockProfiles.get(pubkey);
     const profile = {
       pubkey,
       display_name: seed.displayName,
-      avatar_url: seed.avatarUrl ?? null,
-      about: seed.about ?? null,
+      avatar_url:
+        seed.avatarUrl ??
+        existing?.avatar_url ??
+        (pubkey === REFERENCE_AGENTS.scout.pubkey
+          ? agentAntAvatarDataUrl("Other", "green")
+          : null),
+      about: seed.about ?? existing?.about ?? null,
       nip05_handle: seed.nip05Handle ?? null,
-      job_title: seed.jobTitle ?? null,
-      owner_pubkey: seed.ownerPubkey ?? null,
+      job_title: seed.jobTitle ?? existing?.job_title ?? null,
+      owner_pubkey: seed.ownerPubkey ?? existing?.owner_pubkey ?? null,
       is_agent: seed.isAgent ?? false,
       has_profile_event: true,
     };
@@ -4514,9 +4547,7 @@ function seedVisualFixture(fixture: VisualFixtureSeed) {
             : [],
         participants:
           channel.channelType === "dm"
-            ? members.map(
-                (member) => member.display_name ?? member.pubkey.slice(0, 8),
-              )
+            ? members.map((member) => member.display_name ?? "AI employee")
             : [],
         members,
       });
@@ -5826,21 +5857,26 @@ let referenceWorkspaceActive = false;
 function applyReferenceWorkspace(config: E2eConfig): void {
   referenceWorkspaceActive = true;
   const sidebarShell = config.mock?.referenceSidebarShell === true;
+  const selfDisplayName =
+    config.mock?.referenceWorkspaceDisplayName?.trim() || REFERENCE_SELF_NAME;
   window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__ = {
     channelId: REFERENCE_CHANNEL_IDS.sales,
     label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
   };
   if (config.mock?.referenceWorkspaceDiscoveryStandIn !== false) {
-    installReferenceDiscoveryProvider();
+    installReferenceDiscoveryProvider(
+      config.mock?.whatsappGuesthouses === true,
+      config.mock?.referenceWorkspaceRestaurantsBoard === true,
+    );
   }
   const self = getMockMemberPubkey(config);
   const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
-  mockDisplayNames.set(self, REFERENCE_SELF_NAME);
+  mockDisplayNames.set(self, selfDisplayName);
   const selfProfile = mockProfiles.get(self);
   if (selfProfile) {
     mockProfiles.set(self, {
       ...selfProfile,
-      display_name: REFERENCE_SELF_NAME,
+      display_name: selfDisplayName,
     });
   }
   for (const agent of Object.values(REFERENCE_AGENTS)) {
@@ -5881,21 +5917,36 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   }
   const withoutSales = config.mock?.referenceWorkspaceWithoutSales === true;
   const whatsappGuesthouses = config.mock?.whatsappGuesthouses === true;
+  const outreachBoard = config.mock?.referenceWorkspaceOutreachBoard === true;
+  const outreachMentionBoard =
+    config.mock?.referenceWorkspaceOutreachMentionBoard === true;
+  const outreachSidebar =
+    outreachBoard ||
+    outreachMentionBoard ||
+    config.mock?.referenceWorkspaceOutreachSidebar === true;
+  const outreachSidebarSortCeiling = new Date(
+    Date.now() + 120_000,
+  ).toISOString();
   const whatsappSidebarChannels = new Set<string>([
     REFERENCE_CHANNEL_IDS.sales,
     REFERENCE_CHANNEL_IDS.welcome,
     REFERENCE_CHANNEL_IDS.scoutDm,
   ]);
   const channelSeeds = (
-    colony3
-      ? colony3ChannelSeeds()
-      : sidebarShell
-        ? referenceSidebarChannelSeeds()
-        : referenceChannelSeeds()
+    outreachSidebar
+      ? outreachBoardChannelSeeds()
+      : colony3
+        ? colony3ChannelSeeds()
+        : sidebarShell
+          ? referenceSidebarChannelSeeds()
+          : referenceChannelSeeds()
   ).filter(
     (seed) =>
       (!withoutSales || seed.id !== REFERENCE_CHANNEL_IDS.sales) &&
-      (!whatsappGuesthouses || whatsappSidebarChannels.has(seed.id)),
+      (!whatsappGuesthouses ||
+        colony3 ||
+        outreachSidebar ||
+        whatsappSidebarChannels.has(seed.id)),
   );
   const channels = channelSeeds.map((seed) =>
     createMockChannel({
@@ -5912,27 +5963,36 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       description: seed.description,
       topic: null,
       purpose: null,
-      last_message_at: sidebarShell
-        ? seed.id === REFERENCE_CHANNEL_IDS.oliveStudio
-          ? referenceSalesLastMessageAt()
-          : seed.id === REFERENCE_CHANNEL_IDS.marketing
-            ? referenceChannelLastMessageAt(10)
-            : seed.id === REFERENCE_CHANNEL_IDS.sales
-              ? referenceChannelLastMessageAt(20)
-              : seed.id === REFERENCE_CHANNEL_IDS.minaDm
-                ? referenceSalesLastMessageAt()
-                : seed.id === REFERENCE_CHANNEL_IDS.ayaDm
-                  ? referenceChannelLastMessageAt(5)
-                  : seed.id === REFERENCE_CHANNEL_IDS.companyForum
+      last_message_at: outreachSidebar
+        ? seed.id === REFERENCE_CHANNEL_IDS.general ||
+          seed.id === REFERENCE_CHANNEL_IDS.sales
+          ? outreachSidebarSortCeiling
+          : seed.id === REFERENCE_CHANNEL_IDS.outreach
+            ? referenceChannelLastMessageAt(20)
+            : seed.id === REFERENCE_CHANNEL_IDS.scoutDm
+              ? referenceChannelLastMessageAt(48)
+              : null
+        : sidebarShell
+          ? seed.id === REFERENCE_CHANNEL_IDS.oliveStudio
+            ? referenceSalesLastMessageAt()
+            : seed.id === REFERENCE_CHANNEL_IDS.marketing
+              ? referenceChannelLastMessageAt(10)
+              : seed.id === REFERENCE_CHANNEL_IDS.sales
+                ? referenceChannelLastMessageAt(20)
+                : seed.id === REFERENCE_CHANNEL_IDS.minaDm
+                  ? referenceSalesLastMessageAt()
+                  : seed.id === REFERENCE_CHANNEL_IDS.ayaDm
                     ? referenceChannelLastMessageAt(5)
-                    : null
-        : seed.id === REFERENCE_CHANNEL_IDS.sales
-          ? referenceSalesLastMessageAt()
-          : colony3 && seed.id === REFERENCE_CHANNEL_IDS.cedarCafe
-            ? colony3CedarLastMessageAt()
-            : colony3 && seed.id === REFERENCE_CHANNEL_IDS.oliveHouse
-              ? colony3OliveLastMessageAt()
-              : null,
+                    : seed.id === REFERENCE_CHANNEL_IDS.companyForum
+                      ? referenceChannelLastMessageAt(5)
+                      : null
+          : seed.id === REFERENCE_CHANNEL_IDS.sales
+            ? referenceSalesLastMessageAt()
+            : colony3 && seed.id === REFERENCE_CHANNEL_IDS.cedarCafe
+              ? colony3CedarLastMessageAt()
+              : colony3 && seed.id === REFERENCE_CHANNEL_IDS.oliveHouse
+                ? colony3OliveLastMessageAt()
+                : null,
       archived_at: null,
       created_by: self,
       topic_set_by: null,
@@ -5954,7 +6014,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
         ? {
             participant_pubkeys: [self, ...seed.agentMembers],
             participants: [
-              REFERENCE_SELF_NAME,
+              selfDisplayName,
               ...seed.agentMembers.map(
                 (pubkey) =>
                   Object.values(REFERENCE_AGENTS).find(
@@ -5978,7 +6038,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }
     setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
   }
-  if (colony3) {
+  if (colony3 || outreachSidebar) {
     setMockPresenceStatus(REFERENCE_AGENTS.scout.pubkey, "online");
   }
   for (const event of referenceBusinessRecordEvents(self, {
@@ -6004,6 +6064,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   seedReferenceSidebarStorage(self, {
     sidebarShell,
     colony3,
+    outreachBoard: outreachSidebar,
     ...(config.mock?.referenceWorkspaceBusinessName
       ? { businessName: config.mock.referenceWorkspaceBusinessName }
       : config.mock?.whatsappGuesthouses
@@ -6016,9 +6077,16 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     for (const event of referenceSalesRecordEvents(self, communityId, {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
+      outreachBoard: config.mock?.referenceWorkspaceOutreachBoard === true,
+      outreachMentionBoard:
+        config.mock?.referenceWorkspaceOutreachMentionBoard === true,
+      restaurantsBoard:
+        config.mock?.referenceWorkspaceRestaurantsBoard === true,
       leadCount: config.mock?.referenceWorkspaceLeadCount,
       missingLeadFields:
         config.mock?.referenceWorkspaceMissingLeadFields === true,
+      outreachReady: config.mock?.referenceWorkspaceOutreachReady === true,
+      relaySelfPubkey: config.mock?.relaySelf ?? undefined,
     })) {
       const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
       if (!channelId) continue;
@@ -6246,6 +6314,12 @@ function getManagedAgentRelayMembership(pubkey: string, config = getConfig()) {
 
 function getConfig(): E2eConfig | undefined {
   return window.__BUZZ_E2E__;
+}
+
+function referenceRelaySelfPubkey(): string | null {
+  const mock = getConfig()?.mock;
+  if (mock && Object.hasOwn(mock, "relaySelf")) return mock.relaySelf ?? null;
+  return referenceWorkspaceActive ? DEFAULT_REFERENCE_RELAY_SELF : null;
 }
 
 function readStoredIdentityOverride(): TestIdentity | undefined {
@@ -10374,6 +10448,10 @@ function emitMockHistory(
       if (filter.kinds && !filter.kinds.includes(event.kind)) {
         return false;
       }
+      const authors = filter.authors?.map((author) => author.toLowerCase());
+      if (authors && !authors.includes(event.pubkey.toLowerCase())) {
+        return false;
+      }
       const dTags = filter["#d"];
       if (
         dTags &&
@@ -10783,6 +10861,22 @@ function expectedBusinessCommandDTag(
       ? businessDTag(tenantId, "prospect", action.prospectId)
       : null;
   }
+  if (event.kind === KIND_OUTREACH_LIST_ACTION) {
+    const action = parseMockBusinessContent<{ listId?: string }>(event);
+    return action?.listId
+      ? businessDTag(tenantId, "outreach_list", action.listId.toLowerCase())
+      : null;
+  }
+  if (event.kind === KIND_DISCOVERY_CAMPAIGN_ACTION) {
+    const action = parseMockBusinessContent<{ campaignId?: string }>(event);
+    return action?.campaignId
+      ? businessDTag(
+          tenantId,
+          "discovery_campaign",
+          action.campaignId.toLowerCase(),
+        )
+      : null;
+  }
   if (event.kind === KIND_PROPOSAL_VERSION) {
     const version = parseMockBusinessContent<ReferenceProposalVersion>(event);
     return version
@@ -10827,6 +10921,297 @@ function referenceRecordEvent(
     source.created_at,
     mockEventId(),
   );
+}
+
+function referenceRelayRecordEvent(
+  kind: number,
+  channelId: string,
+  dTag: string,
+  content: unknown,
+  source: RelayEvent,
+): RelayEvent {
+  const event = referenceRecordEvent(kind, channelId, dTag, content, source);
+  return {
+    ...event,
+    pubkey: referenceRelaySelfPubkey() ?? source.pubkey,
+  };
+}
+
+function applyReferenceOutreachListAction(
+  event: RelayEvent,
+  channelId: string,
+  communityId: TenantCommunityId,
+): string | null {
+  const action = parseMockBusinessContent<{
+    schemaVersion?: number;
+    listId?: string;
+    op?: string;
+    expectedHeadEventId?: string;
+    name?: string;
+    note?: string;
+    source?: { kind?: string; campaignId?: string | null };
+    leadIds?: string[];
+    defaultTemplate?: { name?: string; language?: string };
+  }>(event);
+  if (
+    action?.schemaVersion !== 1 ||
+    !action.listId ||
+    !/^[a-f0-9-]{36}$/i.test(action.listId)
+  ) {
+    return "outreach list action is invalid";
+  }
+  const dTag = businessDTag(
+    communityId,
+    "outreach_list",
+    action.listId.toLowerCase(),
+  );
+  const priorEvent = referenceBusinessRecord(
+    channelId,
+    KIND_OUTREACH_LIST_HEAD,
+    dTag,
+  );
+  const prior = priorEvent
+    ? parseMockBusinessContent<Record<string, unknown>>(priorEvent)
+    : null;
+  if (action.op === "create") {
+    if (priorEvent || !action.name?.trim() || !action.source?.kind) {
+      return "outreach list create is invalid";
+    }
+    if (
+      !["manual", "campaign", "agent"].includes(action.source.kind) ||
+      (action.source.kind === "campaign" && !action.source.campaignId) ||
+      (action.source.kind !== "campaign" && action.source.campaignId != null)
+    ) {
+      return "outreach list source is invalid";
+    }
+    const leadIds = [...new Set(action.leadIds ?? [])];
+    if (
+      leadIds.length > 500 ||
+      leadIds.some((id) => typeof id !== "string" || id.length > 128)
+    ) {
+      return "outreach list membership is invalid";
+    }
+    const members = leadIds.map((leadId) => ({
+      leadId,
+      addedBy: event.pubkey,
+      addedByAgent: false,
+      addedAt: event.created_at,
+    }));
+    const head = referenceRelayRecordEvent(
+      KIND_OUTREACH_LIST_HEAD,
+      channelId,
+      dTag,
+      {
+        schemaVersion: 1,
+        listId: action.listId.toLowerCase(),
+        name: action.name.trim(),
+        note: action.note ?? null,
+        status: "active",
+        source: {
+          kind: action.source.kind,
+          campaignId: action.source.campaignId ?? null,
+        },
+        defaultTemplate: action.defaultTemplate ?? null,
+        members,
+        createdBy: event.pubkey,
+        createdByAgent: false,
+        createdAt: event.created_at,
+        updatedBy: event.pubkey,
+        updatedAt: event.created_at,
+        sourceActionEventId: event.id,
+      },
+      event,
+    );
+    storeReferenceBusinessEvent(channelId, head, true);
+    return null;
+  }
+
+  if (!priorEvent || !prior) return "outreach list is unavailable";
+  if (
+    action.expectedHeadEventId &&
+    action.expectedHeadEventId !== priorEvent.id
+  ) {
+    return "outreach list changed; refresh and retry";
+  }
+  const next = { ...prior };
+  if (action.op === "rename") {
+    if (typeof action.name === "string") next.name = action.name.trim();
+    if (typeof action.note === "string") next.note = action.note;
+  } else if (action.op === "add_members" || action.op === "remove_members") {
+    const ids = [...new Set(action.leadIds ?? [])];
+    if (ids.length === 0 || ids.length > 500) {
+      return "outreach list membership is invalid";
+    }
+    const members = Array.isArray(prior.members)
+      ? (prior.members as Array<Record<string, unknown>>)
+      : [];
+    next.members =
+      action.op === "add_members"
+        ? [
+            ...members,
+            ...ids
+              .filter((id) => !members.some((member) => member.leadId === id))
+              .map((leadId) => ({
+                leadId,
+                addedBy: event.pubkey,
+                addedByAgent: false,
+                addedAt: event.created_at,
+              })),
+          ]
+        : members.filter((member) => !ids.includes(String(member.leadId)));
+  } else if (action.op === "set_default_template") {
+    next.defaultTemplate = action.defaultTemplate ?? null;
+  } else if (action.op === "archive") {
+    next.status = "archived";
+  } else if (action.op === "unarchive") {
+    next.status = "active";
+  } else {
+    return "outreach list action is invalid";
+  }
+  next.updatedBy = event.pubkey;
+  next.updatedAt = event.created_at;
+  next.sourceActionEventId = event.id;
+  storeReferenceBusinessEvent(
+    channelId,
+    referenceRelayRecordEvent(
+      KIND_OUTREACH_LIST_HEAD,
+      channelId,
+      dTag,
+      next,
+      event,
+    ),
+    true,
+  );
+  return null;
+}
+
+function applyReferenceDiscoveryCampaignAction(
+  event: RelayEvent,
+  channelId: string,
+  communityId: TenantCommunityId,
+): string | null {
+  const action = parseMockBusinessContent<{
+    schemaVersion?: number;
+    campaignId?: string;
+    op?: string;
+    expectedHeadEventId?: string;
+    name?: string;
+    audience?: string;
+    industryName?: string;
+    verticalId?: string;
+    verticalName?: string;
+    pickedTags?: string[];
+    query?: string;
+    area?: string;
+    target?: number;
+    found?: number;
+    skippedDuplicates?: number;
+    status?: string;
+    endNote?: string;
+    runBy?: { kind?: string; pubkey?: string };
+  }>(event);
+  if (
+    action?.schemaVersion !== 1 ||
+    !action.campaignId ||
+    !/^[a-f0-9-]{36}$/i.test(action.campaignId)
+  ) {
+    return "Discovery campaign action is invalid";
+  }
+  const dTag = businessDTag(
+    communityId,
+    "discovery_campaign",
+    action.campaignId.toLowerCase(),
+  );
+  const priorEvent = referenceBusinessRecord(
+    channelId,
+    KIND_DISCOVERY_CAMPAIGN_HEAD,
+    dTag,
+  );
+  const prior = priorEvent
+    ? parseMockBusinessContent<Record<string, unknown>>(priorEvent)
+    : null;
+  let next: Record<string, unknown>;
+  if (action.op === "create") {
+    if (
+      priorEvent ||
+      !action.name?.trim() ||
+      (action.audience !== "businesses" && action.audience !== "people") ||
+      !action.industryName ||
+      !action.verticalId ||
+      !action.verticalName ||
+      !action.area?.trim() ||
+      !Number.isInteger(action.target) ||
+      (action.target ?? 0) < 1 ||
+      !["running", "paused", "complete", "cancelled", "failed"].includes(
+        action.status ?? "",
+      )
+    ) {
+      return "Discovery campaign create is invalid";
+    }
+    next = {
+      schemaVersion: 1,
+      campaignId: action.campaignId.toLowerCase(),
+      name: action.name.trim(),
+      audience: action.audience,
+      industryName: action.industryName,
+      verticalId: action.verticalId,
+      verticalName: action.verticalName,
+      pickedTags: action.pickedTags ?? [],
+      query: action.query ?? null,
+      area: action.area.trim(),
+      target: action.target,
+      found: action.found ?? 0,
+      skippedDuplicates: action.skippedDuplicates ?? 0,
+      status: action.status,
+      endNote: action.endNote ?? null,
+      runBy: action.runBy ?? { kind: "person", pubkey: event.pubkey },
+      createdBy: event.pubkey,
+      createdByAgent: false,
+      createdAt: event.created_at,
+      updatedAt: event.created_at,
+      archived: false,
+      sourceActionEventId: event.id,
+    };
+  } else {
+    if (!priorEvent || !prior) return "Discovery campaign is unavailable";
+    if (
+      action.expectedHeadEventId &&
+      action.expectedHeadEventId !== priorEvent.id
+    ) {
+      return "Discovery campaign changed; refresh and retry";
+    }
+    next = { ...prior };
+    if (action.op === "progress") {
+      next.found = action.found;
+      next.skippedDuplicates = action.skippedDuplicates;
+      if (action.status) next.status = action.status;
+    } else if (action.op === "finish") {
+      next.found = action.found;
+      next.skippedDuplicates = action.skippedDuplicates;
+      next.status = action.status;
+      next.endNote = action.endNote ?? null;
+    } else if (action.op === "rename" && action.name?.trim()) {
+      next.name = action.name.trim();
+    } else if (action.op === "archive") {
+      next.archived = true;
+    } else {
+      return "Discovery campaign action is invalid";
+    }
+    next.updatedAt = event.created_at;
+    next.sourceActionEventId = event.id;
+  }
+  storeReferenceBusinessEvent(
+    channelId,
+    referenceRelayRecordEvent(
+      KIND_DISCOVERY_CAMPAIGN_HEAD,
+      channelId,
+      dTag,
+      next,
+      event,
+    ),
+    true,
+  );
+  return null;
 }
 
 type ReferenceServiceAction = {
@@ -11287,6 +11672,26 @@ function publishReferenceBusinessCommand(
       event,
     );
     storeReferenceBusinessEvent(channelId, head, true);
+  } else if (event.kind === KIND_OUTREACH_LIST_ACTION) {
+    const refusal = applyReferenceOutreachListAction(
+      event,
+      channelId,
+      communityId,
+    );
+    if (refusal) {
+      fail(refusal);
+      return true;
+    }
+  } else if (event.kind === KIND_DISCOVERY_CAMPAIGN_ACTION) {
+    const refusal = applyReferenceDiscoveryCampaignAction(
+      event,
+      channelId,
+      communityId,
+    );
+    if (refusal) {
+      fail(refusal);
+      return true;
+    }
   } else if (event.kind === KIND_PROSPECT_ACTION) {
     const action = parseMockBusinessContent<ReferenceProspectAction>(event);
     if (
@@ -15481,7 +15886,19 @@ async function handleSearchUsers(
 
     const limit = args.limit ?? 8;
     const page = Math.max(Number(args.cursor ?? 1) || 1, 1);
+    const allowedProfilePubkeys = config?.mock?.searchProfilesOnly
+      ? new Set(
+          (config.mock.searchProfiles ?? []).map((profile) =>
+            profile.pubkey.toLowerCase(),
+          ),
+        )
+      : null;
     const allResults = listMockProfiles()
+      .filter(
+        (profile) =>
+          allowedProfilePubkeys === null ||
+          allowedProfilePubkeys.has(profile.pubkey.toLowerCase()),
+      )
       .filter((profile) => {
         if (normalizedQuery.length === 0) {
           return true;
@@ -16553,7 +16970,10 @@ async function handleGetFeed(
       };
     }
     const unreadItems =
-      config?.mock?.referenceSidebarShell === true
+      config?.mock?.referenceSidebarShell === true ||
+      config?.mock?.referenceWorkspaceOutreachBoard === true ||
+      config?.mock?.referenceWorkspaceOutreachMentionBoard === true ||
+      config?.mock?.referenceWorkspaceOutreachSidebar === true
         ? []
         : referenceHomeInboxItems({
             colony3: config?.mock?.colony3Sidebar === true,
@@ -20239,6 +20659,8 @@ function sendToMockSocket(args: {
       [
         KIND_INVOICE_VERSION,
         KIND_SERVICE_ACTION,
+        KIND_OUTREACH_LIST_ACTION,
+        KIND_DISCOVERY_CAMPAIGN_ACTION,
         KIND_PROSPECT_ACTION,
         KIND_PROPOSAL_VERSION,
         KIND_PROPOSAL_ACCEPTANCE,
@@ -24932,7 +25354,7 @@ export function maybeInstallE2eTauriMocks() {
             ),
           );
         }
-        return activeConfig?.mock?.relaySelf ?? null;
+        return referenceRelaySelfPubkey();
       case "archive_identity":
       case "unarchive_identity":
         // The spec only verifies UI state, not the submitted request shape;
@@ -25269,8 +25691,13 @@ export function maybeInstallE2eTauriMocks() {
         const results: UnreadCatchUpChannelResult[] =
           request.request.channels.map((channel) => {
             const events = getMockMessageStore(channel.id);
+            const suppressOutreachSalesUnread =
+              config?.mock?.referenceWorkspaceOutreachBoard === true ||
+              config?.mock?.referenceWorkspaceOutreachMentionBoard === true ||
+              config?.mock?.referenceWorkspaceOutreachSidebar === true;
             const unreadReplies =
               referenceWorkspaceActive &&
+              !suppressOutreachSalesUnread &&
               channel.id === REFERENCE_CHANNEL_IDS.sales
                 ? events.filter(
                     (event) =>

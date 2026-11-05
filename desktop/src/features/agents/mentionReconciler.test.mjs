@@ -492,15 +492,18 @@ describe("a harness that queued the mention and was stopped before it answered (
     assert.equal(r.log.starts[0].floorUnix, T);
   });
 
-  it("stops starting a harness that keeps going away and says so", async () => {
+  it("stops retrying a harness and surfaces its recorded failure cause", async () => {
     const r = rig();
     r.state.diesAfterStart = true;
+    r.state.agents = [
+      { ...agent(SCOUT, "stopped"), lastError: "Codex is not signed in" },
+    ];
     r.state.unanswered.set(SCOUT, [queued()]);
     r.reconciler.noteMentionSent([SCOUT]);
     await r.advance(30 * 60_000);
     assert.equal(r.log.starts.length, MAX_AUTOMATIC_RESTARTS);
     assert.deepEqual(r.log.stalled, [
-      { pubkey: SCOUT, note: "Scout keeps stopping before it answers." },
+      { pubkey: SCOUT, note: "Scout could not answer: Codex is not signed in" },
     ]);
     assert.equal(r.pending(), 0);
   });

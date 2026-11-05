@@ -299,6 +299,42 @@
   font-weight: 500;
 }
 
+@media (max-width: 30rem) {
+  .ct-row {
+    display: grid;
+    grid-template-columns: 2.625rem minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.625rem 0.75rem;
+  }
+
+  .ct-row .ct-row-avatar {
+    grid-row: 1 / span 2;
+  }
+
+  .ct-row-copy {
+    grid-column: 2;
+    grid-row: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .ct-row-copy strong,
+  .ct-row-copy small {
+    overflow-wrap: anywhere;
+  }
+
+  .ct-chips {
+    grid-column: 2;
+    grid-row: 2;
+    flex-wrap: wrap;
+  }
+
+  .ct-chevron {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+}
+
 .ct-chips {
   display: flex;
   flex: none;

@@ -20,7 +20,7 @@
  * on both sides).
  */
 
-const ENTITY_LINK_SCHEME = "buzz:";
+const ENTITY_LINK_SCHEMES = new Set(["buzz:", "colony:"]);
 
 /**
  * Workspace tabs addressable by a coordinate link. The default overview
@@ -49,6 +49,9 @@ export type ParsedEntityLink =
   | { type: "issue"; id: string; owner: string; dtag: string }
   | { type: "goal"; id: string }
   | { type: "lead"; id: string }
+  | { type: "list"; id: string }
+  | { type: "campaign"; id: string }
+  | { type: "template"; name: string; language?: string }
   | {
       type: "repo";
       owner: string;
@@ -67,6 +70,8 @@ const GOAL_ID_RE =
   /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/;
 /** A lead is a prospect record: its link carries the prospect UUID. */
 const LEAD_ID_RE = GOAL_ID_RE;
+const TEMPLATE_NAME_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
+const TEMPLATE_LANGUAGE_RE = /^[a-zA-Z0-9_-]{1,16}$/;
 const GIT_OBJECT_ID_RE = /^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/;
 const DTAG_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 
@@ -117,6 +122,36 @@ export function buildLeadLink(leadId: string): string {
     throw new Error("entityLink: lead id must be a UUID");
   }
   return `buzz://lead/${leadId.toLowerCase()}`;
+}
+
+/** Build a link to a shared outreach list in the active community. */
+export function buildOutreachListLink(listId: string): string {
+  if (!LEAD_ID_RE.test(listId)) {
+    throw new Error("entityLink: list id must be a UUID");
+  }
+  return `buzz://list/${listId.toLowerCase()}`;
+}
+
+/** Build a link to a shared Discovery campaign in the active community. */
+export function buildDiscoveryCampaignLink(campaignId: string): string {
+  if (!LEAD_ID_RE.test(campaignId)) {
+    throw new Error("entityLink: campaign id must be a UUID");
+  }
+  return `buzz://campaign/${campaignId.toLowerCase()}`;
+}
+
+/** Build a link to a WhatsApp template by its stable Meta name. */
+export function buildWhatsAppTemplateLink(
+  name: string,
+  language?: string,
+): string {
+  if (!TEMPLATE_NAME_RE.test(name)) {
+    throw new Error("entityLink: invalid WhatsApp template name");
+  }
+  if (language !== undefined && !TEMPLATE_LANGUAGE_RE.test(language)) {
+    throw new Error("entityLink: invalid WhatsApp template language");
+  }
+  return `buzz://template/${name}${language ? `?lang=${language}` : ""}`;
 }
 
 function tabSuffix(tab: EntityLinkTab | undefined): string {
@@ -190,12 +225,24 @@ export function buildIssueLink(input: {
 export function isEntityLink(href: string | undefined | null): boolean {
   if (!href) return false;
   return (
+    href.startsWith("buzz://list/") ||
+    href.startsWith("buzz://campaign/") ||
+    href.startsWith("buzz://template/") ||
+    href.startsWith("colony://list/") ||
+    href.startsWith("colony://campaign/") ||
+    href.startsWith("colony://template/") ||
     href.startsWith("buzz://pr?") ||
     href.startsWith("buzz://issue?") ||
     href.startsWith("buzz://repo?") ||
     href.startsWith("buzz://project?") ||
     href.startsWith("buzz://goal/") ||
-    href.startsWith("buzz://lead/")
+    href.startsWith("buzz://lead/") ||
+    href.startsWith("colony://pr?") ||
+    href.startsWith("colony://issue?") ||
+    href.startsWith("colony://repo?") ||
+    href.startsWith("colony://project?") ||
+    href.startsWith("colony://goal/") ||
+    href.startsWith("colony://lead/")
   );
 }
 
@@ -222,7 +269,7 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     return { ok: false, reason: "invalid-url" };
   }
 
-  if (parsed.protocol !== ENTITY_LINK_SCHEME) {
+  if (!ENTITY_LINK_SCHEMES.has(parsed.protocol)) {
     return { ok: false, reason: "wrong-scheme" };
   }
 
@@ -233,7 +280,10 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     host !== "repo" &&
     host !== "project" &&
     host !== "goal" &&
-    host !== "lead"
+    host !== "lead" &&
+    host !== "list" &&
+    host !== "campaign" &&
+    host !== "template"
   ) {
     return { ok: false, reason: "wrong-host" };
   }
@@ -271,6 +321,50 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     return {
       ok: true,
       value: { type: "lead", id: match[1].toLowerCase() },
+    };
+  }
+  if (host === "list" || host === "campaign") {
+    const match = /^\/([0-9a-fA-F-]+)$/.exec(parsed.pathname);
+    if (
+      !match ||
+      !LEAD_ID_RE.test(match[1]) ||
+      parsed.search ||
+      parsed.hash ||
+      parsed.username ||
+      parsed.password ||
+      parsed.port
+    ) {
+      return { ok: false, reason: `invalid-${host}-id` };
+    }
+    return {
+      ok: true,
+      value: { type: host, id: match[1].toLowerCase() },
+    };
+  }
+  if (host === "template") {
+    const match = /^\/([a-zA-Z0-9_.-]+)$/.exec(parsed.pathname);
+    const params = [...parsed.searchParams.keys()];
+    const language = parsed.searchParams.get("lang");
+    if (
+      !match ||
+      !TEMPLATE_NAME_RE.test(match[1]) ||
+      params.some((key) => key !== "lang") ||
+      parsed.searchParams.getAll("lang").length > 1 ||
+      (language !== null && !TEMPLATE_LANGUAGE_RE.test(language)) ||
+      parsed.hash ||
+      parsed.username ||
+      parsed.password ||
+      parsed.port
+    ) {
+      return { ok: false, reason: "invalid-template" };
+    }
+    return {
+      ok: true,
+      value: {
+        type: "template",
+        name: match[1],
+        ...(language ? { language } : {}),
+      },
     };
   }
   const isCoordinateHost = host === "repo" || host === "project";

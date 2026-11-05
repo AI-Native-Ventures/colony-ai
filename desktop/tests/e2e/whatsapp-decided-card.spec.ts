@@ -282,15 +282,57 @@ test.describe("WhatsApp decided batch channel card", () => {
     await emitBatchNotice(page, "Scout");
     const pendingCard = page.getByTestId("whatsapp-channel-batch-pending");
     await expect(
-      pendingCard.getByRole("button", { name: "Approve and send" }),
+      pendingCard.getByRole("button", { name: "Approve all 2" }),
     ).toBeVisible();
+    const firstRow = pendingCard.getByTestId("whatsapp-channel-batch-row-0");
+    const secondRow = pendingCard.getByTestId("whatsapp-channel-batch-row-1");
+    await expect(firstRow.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(
-      pendingCard.getByRole("button", { name: "Review each message" }),
+      firstRow.getByRole("button", { name: "Remove" }),
     ).toBeVisible();
     await expect(
       pendingCard.getByRole("button", { name: "Reject" }),
     ).toBeVisible();
-    await pendingCard.getByRole("button", { name: "Approve and send" }).click();
+    await firstRow.getByRole("button", { name: "Edit" }).click();
+    const editedVariable = firstRow.getByRole("textbox", {
+      name: "Row 1 variable 1",
+    });
+    await editedVariable.fill("guesthouses in Melville");
+    await firstRow.getByRole("button", { name: "Save edit" }).click();
+    await secondRow.getByRole("button", { name: "Remove" }).click();
+    await expect(secondRow).toContainText(
+      "This row will be removed when you approve.",
+    );
+    await expect(
+      pendingCard.getByRole("button", { name: "Approve all 1" }),
+    ).toBeVisible();
+    await pendingCard.getByRole("button", { name: "Approve all 1" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate((batchId) => {
+          const commands = (window as WhatsAppEventWindow)
+            .__BUZZ_E2E_WHATSAPP_STATE__?.commands;
+          const decision = commands?.find(
+            ({ kind, body }) =>
+              kind === 47049 &&
+              body.batchId === batchId &&
+              body.decision === "approve",
+          );
+          const edits = decision?.body.editRows as
+            | Array<{ idx: number; params: string[] }>
+            | undefined;
+          const droppedRows = decision?.body.dropRows as number[] | undefined;
+          return {
+            editedVariable:
+              edits?.find(({ idx }) => idx === 0)?.params[0] ?? null,
+            droppedRows: droppedRows ?? [],
+          };
+        }, WHATSAPP_DECIDED_BATCH_ID),
+      )
+      .toEqual({
+        editedVariable: "guesthouses in Melville",
+        droppedRows: [1],
+      });
     const approvedCard = page.getByTestId("whatsapp-channel-batch-approved");
     await expect(approvedCard).toBeVisible();
     await expect(

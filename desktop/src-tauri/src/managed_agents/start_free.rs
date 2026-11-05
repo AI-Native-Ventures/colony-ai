@@ -1,11 +1,11 @@
-//! Start free: the user's agents run on OpenCode's free model and must never
-//! fall back to another model when that model disappears.
+//! Legacy Start free records use OpenCode's free model and must never fall
+//! back to another model when that model disappears.
 
-/// Provider id saved by the Start free onboarding choice.
+/// Provider id saved by the former OpenCode Start free choice.
 pub(crate) const START_FREE_PROVIDER: &str = "opencode-free";
 /// Runtime id of Colony's own OpenCode.
 const START_FREE_RUNTIME: &str = "opencode";
-/// The only model a Start free agent may run on.
+/// The only model a legacy Start free agent may run on.
 pub(crate) const START_FREE_MODEL: &str = "opencode/deepseek-v4.1-flash-free";
 
 fn is_start_free(runtime_id: Option<&str>, provider: Option<&str>) -> bool {

@@ -12,7 +12,7 @@
 //! `maps/search-v3` call, with an asynchronous request polled to completion.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::{
     extract::State,
@@ -20,6 +20,7 @@ use axum::{
     response::Json,
 };
 use buzz_auth::LimitType;
+use buzz_core::CommunityId;
 use chrono::{DateTime, Datelike, NaiveDate, SecondsFormat, TimeZone, Utc};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,8 @@ use super::{api_error, api_error_with_code, gifs};
 
 /// Route of the prospect search proxy.
 pub(crate) const SEARCH_PATH: &str = "/discovery/search";
+/// Relay-owned free geocoder used by the desktop location combobox.
+pub(crate) const LOCATION_PATH: &str = "/discovery/locations";
 
 const API_KEY_HEADER: &str = "X-API-KEY";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
@@ -58,6 +61,39 @@ const SKIP_STEP_MESSAGE: &str = "This version of Colony asks for prospect pages 
      the search provider cannot serve, so the search was stopped before it was paid for. \
      Update Colony and search again.";
 const DEFAULT_LANGUAGE: &str = "en";
+
+const PHOTON_URL: &str = "https://photon.komoot.io/api/";
+const LOCATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const LOCATION_CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+const LOCATION_UPSTREAM_INTERVAL: Duration = Duration::from_secs(1);
+const LOCATION_RESULT_LIMIT: usize = 8;
+const LOCATION_QUERY_MAX_CHARS: usize = 120;
+const LOCATION_UNAVAILABLE_MESSAGE: &str =
+    "Location suggestions are unavailable. Try again in a moment.";
+const LOCATION_BUSY_MESSAGE: &str = "Location suggestions are busy. Try again in a moment.";
+
+/// Bounded, relay-scoped cache and fair-use throttle for Photon lookups.
+///
+/// Cache keys include the community so a cached query cannot become an
+/// accidental cross-tenant observation. The one-request-per-second miss gate
+/// is intentionally process-local: it protects the public provider in each
+/// relay process without queueing unbounded work behind a slow upstream.
+pub struct DiscoveryLocationLookup {
+    results: moka::sync::Cache<(CommunityId, String), Arc<Vec<LocationSuggestion>>>,
+    next_upstream_at: tokio::sync::Mutex<Instant>,
+}
+
+impl DiscoveryLocationLookup {
+    pub(crate) fn new() -> Self {
+        Self {
+            results: moka::sync::Cache::builder()
+                .max_capacity(5_000)
+                .time_to_live(LOCATION_CACHE_TTL)
+                .build(),
+            next_upstream_at: tokio::sync::Mutex::new(Instant::now()),
+        }
+    }
+}
 
 const MONTHLY_LIMIT_ERROR: &str = "monthly_limit";
 const USAGE_UNAVAILABLE_MESSAGE: &str =
@@ -109,6 +145,24 @@ pub fn build_discovery_http_client() -> reqwest::Client {
         .expect("static discovery HTTP client configuration")
 }
 
+/// Photon is a public, keyless search-as-you-type endpoint. Use a dedicated
+/// client with an honest user agent and no redirects, and never forward any
+/// desktop headers or client address to it.
+pub fn build_discovery_location_http_client() -> reqwest::Client {
+    match reqwest::Client::builder()
+        .timeout(LOCATION_REQUEST_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent("Colony Discovery location search/1.0 (+https://github.com/AI-Native-Ventures/colony-ai)")
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::error!(%error, "could not configure the location lookup client");
+            reqwest::Client::new()
+        }
+    }
+}
+
 /// Client-owned search request forwarded to Outscraper by the relay.
 #[derive(Debug, Deserialize)]
 struct SearchRequest {
@@ -120,6 +174,12 @@ struct SearchRequest {
     /// Country name or two-letter code used for the provider `region`.
     #[serde(default)]
     country: Option<String>,
+    /// Provider region supplied by a structured selected place.
+    #[serde(default)]
+    region: Option<String>,
+    /// Center of a structured selected place, never inferred from free text.
+    #[serde(default)]
+    coordinates: Option<SearchCoordinates>,
     /// Places wanted from this page, 1 through 50. Defaults to 20.
     #[serde(default)]
     limit: Option<u32>,
@@ -131,11 +191,42 @@ struct SearchRequest {
     language: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SearchCoordinates {
+    latitude: f64,
+    longitude: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocationRequest {
+    query: String,
+}
+
+/// A deliberately narrow Photon result. The relay returns only the selected
+/// place's stable display and search coordinates, never the upstream payload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocationSuggestion {
+    label: String,
+    latitude: f64,
+    longitude: f64,
+    country_code: Option<String>,
+    region: Option<String>,
+    kind: String,
+    bounding_box: Option<[f64; 4]>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct LocationResponse {
+    locations: Vec<LocationSuggestion>,
+}
+
 /// A request that passed validation, with the provider query already built.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 struct ValidatedSearch {
     query: String,
     region: Option<String>,
+    coordinates: Option<(f64, f64)>,
     limit: u32,
     skip: u32,
     language: String,
@@ -254,6 +345,19 @@ fn validate_request(request: SearchRequest) -> Result<ValidatedSearch, String> {
         80,
         false,
     )?;
+    let region = bounded_text("region", request.region.as_deref().unwrap_or(""), 80, false)?;
+    let coordinates = match request.coordinates {
+        Some(coordinates)
+            if coordinates.latitude.is_finite()
+                && coordinates.longitude.is_finite()
+                && (-90.0..=90.0).contains(&coordinates.latitude)
+                && (-180.0..=180.0).contains(&coordinates.longitude) =>
+        {
+            Some((coordinates.latitude, coordinates.longitude))
+        }
+        Some(_) => return Err("coordinates must be valid latitude and longitude".to_string()),
+        None => None,
+    };
     let limit = request.limit.unwrap_or(DEFAULT_LIMIT);
     if !(1..=MAX_LIMIT).contains(&limit) {
         return Err(format!("limit must be 1 through {MAX_LIMIT}"));
@@ -279,7 +383,12 @@ fn validate_request(request: SearchRequest) -> Result<ValidatedSearch, String> {
     };
     Ok(ValidatedSearch {
         query: build_query(&query, &location),
-        region: region_code(&country),
+        // Outscraper's `region` is a two-letter country boundary. A structured
+        // place supplies its country code directly; `region` also accepts a
+        // code for callers that have no separate country field. Never guess a
+        // boundary from an arbitrary city label.
+        region: region_code(&country).or_else(|| region_code(&region)),
+        coordinates,
         limit,
         skip,
         language,
@@ -313,6 +422,9 @@ fn search_url(base: &str, request: &ValidatedSearch) -> Result<url::Url, Provide
         pairs.append_pair("language", &request.language);
         if let Some(region) = request.region.as_deref() {
             pairs.append_pair("region", region);
+        }
+        if let Some((latitude, longitude)) = request.coordinates {
+            pairs.append_pair("coordinates", &format!("@{latitude:.6},{longitude:.6},12z"));
         }
         pairs.append_pair("async", "false");
     }
@@ -666,6 +778,255 @@ async fn enforce_search_admission(
     }
 }
 
+async fn enforce_location_admission(
+    state: &AppState,
+    tenant: &buzz_core::TenantContext,
+    pubkey: &nostr::PublicKey,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let limit = state.auth.config().rate_limits.discovery_searches_per_min;
+    match crate::admission::check_principal(
+        state.admission_rate_limiter.as_ref(),
+        tenant,
+        pubkey,
+        LimitType::DiscoverySearches,
+        60,
+        limit,
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(crate::admission::AdmissionError::Exceeded { reset_in_secs }) => Err(api_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            &format!("rate-limited: location search quota exceeded; retry in {reset_in_secs}s"),
+        )),
+        Err(crate::admission::AdmissionError::Unavailable) => Err(api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "rate-limited: location search admission unavailable",
+        )),
+    }
+}
+
+fn validate_location_request(request: LocationRequest) -> Result<String, String> {
+    let query = bounded_text("query", &request.query, LOCATION_QUERY_MAX_CHARS, true)?;
+    if query.chars().count() < 2 {
+        return Err("query must be 2 through 120 characters".to_string());
+    }
+    Ok(query)
+}
+
+fn photon_property<'a>(
+    properties: &'a serde_json::Map<String, Value>,
+    names: &[&str],
+) -> Option<&'a str> {
+    names.iter().find_map(|name| {
+        properties
+            .get(*name)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn photon_kind(properties: &serde_json::Map<String, Value>) -> Option<&'static str> {
+    let raw = photon_property(properties, &["osm_value", "type", "kind"])?
+        .trim()
+        .to_ascii_lowercase();
+    match raw.as_str() {
+        "suburb" | "neighbourhood" | "neighborhood" | "quarter" | "district" => Some("suburb"),
+        "city" | "town" | "village" | "municipality" | "hamlet" => Some("city"),
+        "state" | "province" | "region" | "county" => Some("region"),
+        "country" => Some("country"),
+        _ => None,
+    }
+}
+
+fn photon_bounding_box(feature: &serde_json::Map<String, Value>) -> Option<[f64; 4]> {
+    let values = feature.get("bbox")?.as_array()?;
+    if values.len() != 4 {
+        return None;
+    }
+    let west = values[0].as_f64()?;
+    let south = values[1].as_f64()?;
+    let east = values[2].as_f64()?;
+    let north = values[3].as_f64()?;
+    (west.is_finite()
+        && east.is_finite()
+        && south.is_finite()
+        && north.is_finite()
+        && (-180.0..=180.0).contains(&west)
+        && (-180.0..=180.0).contains(&east)
+        && (-90.0..=90.0).contains(&south)
+        && (-90.0..=90.0).contains(&north))
+    .then_some([west, south, east, north])
+}
+
+fn normalize_photon_location(feature: &Value) -> Option<LocationSuggestion> {
+    let feature = feature.as_object()?;
+    let properties = feature.get("properties")?.as_object()?;
+    let name = photon_property(properties, &["name"])?;
+    let coordinates = feature.get("geometry")?.get("coordinates")?.as_array()?;
+    let longitude = coordinates.first()?.as_f64()?;
+    let latitude = coordinates.get(1)?.as_f64()?;
+    if !latitude.is_finite()
+        || !longitude.is_finite()
+        || !(-90.0..=90.0).contains(&latitude)
+        || !(-180.0..=180.0).contains(&longitude)
+    {
+        return None;
+    }
+    let kind = photon_kind(properties)?.to_string();
+    let country_code = photon_property(properties, &["countrycode", "country_code"])
+        .map(str::trim)
+        .filter(|value| value.len() == 2 && value.bytes().all(|byte| byte.is_ascii_alphabetic()))
+        .map(str::to_ascii_uppercase);
+    let region =
+        photon_property(properties, &["state", "province", "region", "county"]).map(str::to_string);
+    let mut label_parts = Vec::new();
+    for part in [
+        Some(name),
+        photon_property(properties, &["city", "locality", "district"]),
+        region.as_deref(),
+        photon_property(properties, &["country"]),
+    ] {
+        let Some(part) = part else { continue };
+        if !label_parts
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(part))
+        {
+            label_parts.push(part.to_string());
+        }
+    }
+    let label = label_parts.join(", ");
+    (!label.is_empty()).then_some(LocationSuggestion {
+        label,
+        latitude,
+        longitude,
+        country_code,
+        region,
+        kind,
+        bounding_box: photon_bounding_box(feature),
+    })
+}
+
+fn normalize_photon_locations(body: &Value) -> Vec<LocationSuggestion> {
+    let Some(features) = body.get("features").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    features
+        .iter()
+        .filter_map(normalize_photon_location)
+        .filter(|location| {
+            seen.insert(format!(
+                "{}|{:.6}|{:.6}",
+                location.label.to_ascii_lowercase(),
+                location.latitude,
+                location.longitude
+            ))
+        })
+        .take(LOCATION_RESULT_LIMIT)
+        .collect()
+}
+
+async fn fetch_location_suggestions(
+    client: &reqwest::Client,
+    query: &str,
+) -> Result<Vec<LocationSuggestion>, ()> {
+    let mut url = url::Url::parse(PHOTON_URL).map_err(|_| ())?;
+    {
+        let mut pairs = url.query_pairs_mut();
+        pairs.append_pair("q", query);
+        pairs.append_pair("limit", &LOCATION_RESULT_LIMIT.to_string());
+        pairs.append_pair("lang", "en");
+    }
+    let response = client.get(url).send().await.map_err(|error| {
+        tracing::warn!(
+            timeout = error.is_timeout(),
+            "Photon location lookup failed"
+        );
+    })?;
+    if !response.status().is_success() {
+        tracing::warn!(
+            status = response.status().as_u16(),
+            "Photon location lookup was rejected"
+        );
+        return Err(());
+    }
+    let body = read_limited(response, MAX_UPSTREAM_RESPONSE_BYTES)
+        .await
+        .map_err(|_| ())?;
+    let body: Value = serde_json::from_slice(&body).map_err(|_| {
+        tracing::warn!("Photon returned an invalid location response");
+    })?;
+    Ok(normalize_photon_locations(&body))
+}
+
+fn location_unavailable() -> (StatusCode, Json<Value>) {
+    api_error_with_code(
+        StatusCode::BAD_GATEWAY,
+        LOCATION_UNAVAILABLE_MESSAGE,
+        "discovery_locations_unavailable",
+    )
+}
+
+/// Search Photon through the relay. This route deliberately has no Outscraper
+/// key/config dependency: it is a free, cached place picker, not a paid lead
+/// search. It never forwards desktop headers or a user address upstream.
+pub(crate) async fn locations(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Json<LocationResponse>, (StatusCode, Json<Value>)> {
+    let (tenant, pubkey) = gifs::authenticate(&state, &headers, LOCATION_PATH, &body).await?;
+    let request: LocationRequest = serde_json::from_slice(&body)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "invalid location search JSON"))?;
+    let query = validate_location_request(request)
+        .map_err(|message| api_error(StatusCode::BAD_REQUEST, &message))?;
+    enforce_discovery_access(&state, &tenant, &pubkey).await?;
+    enforce_location_admission(&state, &tenant, &pubkey).await?;
+
+    let cache_key = query.to_ascii_lowercase();
+    let community = tenant.community();
+    if let Some(locations) = state
+        .discovery_location_lookup
+        .results
+        .get(&(community, cache_key.clone()))
+    {
+        return Ok(Json(LocationResponse {
+            locations: locations.as_ref().clone(),
+        }));
+    }
+    let mut next_upstream = state
+        .discovery_location_lookup
+        .next_upstream_at
+        .try_lock()
+        .map_err(|_| {
+            api_error_with_code(
+                StatusCode::TOO_MANY_REQUESTS,
+                LOCATION_BUSY_MESSAGE,
+                "discovery_locations_busy",
+            )
+        })?;
+    if Instant::now() < *next_upstream {
+        return Err(api_error_with_code(
+            StatusCode::TOO_MANY_REQUESTS,
+            LOCATION_BUSY_MESSAGE,
+            "discovery_locations_busy",
+        ));
+    }
+    *next_upstream = Instant::now() + LOCATION_UPSTREAM_INTERVAL;
+    drop(next_upstream);
+
+    let locations = fetch_location_suggestions(&state.discovery_location_http_client, &query)
+        .await
+        .map_err(|_| location_unavailable())?;
+    state
+        .discovery_location_lookup
+        .results
+        .insert((community, cache_key), Arc::new(locations.clone()));
+    Ok(Json(LocationResponse { locations }))
+}
+
 fn not_configured() -> (StatusCode, Json<Value>) {
     api_error_with_code(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -820,6 +1181,8 @@ mod tests {
             query: query.to_string(),
             location: String::new(),
             country: None,
+            region: None,
+            coordinates: None,
             limit: None,
             skip: None,
             language: None,
@@ -906,6 +1269,7 @@ mod tests {
             ValidatedSearch {
                 query: "home decor shops, Cape Town".to_string(),
                 region: Some("za".to_string()),
+                coordinates: None,
                 limit: 20,
                 skip: 0,
                 language: "en".to_string(),
@@ -988,10 +1352,65 @@ mod tests {
     }
 
     #[test]
+    fn structured_search_coordinates_are_validated_and_sent_to_outscraper() {
+        let mut input = request("home decor");
+        input.region = Some("ZA".into());
+        input.coordinates = Some(SearchCoordinates {
+            latitude: -26.2041,
+            longitude: 28.0473,
+        });
+        let validated = validate_request(input).expect("structured request");
+        assert_eq!(validated.region.as_deref(), Some("za"));
+        assert_eq!(validated.coordinates, Some((-26.2041, 28.0473)));
+
+        let mut invalid = request("home decor");
+        invalid.coordinates = Some(SearchCoordinates {
+            latitude: 91.0,
+            longitude: 28.0473,
+        });
+        assert!(validate_request(invalid).is_err());
+    }
+
+    #[test]
+    fn photon_places_become_unambiguous_structured_suggestions() {
+        let locations = normalize_photon_locations(&serde_json::json!({
+            "features": [
+                {
+                    "geometry": { "coordinates": [28.081, -26.055] },
+                    "bbox": [28.07, -26.06, 28.09, -26.04],
+                    "properties": {
+                        "name": "Woodmead",
+                        "city": "Johannesburg",
+                        "state": "Gauteng",
+                        "country": "South Africa",
+                        "countrycode": "za",
+                        "osm_value": "suburb"
+                    }
+                },
+                {
+                    "geometry": { "coordinates": [28.081, -26.055] },
+                    "properties": { "name": "Not a place", "osm_value": "amenity" }
+                }
+            ]
+        }));
+        assert_eq!(locations.len(), 1);
+        let location = &locations[0];
+        assert_eq!(
+            location.label,
+            "Woodmead, Johannesburg, Gauteng, South Africa"
+        );
+        assert_eq!(location.country_code.as_deref(), Some("ZA"));
+        assert_eq!(location.region.as_deref(), Some("Gauteng"));
+        assert_eq!(location.kind, "suburb");
+        assert_eq!(location.bounding_box, Some([28.07, -26.06, 28.09, -26.04]));
+    }
+
+    #[test]
     fn search_url_carries_the_provider_parameters() {
         let validated = ValidatedSearch {
             query: "cafes, Durban".to_string(),
             region: Some("za".to_string()),
+            coordinates: Some((-29.8587, 31.0218)),
             limit: 20,
             skip: 40,
             language: "en".to_string(),
@@ -1006,6 +1425,7 @@ mod tests {
         assert_eq!(params["skip"], "40");
         assert_eq!(params["language"], "en");
         assert_eq!(params["region"], "za");
+        assert_eq!(params["coordinates"], "@-29.858700,31.021800,12z");
         assert_eq!(params["async"], "false");
         assert!(!url.as_str().contains(TEST_KEY));
     }
@@ -1015,6 +1435,7 @@ mod tests {
         let validated = ValidatedSearch {
             query: "cafes".to_string(),
             region: None,
+            coordinates: None,
             limit: 5,
             skip: 0,
             language: "en".to_string(),
@@ -1322,6 +1743,7 @@ mod tests {
         ValidatedSearch {
             query: "cafes, Durban".to_string(),
             region: Some("za".to_string()),
+            coordinates: None,
             limit,
             skip: 0,
             language: "en".to_string(),

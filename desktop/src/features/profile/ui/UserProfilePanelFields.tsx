@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { AgentStatusBadge } from "@/features/agents/ui/AgentStatusBadge";
-import { canonicalNpub, truncateNpub } from "@/shared/lib/pubkey";
+import { canonicalNpub } from "@/shared/lib/pubkey";
 import {
   HoverCopyIndicator,
   useCopyFeedback,
@@ -170,9 +170,10 @@ export function buildPublicFields({
       // Copy the full canonical npub; an identity that cannot be encoded is
       // never copyable.
       copyValue: npub ?? undefined,
-      displayValue: truncateNpub(pubkey),
+      displayValue: "Identity key",
       displayNode: (
         <PubKey
+          label="Identity key"
           interactive={false}
           pubkey={pubkey}
           testId="user-profile-copy-pubkey"

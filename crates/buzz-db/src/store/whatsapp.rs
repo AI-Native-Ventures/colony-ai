@@ -177,6 +177,10 @@ pub struct DeskFacts {
     pub manual_stage_at: Option<DateTime<Utc>>,
     /// When the latest outbound message reached Meta (`sent`, `delivered` or `read`).
     pub last_contacted_at: Option<DateTime<Utc>>,
+    /// When an approved outbound row last entered the send queue.
+    pub queued_at: Option<DateTime<Utc>>,
+    /// The batch note or queue where the approved unsent row came from.
+    pub queued_from: Option<String>,
     /// When the customer last tapped the template's first quick-reply button.
     pub wants_call_at: Option<DateTime<Utc>>,
     /// When the latest outbound send outcome happened.
@@ -1052,6 +1056,20 @@ impl Db {
                     max(COALESCE(m.sent_at, m.created_at)) FILTER ( \
                         WHERE m.direction = 'out' AND m.state IN ('sent', 'delivered', 'read') \
                     ) AS last_contacted_at, \
+                    max(m.updated_at) FILTER ( \
+                        WHERE m.direction = 'out' AND m.state IN ('ready', 'queued', 'sending') \
+                    ) AS queued_at, \
+                    (array_agg( \
+                        CASE \
+                            WHEN b.id IS NULL THEN 'Outreach queue' \
+                            WHEN NULLIF(btrim(b.note), '') IS NOT NULL THEN 'Batch: ' || btrim(b.note) \
+                            WHEN NULLIF(btrim(b.template_name), '') IS NOT NULL THEN 'Batch: ' || btrim(b.template_name) \
+                            ELSE 'Outreach batch' \
+                        END \
+                        ORDER BY m.updated_at DESC, m.created_at DESC, m.id DESC \
+                    ) FILTER ( \
+                        WHERE m.direction = 'out' AND m.state IN ('ready', 'queued', 'sending') \
+                    ))[1] AS queued_from, \
                     max(m.created_at) FILTER ( \
                         WHERE m.direction = 'in' AND m.intent = 'wants_call' \
                     ) AS wants_call_at, \
@@ -1070,6 +1088,8 @@ impl Db {
              FROM whatsapp_contacts c \
              LEFT JOIN whatsapp_messages m \
                     ON m.community_id = c.community_id AND m.wa_id = c.wa_id \
+             LEFT JOIN whatsapp_batches b \
+                    ON b.community_id = m.community_id AND b.id = m.batch_id \
              WHERE c.community_id = $1 AND c.wa_id = ANY($2) \
              GROUP BY c.community_id, c.wa_id",
         )
@@ -1087,6 +1107,8 @@ impl Db {
                         manual_stage_by: row.try_get("manual_stage_by")?,
                         manual_stage_at: row.try_get("manual_stage_at")?,
                         last_contacted_at: row.try_get("last_contacted_at")?,
+                        queued_at: row.try_get("queued_at")?,
+                        queued_from: row.try_get("queued_from")?,
                         wants_call_at: row.try_get("wants_call_at")?,
                         last_outcome_at: row.try_get("last_outcome_at")?,
                         last_outcome_state: row.try_get("last_outcome_state")?,
@@ -2020,6 +2042,131 @@ impl Db {
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
+    }
+
+    /// Count definite account-level failures that an owner can safely put back into the normal
+    /// queue. A contact that has opted out or is paused since its failed attempt is deliberately
+    /// excluded, even when the old Graph error was account-wide.
+    pub async fn whatsapp_count_retryable_account_failures(
+        &self,
+        community: CommunityId,
+        error_codes: &[String],
+    ) -> Result<i64> {
+        if error_codes.is_empty() {
+            return Ok(0);
+        }
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM whatsapp_messages m \
+             WHERE m.community_id = $1 AND m.direction = 'out' AND m.state = 'failed' \
+               AND m.error_code = ANY($2) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                     AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               )",
+        )
+        .bind(community.as_uuid())
+        .bind(error_codes)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
+    /// Put every eligible account-level refusal back into its original queue shape. This updates
+    /// the existing rows only: their ids, batch indexes and idempotency keys remain untouched.
+    /// Clearing `send_after` makes a retry go through ordinary pacing and the daily cap rather
+    /// than replaying an earlier owner-only send-now release.
+    pub async fn whatsapp_retry_account_failures(
+        &self,
+        community: CommunityId,
+        error_codes: &[String],
+    ) -> Result<i64> {
+        if error_codes.is_empty() {
+            return Ok(0);
+        }
+        let mut tx = begin(&self.pool).await?;
+        let rows = sqlx::query(
+            "UPDATE whatsapp_messages m SET \
+                 state = CASE WHEN m.batch_id IS NULL THEN 'queued' ELSE 'ready' END, \
+                 lease_token = NULL, lease_until = NULL, sent_at = NULL, send_after = NULL, \
+                 updated_at = now() \
+             WHERE m.community_id = $1 AND m.direction = 'out' AND m.state = 'failed' \
+               AND m.error_code = ANY($2) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                     AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               ) \
+             RETURNING m.batch_id",
+        )
+        .bind(community.as_uuid())
+        .bind(error_codes)
+        .fetch_all(&mut *tx)
+        .await?;
+        let batch_ids = rows
+            .iter()
+            .filter_map(|row| row.try_get::<Option<Uuid>, _>("batch_id").ok().flatten())
+            .collect::<Vec<_>>();
+        if !batch_ids.is_empty() {
+            sqlx::query(
+                "UPDATE whatsapp_batches SET status = 'approved' \
+                 WHERE community_id = $1 AND status = 'completed' AND id = ANY($2)",
+            )
+            .bind(community.as_uuid())
+            .bind(&batch_ids)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(rows.len() as i64)
+    }
+
+    /// Requeue one definite temporary refusal. The exact failed-state and error-code predicates
+    /// make repeated actions a no-op, and the existing row retains its idempotency key.
+    pub async fn whatsapp_retry_failed_message(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        message_id: Uuid,
+        expected_error_code: &str,
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
+            "UPDATE whatsapp_messages m SET \
+                 state = CASE WHEN m.batch_id IS NULL THEN 'queued' ELSE 'ready' END, \
+                 lease_token = NULL, lease_until = NULL, sent_at = NULL, send_after = NULL, \
+                 updated_at = now() \
+             WHERE m.community_id = $1 AND m.id = $2 AND m.wa_id = $3 \
+               AND m.direction = 'out' AND m.state = 'failed' AND m.error_code = $4 \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                     AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               ) \
+             RETURNING m.batch_id",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(wa_id)
+        .bind(expected_error_code)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        if let Some(batch_id) = row.try_get::<Option<Uuid>, _>("batch_id")? {
+            sqlx::query(
+                "UPDATE whatsapp_batches SET status = 'approved' \
+                 WHERE community_id = $1 AND id = $2 AND status = 'completed'",
+            )
+            .bind(community.as_uuid())
+            .bind(batch_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// Skip a message that must not be sent any more (for example the contact opted out).

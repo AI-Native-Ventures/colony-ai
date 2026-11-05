@@ -295,7 +295,17 @@ test.describe("co-founder customer records", () => {
     await expect(convert).toHaveCount(0);
 
     await page.goto("/#/leads");
-    const convertedLead = page
+    const leadsPage = page.getByTestId("w10-leads-page");
+    await leadsPage
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await leadsPage
+      .getByRole("button", { name: "Remove WhatsApp filter" })
+      .click();
+    await leadsPage
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
+    const convertedLead = leadsPage
       .getByRole("table", { name: "Leads" })
       .getByRole("row")
       .filter({ hasText: "Melville Manor Guesthouse" });

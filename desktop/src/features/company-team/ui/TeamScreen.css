@@ -402,3 +402,22 @@
   font-size: calc(15 * var(--colony-px));
   font-weight: 700;
 }
+
+.team-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.team-profile-actions .team-profile-button {
+  padding: 0 1rem;
+}
+
+.team-profile-button[data-variant="danger"] {
+  box-shadow: inset 0 0 0 1px hsl(var(--colony-danger));
+  color: hsl(var(--colony-danger));
+}
+
+.team-profile-button[data-variant="danger"]:hover {
+  background: hsl(var(--colony-danger-bg));
+}

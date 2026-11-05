@@ -102,6 +102,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(api::gifs::SHARE_PATH, post(api::gifs::share))
         // Relay-owned prospect search proxy; the provider key stays server-side.
         .route(api::discovery::SEARCH_PATH, post(api::discovery::search))
+        // Relay-owned, cached location autocomplete; no desktop provider call.
+        .route(
+            api::discovery::LOCATION_PATH,
+            post(api::discovery::locations),
+        )
         .route(
             "/workflows/{workflow_id}/runs",
             get(api::workflows::workflow_runs),
@@ -270,6 +275,13 @@ fn is_admin_spa_path(path: &str) -> bool {
         || path.starts_with("/reports/")
         || path == "/feedback"
         || path.starts_with("/feedback/")
+        // Operator boards and the Colony-account sign-in landing page.
+        || path == "/overview"
+        || path == "/businesses"
+        || path.starts_with("/businesses/")
+        || path == "/ai-usage"
+        || path == "/system"
+        || path == "/sign-in"
 }
 
 /// Files served from the admin bundle directory verbatim. `/assets/*` is the

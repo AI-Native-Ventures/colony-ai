@@ -19,6 +19,7 @@ fn make_agent(
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: pubkey.to_string(),
         name: "Test Agent".to_string(),
         persona_id: persona_id.map(str::to_string),

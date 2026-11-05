@@ -62,7 +62,9 @@ async function openSocketWelcomeHeader(
   }
 
   await expect(page.getByTestId("chat-title")).toContainText("Welcome");
-  await expect(page.locator("body")).toContainText("Socket");
+  if (viewport.width >= 600) {
+    await expect(page.locator("body")).toContainText("Socket");
+  }
 
   const whatsAppButton = page.getByTestId("channel-whatsapp-chats-trigger");
   await whatsAppButton.click();

@@ -200,8 +200,8 @@ test.describe("relay connectivity", () => {
     await page.goto("/");
 
     const profileCard = page.getByTestId("sidebar-profile-card");
-    // Default mock identity display name is "npub1mock...".
-    await expect(profileCard).toContainText("npub1mock");
+    // Default mock identity display name is "Morgan".
+    await expect(profileCard).toContainText("Morgan");
     await settle(page);
   });
 

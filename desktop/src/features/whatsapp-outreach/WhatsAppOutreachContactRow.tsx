@@ -19,6 +19,7 @@ function StatusChip({ status }: { status: string }) {
       className={cn(
         "c3wa-contact-chip",
         status === "Opted out" && "is-opted",
+        status === "Send failed" && "is-failed",
         status === "Replied" && "is-replied",
         status === "Waiting for your approval" && "is-awaiting",
       )}
@@ -41,6 +42,8 @@ export function WhatsAppOutreachContactRow({
   onReviewBatch,
   personName,
   website,
+  logoUrl,
+  placePhotoUrl,
   isDesk = false,
   isLinked = Boolean(contact.leadId || contact.businessName),
 }: {
@@ -55,10 +58,16 @@ export function WhatsAppOutreachContactRow({
   onReviewBatch: () => void;
   personName: string | null;
   website: string | null;
+  logoUrl?: string | null;
+  placePhotoUrl?: string | null;
   isDesk?: boolean;
   isLinked?: boolean;
 }) {
   const status = contactStatus(contact, waitingForApproval);
+  const stageLabel =
+    contact.lastOutboundState === "failed" && contact.stage === "none"
+      ? "Send failed"
+      : WHATSAPP_STAGE_LABELS[contact.stage];
   const lastMessageAt = [
     contact.lastInboundAt,
     contact.lastReplyAt,
@@ -81,12 +90,22 @@ export function WhatsAppOutreachContactRow({
             isLinked ? (
               <BusinessLogoMark
                 className="c3wa-desk-logo-mark"
+                logoUrl={logoUrl}
                 name={businessName}
+                placePhotoUrl={placePhotoUrl}
                 website={website}
               />
             ) : (
               <UserRound aria-hidden="true" size={18} />
             )
+          ) : isLinked ? (
+            <BusinessLogoMark
+              className="c3wa-desk-logo-mark"
+              logoUrl={logoUrl}
+              name={businessName}
+              placePhotoUrl={placePhotoUrl}
+              website={website}
+            />
           ) : (
             whatsappInitials(businessName)
           )}
@@ -104,10 +123,13 @@ export function WhatsAppOutreachContactRow({
             ) : null}
             {isDesk ? (
               <span
-                className="c3wa-contact-stage-chip"
-                title={WHATSAPP_STAGE_LABELS[contact.stage]}
+                className={cn(
+                  "c3wa-contact-stage-chip",
+                  contact.lastOutboundState === "failed" && "is-failed",
+                )}
+                title={stageLabel}
               >
-                {WHATSAPP_STAGE_LABELS[contact.stage]}
+                {stageLabel}
               </span>
             ) : (
               <StatusChip status={status} />

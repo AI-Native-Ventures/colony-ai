@@ -182,6 +182,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goHireRolePack = React.useCallback(
+    (personaId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/hire/role-pack",
+          search: { personaId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goHireConfigure = React.useCallback(
     (
       personaId: string,
@@ -443,6 +455,7 @@ export function useAppNavigation() {
     goTeamPause,
     goTeamArchive,
     goHireRoles,
+    goHireRolePack,
     goHireConfigure,
     goHireReview,
     goHireSuccess,

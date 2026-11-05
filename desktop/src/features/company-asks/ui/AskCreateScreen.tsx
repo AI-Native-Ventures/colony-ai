@@ -299,11 +299,23 @@ export function AskCreateScreen({
         )
         .sort((first, second) => {
           if (first.isAgent !== second.isAgent) return first.isAgent ? 1 : -1;
-          const firstLabel = first.displayName ?? first.pubkey;
-          const secondLabel = second.displayName ?? second.pubkey;
+          const firstLabel = resolveUserLabel({
+            pubkey: first.pubkey,
+            currentPubkey,
+            fallbackName: first.displayName,
+            isAgent: first.isAgent,
+            profiles,
+          });
+          const secondLabel = resolveUserLabel({
+            pubkey: second.pubkey,
+            currentPubkey,
+            fallbackName: second.displayName,
+            isAgent: second.isAgent,
+            profiles,
+          });
           return firstLabel.localeCompare(secondLabel);
         }),
-    [currentPubkey, draft.type, membersQuery.data],
+    [currentPubkey, draft.type, membersQuery.data, profiles],
   );
   const recipientOptions = recipients.map((member) => ({
     pubkey: member.pubkey,

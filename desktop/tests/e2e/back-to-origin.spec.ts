@@ -26,7 +26,9 @@ test.describe("Back to origin", () => {
     const campaignName = await campaign
       .getByRole("heading", { level: 1 })
       .innerText();
-    await campaign.getByLabel("Filter prospects").selectOption("candidates");
+    await campaign.getByText("Add filter", { exact: true }).click();
+    const stageFilters = campaign.getByRole("group", { name: "Stage" });
+    await stageFilters.getByRole("checkbox").first().check();
     await campaign
       .getByRole("textbox", { name: "Search prospects" })
       .fill("Form & Field");
@@ -37,7 +39,7 @@ test.describe("Back to origin", () => {
     await expect
       .poll(() => campaign.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
-    const openLead = campaign.getByRole("link", { name: /Open Form & Field/ });
+    const openLead = campaign.getByRole("link", { name: /Form & Field/ });
     await openLead.scrollIntoViewIfNeeded();
     const sourceScrollTop = await campaign.evaluate(
       (element) => element.scrollTop,
@@ -46,7 +48,8 @@ test.describe("Back to origin", () => {
 
     const lead = page.getByTestId("w10-prospect-page");
     await expect(lead).toBeVisible();
-    const returnButton = lead.getByRole("button", {
+    const breadcrumb = page.getByTestId("lead-breadcrumb");
+    const returnButton = breadcrumb.getByRole("button", {
       name: `Back to ${campaignName}`,
     });
     await expect(returnButton).toBeVisible();
@@ -57,26 +60,29 @@ test.describe("Back to origin", () => {
 
     await returnButton.click();
     await expect(campaign).toBeVisible();
-    await expect(campaign.getByLabel("Filter prospects")).toHaveValue(
-      "candidates",
-    );
+    await expect(
+      campaign.getByRole("button", { name: "Remove stage filter: New" }),
+    ).toBeVisible();
     await expect(
       campaign.getByRole("textbox", { name: "Search prospects" }),
     ).toHaveValue("Form & Field");
     await expect(
       campaign.getByRole("checkbox", { name: "Select Form & Field" }),
     ).toBeChecked();
+    const maxScrollTop = await campaign.evaluate(
+      (element) => element.scrollHeight - element.clientHeight,
+    );
     await expect
       .poll(() => campaign.evaluate((element) => element.scrollTop))
-      .toBe(sourceScrollTop);
+      .toBe(Math.min(sourceScrollTop, maxScrollTop));
 
-    await campaign.getByRole("link", { name: /Open Form & Field/ }).click();
+    await campaign.getByRole("link", { name: /Form & Field/ }).click();
     await expect(page.getByTestId("w10-prospect-page")).toBeVisible();
     await page.getByTestId("global-back").click();
     await expect(campaign).toBeVisible();
-    await expect(campaign.getByLabel("Filter prospects")).toHaveValue(
-      "candidates",
-    );
+    await expect(
+      campaign.getByRole("button", { name: "Remove stage filter: New" }),
+    ).toBeVisible();
   });
 
   test("a long campaign return label truncates without horizontal overflow", async ({
@@ -94,15 +100,17 @@ test.describe("Back to origin", () => {
     await campaign
       .getByRole("textbox", { name: "Search prospects" })
       .fill("Form & Field");
-    await campaign.getByRole("link", { name: /Open Form & Field/ }).click();
+    await campaign.getByRole("link", { name: /Form & Field/ }).click();
 
     const lead = page.getByTestId("w10-prospect-page");
     await expect(lead).toBeVisible();
-    const returnButton = lead.getByRole("button", {
-      name: `Back to ${campaignName}`,
-    });
+    const returnButton = page
+      .getByTestId("lead-breadcrumb")
+      .getByRole("button", {
+        name: `Back to ${campaignName}`,
+      });
     await expect(returnButton).toHaveAttribute("title", campaignName);
-    const label = returnButton.locator(".c3l-head-back-label");
+    const label = returnButton;
     await expect(label).toHaveCSS("text-overflow", "ellipsis");
     expect(
       await label.evaluate(
@@ -130,19 +138,27 @@ test.describe("Back to origin", () => {
     const leads = page.getByTestId("w10-leads-page");
     await expect(leads).toBeVisible();
     await leads
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await leads.getByRole("button", { name: "Remove WhatsApp filter" }).click();
+    await leads
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
+    await leads
       .getByRole("searchbox", { name: "Search leads" })
       .fill("Form & Field");
     await leads.getByRole("link", { name: "Review lead" }).click();
 
     const lead = page.getByTestId("w10-prospect-page");
     await expect(lead).toBeVisible();
+    const breadcrumb = page.getByTestId("lead-breadcrumb");
     await expect(
-      lead.getByRole("button", { name: "Back to All leads" }),
+      breadcrumb.getByRole("button", { name: "Back to All leads" }),
     ).toBeVisible();
     await expect(page.getByTestId("lead-breadcrumb")).toContainText(
       "Business/Sales/Leads/Form & Field",
     );
-    await lead.getByRole("button", { name: "Back to All leads" }).click();
+    await breadcrumb.getByRole("button", { name: "Back to All leads" }).click();
 
     await expect(leads).toBeVisible();
     await expect(
@@ -197,13 +213,14 @@ test.describe("Back to origin", () => {
 
     const lead = page.getByTestId("w10-prospect-page");
     await expect(lead).toBeVisible();
+    const breadcrumb = page.getByTestId("lead-breadcrumb");
     await expect(
-      lead.getByRole("button", { name: "Back to Outreach" }),
+      breadcrumb.getByRole("button", { name: "Back to Outreach" }),
     ).toBeVisible();
     await expect(page.getByTestId("lead-breadcrumb")).toContainText(
       "Business/Outreach/Plane Tree Guesthouse",
     );
-    await lead.getByRole("button", { name: "Back to Outreach" }).click();
+    await breadcrumb.getByRole("button", { name: "Back to Outreach" }).click();
 
     await expect(outreach).toBeVisible();
     await expect(
@@ -222,10 +239,11 @@ test.describe("Back to origin", () => {
 
     const lead = page.getByTestId("w10-prospect-page");
     await expect(lead).toBeVisible();
+    const breadcrumb = page.getByTestId("lead-breadcrumb");
     await expect(
-      lead.getByRole("button", { name: "Back to All leads" }),
+      breadcrumb.getByRole("button", { name: "Back to All leads" }),
     ).toBeVisible();
-    await lead.getByRole("button", { name: "Back to All leads" }).click();
+    await breadcrumb.getByRole("button", { name: "Back to All leads" }).click();
     await expect(page.getByTestId("w10-leads-page")).toBeVisible();
   });
 

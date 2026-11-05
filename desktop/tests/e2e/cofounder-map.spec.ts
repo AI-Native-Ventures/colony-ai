@@ -201,6 +201,35 @@ async function seedCofounderTheme(
   );
 }
 
+async function seedCompanyMapBusiness(page: import("@playwright/test").Page) {
+  await page.addInitScript((logoUrl) => {
+    const communityId = "e2e-default-community";
+    const communities = JSON.parse(
+      window.localStorage.getItem("buzz-communities") ?? "[]",
+    ) as Array<Record<string, unknown>>;
+    window.localStorage.setItem(
+      "buzz-communities",
+      JSON.stringify(
+        communities.map((community) =>
+          community.id === communityId
+            ? { ...community, name: "Signal Story" }
+            : community,
+        ),
+      ),
+    );
+    window.localStorage.setItem(
+      `colony-business-profile.v1:${communityId}`,
+      JSON.stringify({
+        name: "Signal Story",
+        website: "https://signalstory.test",
+        description: "",
+        logoDataUrl: null,
+        logoUrl,
+      }),
+    );
+  }, "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='28' fill='%2324212a'/%3E%3Cpath d='M31 65c13-28 33-28 57-8' fill='none' stroke='%23f2ca72' stroke-linecap='round' stroke-width='12'/%3E%3Ccircle cx='84' cy='38' r='9' fill='%23e989b4'/%3E%3C/svg%3E");
+}
+
 test.describe("co-founder mode desktop", () => {
   test("owner sees the company-only switch and turns it on", async ({
     page,
@@ -258,6 +287,9 @@ test.describe("co-founder mode desktop", () => {
       "aria-label",
       "Sales, led by Aya",
     );
+    await expect(page.getByRole("link", { name: "Weekly review" })).toHaveCount(
+      0,
+    );
     await expect(map.getByTestId("cofounder-map-operations")).toContainText(
       "Covered by Scout",
     );
@@ -276,6 +308,96 @@ test.describe("co-founder mode desktop", () => {
     }
     const mapText = await map.innerText();
     expect(mapText).not.toMatch(/\d+ leads|Sub-functions/i);
+  });
+
+  test("the radial map keeps Scout copy clear and stops connectors on slot edges", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture({ includeScout: true }));
+    await page.goto("/#/company/map");
+
+    for (const viewport of [
+      { width: 1440, height: 1000 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const geometry = await page
+        .getByTestId("cofounder-map-stage")
+        .evaluate((stage) => {
+          const connectorPaths = Array.from(
+            stage.querySelectorAll<SVGPathElement>("[data-map-connector]"),
+          ).filter((path) => path.getClientRects().length > 0);
+          const scoutLabel = stage.querySelector<HTMLElement>(
+            '[data-testid="cofounder-map-scout-label"]',
+          );
+          const scoutLabelBounds = scoutLabel?.getBoundingClientRect();
+          const scoutLabelCrossings = connectorPaths.flatMap((path) => {
+            if (!scoutLabelBounds) return ["missing Scout label"];
+            const matrix = path.getScreenCTM();
+            if (!matrix) return ["missing connector matrix"];
+            const length = path.getTotalLength();
+            const samples = Math.max(1, Math.ceil(length * 2));
+            for (let sample = 0; sample <= samples; sample += 1) {
+              const point = path.getPointAtLength((length * sample) / samples);
+              const screenPoint = new DOMPoint(
+                point.x,
+                point.y,
+              ).matrixTransform(matrix);
+              if (
+                screenPoint.x >= scoutLabelBounds.left - 3 &&
+                screenPoint.x <= scoutLabelBounds.right + 3 &&
+                screenPoint.y >= scoutLabelBounds.top - 3 &&
+                screenPoint.y <= scoutLabelBounds.bottom + 3
+              ) {
+                return [
+                  path.getAttribute("data-testid") ?? "unnamed connector",
+                ];
+              }
+            }
+            return [];
+          });
+          const offEdgeConnectors = connectorPaths.flatMap((path) => {
+            const target = path.getAttribute("data-map-target");
+            const targetCircle = target
+              ? Array.from(
+                  stage.querySelectorAll<HTMLElement>(
+                    `[data-map-circle="${target}"]`,
+                  ),
+                ).find((circle) => circle.getClientRects().length > 0)
+              : null;
+            const matrix = path.getScreenCTM();
+            if (!targetCircle || !matrix) {
+              return [path.getAttribute("data-testid") ?? "unnamed connector"];
+            }
+            const targetBounds = targetCircle.getBoundingClientRect();
+            const length = path.getTotalLength();
+            const point = path.getPointAtLength(length);
+            const endpoint = new DOMPoint(point.x, point.y).matrixTransform(
+              matrix,
+            );
+            const centerX = targetBounds.left + targetBounds.width / 2;
+            const centerY = targetBounds.top + targetBounds.height / 2;
+            const radius = (targetBounds.width + targetBounds.height) / 4;
+            const endpointDistance = Math.hypot(
+              endpoint.x - centerX,
+              endpoint.y - centerY,
+            );
+            return Math.abs(endpointDistance - radius) > 4
+              ? [path.getAttribute("data-testid") ?? "unnamed connector"]
+              : [];
+          });
+
+          return {
+            connectorCount: connectorPaths.length,
+            offEdgeConnectors,
+            scoutLabelCrossings,
+          };
+        });
+
+      expect(geometry.connectorCount).toBe(6);
+      expect(geometry.scoutLabelCrossings).toEqual([]);
+      expect(geometry.offEdgeConnectors).toEqual([]);
+    }
   });
 
   test("the Sales page shows Aya and her worker output", async ({ page }) => {
@@ -583,26 +705,78 @@ test.describe("co-founder mode desktop", () => {
     ).toHaveText("Failed");
   });
 
-  test("captures map at 1440 and 390 pixels in the selected theme", async ({
-    page,
+  test("captures both approved radial states at 1440 and 390 in light and dark", async ({
+    browser,
   }) => {
-    await installMockBridge(page, fixture());
-    const theme = process.env.COLONY3_PROOF_THEME === "dark" ? "dark" : "light";
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto("/#/company/map");
-    await expect(page.getByTestId("cofounder-map-stage")).toBeVisible();
-    await waitForAnimations(page);
-    await page.screenshot({
-      fullPage: true,
-      path: `test-results/cofounder-map-${theme}-1440.png`,
-    });
+    test.setTimeout(120_000);
+    const screenshotDir = "test-results/cofounder-map-radial";
+    mkdirSync(screenshotDir, { recursive: true });
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await waitForAnimations(page);
-    await page.screenshot({
-      fullPage: true,
-      path: `test-results/cofounder-map-${theme}-390.png`,
-    });
+    for (const state of [
+      {
+        name: "signal-story-empty",
+        mock: fixture({
+          includeAya: false,
+          includeScout: true,
+          functionHeads: [],
+        }),
+      },
+      {
+        name: "approved-sample",
+        mock: fixture({ includeScout: true }),
+      },
+    ]) {
+      for (const theme of ["light", "dark"] as const) {
+        const capturePage = await browser.newPage();
+        await seedCofounderTheme(capturePage, theme);
+        await installMockBridge(capturePage, state.mock);
+        await seedCompanyMapBusiness(capturePage);
+        await capturePage.emulateMedia({ colorScheme: theme });
+
+        for (const viewport of [
+          { width: 1440, height: 1000 },
+          { width: 390, height: 844 },
+        ]) {
+          await capturePage.setViewportSize(viewport);
+          await capturePage.goto("/#/company/map");
+          await expect(
+            capturePage.getByTestId("cofounder-map-stage"),
+          ).toBeVisible();
+          await expect(
+            capturePage.getByTestId("cofounder-map-company-logo"),
+          ).toHaveAttribute("data-source", "profile");
+          await expect(
+            capturePage
+              .getByTestId("cofounder-map-company-logo")
+              .locator("img"),
+          ).toBeVisible();
+          await expect(
+            capturePage.getByRole("heading", { name: "Company map" }),
+          ).toBeVisible();
+          await expect(
+            capturePage.getByText("How Signal Story is run."),
+          ).toBeVisible();
+          await expect
+            .poll(() =>
+              capturePage.evaluate(() =>
+                document.documentElement.classList.contains("dark"),
+              ),
+            )
+            .toBe(theme === "dark");
+          await waitForAnimations(capturePage);
+          await capturePage.screenshot({
+            animations: "disabled",
+            fullPage: true,
+            path: join(
+              screenshotDir,
+              `${state.name}-${theme}-${viewport.width}.png`,
+            ),
+          });
+        }
+
+        await capturePage.close();
+      }
+    }
   });
 
   test("captures weekly review and function pages at 1440 and 390 in light and dark", async ({

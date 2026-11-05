@@ -14,6 +14,25 @@ export type LeadContext = {
 
 export type ProspectRow = BusinessRecords["prospects"][number];
 
+export function findScoutDirectMessage<
+  T extends {
+    id: string;
+    channelType: string;
+    name: string;
+    participants: readonly string[];
+  },
+>(channels: readonly T[]): T | null {
+  return (
+    channels.find(
+      (channel) =>
+        channel.channelType === "dm" &&
+        [channel.name, ...channel.participants].some((name) =>
+          name.toLocaleLowerCase().includes("scout"),
+        ),
+    ) ?? null
+  );
+}
+
 export const STAGES: Array<{ value: ProspectStage; label: string }> = [
   { value: "qualified", label: "Qualified" },
   { value: "in_conversation", label: "In conversation" },

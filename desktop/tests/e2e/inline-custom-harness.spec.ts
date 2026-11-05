@@ -74,7 +74,9 @@ async function openDefinitionEditDialog(page: Page, personaId: string) {
 }
 
 test.describe("inline add custom harness", () => {
-  test("create dialog registers a harness inline and selects it", async ({
+  // Feature gone: Company Hire replaced directory creation and has no legacy
+  // runtime dropdown. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
+  test.fixme("create dialog registers a harness inline and selects it", async ({
     page,
   }) => {
     await installMockBridge(page);
@@ -96,7 +98,7 @@ test.describe("inline add custom harness", () => {
     await expect(harness).toContainText(HARNESS_LABEL, { timeout: 8_000 });
   });
 
-  test("dismissing the form leaves the create dialog's harness unchanged", async ({
+  test.fixme("dismissing the form leaves the create dialog's harness unchanged", async ({
     page,
   }) => {
     await installMockBridge(page);

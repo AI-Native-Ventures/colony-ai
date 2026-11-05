@@ -1,14 +1,12 @@
 import { nip19 } from "nostr-tools";
 import * as React from "react";
-import { toast } from "sonner";
 
 import {
   useAddRelayMemberMutation,
-  useChangeRelayMemberRoleMutation,
   useMyRelayMembershipLookupQuery,
   useRelayMembersQuery,
-  useRemoveRelayMemberMutation,
 } from "@/features/community-members/hooks";
+import { relayMemberPermissions } from "@/features/community-members/memberPermissions";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
@@ -28,6 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { VirtualizedList } from "@/shared/ui/VirtualizedList";
+import { ConfirmMemberRoleDialog } from "./ConfirmMemberRoleDialog";
+import { ConfirmRemoveDialog } from "./ConfirmRemoveDialog";
 import { DEFAULT_INVITE_TTL_SECS } from "./InviteLinkSection";
 
 function formatDisplayName(member: RelayMember, displayName?: string | null) {
@@ -103,35 +103,20 @@ function RelayMemberRow({
   profile?: UserProfileSummary;
   member: RelayMember;
 }) {
-  const removeMutation = useRemoveRelayMemberMutation();
-  const changeRoleMutation = useChangeRelayMemberRoleMutation();
   const isSelf = currentPubkey
     ? normalizePubkey(currentPubkey) === normalizePubkey(member.pubkey)
     : false;
-  const isBusy = removeMutation.isPending || changeRoleMutation.isPending;
-  const canRemove =
-    !isSelf &&
-    member.role !== "owner" &&
-    (currentRole === "owner" || member.role === "member");
-  const canChangeRole = currentRole === "owner" && member.role !== "owner";
+  const { canChangeRole, canRemove } = relayMemberPermissions({
+    currentPubkey,
+    member,
+    viewerRole: currentRole,
+  });
   const displayName = formatDisplayName(member, profile?.displayName);
   const subtitle = jobTitleOf(profile) || roleLabel(member.role);
-
-  async function mutateWithToast(
-    action: () => Promise<unknown>,
-    success: string,
-  ) {
-    try {
-      await action();
-      toast.success(success);
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Couldn’t update this community member.",
-      );
-    }
-  }
+  const [removeOpen, setRemoveOpen] = React.useState(false);
+  const [roleDialog, setRoleDialog] = React.useState<"admin" | "member" | null>(
+    null,
+  );
 
   return (
     <div
@@ -167,31 +152,32 @@ function RelayMemberRow({
         </span>
       ) : (
         <>
-          <label className="sr-only" htmlFor={`member-role-${member.pubkey}`}>
-            Role for {displayName}
-          </label>
-          <select
-            className="cs-select cs-select-member"
-            data-testid={`relay-member-role-${member.pubkey}`}
-            disabled={!canChangeRole || isBusy}
-            id={`member-role-${member.pubkey}`}
-            onChange={(event) =>
-              void mutateWithToast(
-                () =>
-                  changeRoleMutation.mutateAsync({
-                    pubkey: member.pubkey,
-                    role: event.target.value,
-                  }),
-                event.target.value === "admin"
-                  ? "Made community admin"
-                  : "Made community member",
-              )
-            }
-            value={member.role}
-          >
-            <option value="admin">Admin</option>
-            <option value="member">Member</option>
-          </select>
+          {canChangeRole ? (
+            <>
+              <label
+                className="sr-only"
+                htmlFor={`member-role-${member.pubkey}`}
+              >
+                Role for {displayName}
+              </label>
+              <select
+                className="cs-select cs-select-member"
+                data-testid={`relay-member-role-${member.pubkey}`}
+                id={`member-role-${member.pubkey}`}
+                onChange={(event) =>
+                  setRoleDialog(event.target.value as "admin" | "member")
+                }
+                value={member.role}
+              >
+                <option value="admin">Admin</option>
+                <option value="member">Member</option>
+              </select>
+            </>
+          ) : (
+            <span className="cs-badge cs-badge-large">
+              {roleLabel(member.role)}
+            </span>
+          )}
           {canRemove ? (
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
@@ -199,7 +185,6 @@ function RelayMemberRow({
                   aria-label={`Actions for ${displayName}`}
                   className="cs-icon-ghost"
                   data-testid={`relay-member-actions-${member.pubkey}`}
-                  disabled={isBusy}
                   type="button"
                 >
                   <MoreIcon />
@@ -208,12 +193,7 @@ function RelayMemberRow({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
-                  onClick={() =>
-                    void mutateWithToast(
-                      () => removeMutation.mutateAsync(member.pubkey),
-                      "Removed community member",
-                    )
-                  }
+                  onClick={() => setRemoveOpen(true)}
                 >
                   Remove from community
                 </DropdownMenuItem>
@@ -224,6 +204,21 @@ function RelayMemberRow({
           )}
         </>
       )}
+      <ConfirmMemberRoleDialog
+        displayName={displayName}
+        initialRole={roleDialog ?? undefined}
+        member={member}
+        onOpenChange={(open) => {
+          if (!open) setRoleDialog(null);
+        }}
+        open={roleDialog !== null}
+      />
+      <ConfirmRemoveDialog
+        displayName={displayName}
+        member={member}
+        onOpenChange={setRemoveOpen}
+        open={removeOpen}
+      />
     </div>
   );
 }

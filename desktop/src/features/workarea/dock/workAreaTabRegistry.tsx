@@ -1,4 +1,4 @@
-import { BookOpen, Folder, Globe, MessageCircle } from "lucide-react";
+import { BookOpen, Folder, Globe, MessageCircle, Palette } from "lucide-react";
 import type * as React from "react";
 
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
@@ -21,6 +21,7 @@ import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFileTab } from "./tabs/WorkAreaFileTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
+import { WorkAreaDesignTab } from "./tabs/WorkAreaDesignTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
 import {
   WorkAreaWhatsAppTab,
@@ -146,6 +147,19 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     available: true,
     Badge: WhatsAppUnreadBadge,
     Panel: WorkAreaWhatsAppTab,
+  },
+  design: {
+    kind: "design",
+    label: "Design review",
+    icon: Palette,
+    available: true,
+    multiple: true,
+    hiddenFromMenu: true,
+    tabLabels: {
+      subscribe: () => () => {},
+      get: () => "Design review",
+    },
+    Panel: WorkAreaDesignTab,
   },
 };
 

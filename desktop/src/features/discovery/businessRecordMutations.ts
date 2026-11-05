@@ -5,6 +5,8 @@ import {
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_VERSION,
   KIND_PROSPECT_ACTION,
+  KIND_OUTREACH_LIST_ACTION,
+  KIND_DISCOVERY_CAMPAIGN_ACTION,
   KIND_SERVICE_ACTION,
   proposalConversionIds,
   proposalVersionDTag,
@@ -19,6 +21,13 @@ import {
 } from "./businessRecordContract";
 import { publishBusinessCommand } from "./businessRecordRelay";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
+import {
+  discoveryCampaignDTag,
+  outreachListDTag,
+  type CreateOutreachListAction,
+  type DiscoveryCampaignAction,
+  type OutreachListMutation,
+} from "./outreachRecords";
 
 export type ProspectChanges = Omit<ProspectRecord, "party"> & {
   displayName: string;
@@ -34,6 +43,32 @@ export type ProposalTerms = {
   revisionRounds: number;
   serviceStart: string;
 };
+
+export function publishOutreachListAction(input: {
+  channelId: string;
+  communityId: TenantCommunityId;
+  action: CreateOutreachListAction | OutreachListMutation;
+}): Promise<string> {
+  return publishBusinessCommand({
+    kind: KIND_OUTREACH_LIST_ACTION,
+    channelId: input.channelId,
+    dTag: outreachListDTag(input.communityId, input.action.listId),
+    content: input.action,
+  });
+}
+
+export function publishDiscoveryCampaignAction(input: {
+  channelId: string;
+  communityId: TenantCommunityId;
+  action: DiscoveryCampaignAction;
+}): Promise<string> {
+  return publishBusinessCommand({
+    kind: KIND_DISCOVERY_CAMPAIGN_ACTION,
+    channelId: input.channelId,
+    dTag: discoveryCampaignDTag(input.communityId, input.action.campaignId),
+    content: input.action,
+  });
+}
 
 export function serializeProposalTerms(terms: ProposalTerms): string {
   return JSON.stringify({ schemaVersion: 1, ...terms });
@@ -138,6 +173,7 @@ export async function publishProspectAction(input: {
     location: normalizeOptional(input.changes.location),
     email: normalizeOptional(input.changes.email),
     phone: normalizeOptional(input.changes.phone),
+    whatsappPhone: normalizeOptional(input.changes.whatsappPhone),
     evidence: input.changes.evidence,
     lastVerifiedAt: input.changes.lastVerifiedAt,
     qualification: input.changes.qualification,

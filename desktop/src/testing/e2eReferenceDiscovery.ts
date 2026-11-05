@@ -4,8 +4,10 @@ import type {
   DiscoveryCampaignProvider,
 } from "@/features/discovery/discoveryProvider";
 import {
+  REFERENCE_DISCOVERY_CAMPAIGN_IDS,
   REFERENCE_AGENTS,
   REFERENCE_PROSPECT_IDS,
+  referenceRestaurantProspectId,
 } from "./e2eReferenceWorkspace";
 
 const REFERENCE_RUNNER = {
@@ -13,8 +15,26 @@ const REFERENCE_RUNNER = {
   pubkey: REFERENCE_AGENTS.aya.pubkey,
 };
 
+// The reference workspace also seeds guesthouse leads for outreach scenarios.
+// Keep this simulated home-furnishings campaign restricted to its twelve
+// matching fixture records.
+const REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS = [
+  REFERENCE_PROSPECT_IDS["the-olive-house"],
+  REFERENCE_PROSPECT_IDS["form-field"],
+  REFERENCE_PROSPECT_IDS["sunday-edit"],
+  REFERENCE_PROSPECT_IDS.stillroom,
+  REFERENCE_PROSPECT_IDS["gather-house"],
+  REFERENCE_PROSPECT_IDS["common-ground"],
+  REFERENCE_PROSPECT_IDS["clay-collective"],
+  REFERENCE_PROSPECT_IDS["woven-living"],
+  REFERENCE_PROSPECT_IDS["little-kin"],
+  REFERENCE_PROSPECT_IDS["north-note"],
+  REFERENCE_PROSPECT_IDS["studio-local"],
+  REFERENCE_PROSPECT_IDS["cedar-co"],
+] as const;
+
 const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
-  id: "agency-prospects",
+  id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.independentBrands,
   name: "Independent brands needing social support",
   audience: "businesses",
   industryId: "home-living",
@@ -27,11 +47,54 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   budgetUsd: 2.5,
   criteria: "",
   status: "complete",
-  prospectIds: Object.values(REFERENCE_PROSPECT_IDS),
+  prospectIds: [...REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS],
   created: false,
   runBy: REFERENCE_RUNNER,
   simulated: true,
   postedInSales: true,
+};
+
+const REFERENCE_GUESTHOUSE_CAMPAIGN: DiscoveryCampaign = {
+  ...REFERENCE_CAMPAIGN,
+  id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+  name: "Guesthouses, Johannesburg",
+  industryId: "hospitality",
+  industryName: "Hospitality",
+  verticalId: "guesthouses",
+  verticalName: "Guesthouses",
+  location: "Johannesburg",
+  target: 12,
+  count: 12,
+  prospectIds: [
+    REFERENCE_PROSPECT_IDS.stillroom,
+    REFERENCE_PROSPECT_IDS["north-note"],
+    REFERENCE_PROSPECT_IDS["studio-local"],
+    REFERENCE_PROSPECT_IDS["woven-living"],
+    REFERENCE_PROSPECT_IDS["little-kin"],
+    REFERENCE_PROSPECT_IDS["the-olive-house"],
+    REFERENCE_PROSPECT_IDS["quiet-owl-bb"],
+    REFERENCE_PROSPECT_IDS["marigold-house"],
+    REFERENCE_PROSPECT_IDS["melville-hill-cottages"],
+    REFERENCE_PROSPECT_IDS["sunday-edit"],
+    REFERENCE_PROSPECT_IDS["gather-house"],
+    REFERENCE_PROSPECT_IDS["common-ground"],
+  ],
+};
+
+const REFERENCE_RESTAURANT_CAMPAIGN: DiscoveryCampaign = {
+  ...REFERENCE_CAMPAIGN,
+  id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants,
+  name: "Restaurants prospects",
+  industryId: "restaurants",
+  industryName: "Restaurants",
+  verticalId: "restaurants",
+  verticalName: "Restaurants",
+  location: "Johannesburg",
+  target: 41,
+  count: 41,
+  prospectIds: Array.from({ length: 41 }, (_, index) =>
+    referenceRestaurantProspectId(index),
+  ),
 };
 
 const PROGRESS_INTERVAL_MS = 800;
@@ -45,9 +108,11 @@ function cloneCampaign(
     : null;
 }
 
-function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
-  let current = cloneCampaign(REFERENCE_CAMPAIGN);
-  const campaigns = [cloneCampaign(REFERENCE_CAMPAIGN) as DiscoveryCampaign];
+function createReferenceDiscoveryProvider(
+  initialCampaign: DiscoveryCampaign,
+): DiscoveryCampaignProvider {
+  let current = cloneCampaign(initialCampaign);
+  const campaigns = [cloneCampaign(initialCampaign) as DiscoveryCampaign];
   let sequence = 0;
   let progressTimer: number | null = null;
   const listeners = new Set<(campaign: DiscoveryCampaign | null) => void>();
@@ -101,9 +166,10 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
     const hasReferenceResults =
       input.audience === "businesses" &&
       input.verticalId === "home-furnishings-retailers" &&
-      input.location.toLocaleLowerCase().includes("south africa");
+      input.locationSelection?.kind === "country" &&
+      input.locationSelection.countryCode?.toUpperCase() === "ZA";
     const prospectIds = hasReferenceResults
-      ? Object.values(REFERENCE_PROSPECT_IDS)
+      ? [...REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS]
       : [];
     const campaign: DiscoveryCampaign = {
       ...input,
@@ -126,6 +192,31 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
     getCurrent: () => cloneCampaign(current),
     getCampaigns: () =>
       campaigns.map((campaign) => cloneCampaign(campaign) as DiscoveryCampaign),
+    getContinuation() {
+      if (current?.status !== "complete" || current.count >= current.target) {
+        return null;
+      }
+      return {
+        campaignId: current.id,
+        state: "ready" as const,
+        message: null,
+        remainingTarget: current.target - current.count,
+        pagesAtProviderCeiling: 1,
+        spentUsd: current.spentUsd ?? 0,
+        approvedBudgetUsd: current.budgetUsd,
+        minimumAdditionalBudgetUsd: 0,
+        recommendedAdditionalBudgetUsd: 0,
+        estimatedPages: 1,
+        estimatedCostUsd: 0,
+      };
+    },
+    async continueCampaign() {
+      if (current?.status !== "complete" || current.count >= current.target) {
+        return;
+      }
+      update({ ...current, status: "running" });
+      advanceProgress();
+    },
     async select(campaignId) {
       if (current?.id === campaignId) return;
       if (current?.status === "running") {
@@ -172,7 +263,15 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
   };
 }
 
-export function installReferenceDiscoveryProvider(): void {
-  window.__BUZZ_E2E_W10_DISCOVERY_PROVIDER__ =
-    createReferenceDiscoveryProvider();
+export function installReferenceDiscoveryProvider(
+  whatsappGuesthouses = false,
+  restaurantsBoard = false,
+): void {
+  window.__BUZZ_E2E_W10_DISCOVERY_PROVIDER__ = createReferenceDiscoveryProvider(
+    restaurantsBoard
+      ? REFERENCE_RESTAURANT_CAMPAIGN
+      : whatsappGuesthouses
+        ? REFERENCE_GUESTHOUSE_CAMPAIGN
+        : REFERENCE_CAMPAIGN,
+  );
 }

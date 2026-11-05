@@ -26,13 +26,6 @@ fn test_is_npm_global_install_accepts_catalog_claude_command() {
 }
 
 #[test]
-fn test_is_npm_global_install_accepts_catalog_codex_command() {
-    assert!(is_npm_global_install(
-        "npm install -g @agentclientprotocol/codex-acp"
-    ));
-}
-
-#[test]
 fn test_is_npm_global_install_accepts_short_flag() {
     assert!(is_npm_global_install("npm i -g some-package"));
 }
@@ -88,15 +81,12 @@ fn test_npm_eacces_hint_returns_none_for_404_stderr() {
 
 // ── adapter_needs_install (codex version gate) ────────────────────────────
 
-/// plan_adapter_install is the pure install-plan seam used by
-/// install_acp_runtime_blocking. These tests verify:
-///   - A 0.x binary (AdapterOutdated) → uninstall-then-install sequence returned
-///   - A current 1.x binary (Available) → None (no reinstall)
-///   - A 1.x binary below the floor → install plan returned
-///   - Missing binary (None path) → catalog install commands returned
+/// plan_adapter_install is the pure fallback install-plan seam used by
+/// install_acp_runtime_blocking. Managed Codex setup is asserted separately;
+/// these tests ensure the fallback cannot touch global npm state.
 #[cfg(unix)]
 #[test]
-fn test_plan_adapter_install_selects_npm_command_for_outdated_0x_codex_binary() {
+fn test_plan_adapter_install_never_uses_global_npm_for_outdated_codex() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().unwrap();
@@ -105,23 +95,14 @@ fn test_plan_adapter_install_selects_npm_command_for_outdated_0x_codex_binary() 
     std::fs::write(&bin, "#!/bin/sh\nexit 1\n").expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let install_cmds = &["npm install -g @agentclientprotocol/codex-acp"];
-    let plan = plan_adapter_install("codex", Some(&bin), install_cmds, Some("/usr/bin:/bin"));
+    let plan = plan_adapter_install("codex", Some(&bin), &[], Some("/usr/bin:/bin"));
 
     assert!(
         plan.is_some(),
         "0.x codex adapter must trigger install plan"
     );
     let cmds = plan.unwrap();
-    // Outdated arm: must uninstall the old package first, then install new.
-    assert_eq!(
-        cmds,
-        vec![
-            "npm uninstall -g @zed-industries/codex-acp",
-            "npm install -g @agentclientprotocol/codex-acp",
-        ],
-        "outdated codex adapter must produce uninstall-then-install sequence; got {cmds:?}"
-    );
+    assert!(cmds.is_empty(), "Codex must use its Colony-managed runtime");
 }
 
 #[cfg(unix)]
@@ -139,8 +120,7 @@ fn test_plan_adapter_install_returns_none_for_current_1x_codex_binary() {
     .expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let install_cmds = &["npm install -g @agentclientprotocol/codex-acp"];
-    let plan = plan_adapter_install("codex", Some(&bin), install_cmds, Some("/usr/bin:/bin"));
+    let plan = plan_adapter_install("codex", Some(&bin), &[], Some("/usr/bin:/bin"));
 
     assert!(
         plan.is_none(),
@@ -163,26 +143,26 @@ fn test_plan_adapter_install_updates_older_1x_codex_binary() {
     .expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let install_cmds = &["npm install -g @agentclientprotocol/codex-acp"];
-    let plan = plan_adapter_install("codex", Some(&bin), install_cmds, Some("/usr/bin:/bin"));
+    let plan = plan_adapter_install("codex", Some(&bin), &[], Some("/usr/bin:/bin"));
 
     assert!(
         plan.is_some(),
         "older 1.x codex adapter must trigger update plan"
     );
+    assert!(
+        plan.unwrap().is_empty(),
+        "Codex must use its Colony-managed runtime"
+    );
 }
 
 #[test]
 fn test_plan_adapter_install_returns_catalog_cmds_when_no_adapter_path() {
-    let install_cmds = &["npm install -g @agentclientprotocol/codex-acp"];
-    let plan = plan_adapter_install("codex", None, install_cmds, None);
+    let plan = plan_adapter_install("codex", None, &[], None);
     assert!(plan.is_some(), "missing adapter must trigger install plan");
-    // Missing arm: use the catalog's install commands directly (no prior
-    // package to uninstall — fresh install, not a reinstall).
     assert_eq!(
         plan.unwrap(),
-        vec!["npm install -g @agentclientprotocol/codex-acp"],
-        "missing codex adapter must use catalog install commands only"
+        Vec::<&str>::new(),
+        "missing Codex adapter must use the Colony-managed runtime"
     );
 }
 

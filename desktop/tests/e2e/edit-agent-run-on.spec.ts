@@ -36,7 +36,13 @@ async function openEditDialog(
   await openAgentsDirectoryView(page);
   await openAgentProfilePanel(page, agentPubkey);
   await page.getByTestId("user-profile-edit-agent").click();
-  await expect(page.getByTestId("edit-agent-dialog")).toBeVisible();
+  const dialog = page.getByTestId("edit-agent-dialog");
+  await expect(dialog).toBeVisible();
+  const technicalDetails = dialog
+    .locator("details")
+    .filter({ hasText: "Technical details" });
+  await technicalDetails.locator("summary").click();
+  await expect(technicalDetails).toHaveAttribute("open", "");
 }
 
 test("editing a kubernetes agent shows its saved run-on settings", async ({
