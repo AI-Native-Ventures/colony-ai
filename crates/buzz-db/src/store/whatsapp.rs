@@ -177,6 +177,10 @@ pub struct DeskFacts {
     pub manual_stage_at: Option<DateTime<Utc>>,
     /// When the latest outbound message reached Meta (`sent`, `delivered` or `read`).
     pub last_contacted_at: Option<DateTime<Utc>>,
+    /// When an approved outbound row last entered the send queue.
+    pub queued_at: Option<DateTime<Utc>>,
+    /// The batch note or queue where the approved unsent row came from.
+    pub queued_from: Option<String>,
     /// When the customer last tapped the template's first quick-reply button.
     pub wants_call_at: Option<DateTime<Utc>>,
     /// When the latest outbound send outcome happened.
@@ -1052,6 +1056,20 @@ impl Db {
                     max(COALESCE(m.sent_at, m.created_at)) FILTER ( \
                         WHERE m.direction = 'out' AND m.state IN ('sent', 'delivered', 'read') \
                     ) AS last_contacted_at, \
+                    max(m.updated_at) FILTER ( \
+                        WHERE m.direction = 'out' AND m.state IN ('ready', 'queued', 'sending') \
+                    ) AS queued_at, \
+                    (array_agg( \
+                        CASE \
+                            WHEN b.id IS NULL THEN 'Outreach queue' \
+                            WHEN NULLIF(btrim(b.note), '') IS NOT NULL THEN 'Batch: ' || btrim(b.note) \
+                            WHEN NULLIF(btrim(b.template_name), '') IS NOT NULL THEN 'Batch: ' || btrim(b.template_name) \
+                            ELSE 'Outreach batch' \
+                        END \
+                        ORDER BY m.updated_at DESC, m.created_at DESC, m.id DESC \
+                    ) FILTER ( \
+                        WHERE m.direction = 'out' AND m.state IN ('ready', 'queued', 'sending') \
+                    ))[1] AS queued_from, \
                     max(m.created_at) FILTER ( \
                         WHERE m.direction = 'in' AND m.intent = 'wants_call' \
                     ) AS wants_call_at, \
@@ -1070,6 +1088,8 @@ impl Db {
              FROM whatsapp_contacts c \
              LEFT JOIN whatsapp_messages m \
                     ON m.community_id = c.community_id AND m.wa_id = c.wa_id \
+             LEFT JOIN whatsapp_batches b \
+                    ON b.community_id = m.community_id AND b.id = m.batch_id \
              WHERE c.community_id = $1 AND c.wa_id = ANY($2) \
              GROUP BY c.community_id, c.wa_id",
         )
@@ -1087,6 +1107,8 @@ impl Db {
                         manual_stage_by: row.try_get("manual_stage_by")?,
                         manual_stage_at: row.try_get("manual_stage_at")?,
                         last_contacted_at: row.try_get("last_contacted_at")?,
+                        queued_at: row.try_get("queued_at")?,
+                        queued_from: row.try_get("queued_from")?,
                         wants_call_at: row.try_get("wants_call_at")?,
                         last_outcome_at: row.try_get("last_outcome_at")?,
                         last_outcome_state: row.try_get("last_outcome_state")?,

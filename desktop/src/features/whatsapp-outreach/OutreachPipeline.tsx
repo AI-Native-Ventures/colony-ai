@@ -42,6 +42,7 @@ import {
 type Props = {
   channelIsMember: boolean;
   onOpenChat: (waId: string) => void;
+  onOpenLead: (leadId: string) => void;
 };
 
 function nextStep(
@@ -50,6 +51,7 @@ function nextStep(
   customerStep: string | null,
   personName: string,
 ) {
+  if (contact.stage === "queued") return null;
   if (contact.stage === "contacted") {
     return contact.lastOutboundState
       ? `Waiting for a reply, ${contact.lastOutboundState}`
@@ -98,6 +100,7 @@ function PipelineCard({
   busy,
   onMove,
   onOpenChat,
+  onOpenLead,
 }: {
   contact: WhatsAppContact;
   canEdit: boolean;
@@ -107,8 +110,10 @@ function PipelineCard({
   busy: boolean;
   onMove: (contact: WhatsAppContact, stage: WhatsAppStage) => void;
   onOpenChat: (waId: string) => void;
+  onOpenLead: (leadId: string) => void;
 }) {
-  const stageLabel = WHATSAPP_STAGE_LABELS[contact.stage];
+  const isQueued = contact.stage === "queued";
+  const stageLabel = isQueued ? "Queued" : WHATSAPP_STAGE_LABELS[contact.stage];
   const primaryName = identity.displayName;
   const step = nextStep(
     contact,
@@ -117,6 +122,7 @@ function PipelineCard({
     identity.personName || primaryName,
   );
   const contactedOn = relativeContactDay(contact.lastContactedAt);
+  const queuedLeadId = isQueued ? identity.leadId : null;
   return (
     <article
       className="c3wa-pipeline-card"
@@ -175,10 +181,15 @@ function PipelineCard({
           </DropdownMenu>
         ) : null}
       </div>
-      {identity.isLinked ? (
+      {identity.isLinked || isQueued ? (
         <p className="c3wa-pipeline-phone">{contact.e164}</p>
       ) : null}
-      {contactedOn ? (
+      {isQueued ? (
+        <p className="c3wa-pipeline-last-contacted">
+          <Clock3 aria-hidden="true" size={12} />
+          Queued from {contact.queuedFrom ?? "Outreach queue"}
+        </p>
+      ) : contactedOn ? (
         <p className="c3wa-pipeline-last-contacted">
           <Clock3 aria-hidden="true" size={12} />
           Last contacted {contactedOn}
@@ -210,20 +221,38 @@ function PipelineCard({
           )
         ) : null}
       </div>
-      <Button
-        className="c3wa-pipeline-open-chat"
-        onClick={() => onOpenChat(contact.waId)}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        Open chat
-      </Button>
+      {isQueued ? (
+        queuedLeadId ? (
+          <Button
+            className="c3wa-pipeline-open-chat"
+            onClick={() => onOpenLead(queuedLeadId)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Open lead
+          </Button>
+        ) : null
+      ) : (
+        <Button
+          className="c3wa-pipeline-open-chat"
+          onClick={() => onOpenChat(contact.waId)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Open chat
+        </Button>
+      )}
     </article>
   );
 }
 
-export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
+export function OutreachPipeline({
+  channelIsMember,
+  onOpenChat,
+  onOpenLead,
+}: Props) {
   const { activeCommunity } = useCommunities();
   const businessName = activeCommunity?.name.trim() || "This business";
   const contactsQuery = useWhatsAppContactsQuery();
@@ -317,6 +346,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
     event: React.DragEvent<HTMLElement>,
     stage: WhatsAppStage,
   ) {
+    if (!canEdit || stage === "queued") return;
     event.preventDefault();
     const waId = event.dataTransfer.getData("text/plain");
     const contact = contacts.find((candidate) => candidate.waId === waId);
@@ -377,7 +407,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
               data-stage={stage}
               key={stage}
               onDragOver={(event) => {
-                if (canEdit) event.preventDefault();
+                if (canEdit && stage !== "queued") event.preventDefault();
               }}
               onDrop={(event) => handleDrop(event, stage)}
             >
@@ -410,6 +440,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
                         void move(selectedContact, nextStage)
                       }
                       onOpenChat={onOpenChat}
+                      onOpenLead={onOpenLead}
                       busy={busyWaId === contact.waId}
                     />
                   );
@@ -463,6 +494,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
                       void move(selectedContact, nextStage)
                     }
                     onOpenChat={onOpenChat}
+                    onOpenLead={onOpenLead}
                     busy={busyWaId === contact.waId}
                   />
                 );
@@ -497,6 +529,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
                     void move(selectedContact, nextStage)
                   }
                   onOpenChat={onOpenChat}
+                  onOpenLead={onOpenLead}
                   busy={busyWaId === contact.waId}
                 />
               ))}

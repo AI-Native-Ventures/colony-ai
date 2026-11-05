@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "@tanstack/react-router";
 
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
 import { openWorkArea } from "@/features/workarea/dock/workAreaStore";
@@ -22,6 +23,7 @@ export function OutreachDeskWorkspace({
   onSelectedContactChange: (waId: string) => void;
   onTabChange: (tab: OutreachDeskTab) => void;
 }) {
+  const navigate = useNavigate();
   const [selectedWaId, setSelectedWaId] = React.useState(initialContactWaId);
   const dock = useWorkAreaDock(channelId);
   const activeWhatsAppTab = dock.tabs.find(
@@ -83,6 +85,16 @@ export function OutreachDeskWorkspace({
     [onTabChange, selectDeskContact],
   );
 
+  const openLead = React.useCallback(
+    (leadId: string) => {
+      void navigate({
+        to: "/sales/lead/$prospectId",
+        params: { prospectId: leadId },
+      });
+    },
+    [navigate],
+  );
+
   if (activeTab === "chats") {
     return (
       <div className="c3wa-desk-container">
@@ -104,6 +116,7 @@ export function OutreachDeskWorkspace({
       <OutreachPipeline
         channelIsMember={channelIsMember}
         onOpenChat={openChat}
+        onOpenLead={openLead}
       />
     );
   }
