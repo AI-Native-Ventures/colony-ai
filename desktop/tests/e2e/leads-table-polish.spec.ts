@@ -75,13 +75,16 @@ async function openLeads(page: Page) {
 test.describe("Leads table polish", () => {
   test.use({ viewport: { width: 1440, height: 960 } });
 
-  test("renders the 108 lead proof fixture in the approved five-column rhythm", async ({
+  test("paginates the 108 lead proof fixture in the approved five-column rhythm", async ({
     page,
   }, testInfo) => {
     await openLeads(page);
 
     const table = page.getByRole("table", { name: "Leads" });
-    await expect(table.locator("tbody tr")).toHaveCount(108);
+    await expect(table.locator("tbody tr")).toHaveCount(15);
+    await expect(
+      page.getByRole("navigation", { name: "Lead pages" }),
+    ).toHaveText("PreviousPage 1 of 8Next");
     await expect(table.locator("thead th")).toHaveText([
       "Business",
       "Contact",
