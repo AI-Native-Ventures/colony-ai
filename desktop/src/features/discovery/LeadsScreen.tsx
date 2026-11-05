@@ -25,11 +25,13 @@ import {
 
 import "./colony3-leads.css";
 
+const LEADS_PAGE_SIZE = 15;
+
 export function LeadsScreen(context: LeadContext) {
   const navigate = useNavigate();
   const routeOrigin = useRouteOrigin();
   const restored = routeOrigin.pageSnapshot?.viewState as
-    | { query?: string; stage?: string; whatsappFilter?: string }
+    | { page?: number; query?: string; stage?: string; whatsappFilter?: string }
     | undefined;
   const { campaign } = useDiscoveryCampaign();
   const customerAccess = useCustomerRecordCapabilities();
@@ -40,6 +42,7 @@ export function LeadsScreen(context: LeadContext) {
   const [whatsappFilter, setWhatsappFilter] = React.useState(
     restored?.whatsappFilter ?? "all",
   );
+  const [page, setPage] = React.useState(restored?.page ?? 1);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const canWrite = canEdit(context.role);
   const customerRecordByPartyId = React.useMemo(
@@ -88,6 +91,12 @@ export function LeadsScreen(context: LeadContext) {
         whatsappFilter;
     return matchesQuery && matchesStage && matchesWhatsApp;
   });
+  const pageCount = Math.max(1, Math.ceil(prospects.length / LEADS_PAGE_SIZE));
+  const visiblePage = Math.min(Math.max(page, 1), pageCount);
+  const visibleProspects = prospects.slice(
+    (visiblePage - 1) * LEADS_PAGE_SIZE,
+    visiblePage * LEADS_PAGE_SIZE,
+  );
   const runner = campaign?.runBy ?? null;
 
   React.useEffect(() => {
@@ -96,7 +105,7 @@ export function LeadsScreen(context: LeadContext) {
       routeOrigin.savePageSnapshot({
         backLabel: "All leads",
         breadcrumbs: ["Business", "Sales", "Leads"],
-        viewState: { query, stage, whatsappFilter },
+        viewState: { page: visiblePage, query, stage, whatsappFilter },
         scrollY: scrollTarget?.scrollTop ?? window.scrollY,
         scrollTarget: scrollTarget ? ".c3l-page" : undefined,
       });
@@ -104,7 +113,7 @@ export function LeadsScreen(context: LeadContext) {
     const scrollHost: Window | HTMLElement = scrollTarget ?? window;
     scrollHost.addEventListener("scroll", save, { passive: true });
     return () => scrollHost.removeEventListener("scroll", save);
-  }, [query, routeOrigin.savePageSnapshot, stage, whatsappFilter]);
+  }, [query, routeOrigin.savePageSnapshot, stage, visiblePage, whatsappFilter]);
 
   React.useEffect(() => {
     const scrollY = routeOrigin.pageSnapshot?.scrollY;
@@ -169,7 +178,10 @@ export function LeadsScreen(context: LeadContext) {
             <SearchGlyph />
             <input
               aria-label="Search leads"
-              onChange={(event) => setQuery(event.currentTarget.value)}
+              onChange={(event) => {
+                setPage(1);
+                setQuery(event.currentTarget.value);
+              }}
               placeholder="Search leads…"
               type="search"
               value={query}
@@ -179,7 +191,10 @@ export function LeadsScreen(context: LeadContext) {
             aria-label="Stage"
             className="c3l-select c3l-select-filter"
             id="w10-lead-stage-filter"
-            onChange={(event) => setStage(event.currentTarget.value)}
+            onChange={(event) => {
+              setPage(1);
+              setStage(event.currentTarget.value);
+            }}
             value={stage}
           >
             <option value="all">All stages</option>
@@ -194,7 +209,10 @@ export function LeadsScreen(context: LeadContext) {
           <select
             aria-label="WhatsApp status"
             className="c3l-select c3l-select-filter"
-            onChange={(event) => setWhatsappFilter(event.currentTarget.value)}
+            onChange={(event) => {
+              setPage(1);
+              setWhatsappFilter(event.currentTarget.value);
+            }}
             value={whatsappFilter}
           >
             <option value="all">Any WhatsApp status</option>
@@ -207,100 +225,125 @@ export function LeadsScreen(context: LeadContext) {
         </div>
 
         {prospects.length ? (
-          <div className="c3l-card c3l-table-wrap">
-            <table aria-label="Leads" className="c3l-table">
-              <thead>
-                <tr className="c3l-row c3l-row-head">
-                  <th>Business</th>
-                  <th>Contact</th>
-                  <th>Stage</th>
-                  <th>Service / month</th>
-                  <th>Next step</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prospects.map(({ record, eventId }) => {
-                  const prospect = record.prospect;
-                  const customerRecord = customerRecordByPartyId.get(
-                    prospect.party.partyId,
-                  );
-                  return (
-                    <tr className="c3l-row" key={eventId}>
-                      <td className="c3l-cell-business">
-                        <div className="c3l-business-identity">
-                          <BusinessLogoMark
-                            className="c3l-mark"
-                            logoUrl={prospect.logoUrl}
-                            name={prospect.party.displayName}
-                            placePhotoUrl={prospect.placePhotoUrl}
-                            website={prospect.website}
-                          />
-                          <span className="c3l-business-text">
-                            <strong>{prospect.party.displayName}</strong>
-                            <small>
-                              {prospect.vertical} ·{" "}
-                              {prospect.location ?? "Location not set"}
-                            </small>
-                          </span>
-                        </div>
-                      </td>
-                      <td className="c3l-cell-contact">
-                        {prospect.contactName ? (
-                          <>
-                            <span aria-hidden="true" className="c3l-dot-mark">
-                              {leadInitial(prospect.contactName)}
+          <>
+            <div className="c3l-card c3l-table-wrap">
+              <table aria-label="Leads" className="c3l-table">
+                <thead>
+                  <tr className="c3l-row c3l-row-head">
+                    <th>Business</th>
+                    <th>Contact</th>
+                    <th>Stage</th>
+                    <th>Service / month</th>
+                    <th>Next step</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleProspects.map(({ record, eventId }) => {
+                    const prospect = record.prospect;
+                    const customerRecord = customerRecordByPartyId.get(
+                      prospect.party.partyId,
+                    );
+                    return (
+                      <tr className="c3l-row" key={eventId}>
+                        <td className="c3l-cell-business">
+                          <div className="c3l-business-identity">
+                            <BusinessLogoMark
+                              className="c3l-mark"
+                              logoUrl={prospect.logoUrl}
+                              name={prospect.party.displayName}
+                              placePhotoUrl={prospect.placePhotoUrl}
+                              website={prospect.website}
+                            />
+                            <span className="c3l-business-text">
+                              <strong>{prospect.party.displayName}</strong>
+                              <small>
+                                {prospect.vertical} ·{" "}
+                                {prospect.location ?? "Location not set"}
+                              </small>
                             </span>
-                            {prospect.contactName}
-                          </>
-                        ) : (
-                          <span className="c3l-muted c3l-empty-value">
-                            Not set
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {customerRecord?.stage === "client" ? (
-                          <LeadPill tone="green">Client</LeadPill>
-                        ) : (
-                          <LeadPill
-                            tone={toneForStage(
-                              prospect.stage,
-                              prospect.qualification,
-                            )}
+                          </div>
+                        </td>
+                        <td className="c3l-cell-contact">
+                          {prospect.contactName ? (
+                            <>
+                              <span aria-hidden="true" className="c3l-dot-mark">
+                                {leadInitial(prospect.contactName)}
+                              </span>
+                              {prospect.contactName}
+                            </>
+                          ) : (
+                            <span className="c3l-muted c3l-empty-value">
+                              Not set
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {customerRecord?.stage === "client" ? (
+                            <LeadPill tone="green">Client</LeadPill>
+                          ) : (
+                            <LeadPill
+                              tone={toneForStage(
+                                prospect.stage,
+                                prospect.qualification,
+                              )}
+                            >
+                              {labelForStage(
+                                prospect.stage,
+                                prospect.qualification,
+                                "New",
+                              )}
+                            </LeadPill>
+                          )}
+                        </td>
+                        <td className="c3l-cell-amount">
+                          {prospect.potentialMonthlyValueMinor === null ||
+                          prospect.potentialMonthlyValueMinor === undefined ? (
+                            <span className="c3l-muted c3l-empty-value">
+                              Not set
+                            </span>
+                          ) : (
+                            formatZar(prospect.potentialMonthlyValueMinor)
+                          )}
+                        </td>
+                        <td className="c3l-cell-next-step">
+                          <Link
+                            className="c3l-next-step"
+                            params={{ prospectId: record.prospectId }}
+                            to="/sales/lead/$prospectId"
                           >
-                            {labelForStage(
-                              prospect.stage,
-                              prospect.qualification,
-                              "New",
-                            )}
-                          </LeadPill>
-                        )}
-                      </td>
-                      <td className="c3l-cell-amount">
-                        {prospect.potentialMonthlyValueMinor === null ||
-                        prospect.potentialMonthlyValueMinor === undefined ? (
-                          <span className="c3l-muted c3l-empty-value">
-                            Not set
-                          </span>
-                        ) : (
-                          formatZar(prospect.potentialMonthlyValueMinor)
-                        )}
-                      </td>
-                      <td className="c3l-cell-next-step">
-                        <Link
-                          className="c3l-next-step"
-                          params={{ prospectId: record.prospectId }}
-                          to="/sales/lead/$prospectId"
-                        >
-                          Review lead
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            Review lead
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {pageCount > 1 ? (
+              <nav aria-label="Lead pages" className="c3l-pagination">
+                <button
+                  disabled={visiblePage === 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  type="button"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {visiblePage} of {pageCount}
+                </span>
+                <button
+                  disabled={visiblePage === pageCount}
+                  onClick={() =>
+                    setPage((current) => Math.min(pageCount, current + 1))
+                  }
+                  type="button"
+                >
+                  Next
+                </button>
+              </nav>
+            ) : null}
+          </>
         ) : (
           <div className="c3l-card c3l-empty">
             <h2>
@@ -317,8 +360,10 @@ export function LeadsScreen(context: LeadContext) {
               <button
                 className="c3l-btn c3l-btn-outline"
                 onClick={() => {
+                  setPage(1);
                   setQuery("");
                   setStage("all");
+                  setWhatsappFilter("all");
                 }}
                 type="button"
               >

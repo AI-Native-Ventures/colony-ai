@@ -106,12 +106,12 @@ function TeamCountBadge() {
   ) : null;
 }
 
+function isLeadsPath(pathname: string): boolean {
+  return pathname === "/leads" || pathname.startsWith("/sales/lead/");
+}
+
 function isSalesPath(pathname: string): boolean {
-  return (
-    pathname === "/leads" ||
-    pathname === "/pipeline" ||
-    pathname.startsWith("/sales/")
-  );
+  return pathname === "/pipeline";
 }
 
 function isMoneyPath(pathname: string): boolean {
@@ -119,7 +119,11 @@ function isMoneyPath(pathname: string): boolean {
 }
 
 function isDiscoveryPath(pathname: string): boolean {
-  return pathname === "/discovery" || pathname === "/campaign";
+  return (
+    pathname === "/discovery" ||
+    pathname.startsWith("/discovery/") ||
+    pathname === "/campaign"
+  );
 }
 
 const COMPANY_VIEWS: readonly AppSidebarProps["selectedView"][] = [
@@ -216,6 +220,7 @@ const businessActive = ({
   selectedView === "business" ||
   selectedView === "clients" ||
   isDiscoveryPath(pathname) ||
+  isLeadsPath(pathname) ||
   isSalesPath(pathname) ||
   isMoneyPath(pathname);
 
@@ -245,10 +250,17 @@ const business: SidebarDestination = {
       isActive: ({ pathname }) => isDiscoveryPath(pathname),
     },
     {
+      id: "leads",
+      testId: "sidebar-business-leads",
+      label: "Leads",
+      href: "#/leads",
+      isActive: ({ pathname }) => isLeadsPath(pathname),
+    },
+    {
       id: "sales",
       testId: "sidebar-business-sales",
       label: "Sales",
-      href: "#/leads",
+      href: "#/pipeline",
       isActive: ({ pathname }) => isSalesPath(pathname),
     },
     {

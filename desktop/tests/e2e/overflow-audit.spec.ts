@@ -93,6 +93,11 @@ const routeScreens = [
     selector: '[data-testid="w10-discovery-page"]',
   },
   {
+    screen: "Business: All campaigns",
+    route: "/#/discovery/campaigns",
+    selector: '[data-testid="discovery-campaigns-page"]',
+  },
+  {
     screen: "Business: campaign",
     route: "/#/campaign",
     selector: '[data-testid="w10-campaign-page"]',

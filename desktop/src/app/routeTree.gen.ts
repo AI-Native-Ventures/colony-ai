@@ -31,6 +31,7 @@ import { Route as hireDotrolesRouteImport } from "./routes/hire.roles";
 import { Route as hireDotrolePackRouteImport } from "./routes/hire.role-pack";
 import { Route as hireDotreviewRouteImport } from "./routes/hire.review";
 import { Route as hireDotconfigureRouteImport } from "./routes/hire.configure";
+import { Route as discoveryDotcampaignsRouteImport } from "./routes/discovery.campaigns";
 import { Route as companyDotweeklyReviewRouteImport } from "./routes/company.weekly-review";
 import { Route as companyDotmapRouteImport } from "./routes/company.map";
 import { Route as companyDotaccessRouteImport } from "./routes/company.access";
@@ -181,6 +182,11 @@ const hireDotconfigureRoute = hireDotconfigureRouteImport.update({
   path: "/hire/configure",
   getParentRoute: () => rootRouteImport,
 } as any);
+const discoveryDotcampaignsRoute = discoveryDotcampaignsRouteImport.update({
+  id: "/discovery/campaigns",
+  path: "/discovery/campaigns",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const companyDotweeklyReviewRoute = companyDotweeklyReviewRouteImport.update({
   id: "/company/weekly-review",
   path: "/company/weekly-review",
@@ -310,6 +316,7 @@ export interface FileRoutesByFullPath {
   "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
   "/company/weekly-review": typeof companyDotweeklyReviewRoute;
+  "/discovery/campaigns": typeof discoveryDotcampaignsRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/role-pack": typeof hireDotrolePackRoute;
@@ -357,6 +364,7 @@ export interface FileRoutesByTo {
   "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
   "/company/weekly-review": typeof companyDotweeklyReviewRoute;
+  "/discovery/campaigns": typeof discoveryDotcampaignsRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/role-pack": typeof hireDotrolePackRoute;
@@ -405,6 +413,7 @@ export interface FileRoutesById {
   "/company/access": typeof companyDotaccessRoute;
   "/company/map": typeof companyDotmapRoute;
   "/company/weekly-review": typeof companyDotweeklyReviewRoute;
+  "/discovery/campaigns": typeof discoveryDotcampaignsRoute;
   "/hire/configure": typeof hireDotconfigureRoute;
   "/hire/review": typeof hireDotreviewRoute;
   "/hire/role-pack": typeof hireDotrolePackRoute;
@@ -454,6 +463,7 @@ export interface FileRouteTypes {
     | "/company/access"
     | "/company/map"
     | "/company/weekly-review"
+    | "/discovery/campaigns"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/role-pack"
@@ -501,6 +511,7 @@ export interface FileRouteTypes {
     | "/company/access"
     | "/company/map"
     | "/company/weekly-review"
+    | "/discovery/campaigns"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/role-pack"
@@ -548,6 +559,7 @@ export interface FileRouteTypes {
     | "/company/access"
     | "/company/map"
     | "/company/weekly-review"
+    | "/discovery/campaigns"
     | "/hire/configure"
     | "/hire/review"
     | "/hire/role-pack"
@@ -596,6 +608,7 @@ export interface RootRouteChildren {
   companyDotaccessRoute: typeof companyDotaccessRoute;
   companyDotmapRoute: typeof companyDotmapRoute;
   companyDotweeklyReviewRoute: typeof companyDotweeklyReviewRoute;
+  discoveryDotcampaignsRoute: typeof discoveryDotcampaignsRoute;
   hireDotconfigureRoute: typeof hireDotconfigureRoute;
   hireDotreviewRoute: typeof hireDotreviewRoute;
   hireDotrolePackRoute: typeof hireDotrolePackRoute;
@@ -808,6 +821,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof hireDotconfigureRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/discovery/campaigns": {
+      id: "/discovery/campaigns";
+      path: "/discovery/campaigns";
+      fullPath: "/discovery/campaigns";
+      preLoaderRoute: typeof discoveryDotcampaignsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/company/weekly-review": {
       id: "/company/weekly-review";
       path: "/company/weekly-review";
@@ -964,6 +984,7 @@ const rootRouteChildren: RootRouteChildren = {
   companyDotaccessRoute: companyDotaccessRoute,
   companyDotmapRoute: companyDotmapRoute,
   companyDotweeklyReviewRoute: companyDotweeklyReviewRoute,
+  discoveryDotcampaignsRoute: discoveryDotcampaignsRoute,
   hireDotconfigureRoute: hireDotconfigureRoute,
   hireDotreviewRoute: hireDotreviewRoute,
   hireDotrolePackRoute: hireDotrolePackRoute,

@@ -32,6 +32,7 @@ export const routes = rootRoute("root.tsx", [
   route("/hire/review", "hire.review.tsx"),
   route("/hire/success", "hire.success.tsx"),
   route("/discovery", "discovery.tsx"),
+  route("/discovery/campaigns", "discovery.campaigns.tsx"),
   route("/campaign", "campaign.tsx"),
   route("/leads", "leads.tsx"),
   route("/pipeline", "pipeline.tsx"),

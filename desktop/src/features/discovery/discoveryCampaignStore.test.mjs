@@ -243,10 +243,16 @@ test("unusable campaigns are dropped, usable ones kept", () => {
 });
 
 test("the list is newest first and capped", () => {
-  let state = emptyState("owner");
-  for (let index = 0; index < MAX_STORED_CAMPAIGNS + 5; index += 1) {
-    state = upsertCampaign(state, campaign(`c${index}`, { createdAt: index }));
-  }
+  const state = parseStoredState(
+    JSON.stringify({
+      version: 2,
+      ownerPubkey: "owner",
+      currentId: "c0",
+      campaigns: Array.from({ length: MAX_STORED_CAMPAIGNS + 5 }, (_, index) =>
+        campaign(`c${index}`, { createdAt: index }),
+      ),
+    }),
+  );
   assert.equal(state.campaigns.length, MAX_STORED_CAMPAIGNS);
   assert.equal(state.campaigns[0].id, `c${MAX_STORED_CAMPAIGNS + 4}`);
   assert.equal(state.campaigns.at(-1).id, "c5");

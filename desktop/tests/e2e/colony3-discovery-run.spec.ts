@@ -263,13 +263,8 @@ test.describe("Real discovery run", () => {
     // Both searches are in the campaigns list.
     await goTo(page, "/discovery");
     await page.getByRole("button", { name: /All campaigns/ }).click();
-    const list = page.getByRole("dialog");
-    await expect(
-      list.getByRole("heading", { name: "Your discovery campaigns." }),
-    ).toBeVisible();
-    await expect(list.getByRole("button", { name: /prospects/ })).toHaveCount(
-      2,
-    );
+    await expect(page.getByTestId("discovery-campaigns-page")).toBeVisible();
+    await expect(page.getByTestId("discovery-campaign-row")).toHaveCount(2);
   });
 
   test("a server that is not set up says so in the dialog and creates no campaign", async ({

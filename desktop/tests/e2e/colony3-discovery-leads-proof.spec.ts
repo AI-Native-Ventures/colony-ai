@@ -174,21 +174,6 @@ test("Discovery campaign dialogs board", async ({ page }) => {
   );
   await page.keyboard.press("Escape");
   await expect(form).toBeHidden();
-  await page.getByRole("button", { name: /All campaigns/ }).click();
-  const list = page.getByRole("dialog");
-  await expect(
-    list.getByRole("heading", { name: "Your discovery campaigns." }),
-  ).toBeVisible();
-  await shot(
-    page,
-    {
-      name: "DiscoveryCampaignModal-list",
-      board: "DiscoveryCampaignModal",
-      refRect: [794, 48, 440, 288],
-      title: "Your discovery campaigns dialog",
-    },
-    list,
-  );
 });
 
 test("Campaign board", async ({ page }) => {

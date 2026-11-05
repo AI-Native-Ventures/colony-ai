@@ -6,19 +6,12 @@ import {
 } from "@/features/communities/communityStorage";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { formatBudget } from "./CampaignHelpers";
-import { campaignStatusLabel } from "./CampaignHelpers";
-import {
-  ArrowRightGlyph,
-  ChevronRightGlyph,
-  CloseGlyph,
-  PlusGlyph,
-} from "./DiscoveryIcons";
+import { ArrowRightGlyph } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
 import {
   attachNearbyLocations,
@@ -28,7 +21,6 @@ import {
 } from "./discoveryLocation";
 import { searchDiscoveryLocations } from "./discoveryLocationClient";
 import type {
-  DiscoveryCampaign,
   DiscoveryCampaignInput,
   DiscoveryContinuation,
   DiscoveryRunner,
@@ -638,79 +630,6 @@ export function DiscoveryContinuationDialog({
             </button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** "Your discovery campaigns." (`DiscoveryCampaignModal`, the list). */
-export function DiscoveryCampaignListDialog({
-  campaigns,
-  onOpenChange,
-  onSelect,
-  onStartNew,
-  open,
-}: {
-  campaigns: DiscoveryCampaign[];
-  onOpenChange: (open: boolean) => void;
-  onSelect: (campaignId: string) => void;
-  onStartNew: () => void;
-  open: boolean;
-}) {
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="c3d-dialog c3d-dialog--list"
-        data-testid="discovery-campaign-list-dialog"
-        showCloseButton={false}
-      >
-        <div className="c3d-dialog-head-row">
-          <DialogTitle className="c3d-dialog-title c3d-dialog-title--md">
-            Your discovery campaigns.
-          </DialogTitle>
-          <DialogClose asChild>
-            <button aria-label="Close" className="c3d-close" type="button">
-              <CloseGlyph />
-            </button>
-          </DialogClose>
-        </div>
-        <DialogDescription className="sr-only">
-          Choose a campaign to review.
-        </DialogDescription>
-        <div className="c3d-campaign-list">
-          {campaigns.map((campaign) => (
-            <button
-              className="c3d-campaign-row"
-              key={campaign.id}
-              onClick={() => onSelect(campaign.id)}
-              type="button"
-            >
-              {campaign.runBy ? (
-                <RunnerAvatar runner={campaign.runBy} size={36} />
-              ) : (
-                <span aria-hidden="true" className="c3d-avatar c3d-initial">
-                  {campaign.name.slice(0, 1).toLocaleUpperCase()}
-                </span>
-              )}
-              <span className="c3d-campaign-row-copy">
-                <strong>{campaign.name}</strong>
-                <span>
-                  {campaign.location} · {campaign.count} prospects ·{" "}
-                  {campaignStatusLabel(campaign.status)}
-                </span>
-              </span>
-              <ChevronRightGlyph />
-            </button>
-          ))}
-        </div>
-        <button
-          className="c3d-btn c3d-btn--track c3d-start-new"
-          disabled={!campaigns.length}
-          onClick={onStartNew}
-          type="button"
-        >
-          Start a new campaign <PlusGlyph />
-        </button>
       </DialogContent>
     </Dialog>
   );
