@@ -1,29 +1,31 @@
-import { truncateNpub, truncatePubkey } from "./pubkey";
-
-type KeyCompaction = (key: string) => string;
-
-function compactMentionDisplayLabel(
+function safeMentionDisplayLabel(
   label: string,
-  pubkey: string | undefined,
-  compactKey: KeyCompaction,
+  _pubkey: string | undefined,
 ): string {
-  if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return label;
-  if (label.toLowerCase() === pubkey.toLowerCase()) {
-    return compactKey(label);
-  }
+  const rawIdentity =
+    /(?:[0-9a-f]{40,}|[0-9a-f]{6,}(?:\.\.\.|\u2026)[0-9a-f]{2,}|npub1[0-9a-z.\u2026-]*)/i;
   const qualified = label.match(
-    /^(.*) \(([0-9a-f]{64})\)((?: (?:[2-9]|[1-9][0-9]+))?)$/i,
+    /^(.*) \((?:[0-9a-f]{40,}|[0-9a-f]{6,}(?:\.\.\.|\u2026)[0-9a-f]{2,}|npub1[0-9a-z.\u2026-]*)\)((?: (?:[2-9]|[1-9][0-9]+))?)$/i,
   );
-  if (qualified?.[2].toLowerCase() !== pubkey.toLowerCase()) return label;
-  return `${qualified[1]} (${compactKey(qualified[2])})${qualified[3]}`;
+  if (
+    label.match(
+      /^\s*(?:[0-9a-f]{40,}|[0-9a-f]{6,}(?:\.\.\.|\u2026)[0-9a-f]{2,}|npub1[0-9a-z.\u2026-]*)\s*$/i,
+    )
+  ) {
+    return "AI employee";
+  }
+  if (!qualified) return label.replace(rawIdentity, "AI employee");
+  // Older clients stored the routing key in the visible mention label. It is
+  // never a presentable name, even when the tag is stale or malformed.
+  return `${qualified[1]} (teammate)${qualified[2]}`;
 }
 
-/** Compact only a bound mention's key; its literal label remains authoritative. */
+/** A mention's routing key must never become visible identity text. */
 export function formatMentionDisplayLabel(
   label: string,
   pubkey: string | undefined,
 ): string {
-  return compactMentionDisplayLabel(label, pubkey, truncateNpub);
+  return safeMentionDisplayLabel(label, pubkey);
 }
 
 /**
@@ -36,5 +38,5 @@ export function formatLegacyMentionDisplayLabel(
   label: string,
   pubkey: string | undefined,
 ): string {
-  return compactMentionDisplayLabel(label, pubkey, truncatePubkey);
+  return safeMentionDisplayLabel(label, pubkey);
 }

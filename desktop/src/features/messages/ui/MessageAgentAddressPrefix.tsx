@@ -3,9 +3,11 @@ import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarke
 import { getAgentAddressMentionPubkeys } from "../lib/agentAddressMention.mjs";
 import { getVisibleAgentAddressPubkeys } from "../lib/getVisibleAgentAddressPubkeys";
 
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import {
+  resolveIdentityLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { InlineChip } from "@/shared/ui/InlineChip";
 
 /** Resolve all literal competitors before hiding tag-backed address chips. */
@@ -51,10 +53,12 @@ export function MessageAgentAddressPrefix({
     <>
       {pubkeys.map((pubkey) => {
         const profile = profiles?.[pubkey];
-        const label =
-          profile?.displayName?.trim() ||
-          profile?.name?.trim() ||
-          truncateNpub(pubkey);
+        const label = resolveIdentityLabel({
+          pubkey,
+          profiles,
+          isAgent: true,
+          ownerPubkey: profile?.ownerPubkey ?? null,
+        }).text;
         return (
           <React.Fragment key={pubkey}>
             {/* biome-ignore lint/a11y/useValidAriaRole: UserProfilePopover uses role for agent classification, not as an ARIA attribute. */}

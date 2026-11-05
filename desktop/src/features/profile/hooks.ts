@@ -350,24 +350,27 @@ export function useUsersBatchQuery(
     // profile (kind-0 payloads embed avatars — ~800KB per scroll page on
     // staging; RESEARCH/PERF_STAGING_SCROLLBACK.md). Resolve from the
     // per-pubkey entry cache first and hit the network only for pubkeys not
-    // freshly resolved.
+    // freshly resolved. The same pass follows verified agent owner keys so
+    // every caller receives the data needed for the shared agent label.
     queryFn: async () => {
       const now = Date.now();
       const profiles: UsersBatchResponse["profiles"] = {};
       const missing: string[] = [];
-      const toFetch: string[] = [];
-      for (const pubkey of normalizedPubkeys) {
-        const entry = queryClient.getQueryData<UsersBatchEntry>(
-          usersBatchEntryKey(pubkey),
-        );
-        if (entry && now - entry.fetchedAt < USERS_BATCH_ENTRY_FRESH_MS) {
-          if (entry.summary) profiles[pubkey] = entry.summary;
-          else missing.push(pubkey);
-        } else {
-          toFetch.push(pubkey);
+      const resolveEntries = async (keys: readonly string[]) => {
+        const toFetch: string[] = [];
+        for (const pubkey of keys) {
+          const entry = queryClient.getQueryData<UsersBatchEntry>(
+            usersBatchEntryKey(pubkey),
+          );
+          if (entry && now - entry.fetchedAt < USERS_BATCH_ENTRY_FRESH_MS) {
+            if (entry.summary) profiles[pubkey] = entry.summary;
+            else if (!missing.includes(pubkey)) missing.push(pubkey);
+          } else {
+            toFetch.push(pubkey);
+          }
         }
-      }
-      if (toFetch.length > 0) {
+        if (toFetch.length === 0) return;
+
         const fresh = await getUsersBatch(toFetch);
         if (relayUrl) {
           writeCachedUserLabels(relayUrl, fresh.profiles, fresh.missing);
@@ -379,9 +382,19 @@ export function useUsersBatchQuery(
             { summary, fetchedAt: now },
           );
           if (summary) profiles[pubkey] = summary;
-          else missing.push(pubkey);
+          else if (!missing.includes(pubkey)) missing.push(pubkey);
         }
-      }
+      };
+
+      await resolveEntries(normalizedPubkeys);
+      const ownerPubkeys = [
+        ...new Set(
+          Object.values(profiles)
+            .map((profile) => profile.ownerPubkey?.toLowerCase())
+            .filter((pubkey): pubkey is string => Boolean(pubkey)),
+        ),
+      ].filter((pubkey) => !profiles[pubkey]);
+      await resolveEntries(ownerPubkeys);
       return { profiles, missing };
     },
     // Loading older messages grows the pubkey set, which changes this query's
@@ -409,6 +422,33 @@ export function useUsersBatchQuery(
     retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 30_000),
     refetchOnWindowFocus: (query) => query.state.status === "error",
   });
+
+  // A kind:0 can land just after a message is delivered. The first batch read
+  // then correctly returns it as missing, but caching that miss for ten
+  // minutes would leave every identity surface on its neutral fallback. Retry
+  // each missing key once after a short delay; the retry is bounded and stops
+  // as soon as the profile appears (or after the one honest miss).
+  const retriedMissingKeysRef = React.useRef(new Set<string>());
+  React.useEffect(() => {
+    // A long-lived client can encounter an unbounded stream of unknown keys
+    // while paging history. This is only a retry fence, not durable state, so
+    // retaining every past miss would leak memory for no user benefit.
+    if (retriedMissingKeysRef.current.size > 2_048) {
+      retriedMissingKeysRef.current.clear();
+    }
+    const retryable = (query.data?.missing ?? []).filter((pubkey) => {
+      const key = `${relayUrl}:${pubkey.toLowerCase()}`;
+      if (retriedMissingKeysRef.current.has(key)) return false;
+      retriedMissingKeysRef.current.add(key);
+      return true;
+    });
+    if (retryable.length === 0) return;
+    const timer = window.setTimeout(() => {
+      evictUsersBatchEntries(queryClient, retryable);
+      void query.refetch();
+    }, 1_200);
+    return () => window.clearTimeout(timer);
+  }, [query.data?.missing, query.refetch, queryClient, relayUrl]);
 
   // Seed individual "user-profile" cache entries so avatar clicks are instant
   // cache hits instead of fresh network requests.

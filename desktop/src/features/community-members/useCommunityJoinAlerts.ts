@@ -254,7 +254,7 @@ export function useCommunityJoinAlerts({ enabled }: { enabled: boolean }) {
     const title = resolveTitle(session);
 
     // Resolve display names so the alert reads "Alice joined" rather than a
-    // truncated key; a lookup failure degrades to the key, it does not skip.
+    // raw key; a lookup failure uses the neutral AI employee label.
     //
     // Above the cap the batch collapses into one summary, so skip the profile
     // fetch entirely — it would be a 250-key request whose result is unused.

@@ -1,20 +1,21 @@
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { Bot } from "lucide-react";
 import type { UserSearchResult } from "@/shared/api/types";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
 const MEMBER_ROW_INSET_DIVIDER_CLASS =
   "after:pointer-events-none after:absolute after:bottom-0 after:left-[3.75rem] after:right-0 after:h-px after:bg-border/60 after:content-[''] last:after:hidden";
 
 export function formatAddCandidateName(user: UserSearchResult) {
-  return (
-    user.displayName?.trim() ||
-    user.nip05Handle?.trim() ||
-    truncateNpub(user.pubkey)
-  );
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  }).text;
 }
 
 export function AddMemberSearchResultRow({
@@ -67,9 +68,6 @@ export function AddMemberSearchResultRow({
                 ownerPubkey={user.ownerPubkey}
               />
             </div>
-            <span className="block truncate font-mono text-2xs text-muted-foreground">
-              {truncateNpub(user.pubkey)}
-            </span>
             {ownerLabel ? (
               <span className="block truncate text-xs text-muted-foreground">
                 managed by {ownerLabel}

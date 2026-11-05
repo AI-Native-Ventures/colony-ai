@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 
 const MAX_PEOPLE = 256;
 
@@ -53,13 +53,20 @@ export function usePeople(
     return new Map<string, PersonInfo>(
       normalized.map((pubkey) => {
         const profile = profiles?.[pubkey];
+        const isAgent =
+          Boolean(profile?.isAgent) || employeeByPubkey.has(pubkey);
         return [
           pubkey,
           {
             pubkey,
-            name: profile?.displayName?.trim() || truncateNpub(pubkey),
+            name: resolveIdentityLabel({
+              pubkey,
+              profiles,
+              isAgent,
+              ownerPubkey: profile?.ownerPubkey ?? null,
+            }).text,
             avatarUrl: profile?.avatarUrl ?? null,
-            isAgent: Boolean(profile?.isAgent) || employeeByPubkey.has(pubkey),
+            isAgent,
             title: titleByPubkey.get(pubkey) ?? null,
           },
         ];
@@ -73,7 +80,7 @@ export function usePeople(
       return (
         people.get(normalizedPubkey) ?? {
           pubkey: normalizedPubkey,
-          name: truncateNpub(normalizedPubkey),
+          name: resolveIdentityLabel({ pubkey: normalizedPubkey }).text,
           avatarUrl: null,
           isAgent: false,
           title: null,

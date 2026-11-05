@@ -7,7 +7,8 @@ import type {
   WorkItemHead,
 } from "@/features/clients/lib/businessRecords";
 import { RecordMessage } from "@/features/clients/ui/ClientWorkspace";
-import { truncateNpub, truncatePubkey } from "@/shared/lib/pubkey";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
+import { truncatePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -382,14 +383,14 @@ function MemberPicker({
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm">
-                  {member.displayName || truncateNpub(key)}
+                  {member.displayName || resolveUserLabel({ pubkey: key })}
                 </span>
                 <span className="block text-xs capitalize text-muted-foreground">
                   {member.role}
                 </span>
               </span>
               <input
-                aria-label={`${label}: ${member.displayName || truncateNpub(key)}`}
+                aria-label={`${label}: ${member.displayName || resolveUserLabel({ pubkey: key })}`}
                 checked={selectedKeys.has(key)}
                 onChange={(event) => {
                   const next = new Set(selectedKeys);

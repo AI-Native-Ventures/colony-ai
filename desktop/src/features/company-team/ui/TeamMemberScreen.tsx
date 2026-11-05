@@ -15,7 +15,7 @@ import {
 import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -82,11 +82,16 @@ export function TeamMemberScreen({
   );
   const allProfiles =
     otherProfiles.data?.profiles ?? memberProfiles.data?.profiles ?? {};
-  const fullName = member
-    ? allProfiles[member.pubkey]?.displayName?.trim() ||
-      member.fallbackName?.trim() ||
-      truncateNpub(member.pubkey)
-    : truncateNpub(memberPubkey);
+  const labelFor = (pubkey: string, candidate = member) =>
+    resolveIdentityLabel({
+      pubkey,
+      currentPubkey: identity.data?.pubkey,
+      fallbackName: candidate?.fallbackName,
+      profiles: allProfiles,
+      isAgent: candidate?.kind === "employee",
+      ownerPubkey: allProfiles[pubkey]?.ownerPubkey,
+    }).text;
+  const fullName = member ? labelFor(member.pubkey, member) : "Teammate";
   const role = teamQuery.data?.relayMembers.find(
     (candidate) =>
       candidate.pubkey.toLowerCase() === identity.data?.pubkey.toLowerCase(),
@@ -95,11 +100,12 @@ export function TeamMemberScreen({
   const title = member?.position?.head.title ?? "";
   const managerPubkey = member?.position?.head.managerPubkey ?? "";
   const reportsTo = managerPubkey
-    ? allProfiles[managerPubkey]?.displayName?.trim() ||
-      teamQuery.data?.members.find(
-        (candidate) => candidate.pubkey === managerPubkey,
-      )?.fallbackName ||
-      truncateNpub(managerPubkey)
+    ? labelFor(
+        managerPubkey,
+        teamQuery.data?.members.find(
+          (candidate) => candidate.pubkey === managerPubkey,
+        ),
+      )
     : member?.role === "owner"
       ? "Company owner"
       : "";
@@ -307,10 +313,7 @@ export function TeamMemberScreen({
           )
           .map((candidate) => ({
             pubkey: candidate.pubkey,
-            name:
-              allProfiles[candidate.pubkey]?.displayName?.trim() ||
-              candidate.fallbackName ||
-              truncateNpub(candidate.pubkey),
+            name: labelFor(candidate.pubkey, candidate),
             title: candidate.position?.head.title || "",
           }))}
         reportsTo={reportsTo}
@@ -381,7 +384,7 @@ export function TeamMemberScreen({
                 (candidate) => candidate.pubkey === managerInput,
               ) ? (
                 <option value={managerInput} disabled>
-                  {truncateNpub(managerInput)} · unavailable
+                  Teammate awaiting profile · unavailable
                 </option>
               ) : null}
               {otherMembers
@@ -394,10 +397,7 @@ export function TeamMemberScreen({
                         "active"),
                 )
                 .map((candidate) => {
-                  const name =
-                    allProfiles[candidate.pubkey]?.displayName?.trim() ||
-                    candidate.fallbackName ||
-                    truncateNpub(candidate.pubkey);
+                  const name = labelFor(candidate.pubkey, candidate);
                   return (
                     <option
                       key={candidate.pubkey}

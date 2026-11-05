@@ -657,11 +657,10 @@ test("buildMainTimelineEntries renders a relay-only thread summary", () => {
   const root = message({ id: "root", createdAt: 1 });
   // Realistic 64-hex relay participant keys: a cold/relay-only summary has no
   // client messages to derive labels from, so an unnamed participant must
-  // fall back to the compact npub (`truncateNpub`, the same form the
-  // client-assembled path derives via `resolveUserLabel`) — never the raw
-  // hex identity. `participant.author` is what `MessageThreadSummaryRow`
+  // fall back to the neutral AI-employee label, never a compact or raw
+  // identity. `participant.author` is what `MessageThreadSummaryRow`
   // binds to `UserAvatar`'s visible/accessible `displayName` label.
-  const bob = "deadbeef".repeat(8); // → npub1m6k…zuz0
+  const bob = "deadbeef".repeat(8);
   const summaries = new Map([
     [
       "root",
@@ -689,7 +688,7 @@ test("buildMainTimelineEntries renders a relay-only thread summary", () => {
     // Relay returns participants most-recent-first (["alice", bob]); the
     // facepile renders them oldest-first so the last replier lands rightmost.
     participants: [
-      { id: bob, pubkey: bob, author: "npub1m6k…zuz0", avatarUrl: null },
+      { id: bob, pubkey: bob, author: "AI employee", avatarUrl: null },
       {
         id: "alice",
         pubkey: "alice",
