@@ -153,7 +153,7 @@ for (const viewport of [
     ).toBeVisible();
     const row = page.getByTestId(`company-team-member-${employeePubkey}`);
     await expect(row).toContainText("Social Media Manager · AI employee");
-    await expect(row).toHaveAttribute("aria-label", /Reports to Lerato Molefe/);
+    await expect(row).toHaveAttribute("aria-label", /Reports to You/);
     await expect(row).toContainText("Reviewing the workload.");
     await expect(row.getByText("Paused", { exact: true })).toHaveCSS(
       "text-transform",
@@ -173,7 +173,7 @@ for (const viewport of [
     await page.goto(`/#/team/detail/${employeePubkey}`);
     await expect(page.getByTestId("agent-profile")).toBeVisible();
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Reports to Lerato Molefe",
+      "Reports to You",
     );
     await expect(page.getByTestId("company-paused-banner")).toBeVisible();
     await capture("team-detail-mina");
