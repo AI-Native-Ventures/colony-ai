@@ -176,6 +176,9 @@ export type ProspectRecord = {
   discoveryTags?: ProspectDiscoveryTag[];
   potentialMonthlyValueMinor?: number | null;
   website: string | null;
+  /** Optional media carried by newer discovery providers or imported records. */
+  logoUrl?: string | null;
+  placePhotoUrl?: string | null;
   contactName: string | null;
   location: string | null;
   email: string | null;

@@ -9,6 +9,7 @@ import { MessageComposer } from "@/features/messages/ui/MessageComposer";
 import { useSendMessageMutation } from "@/features/messages/hooks";
 import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
@@ -103,6 +104,7 @@ export function WhatsAppBatchScreen({
   const batchQuery = useWhatsAppBatchQuery(batchId);
   const statusQuery = useWhatsAppStatusQuery();
   const contactsQuery = useWhatsAppContactsQuery();
+  const businessData = useBusinessRecords({ createIfMissing: false });
   const templatesQuery = useWhatsAppTemplatesQuery(
     statusQuery.data?.connected === true,
   );
@@ -127,6 +129,23 @@ export function WhatsAppBatchScreen({
 
   const batch = batchQuery.data;
   const contacts = contactsQuery.data ?? [];
+  const businessForRow = (row: WhatsAppBatchRow) => {
+    const contact = contactForRow(row, contacts);
+    const leadId = row.leadId ?? contact?.leadId ?? null;
+    const prospect = leadId
+      ? businessData.records?.prospects.find(
+          ({ record }) => record.prospectId === leadId,
+        )?.record.prospect
+      : null;
+    return prospect
+      ? {
+          name: prospect.party.displayName,
+          website: prospect.website,
+          logoUrl: prospect.logoUrl ?? null,
+          placePhotoUrl: prospect.placePhotoUrl ?? null,
+        }
+      : null;
+  };
   const templates = templatesQuery.data ?? statusQuery.data?.templates ?? [];
   const template = batch ? resolveTemplate(batch.template, templates) : null;
   const rows = batch?.rows ?? [];
@@ -416,6 +435,7 @@ export function WhatsAppBatchScreen({
             {visibleRows.map((row, index) => (
               <WhatsAppBatchReviewRow
                 contact={contactForRow(row, contacts)}
+                business={businessForRow(row)}
                 editable={pending && canManage}
                 index={index}
                 isNext={row.idx === nextReadyRowIdx}
@@ -772,6 +792,7 @@ export function WhatsAppBatchScreen({
                   {visibleRows.map((row, index) => (
                     <WhatsAppBatchReviewRow
                       contact={contactForRow(row, contacts)}
+                      business={businessForRow(row)}
                       editable={pending && canManage}
                       index={index}
                       isNext={row.idx === nextReadyRowIdx}

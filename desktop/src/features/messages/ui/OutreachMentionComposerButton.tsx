@@ -203,7 +203,10 @@ function OutreachMentionPickerContent({
   currentPubkey: string | null;
   peopleAndAgents: MentionSuggestion[];
   onSelectEntity: (choice: EntityChoice) => void;
-  onSelectPerson: (person: MentionSuggestion) => void;
+  onSelectPerson: (
+    person: MentionSuggestion,
+    options?: { focus?: boolean },
+  ) => void;
 }) {
   const business = useBusinessRecords({ createIfMissing: false });
   const statusQuery = useWhatsAppStatusQuery(true);
@@ -507,7 +510,7 @@ export function OutreachMentionComposerButton({
   mentionQuery,
   mentionStartIndex,
   currentPubkey,
-  onCancelPeople,
+  onReleasePeople,
   onOpenChange,
   onPreparePeople,
   onSelectPerson,
@@ -519,10 +522,13 @@ export function OutreachMentionComposerButton({
   mentionQuery: string | null;
   mentionStartIndex: number;
   currentPubkey: string | null;
-  onCancelPeople: () => void;
+  onReleasePeople: () => void;
   onOpenChange: (open: boolean) => void;
-  onPreparePeople: (cursor: number) => void;
-  onSelectPerson: (person: MentionSuggestion) => void;
+  onPreparePeople: () => void;
+  onSelectPerson: (
+    person: MentionSuggestion,
+    options?: { focus?: boolean },
+  ) => void;
   peopleAndAgents: MentionSuggestion[];
   replacePlainTextRange: (
     fromOffset: number,
@@ -531,15 +537,33 @@ export function OutreachMentionComposerButton({
   ) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const openRef = React.useRef(false);
+  const openGenerationRef = React.useRef(0);
+  const pendingCloseGenerationsRef = React.useRef<number[]>([]);
+  const suppressStaleComposerFocusRef = React.useRef(false);
+  const staleComposerFocusPreventedRef = React.useRef(false);
 
-  function closePicker(nextOpen: boolean) {
-    setOpen(nextOpen);
-    onOpenChange(nextOpen);
-    if (!nextOpen) onCancelPeople();
-  }
+  const setPickerOpen = React.useCallback(
+    (nextOpen: boolean) => {
+      const wasOpen = openRef.current;
+      if (nextOpen && !wasOpen) {
+        openGenerationRef.current += 1;
+        onPreparePeople();
+      }
+      if (!nextOpen && wasOpen) {
+        pendingCloseGenerationsRef.current.push(openGenerationRef.current);
+        onReleasePeople();
+      }
+      openRef.current = nextOpen;
+      setOpen(nextOpen);
+      onOpenChange(nextOpen);
+    },
+    [onOpenChange, onPreparePeople, onReleasePeople],
+  );
 
   function insertReference(choice: EntityChoice) {
     if (!editor || editor.isDestroyed) return;
+    suppressStaleComposerFocusRef.current = true;
     if (mentionQuery !== null) {
       replacePlainTextRange(mentionStartIndex, getCursor(), "");
     }
@@ -558,7 +582,6 @@ export function OutreachMentionComposerButton({
       1; // keep the caret after the trailing separator
     editor
       .chain()
-      .focus()
       .insertContent(
         leadReferenceContent({
           textBeforeCaret,
@@ -568,12 +591,13 @@ export function OutreachMentionComposerButton({
       )
       .setTextSelection(caret + insertedContentSize)
       .run();
-    closePicker(false);
+    setPickerOpen(false);
   }
 
   function choosePerson(person: MentionSuggestion) {
-    onSelectPerson(person);
-    closePicker(false);
+    suppressStaleComposerFocusRef.current = true;
+    onSelectPerson(person, { focus: false });
+    setPickerOpen(false);
   }
 
   const virtualAnchor = React.useMemo(
@@ -595,17 +619,12 @@ export function OutreachMentionComposerButton({
   );
 
   return (
-    <Popover onOpenChange={closePicker} open={open}>
+    <Popover onOpenChange={setPickerOpen} open={open}>
       <PopoverTrigger asChild>
         <button
           aria-label="Mention a person, agent or shared reference"
           className="c3r-composer-button"
           data-testid="reference-lead-button"
-          onClick={() => {
-            onPreparePeople(getCursor());
-            setOpen(true);
-            onOpenChange(true);
-          }}
           type="button"
         >
           <Link2 aria-hidden="true" size={12} strokeWidth={2.4} />
@@ -622,9 +641,49 @@ export function OutreachMentionComposerButton({
         collisionPadding={12}
         className="c3r-mention-popover"
         style={{ width: "min(28.75rem, calc(100vw - 1.5rem))" }}
+        onFocusOutside={(event) => {
+          const target = event.target;
+          if (
+            suppressStaleComposerFocusRef.current &&
+            target instanceof HTMLElement &&
+            target.matches('[data-testid="message-input"]')
+          ) {
+            event.preventDefault();
+            staleComposerFocusPreventedRef.current = true;
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (staleComposerFocusPreventedRef.current) {
+            event.preventDefault();
+            staleComposerFocusPreventedRef.current = false;
+            suppressStaleComposerFocusRef.current = false;
+          }
+        }}
+        onKeyDownCapture={(event) => {
+          if (event.key === "Tab") {
+            suppressStaleComposerFocusRef.current = false;
+            staleComposerFocusPreventedRef.current = false;
+          }
+        }}
+        onPointerDownOutside={() => {
+          suppressStaleComposerFocusRef.current = false;
+          staleComposerFocusPreventedRef.current = false;
+        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          if (editor && !editor.isDestroyed) editor.commands.focus();
+          const closingGeneration =
+            pendingCloseGenerationsRef.current.shift() ?? null;
+          requestAnimationFrame(() => {
+            if (
+              closingGeneration !== null &&
+              closingGeneration === openGenerationRef.current &&
+              !openRef.current &&
+              editor &&
+              !editor.isDestroyed
+            ) {
+              editor.commands.focus();
+            }
+          });
         }}
       >
         {open ? (

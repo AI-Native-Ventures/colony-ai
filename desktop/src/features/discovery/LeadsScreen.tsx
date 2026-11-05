@@ -618,7 +618,9 @@ export function LeadsScreen(context: LeadContext) {
                             <div className="c3l-business-identity">
                               <BusinessLogoMark
                                 className="c3l-mark"
+                                logoUrl={prospect.logoUrl}
                                 name={prospect.party.displayName}
+                                placePhotoUrl={prospect.placePhotoUrl}
                                 website={prospect.website}
                               />
                               <span className="c3l-business-text">

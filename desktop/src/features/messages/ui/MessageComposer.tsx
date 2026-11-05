@@ -458,6 +458,7 @@ function MessageComposerImpl({
         edit.customEmojiShortcode,
         edit.preserveSelection,
         edit.reassertMentionCaret,
+        edit.focus,
       );
     },
     [richText.replacePlainTextRange],
@@ -1060,13 +1061,11 @@ function MessageComposerImpl({
                         mentionQuery={mentions.mentionQuery}
                         mentionStartIndex={mentions.mentionStartIndex}
                         currentPubkey={ownerPubkey}
-                        onCancelPeople={mentions.cancelMentionAutocomplete}
+                        onReleasePeople={mentions.releaseReferenceCandidates}
                         onOpenChange={setOutreachMentionPickerOpen}
-                        onPreparePeople={(cursor) =>
-                          mentions.openMentionPicker(cursor, "first-agent")
-                        }
+                        onPreparePeople={mentions.prepareReferenceCandidates}
                         onSelectPerson={selectMentionSuggestion}
-                        peopleAndAgents={mentions.suggestions}
+                        peopleAndAgents={mentions.referenceSuggestions}
                         replacePlainTextRange={richText.replacePlainTextRange}
                       />
                     ) : null}

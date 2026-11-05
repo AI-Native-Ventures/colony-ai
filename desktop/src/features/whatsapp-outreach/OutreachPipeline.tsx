@@ -132,7 +132,9 @@ function PipelineCard({
           {identity.isLinked ? (
             <BusinessLogoMark
               className="c3wa-desk-logo-mark"
+              logoUrl={identity.logoUrl}
               name={primaryName}
+              placePhotoUrl={identity.placePhotoUrl}
               website={identity.website}
             />
           ) : (

@@ -308,7 +308,9 @@ export function CampaignTable({
                   >
                     <BusinessLogoMark
                       className="c3d-prospect-mark"
+                      logoUrl={prospect.logoUrl}
                       name={prospect.party.displayName}
+                      placePhotoUrl={prospect.placePhotoUrl}
                       website={prospect.website}
                     />
                     <span className="c3d-prospect-copy">

@@ -114,6 +114,12 @@ export function useMentions(
 ) {
   const [mentionQuery, setMentionQuery] = React.useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = React.useState(0);
+  // The outreach Reference control needs the same people and agent inventory
+  // as native @ completion, without opening or changing the native picker.
+  // Keeping this state separate prevents an explicit shared-reference action
+  // from racing the inline mention lifecycle.
+  const [referenceCandidatesActive, setReferenceCandidatesActive] =
+    React.useState(false);
   const mentionPickerOriginRef = React.useRef<"inline" | "explicit" | null>(
     null,
   );
@@ -130,7 +136,9 @@ export function useMentions(
   const previousSuggestionsRef = React.useRef<MentionSuggestion[]>([]);
   const mentionSearchQuery = mentionQuery?.trim() ?? "";
   const canSearchGlobalPeople =
-    mentionSearchQuery.length > 0 || mentionQuery === "";
+    referenceCandidatesActive ||
+    mentionSearchQuery.length > 0 ||
+    mentionQuery === "";
   const identityQuery = useIdentityQuery();
   const currentPubkey = identityQuery.data?.pubkey
     ? normalizePubkey(identityQuery.data.pubkey)
@@ -154,7 +162,9 @@ export function useMentions(
   const canSearchGlobalUsers = canSearchGlobalPeople && agentDirectoriesReady;
   const userSearchQuery = useInfiniteUserSearchQuery(mentionQuery ?? "", {
     allowEmpty: true,
-    enabled: canSearchGlobalUsers && mentionQuery !== null,
+    enabled:
+      canSearchGlobalUsers &&
+      (mentionQuery !== null || referenceCandidatesActive),
     limit: MENTION_SUGGESTION_LIMIT,
   });
   const userSearchResults = React.useMemo(
@@ -485,6 +495,36 @@ export function useMentions(
     ownerProfilesQuery.data?.profiles,
     profiles,
   ]);
+  const referenceSuggestions = React.useMemo<MentionSuggestion[]>(
+    () =>
+      rankMentionCandidates(
+        mentionCandidatesWithTeams,
+        mentionQuery ?? "",
+        activePersonaIds,
+      )
+        .slice(0, MENTION_SUGGESTION_LIMIT)
+        .map(({ candidate, label }) =>
+          mapMentionCandidateToSuggestion({
+            agentProvenanceReady: agentDirectoriesReady,
+            candidate,
+            label,
+            channelType: options?.channelType,
+            currentPubkey,
+            ownerProfiles: ownerProfilesQuery.data?.profiles,
+            profiles,
+          }),
+        ),
+    [
+      activePersonaIds,
+      agentDirectoriesReady,
+      currentPubkey,
+      mentionCandidatesWithTeams,
+      mentionQuery,
+      options?.channelType,
+      ownerProfilesQuery.data?.profiles,
+      profiles,
+    ],
+  );
   const getDefaultAgentSuggestion = useDefaultAgentSuggestion({
     activePersonaIds,
     agentProvenanceReady: agentDirectoriesReady,
@@ -571,7 +611,11 @@ export function useMentions(
     verifyMentionIdentities,
   });
   const insertMention = React.useCallback(
-    (suggestion: MentionSuggestion, selectionEnd: number): AutocompleteEdit => {
+    (
+      suggestion: MentionSuggestion,
+      selectionEnd: number,
+      insertionOptions?: { focus?: boolean },
+    ): AutocompleteEdit => {
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
@@ -647,16 +691,20 @@ export function useMentions(
       setMentionQuery(null);
       setSelected(0);
       const startIndex =
-        flushedMentionStartIndexRef.current ?? mentionStartIndex;
+        mentionQuery === null
+          ? selectionEnd
+          : (flushedMentionStartIndexRef.current ?? mentionStartIndex);
       flushedMentionStartIndexRef.current = null;
       return {
         replaceFromOffset: startIndex,
         replaceToOffset: selectionEnd,
         insertText,
+        focus: insertionOptions?.focus,
       };
     },
     [
       knownAgentPubkeys,
+      mentionQuery,
       mentionStartIndex,
       pasteBinding.claimMentionIntent,
       setSelected,
@@ -887,6 +935,12 @@ export function useMentions(
     setMentionQuery(null);
     setSelected(0);
   }, [mentionSelection.clearAgentSelectionPreference, setSelected]);
+  const prepareReferenceCandidates = React.useCallback(() => {
+    setReferenceCandidatesActive(true);
+  }, []);
+  const releaseReferenceCandidates = React.useCallback(() => {
+    setReferenceCandidatesActive(false);
+  }, []);
   const clearMentions = React.useCallback(() => {
     cancelMentionAutocomplete();
     mentionMapRef.current.clear();
@@ -1027,7 +1081,10 @@ export function useMentions(
     mentionSelectedIndex,
     mentionStartIndex,
     openMentionPicker,
+    prepareReferenceCandidates,
     registerMentionPubkey,
+    referenceSuggestions,
+    releaseReferenceCandidates,
     restoreDraftMentionRefs,
     settlePendingMentionBindings: pasteBinding.settlePendingMentionBindings,
     suggestions,

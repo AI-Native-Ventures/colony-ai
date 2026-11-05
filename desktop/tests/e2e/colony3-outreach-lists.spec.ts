@@ -643,6 +643,18 @@ async function capture(
   }
 }
 
+async function openReferencePicker(page: Page, query?: string) {
+  const picker = page.getByTestId("lead-reference-picker");
+  await page.getByTestId("reference-lead-button").click();
+  await expect(picker).toBeVisible();
+  if (query !== undefined) {
+    await picker
+      .getByRole("textbox", { name: "Search mentions and references" })
+      .fill(query);
+  }
+  return picker;
+}
+
 async function jumpTimelineToLatest(page: Page) {
   const jumpToLatest = page.getByTestId("message-scroll-to-latest");
   const timeline = page.getByTestId("message-timeline");
@@ -1163,17 +1175,15 @@ test.describe("Outreach lists", () => {
         "Morning. 3 replies came in overnight on WhatsApp; Seventh Street Rooms wants a call.",
       ),
     ).toBeVisible();
-    const picker = page.getByTestId("lead-reference-picker");
     const composer = page.getByTestId("message-input");
-    await composer.pressSequentially("@Scout");
-    await expect(picker).toBeVisible();
+    const picker = await openReferencePicker(page);
     await picker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
-      .click();
+      .click({ force: true });
     await composer.pressSequentially(" research ");
     const listId = "3f1a7000-0000-4000-9000-000000000001";
-    await composer.pressSequentially(`@${LIST_NAME}`);
+    await openReferencePicker(page, LIST_NAME);
     const search = picker.getByRole("textbox", {
       name: "Search mentions and references",
     });
@@ -1223,21 +1233,22 @@ test.describe("Outreach lists", () => {
     await expect(
       updateSummary.getByRole("button", { name: "Open the list" }),
     ).toBeVisible();
-    await composer.pressSequentially("@Scout");
+    await openReferencePicker(page);
     await picker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
-      .click();
+      .click({ force: true });
     await composer.pressSequentially(" prepare WhatsApp messages for ");
-    await composer.pressSequentially(`@${LIST_NAME}`);
+    await openReferencePicker(page, LIST_NAME);
     await expect(search).toHaveValue(LIST_NAME);
     await search.press("Enter");
-    await composer.pressSequentially(" with @Built a site for you");
+    await composer.pressSequentially(" with ");
+    await openReferencePicker(page, "Built a site for you");
     await expect(search).toHaveValue("Built a site for you");
     await picker
       .getByRole("region", { name: "Templates" })
       .getByRole("button", { name: /Built a site for you/ })
-      .click();
+      .click({ force: true });
     await expect(
       composer.locator(
         '[data-composer-buzz-link][data-buzz-link-kind="template"]',
@@ -1287,7 +1298,7 @@ test.describe("Outreach lists", () => {
     await expect(page.getByTestId("outreach-list-detail")).toBeVisible();
   });
 
-  test("shows the expanded outreach mention picker", async ({ page }) => {
+  test("shows the expanded shared reference picker", async ({ page }) => {
     await openReference(
       page,
       `/channels/${REFERENCE_CHANNEL_IDS.scoutDm}`,
@@ -1301,22 +1312,20 @@ test.describe("Outreach lists", () => {
       ),
     ).toBeVisible();
     const boardComposer = page.getByTestId("message-input");
-    await boardComposer.pressSequentially("@Scout");
-    const boardPicker = page.getByTestId("lead-reference-picker");
-    await expect(boardPicker).toBeVisible();
+    const boardPicker = await openReferencePicker(page);
     await boardPicker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
-      .click();
+      .click({ force: true });
     await boardComposer.pressSequentially(" prepare WhatsApp messages for ");
-    await boardComposer.pressSequentially("@Melville guesthouses, Nov");
-    await expect(boardPicker).toBeVisible();
+    await openReferencePicker(page, "Melville guesthouses, Nov");
     await boardPicker
       .getByRole("region", { name: "Lists" })
       .getByRole("button", { name: /Melville guesthouses, Nov/ })
-      .click();
-    await boardComposer.pressSequentially(" with @");
-    await expect(boardPicker).toBeVisible();
+      .click({ force: true });
+    await boardComposer.pressSequentially(" with ");
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openReferencePicker(page);
     const boardLists = boardPicker.getByRole("region", { name: "Lists" });
     await expect(boardLists).toContainText("Melville guesthouses, follow up");
     await expect(boardLists.locator(".c3r-name")).toHaveText([
@@ -1332,7 +1341,6 @@ test.describe("Outreach lists", () => {
     await expect(
       boardPicker.getByRole("region", { name: "Templates" }),
     ).toContainText("Marketing · approved");
-    await capture(page, "OLMentionPicker");
     const boardPeople = boardPicker.getByRole("region", {
       name: "People and agents",
     });
@@ -1357,7 +1365,12 @@ test.describe("Outreach lists", () => {
       "clip-path",
       "inset(50%)",
     );
+    // A previously selected reference must not return focus late and dismiss
+    // this newly opened panel.
+    await page.waitForTimeout(1_200);
+    await expect(boardPicker).toBeVisible();
     await capture(page, "OLMentionPicker");
+    await expect(boardPicker).toBeVisible();
   });
 
   test("keeps lead selection and the shared list inside 390px and 1024px views", async ({
@@ -1473,20 +1486,19 @@ test.describe("Outreach lists", () => {
     }, REFERENCE_CHANNEL_IDS.scoutDm);
     await expect(page.getByTestId("message-input")).toBeVisible();
     const composer = page.getByTestId("message-input");
-    const picker = page.getByTestId("lead-reference-picker");
-    await composer.pressSequentially("@Scout");
+    const picker = await openReferencePicker(page);
     await picker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
-      .click();
+      .click({ force: true });
     await composer.pressSequentially(" prepare messages for ");
-    await composer.pressSequentially(`@${LIST_NAME}`);
+    await openReferencePicker(page, LIST_NAME);
     await picker
       .getByRole("region", { name: "Lists" })
       .getByRole("button", { name: new RegExp(LIST_NAME) })
-      .click();
-    await composer.pressSequentially(" with @bui");
-    await expect(picker).toBeVisible();
+      .click({ force: true });
+    await composer.pressSequentially(" with ");
+    await openReferencePicker(page, "bui");
     await expect(
       picker.getByLabel("Search mentions and references"),
     ).toHaveValue("bui");
@@ -1762,15 +1774,13 @@ test.describe("Outreach lists", () => {
     ).toBeVisible();
     const darkListId = "3f1a7000-0000-4000-9000-000000000001";
     const composer = page.getByTestId("message-input");
-    const picker = page.getByTestId("lead-reference-picker");
-    await composer.pressSequentially("@Scout");
-    await expect(picker).toBeVisible();
+    const picker = await openReferencePicker(page);
     await picker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
-      .click();
+      .click({ force: true });
     await composer.pressSequentially(" research ");
-    await composer.pressSequentially(`@${LIST_NAME}`);
+    await openReferencePicker(page, LIST_NAME);
     const search = picker.getByRole("textbox", {
       name: "Search mentions and references",
     });
@@ -1818,17 +1828,17 @@ test.describe("Outreach lists", () => {
       darkUpdateSummary.getByRole("button", { name: "Open the list" }),
     ).toBeVisible();
 
-    await composer.pressSequentially("@Scout");
+    await openReferencePicker(page);
     await picker
       .getByRole("region", { name: "People and agents" })
       .getByRole("button", { name: /Scout/ })
-      .click();
+      .click({ force: true });
     await composer.pressSequentially(" prepare WhatsApp messages for ");
-    await composer.pressSequentially(`@${LIST_NAME}`);
+    await openReferencePicker(page, LIST_NAME);
     await expect(search).toHaveValue(LIST_NAME);
     await search.press("Enter");
-    await composer.pressSequentially(" with @");
-    await expect(picker).toBeVisible();
+    await composer.pressSequentially(" with ");
+    await openReferencePicker(page);
     const darkLists = picker.getByRole("region", { name: "Lists" });
     await expect(darkLists).toContainText("Melville guesthouses, follow up");
     await expect(darkLists.locator(".c3r-name")).toHaveText([
@@ -1845,12 +1855,12 @@ test.describe("Outreach lists", () => {
       "Melville Manor B&B",
     );
     await capture(page, "OLMentionPickerDark");
-    await composer.pressSequentially("Built a site for you");
+    await search.fill("Built a site for you");
     await expect(search).toHaveValue("Built a site for you");
     await picker
       .getByRole("region", { name: "Templates" })
       .getByRole("button", { name: /Built a site for you/ })
-      .click();
+      .click({ force: true });
     await page.clock.setFixedTime(johannesburgTodayAt(10, 24));
     await page.getByTestId("send-message").click();
     await emitPendingBatchNotice(page, darkListId, johannesburgTodayAt(10, 31));

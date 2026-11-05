@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import {
@@ -67,6 +68,7 @@ export function TemplatePreview({
 
 /** Shows a recipient row, with edits that are saved in the owner decision. */
 export function WhatsAppBatchReviewRow({
+  business = null,
   contact,
   leadName,
   materialLink,
@@ -83,6 +85,12 @@ export function WhatsAppBatchReviewRow({
   editable,
   variant = "page",
 }: {
+  business?: {
+    name: string;
+    website: string | null;
+    logoUrl: string | null;
+    placePhotoUrl: string | null;
+  } | null;
   contact: WhatsAppContact | null;
   leadName: string | null;
   materialLink: string | null;
@@ -108,6 +116,7 @@ export function WhatsAppBatchReviewRow({
     setEditing(false);
   }
   const displayName =
+    business?.name ??
     contact?.businessName ??
     leadName ??
     contact?.displayName ??
@@ -133,9 +142,21 @@ export function WhatsAppBatchReviewRow({
           </span>
         ) : (
           <span aria-hidden="true" className="c3wa-batch-row-art">
-            <i />
-            <i />
-            <i />
+            {business ? (
+              <BusinessLogoMark
+                className="c3wa-batch-row-logo"
+                logoUrl={business.logoUrl}
+                name={business.name}
+                placePhotoUrl={business.placePhotoUrl}
+                website={business.website}
+              />
+            ) : (
+              <>
+                <i />
+                <i />
+                <i />
+              </>
+            )}
           </span>
         )}
         <div className="c3wa-batch-row-contact">

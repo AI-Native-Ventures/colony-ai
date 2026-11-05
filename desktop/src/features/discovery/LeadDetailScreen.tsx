@@ -321,7 +321,9 @@ export function LeadDetailScreen({
           <div className="c3l-head-identity">
             <BusinessLogoMark
               className="c3l-mark c3l-mark-large"
+              logoUrl={person.logoUrl}
               name={name}
+              placePhotoUrl={person.placePhotoUrl}
               website={person.website}
             />
             <div className="c3l-head-text">

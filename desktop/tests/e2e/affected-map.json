@@ -56,6 +56,7 @@
       "back-to-origin.spec.ts",
       "colony3-discovery-run.spec.ts",
       "colony3-lead-reference.spec.ts",
+      "colony3-lead-logo-everywhere.spec.ts",
       "colony3-sales-setup.spec.ts",
       "money.spec.ts",
       "cofounder-phase2.spec.ts",
@@ -123,7 +124,8 @@
         "cofounder-playbooks.spec.ts",
         "cofounder-map.spec.ts",
         "workspace-header-icon.spec.ts",
-        "cofounder-customer-record.spec.ts"
+        "cofounder-customer-record.spec.ts",
+        "colony3-lead-logo-everywhere.spec.ts"
       ]
     },
     {
@@ -210,7 +212,8 @@
       "specs": [
         "w11-clients-work.spec.ts",
         "colony3-business-money-proof.spec.ts",
-        "cofounder-customer-record.spec.ts"
+        "cofounder-customer-record.spec.ts",
+        "colony3-lead-logo-everywhere.spec.ts"
       ]
     },
     {
@@ -290,7 +293,8 @@
         "colony3-lead-reference.spec.ts",
         "colony3-sales-setup.spec.ts",
         "colony3-scout-dupes.spec.ts",
-        "colony3-business-tenant-scope.spec.ts"
+        "colony3-business-tenant-scope.spec.ts",
+        "colony3-lead-logo-everywhere.spec.ts"
       ]
     },
     {
@@ -379,7 +383,11 @@
     },
     {
       "paths": ["desktop/src/features/money/**"],
-      "specs": ["money.spec.ts", "colony3-business-money-proof.spec.ts"]
+      "specs": [
+        "money.spec.ts",
+        "colony3-business-money-proof.spec.ts",
+        "colony3-lead-logo-everywhere.spec.ts"
+      ]
     },
     {
       "paths": ["desktop/src/features/onboarding/**"],
@@ -427,7 +435,8 @@
       "specs": [
         "search-scope-screenshots.spec.ts",
         "smoke.spec.ts",
-        "agent-avatar-everywhere.spec.ts"
+        "agent-avatar-everywhere.spec.ts",
+        "colony3-lead-logo-everywhere.spec.ts"
       ]
     },
     {
@@ -488,6 +497,7 @@
         "whatsapp-decided-card.spec.ts",
         "whatsapp-polish.spec.ts",
         "whatsapp-dock-narrow.spec.ts",
+        "colony3-lead-logo-everywhere.spec.ts",
         "whatsapp-inbound-media.spec.ts",
         "whatsapp-outreach-desk-narrow.spec.ts"
       ]
