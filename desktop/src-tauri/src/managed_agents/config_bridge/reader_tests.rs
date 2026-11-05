@@ -70,6 +70,7 @@ fn test_record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: "test".to_string(),
         name: "Test Agent".to_string(),
         persona_id: None,

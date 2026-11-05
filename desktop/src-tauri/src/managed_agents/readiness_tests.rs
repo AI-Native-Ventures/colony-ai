@@ -820,6 +820,7 @@ fn resolve_effective_agent_env_user_env_wins_over_structured_fields() {
     let record = crate::managed_agents::types::ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: "test-pubkey".to_string(),
         name: "test-agent".to_string(),
         persona_id: None,

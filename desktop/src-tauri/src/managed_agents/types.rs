@@ -240,6 +240,7 @@ impl AgentDefinition {
             respond_to_allowlist: Vec::new(),
             display_name: Some(self.display_name),
             description: self.description,
+            company_role: self.company_role,
             slug: Some(self.id),
             runtime: self.runtime,
             name_pool: self.name_pool,
@@ -268,7 +269,7 @@ impl ManagedAgentRecord {
     pub fn to_definition_view(&self) -> Option<AgentDefinition> {
         let slug = self.slug.clone()?;
         Some(AgentDefinition {
-            company_role: None,
+            company_role: self.company_role.clone(),
             id: slug,
             display_name: self
                 .display_name
@@ -475,6 +476,11 @@ pub struct ManagedAgentRecord {
     /// content hash).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional non-authoritative company role metadata carried by a key-less
+    /// definition record. It must round-trip with the catalog record because
+    /// hiring resolves role packs from the persisted persona list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub company_role: Option<CompanyRoleMetadata>,
     /// Stable definition slug — the former `AgentDefinition.id`. Key-less
     /// records (definitions not yet instantiated) publish kind:30175 at
     /// `d_tag = slug`, preserving the pre-merge event coordinates. `None` for

@@ -23,14 +23,24 @@ export function hireConfigureStatus(input: {
   head: QueryState;
   hasRolePack: boolean;
   hasForm: boolean;
+  /** Configure must re-read the role catalog once before declaring it missing. */
+  freshRoleFetchComplete: boolean;
 }): HireConfigureStatus {
-  const { hasForm, hasRolePack, head, personas, ...others } = input;
+  const {
+    freshRoleFetchComplete,
+    hasForm,
+    hasRolePack,
+    head,
+    personas,
+    ...others
+  } = input;
   const required = [personas, ...Object.values(others)];
   if ([head, ...required].some((query) => query.isError)) return "error";
-  // The persona list and the saved hire have both answered and neither names a
-  // usable role pack: more waiting cannot change that.
+  // A create can resolve before its persisted list projection reaches this
+  // screen. Re-read the catalog once before reporting a missing role so a
+  // stale observer never turns a successful creation into a dead end.
   if (!hasRolePack && !personas.isPending && !head.isPending) {
-    return "role-missing";
+    return freshRoleFetchComplete ? "role-missing" : "loading";
   }
   if (required.some((query) => query.isPending)) return "loading";
   return hasRolePack && hasForm ? "ready" : "loading";

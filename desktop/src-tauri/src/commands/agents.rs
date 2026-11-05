@@ -626,6 +626,7 @@ pub async fn create_managed_agent(
             pubkey: pubkey.clone(),
             name: name.clone(),
             description: None,
+            company_role: None,
             persona_id: requested_persona_id.clone(),
             team_id,
             private_key_nsec: private_key_nsec.clone(),

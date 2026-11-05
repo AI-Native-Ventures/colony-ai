@@ -13,6 +13,7 @@ fn minimal_record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: "deadbeef".to_string(),
         name: "Test Agent".to_string(),
         display_name: Some("Test Agent Display".to_string()),
