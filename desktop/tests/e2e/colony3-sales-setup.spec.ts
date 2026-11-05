@@ -265,12 +265,13 @@ test.describe("Sales channel setup", () => {
     await startHomeDecorSearch(page);
     await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
     await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
       page.getByTestId("w10-campaign-page").locator("tbody tr"),
     ).toHaveCount(2);
     await expect(page.getByText("not set up here yet")).toHaveCount(0);
+    await goTo(page, "/discovery");
+    await expect(
+      page.getByRole("link", { name: /Ready to review/ }),
+    ).toBeVisible({ timeout: 15_000 });
 
     // One Sales channel, and the results were posted in it.
     const sales = await salesChannels(page);

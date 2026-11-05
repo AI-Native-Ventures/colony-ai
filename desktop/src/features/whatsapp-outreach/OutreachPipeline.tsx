@@ -148,7 +148,7 @@ function PipelineCard({
           )}
         </span>
         <div className="c3wa-pipeline-card-copy">
-          <h3>{primaryName}</h3>
+          <h3 title={primaryName}>{primaryName}</h3>
           <p>{identity.personName || "No name yet"}</p>
         </div>
         {canEdit ? (

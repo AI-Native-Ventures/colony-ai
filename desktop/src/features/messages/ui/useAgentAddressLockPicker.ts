@@ -299,7 +299,10 @@ export function useAgentAddressLockPicker({
   );
 
   const selectMentionSuggestion = React.useCallback(
-    (suggestion: MentionSuggestion) => {
+    (
+      suggestion: MentionSuggestion,
+      selectionOptions?: { focus?: boolean; replaceInlineQuery?: boolean },
+    ) => {
       const pubkey = normalizePubkey(suggestion.pubkey ?? "");
       if (suggestion.isAgent && pubkey && audienceScope) {
         const { cursor } = richText.getPlainTextAndCursor();
@@ -307,7 +310,9 @@ export function useAgentAddressLockPicker({
           !lockedAgentPubkeys.has(pubkey) &&
           unpinnedAgentPubkeysRef.current.has(pubkey);
         if (mentions.isInlineMentionSelection() || wasUnpinned) {
-          applyAutocompleteEdit(mentions.insertMention(suggestion, cursor));
+          applyAutocompleteEdit(
+            mentions.insertMention(suggestion, cursor, selectionOptions),
+          );
           trackMentionAddressedAgent(pubkey);
           onAutoPinAgentMention?.(suggestion, {
             reinstateExcluded: !wasUnpinned,
@@ -315,7 +320,9 @@ export function useAgentAddressLockPicker({
           return;
         }
 
-        applyAutocompleteEdit(mentions.insertMention(suggestion, cursor));
+        applyAutocompleteEdit(
+          mentions.insertMention(suggestion, cursor, selectionOptions),
+        );
         if (!lockedAgentPubkeys.has(pubkey)) {
           trackMentionAddressedAgent(pubkey);
           if (onAddressAgentMention) {
@@ -332,7 +339,9 @@ export function useAgentAddressLockPicker({
       }
 
       const { cursor } = richText.getPlainTextAndCursor();
-      applyAutocompleteEdit(mentions.insertMention(suggestion, cursor));
+      applyAutocompleteEdit(
+        mentions.insertMention(suggestion, cursor, selectionOptions),
+      );
     },
     [
       applyAutocompleteEdit,

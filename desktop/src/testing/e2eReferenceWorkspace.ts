@@ -39,6 +39,8 @@ import {
   KIND_PROPOSAL_VERSION,
   KIND_PROSPECT_HEAD,
   KIND_SERVICE_HEAD,
+  KIND_DISCOVERY_CAMPAIGN_HEAD,
+  KIND_OUTREACH_LIST_HEAD,
   proposalVersionDTag,
 } from "@/features/discovery/businessRecordContract";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
@@ -53,6 +55,10 @@ export const REFERENCE_AGENTS = {
   aya: { name: "Aya", pubkey: "a4a4".repeat(16) },
   mina: { name: "Mina", pubkey: "b1b1".repeat(16) },
   theo: { name: "Theo", pubkey: "c7c7".repeat(16) },
+} as const;
+
+export const REFERENCE_OUTREACH_PEOPLE = {
+  aya: { name: "Aya Molefe", pubkey: "ab89".repeat(16) },
 } as const;
 
 /**
@@ -76,6 +82,8 @@ const COLONY3_OCT_21 = Math.floor(
 );
 
 export const REFERENCE_CHANNEL_IDS = {
+  general: "1e1a7000-0000-4000-8000-000000000016",
+  outreach: "1e1a7000-0000-4000-8000-000000000017",
   sales: "1e1a7000-0000-4000-8000-000000000001",
   marketing: "1e1a7000-0000-4000-8000-000000000002",
   operations: "1e1a7000-0000-4000-8000-000000000003",
@@ -93,6 +101,16 @@ export const REFERENCE_CHANNEL_IDS = {
 
 export const REFERENCE_SERVICE_ID = "1e1a7000-0000-4000-9000-000000000021";
 export const REFERENCE_PROPOSAL_ID = "1e1a7000-0000-4000-9000-000000000022";
+export const REFERENCE_DISCOVERY_CAMPAIGN_IDS = {
+  independentBrands: "1e1a7000-0000-4000-9000-000000000031",
+  guesthouses: "1e1a7000-0000-4000-9000-000000000032",
+  restaurants: "1e1a7000-0000-4000-9000-000000000033",
+} as const;
+
+export function referenceRestaurantProspectId(index: number): string {
+  return `2f1a7000-0000-4000-9000-${String(1000 + index).padStart(12, "0")}`;
+}
+export const REFERENCE_RELAY_SELF_PUBKEY = "f".repeat(64);
 export const REFERENCE_MONEY_INVOICE_IDS = {
   oliveAugustPaid: "3e3a7000-0000-4000-8000-000000000021",
   cedarAugustPaid: "3e3a7000-0000-4000-8000-000000000022",
@@ -1105,7 +1123,7 @@ const WHATSAPP_GUESTHOUSE_LEADS = [
     "Central rooms near cafes, restaurants and public transport.",
     "Business directory",
     77,
-    "new",
+    "contacted",
     4800,
   ],
   [
@@ -1257,22 +1275,238 @@ const WHATSAPP_EXTRA_GUESTHOUSE_LEADS = WHATSAPP_EXTRA_GUESTHOUSE_DETAILS.map(
     ] as const,
 );
 
+const OUTREACH_BOARD_LEADS = [
+  [
+    "stillroom",
+    "Jacaranda Lane Guesthouse",
+    "4th Avenue, Melville",
+    "Guesthouse",
+    "Nomsa",
+    "A leafy guesthouse with rooms for business and weekend travellers.",
+    "Google Maps",
+    88,
+    "new",
+    5800,
+  ],
+  [
+    "north-note",
+    "Koppie View Lodge",
+    "Melville Koppies",
+    "Guesthouse",
+    "Pieter",
+    "A small lodge serving visiting families and academic guests.",
+    "Business directory",
+    79,
+    "new",
+    6500,
+  ],
+  [
+    "woven-living",
+    "Bramble & Brick Guesthouse",
+    "Westdene",
+    "Guesthouse",
+    "Zoe",
+    "A character guesthouse with a garden and breakfast service.",
+    "Public website",
+    82,
+    "new",
+    6000,
+  ],
+  [
+    "little-kin",
+    "Leafy Stoep Guesthouse",
+    "Richmond",
+    "Guesthouse",
+    "Ayesha",
+    "A homely stay with a shaded stoep and local dining nearby.",
+    "Business directory",
+    81,
+    "new",
+    5000,
+  ],
+  [
+    "the-olive-house",
+    "Melville Manor B&B",
+    "Main Road, Melville",
+    "Bed and breakfast",
+    "",
+    "A family-run stay near the village with breakfast and local recommendations.",
+    "Business directory",
+    94,
+    "new",
+    6500,
+  ],
+  [
+    "quiet-owl-bb",
+    "Hillside Hideaway",
+    "Auckland Park",
+    "Self catering",
+    "Thabo",
+    "A quiet self-catering stay close to the university precinct.",
+    "Business directory",
+    85,
+    "new",
+    5600,
+  ],
+  [
+    "marigold-house",
+    "Avenue Lofts on Seventh, Melville Guesthouse",
+    "7th Street, Melville",
+    "Guesthouse",
+    "",
+    "Modern loft rooms within walking distance of the village.",
+    "Public website",
+    84,
+    "new",
+    5200,
+  ],
+  [
+    "sunday-edit",
+    "Richmond Rose Cottage",
+    "Richmond",
+    "Bed and breakfast",
+    "Lerato",
+    "A restored cottage offering quiet weekend stays.",
+    "Business directory",
+    90,
+    "new",
+    6000,
+  ],
+  ...WHATSAPP_EXTRA_GUESTHOUSE_LEADS.filter(
+    ([slug]) =>
+      ![
+        "stillroom",
+        "north-note",
+        "woven-living",
+        "little-kin",
+        "the-olive-house",
+        "quiet-owl-bb",
+        "marigold-house",
+        "sunday-edit",
+      ].includes(slug),
+  ).slice(0, 4),
+] as const;
+
+const RESTAURANT_BOARD_LEADS = [
+  [
+    "flames",
+    "Flames",
+    "Rosebank",
+    "Restaurant · steakhouse, grill",
+    "",
+    "A neighbourhood steakhouse and grill.",
+    "Google Maps",
+    95,
+    "new",
+    0,
+  ],
+  [
+    "marble-restaurant",
+    "Marble Restaurant",
+    "Rosebank",
+    "Restaurant · steakhouse, dessert",
+    "",
+    "A dining room with seasonal dishes and desserts.",
+    "Google Maps",
+    92,
+    "new",
+    0,
+  ],
+  [
+    "butcher-shop-grill",
+    "The Butcher Shop & Grill",
+    "Sandton",
+    "Restaurant · brasserie, steakhouse",
+    "",
+    "A South African brasserie and steakhouse.",
+    "Google Maps",
+    90,
+    "new",
+    0,
+  ],
+  [
+    "my-diners-rosebank",
+    "MY Diners Rosebank (Halaal)",
+    "Rosebank",
+    "Restaurant · halaal, family diner",
+    "",
+    "A halaal family restaurant in Rosebank.",
+    "Google Maps",
+    87,
+    "new",
+    0,
+  ],
+  [
+    "bigmouth-sushi-grill",
+    "The Bigmouth Sushi & Grill",
+    "Sandton",
+    "Restaurant · sushi bar, steak",
+    "",
+    "A sushi bar and grill in Sandton.",
+    "Google Maps",
+    85,
+    "new",
+    0,
+  ],
+  [
+    "bull-run",
+    "The Bull Run",
+    "Sandton",
+    "Restaurant · steakhouse, seafood",
+    "",
+    "A steakhouse with seafood on the menu.",
+    "Google Maps",
+    83,
+    "new",
+    0,
+  ],
+  [
+    "cut-craft-bistro",
+    "Cut and Craft Bistro",
+    "Parkhurst",
+    "Restaurant · bistro, steakhouse",
+    "",
+    "A neighbourhood bistro and steakhouse.",
+    "Google Maps",
+    81,
+    "new",
+    0,
+  ],
+  ...Array.from({ length: 34 }, (_, offset) => {
+    const number = offset + 8;
+    return [
+      `joburg-restaurant-${number}`,
+      `Johannesburg Restaurant ${number}`,
+      number % 2 === 0 ? "Rosebank" : "Sandton",
+      "Restaurant · neighbourhood dining",
+      "",
+      "An independently run Johannesburg restaurant.",
+      "Google Maps",
+      79 - offset,
+      "new",
+      0,
+    ] as const;
+  }),
+] as const;
+
 const WHATSAPP_GUESTHOUSE_ORDER = new Map(
   [
-    "form-field",
-    "sunday-edit",
     "stillroom",
     "north-note",
-    "marigold-house",
-    "melville-hill-cottages",
-    "gather-house",
-    "clay-collective",
-    "linden-tree-lodge",
-    "stoop-on-seventh",
-    "common-ground",
+    "studio-local",
     "woven-living",
     "little-kin",
     "the-olive-house",
+    "quiet-owl-bb",
+    "marigold-house",
+    "melville-hill-cottages",
+    "sunday-edit",
+    "gather-house",
+    "common-ground",
+    "form-field",
+    "clay-collective",
+    "linden-tree-lodge",
+    "stoop-on-seventh",
     "cedar-co",
     "studio-local",
     "parkview-guest-rooms",
@@ -1300,6 +1534,21 @@ const WHATSAPP_GUESTHOUSE_ORDER = new Map(
     "richmond-avenue-bnb",
   ].map((slug, index) => [slug, index] as const),
 );
+
+const WHATSAPP_GUESTHOUSE_PHONES: Readonly<Record<string, string>> = {
+  stillroom: "+27 82 555 4410",
+  "north-note": "+27 71 555 2286",
+  "studio-local": "+27 83 555 9031",
+  "woven-living": "+27 72 555 5517",
+  "little-kin": "+27 84 555 1173",
+  "the-olive-house": "+27 11 555 0192",
+  "quiet-owl-bb": "+27 76 555 3842",
+  "marigold-house": "+27 77 555 6604",
+  "melville-hill-cottages": "+27 84 555 7013",
+  "sunday-edit": "+27 72 555 1188",
+  "gather-house": "+27 79 555 2241",
+  "common-ground": "+27 60 555 3422",
+};
 
 /** Deliberately long test name for lead-reference picker overflow coverage. */
 export const REFERENCE_LONG_LEAD_NAME =
@@ -1335,11 +1584,20 @@ export function referenceSalesRecordEvents(
   options: {
     longLeadNames?: boolean;
     whatsappGuesthouses?: boolean;
+    outreachBoard?: boolean;
+    outreachMentionBoard?: boolean;
+    restaurantsBoard?: boolean;
+    /** Add an eligible phone to Form & Field for outreach-list board flows. */
+    outreachReady?: boolean;
     leadCount?: number;
     missingLeadFields?: boolean;
+    /** Use the configured relay identity for relay-owned campaign and list heads. */
+    relaySelfPubkey?: string;
   } = {},
 ): RelayEvent[] {
   const channelId = REFERENCE_CHANNEL_IDS.sales;
+  const relaySelfPubkey =
+    options.relaySelfPubkey ?? REFERENCE_RELAY_SELF_PUBKEY;
   const now = Math.floor(Date.now() / 1000);
   const events: RelayEvent[] = [];
 
@@ -1371,16 +1629,28 @@ export function referenceSalesRecordEvents(
     ),
   );
 
-  const sourceLeadSeeds = options.whatsappGuesthouses
-    ? [...WHATSAPP_GUESTHOUSE_LEADS, ...WHATSAPP_EXTRA_GUESTHOUSE_LEADS].sort(
-        (left, right) =>
-          (WHATSAPP_GUESTHOUSE_ORDER.get(left[0]) ?? Number.MAX_SAFE_INTEGER) -
-          (WHATSAPP_GUESTHOUSE_ORDER.get(right[0]) ?? Number.MAX_SAFE_INTEGER),
-      )
-    : REFERENCE_LEADS;
+  const sourceLeadSeeds = options.restaurantsBoard
+    ? RESTAURANT_BOARD_LEADS
+    : options.outreachBoard
+      ? OUTREACH_BOARD_LEADS
+      : options.outreachMentionBoard
+        ? OUTREACH_BOARD_LEADS.filter(([slug]) => slug === "the-olive-house")
+        : options.whatsappGuesthouses
+          ? [
+              ...WHATSAPP_GUESTHOUSE_LEADS,
+              ...WHATSAPP_EXTRA_GUESTHOUSE_LEADS,
+            ].sort(
+              (left, right) =>
+                (WHATSAPP_GUESTHOUSE_ORDER.get(left[0]) ??
+                  Number.MAX_SAFE_INTEGER) -
+                (WHATSAPP_GUESTHOUSE_ORDER.get(right[0]) ??
+                  Number.MAX_SAFE_INTEGER),
+            )
+          : REFERENCE_LEADS;
   const requestedLeadCount = Number.isInteger(options.leadCount)
     ? Math.min(500, Math.max(sourceLeadSeeds.length, options.leadCount ?? 0))
     : sourceLeadSeeds.length;
+  const createdProspectIds: string[] = [];
   Array.from(
     { length: requestedLeadCount },
     (_, index) => sourceLeadSeeds[index % sourceLeadSeeds.length],
@@ -1417,25 +1687,32 @@ export function referenceSalesRecordEvents(
     const extraLeadIndex = WHATSAPP_EXTRA_GUESTHOUSE_DETAILS.findIndex(
       ([extraSlug]) => extraSlug === slug,
     );
-    const prospectId = isSyntheticLead
-      ? `1e1a7000-0000-4000-9000-${String(900000 + index).padStart(12, "0")}`
-      : (REFERENCE_PROSPECT_IDS[slug as keyof typeof REFERENCE_PROSPECT_IDS] ??
-        `1e1a7000-0000-4000-9000-${String(1013 + extraLeadIndex).padStart(12, "0")}`);
+    const prospectId = options.restaurantsBoard
+      ? referenceRestaurantProspectId(index)
+      : isSyntheticLead
+        ? `1e1a7000-0000-4000-9000-${String(900000 + index).padStart(12, "0")}`
+        : (REFERENCE_PROSPECT_IDS[
+            slug as keyof typeof REFERENCE_PROSPECT_IDS
+          ] ??
+          `1e1a7000-0000-4000-9000-${String(1013 + extraLeadIndex).padStart(12, "0")}`);
+    createdProspectIds.push(prospectId);
     const verifiedAt = now - (index + 1) * 2 * 24 * 60 * 60;
-    const qualification = [
-      "qualified",
-      "contacted",
-      "proposal",
-      "won",
-    ].includes(stage)
-      ? "qualified"
-      : "unreviewed";
+    const qualification = options.outreachBoard
+      ? index < 96
+        ? "unreviewed"
+        : "qualified"
+      : ["qualified", "contacted", "proposal", "won"].includes(stage)
+        ? "qualified"
+        : "unreviewed";
     const prospectStage =
       stage === "contacted"
         ? "in_conversation"
         : stage === "proposal" || stage === "won"
           ? stage
           : "qualified";
+    const jacaranda =
+      (options.whatsappGuesthouses || options.outreachBoard) &&
+      slug === "stillroom";
     const prospect = {
       prospectId,
       party: {
@@ -1444,7 +1721,11 @@ export function referenceSalesRecordEvents(
         displayName,
         externalIds: [],
       },
-      industry: options.whatsappGuesthouses ? "Hospitality" : "Home & Living",
+      industry: options.restaurantsBoard
+        ? "Restaurants"
+        : options.whatsappGuesthouses
+          ? "Hospitality"
+          : "Home & Living",
       vertical,
       fitScore: score,
       potentialMonthlyValueMinor:
@@ -1452,21 +1733,54 @@ export function referenceSalesRecordEvents(
         (options.missingLeadFields && slug === "gather-house")
           ? null
           : value * 100,
-      website:
-        options.whatsappGuesthouses && slug === "gather-house"
+      website: jacaranda
+        ? "https://jacarandalane.co.za"
+        : options.whatsappGuesthouses && slug === "gather-house"
           ? null
           : `https://${generatedSlug}.example`,
-      contactName:
-        options.missingLeadFields && slug === "gather-house"
+      contactName: jacaranda
+        ? "Nomsa"
+        : options.missingLeadFields && slug === "gather-house"
           ? null
           : contactName,
-      location,
+      location: jacaranda ? "4th Avenue, Melville, Johannesburg" : location,
       email: `hello@${generatedSlug}.example`,
-      phone: null,
+      phone: options.restaurantsBoard
+        ? index < 39
+          ? ([
+              "+27 11 555 0480",
+              "+27 10 555 9127",
+              "+27 11 555 8053",
+              "+27 76 555 2210",
+              "+27 11 555 6302",
+              "+27 11 555 1427",
+              "+27 82 555 3391",
+            ][index] ?? `+27 60 555 ${String(2000 + index).slice(-4)}`)
+          : null
+        : options.outreachBoard
+          ? index < 106
+            ? ([
+                "+27 82 555 4410",
+                "+27 71 555 2286",
+                "+27 72 555 5517",
+                "+27 84 555 1173",
+                "+27 11 555 0192",
+                "+27 83 555 7720",
+                "+27 76 555 3304",
+                "+27 82 555 6631",
+              ][index] ?? `+27 60 555 ${String(1000 + index).slice(-4)}`)
+            : null
+          : options.whatsappGuesthouses
+            ? (WHATSAPP_GUESTHOUSE_PHONES[slug] ?? null)
+            : options.outreachReady && slug === "form-field"
+              ? "+27 21 555 0142"
+              : null,
       evidence: [
         {
-          title: source,
-          url: `https://${slug}.example`,
+          title: jacaranda ? "Google Maps" : source,
+          url: jacaranda
+            ? "https://jacarandalane.co.za"
+            : `https://${slug}.example`,
           excerpt: fit,
           observedAt: verifiedAt,
         },
@@ -1497,6 +1811,217 @@ export function referenceSalesRecordEvents(
       ),
     );
   });
+
+  const campaignId = options.restaurantsBoard
+    ? REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants
+    : options.whatsappGuesthouses || options.outreachMentionBoard
+      ? REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses
+      : REFERENCE_DISCOVERY_CAMPAIGN_IDS.independentBrands;
+  const campaignName = options.restaurantsBoard
+    ? "Restaurants prospects"
+    : options.outreachMentionBoard
+      ? "Guesthouses, Melville"
+      : options.whatsappGuesthouses
+        ? "Guesthouses, Johannesburg"
+        : "Independent brands needing social support";
+  const campaignCreatedAt = now - 3_000;
+  function addCampaignHead(input: {
+    eventId: number;
+    id: string;
+    name: string;
+    industryName: string;
+    verticalId: string;
+    verticalName: string;
+    area: string;
+    target: number;
+    found: number;
+  }) {
+    events.push(
+      referenceW10Event(
+        input.eventId,
+        relaySelfPubkey,
+        campaignCreatedAt,
+        KIND_DISCOVERY_CAMPAIGN_HEAD,
+        channelId,
+        businessDTag(communityId, "discovery_campaign", input.id),
+        {
+          schemaVersion: 1,
+          campaignId: input.id,
+          name: input.name,
+          audience: "businesses",
+          industryName: input.industryName,
+          verticalId: input.verticalId,
+          verticalName: input.verticalName,
+          pickedTags: [],
+          query: null,
+          area: input.area,
+          target: input.target,
+          found: input.found,
+          skippedDuplicates: 0,
+          status: "complete",
+          endNote: null,
+          runBy: { kind: "agent", pubkey: REFERENCE_AGENTS.aya.pubkey },
+          createdBy: selfPubkey,
+          createdByAgent: false,
+          createdAt: campaignCreatedAt,
+          updatedAt: campaignCreatedAt,
+          archived: false,
+          sourceActionEventId: "3".repeat(64),
+        },
+      ),
+    );
+  }
+  addCampaignHead({
+    eventId: 1190,
+    id: campaignId,
+    name: campaignName,
+    industryName: options.restaurantsBoard
+      ? "Restaurants"
+      : options.whatsappGuesthouses || options.outreachMentionBoard
+        ? "Hospitality"
+        : "Home & Living",
+    verticalId: options.restaurantsBoard
+      ? "restaurants"
+      : options.whatsappGuesthouses || options.outreachMentionBoard
+        ? "guesthouses"
+        : "home-furnishings-retailers",
+    verticalName: options.restaurantsBoard
+      ? "Restaurants"
+      : options.whatsappGuesthouses || options.outreachMentionBoard
+        ? "Guesthouses"
+        : "Home furnishings retailers",
+    area:
+      options.whatsappGuesthouses ||
+      options.outreachMentionBoard ||
+      options.restaurantsBoard
+        ? "Johannesburg"
+        : "South Africa",
+    target: options.restaurantsBoard
+      ? 41
+      : options.outreachMentionBoard
+        ? 24
+        : options.whatsappGuesthouses
+          ? 12
+          : 50,
+    found: options.restaurantsBoard
+      ? 41
+      : options.outreachMentionBoard
+        ? 24
+        : 12,
+  });
+  if (options.outreachBoard) {
+    addCampaignHead({
+      eventId: 1191,
+      id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+      name: "Guesthouses, Johannesburg",
+      industryName: "Hospitality",
+      verticalId: "guesthouses",
+      verticalName: "Guesthouses",
+      area: "Johannesburg",
+      target: 12,
+      found: 12,
+    });
+    addCampaignHead({
+      eventId: 1192,
+      id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants,
+      name: "Restaurants prospects",
+      industryName: "Restaurants",
+      verticalId: "restaurants",
+      verticalName: "Restaurants",
+      area: "Johannesburg",
+      target: 41,
+      found: 41,
+    });
+  }
+  if (options.outreachBoard || options.outreachMentionBoard) {
+    const listSeeds = options.outreachMentionBoard
+      ? [
+          {
+            id: "3f1a7000-0000-4000-9000-000000000001",
+            name: "Melville guesthouses, Nov",
+            count: 12,
+            source: {
+              kind: "campaign",
+              campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+            },
+            updatedAt: now,
+          },
+          {
+            id: "3f1a7000-0000-4000-9000-000000000004",
+            name: "Melville guesthouses, follow up",
+            count: 3,
+            source: { kind: "manual", campaignId: null },
+            updatedAt: now - 4 * 24 * 60 * 60,
+          },
+        ]
+      : ([
+          {
+            id: "3f1a7000-0000-4000-9000-000000000001",
+            name: "Melville guesthouses, Nov",
+            count: 12,
+            source: {
+              kind: "campaign",
+              campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+            },
+            updatedAt: now,
+          },
+          {
+            id: "3f1a7000-0000-4000-9000-000000000002",
+            name: "Rosebank restaurants",
+            count: 41,
+            source: {
+              kind: "campaign",
+              campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants,
+            },
+            updatedAt: now - 5 * 24 * 60 * 60,
+          },
+          {
+            id: "3f1a7000-0000-4000-9000-000000000003",
+            name: "Follow up after Easter",
+            count: 6,
+            source: { kind: "manual", campaignId: null },
+            updatedAt: now - 21 * 24 * 60 * 60,
+          },
+        ] as const);
+    listSeeds.forEach((list, index) => {
+      events.push(
+        referenceW10Event(
+          1193 + index,
+          relaySelfPubkey,
+          list.updatedAt,
+          KIND_OUTREACH_LIST_HEAD,
+          channelId,
+          businessDTag(communityId, "outreach_list", list.id),
+          {
+            schemaVersion: 1,
+            listId: list.id,
+            name: list.name,
+            note: null,
+            status: "active",
+            source: list.source,
+            defaultTemplate: null,
+            members: Array.from(
+              { length: list.count },
+              (_, memberIndex) =>
+                createdProspectIds[memberIndex] ??
+                `1e1a7000-0000-4000-9000-${String(910000 + memberIndex).padStart(12, "0")}`,
+            ).map((leadId) => ({
+              leadId,
+              addedBy: selfPubkey,
+              addedByAgent: false,
+              addedAt: list.updatedAt,
+            })),
+            createdBy: selfPubkey,
+            createdByAgent: false,
+            createdAt: list.updatedAt,
+            updatedBy: selfPubkey,
+            updatedAt: list.updatedAt,
+            sourceActionEventId: "4".repeat(64),
+          },
+        ),
+      );
+    });
+  }
 
   const proposalEventId = (1201).toString(16).padStart(64, "0");
   const formFieldId = REFERENCE_PROSPECT_IDS["form-field"];
@@ -2013,11 +2538,13 @@ export function seedReferenceSidebarStorage(
   options: {
     sidebarShell?: boolean;
     colony3?: boolean;
+    outreachBoard?: boolean;
     businessName?: string;
   } = {},
 ): void {
   const sidebarShell = options.sidebarShell === true;
   const colony3 = options.colony3 === true;
+  const outreachBoard = options.outreachBoard === true;
   const storage = window.localStorage;
   let relayUrl: string | undefined;
   try {
@@ -2045,7 +2572,7 @@ export function seedReferenceSidebarStorage(
 
   const now = Date.now();
   const starred =
-    sidebarShell || colony3
+    sidebarShell || colony3 || outreachBoard
       ? []
       : [
           REFERENCE_CHANNEL_IDS.sales,
@@ -2061,6 +2588,18 @@ export function seedReferenceSidebarStorage(
       ),
     }),
   );
+  if (outreachBoard) {
+    const sortKey = relayUrl
+      ? `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
+      : `buzz-channel-sort.v1:${selfPubkey}`;
+    storage.setItem(
+      sortKey,
+      JSON.stringify({
+        version: 1,
+        groups: { channels: "recent", dms: "recent" },
+      }),
+    );
+  }
   storage.setItem(`buzz-forced-unread.v1:${selfPubkey}`, JSON.stringify({}));
   storage.setItem(
     `buzz.channel-read-state.v2:${selfPubkey}`,
@@ -2080,18 +2619,33 @@ export function seedReferenceSidebarStorage(
               todayAt(9, 0) * 1_000,
             ).toISOString(),
           }
-        : {
-            [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt(),
-            ...(colony3
-              ? { [REFERENCE_CHANNEL_IDS.cedarCafe]: colony3CedarReadAt() }
-              : {}),
-          }),
+        : outreachBoard
+          ? {
+              [REFERENCE_CHANNEL_IDS.general]: new Date(
+                now + 60_000,
+              ).toISOString(),
+              [REFERENCE_CHANNEL_IDS.sales]: new Date(
+                now + 60_000,
+              ).toISOString(),
+              [REFERENCE_CHANNEL_IDS.welcome]: new Date(
+                now + 60_000,
+              ).toISOString(),
+              [REFERENCE_CHANNEL_IDS.scoutDm]: new Date(
+                now + 60_000,
+              ).toISOString(),
+            }
+          : {
+              [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt(),
+              ...(colony3
+                ? { [REFERENCE_CHANNEL_IDS.cedarCafe]: colony3CedarReadAt() }
+                : {}),
+            }),
     }),
   );
   storage.setItem(
     `buzz-home-feed-unread.v1:${selfPubkey}`,
     JSON.stringify(
-      sidebarShell
+      sidebarShell || outreachBoard
         ? []
         : [...(colony3 ? COLONY3_HOME_UNREAD_IDS : REFERENCE_HOME_UNREAD_IDS)],
     ),
@@ -2099,16 +2653,18 @@ export function seedReferenceSidebarStorage(
 
   const sections = {
     version: 1,
-    sections: sidebarShell
-      ? []
-      : [{ id: CLIENT_WORK_SECTION_ID, name: "Client work", order: 0 }],
-    assignments: sidebarShell
-      ? {}
-      : {
-          [REFERENCE_CHANNEL_IDS.oliveHouse]: CLIENT_WORK_SECTION_ID,
-          [REFERENCE_CHANNEL_IDS.cedarCafe]: CLIENT_WORK_SECTION_ID,
-          [REFERENCE_CHANNEL_IDS.northline]: CLIENT_WORK_SECTION_ID,
-        },
+    sections:
+      sidebarShell || outreachBoard
+        ? []
+        : [{ id: CLIENT_WORK_SECTION_ID, name: "Client work", order: 0 }],
+    assignments:
+      sidebarShell || outreachBoard
+        ? {}
+        : {
+            [REFERENCE_CHANNEL_IDS.oliveHouse]: CLIENT_WORK_SECTION_ID,
+            [REFERENCE_CHANNEL_IDS.cedarCafe]: CLIENT_WORK_SECTION_ID,
+            [REFERENCE_CHANNEL_IDS.northline]: CLIENT_WORK_SECTION_ID,
+          },
   };
   const sectionsKey = relayUrl
     ? `buzz-channel-sections.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl(relayUrl))}`
@@ -2123,7 +2679,7 @@ export function seedReferenceSidebarStorage(
     groups: {
       starred: "recent",
       channels: "recent",
-      ...(sidebarShell ? { dms: "recent" } : {}),
+      ...(sidebarShell || outreachBoard ? { dms: "recent" } : {}),
       "section:reference-client-work": "recent",
     },
   });
@@ -2156,6 +2712,54 @@ export function colony3ChannelSeeds(): ReferenceChannelSeed[] {
       name: "Scout",
       description: "Direct message with Scout.",
       agentMembers: [scout.pubkey],
+      channelType: "dm",
+    },
+  ];
+}
+
+/** Sidebar rows used only by the approved outreach list boards. */
+export function outreachBoardChannelSeeds(): ReferenceChannelSeed[] {
+  const { scout, aya } = REFERENCE_AGENTS;
+  return [
+    {
+      id: REFERENCE_CHANNEL_IDS.general,
+      name: "general",
+      description: "The team's shared channel.",
+      agentMembers: [scout.pubkey],
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.sales,
+      name: "Sales",
+      description: "From first hello to lasting partnerships.",
+      agentMembers: [aya.pubkey, scout.pubkey],
+      visibility: "private",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.outreach,
+      name: "Outreach",
+      description: "Approved WhatsApp outreach work.",
+      agentMembers: [aya.pubkey, scout.pubkey],
+      visibility: "private",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.welcome,
+      name: "Welcome",
+      description: "A private channel for getting oriented in this community.",
+      agentMembers: [scout.pubkey],
+      visibility: "private",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.scoutDm,
+      name: "Scout",
+      description: "Direct message with Scout.",
+      agentMembers: [scout.pubkey],
+      channelType: "dm",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.ayaDm,
+      name: "Aya",
+      description: "Direct message with Aya.",
+      agentMembers: [aya.pubkey],
       channelType: "dm",
     },
   ];

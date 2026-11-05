@@ -4,8 +4,10 @@ import type {
   DiscoveryCampaignProvider,
 } from "@/features/discovery/discoveryProvider";
 import {
+  REFERENCE_DISCOVERY_CAMPAIGN_IDS,
   REFERENCE_AGENTS,
   REFERENCE_PROSPECT_IDS,
+  referenceRestaurantProspectId,
 } from "./e2eReferenceWorkspace";
 
 const REFERENCE_RUNNER = {
@@ -32,7 +34,7 @@ const REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS = [
 ] as const;
 
 const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
-  id: "agency-prospects",
+  id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.independentBrands,
   name: "Independent brands needing social support",
   audience: "businesses",
   industryId: "home-living",
@@ -52,6 +54,49 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   postedInSales: true,
 };
 
+const REFERENCE_GUESTHOUSE_CAMPAIGN: DiscoveryCampaign = {
+  ...REFERENCE_CAMPAIGN,
+  id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+  name: "Guesthouses, Johannesburg",
+  industryId: "hospitality",
+  industryName: "Hospitality",
+  verticalId: "guesthouses",
+  verticalName: "Guesthouses",
+  location: "Johannesburg",
+  target: 12,
+  count: 12,
+  prospectIds: [
+    REFERENCE_PROSPECT_IDS.stillroom,
+    REFERENCE_PROSPECT_IDS["north-note"],
+    REFERENCE_PROSPECT_IDS["studio-local"],
+    REFERENCE_PROSPECT_IDS["woven-living"],
+    REFERENCE_PROSPECT_IDS["little-kin"],
+    REFERENCE_PROSPECT_IDS["the-olive-house"],
+    REFERENCE_PROSPECT_IDS["quiet-owl-bb"],
+    REFERENCE_PROSPECT_IDS["marigold-house"],
+    REFERENCE_PROSPECT_IDS["melville-hill-cottages"],
+    REFERENCE_PROSPECT_IDS["sunday-edit"],
+    REFERENCE_PROSPECT_IDS["gather-house"],
+    REFERENCE_PROSPECT_IDS["common-ground"],
+  ],
+};
+
+const REFERENCE_RESTAURANT_CAMPAIGN: DiscoveryCampaign = {
+  ...REFERENCE_CAMPAIGN,
+  id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants,
+  name: "Restaurants prospects",
+  industryId: "restaurants",
+  industryName: "Restaurants",
+  verticalId: "restaurants",
+  verticalName: "Restaurants",
+  location: "Johannesburg",
+  target: 41,
+  count: 41,
+  prospectIds: Array.from({ length: 41 }, (_, index) =>
+    referenceRestaurantProspectId(index),
+  ),
+};
+
 const PROGRESS_INTERVAL_MS = 800;
 const RESULTS_PER_UPDATE = 3;
 
@@ -63,9 +108,11 @@ function cloneCampaign(
     : null;
 }
 
-function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
-  let current = cloneCampaign(REFERENCE_CAMPAIGN);
-  const campaigns = [cloneCampaign(REFERENCE_CAMPAIGN) as DiscoveryCampaign];
+function createReferenceDiscoveryProvider(
+  initialCampaign: DiscoveryCampaign,
+): DiscoveryCampaignProvider {
+  let current = cloneCampaign(initialCampaign);
+  const campaigns = [cloneCampaign(initialCampaign) as DiscoveryCampaign];
   let sequence = 0;
   let progressTimer: number | null = null;
   const listeners = new Set<(campaign: DiscoveryCampaign | null) => void>();
@@ -216,7 +263,15 @@ function createReferenceDiscoveryProvider(): DiscoveryCampaignProvider {
   };
 }
 
-export function installReferenceDiscoveryProvider(): void {
-  window.__BUZZ_E2E_W10_DISCOVERY_PROVIDER__ =
-    createReferenceDiscoveryProvider();
+export function installReferenceDiscoveryProvider(
+  whatsappGuesthouses = false,
+  restaurantsBoard = false,
+): void {
+  window.__BUZZ_E2E_W10_DISCOVERY_PROVIDER__ = createReferenceDiscoveryProvider(
+    restaurantsBoard
+      ? REFERENCE_RESTAURANT_CAMPAIGN
+      : whatsappGuesthouses
+        ? REFERENCE_GUESTHOUSE_CAMPAIGN
+        : REFERENCE_CAMPAIGN,
+  );
 }

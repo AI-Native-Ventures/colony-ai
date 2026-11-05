@@ -109,6 +109,8 @@ function TeamCountBadge() {
 function isSalesPath(pathname: string): boolean {
   return (
     pathname === "/leads" ||
+    pathname === "/lists" ||
+    pathname.startsWith("/lists/") ||
     pathname === "/pipeline" ||
     pathname.startsWith("/sales/")
   );

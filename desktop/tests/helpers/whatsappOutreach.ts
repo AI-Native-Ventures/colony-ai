@@ -1177,19 +1177,22 @@ export async function installWhatsAppMockBridge(
             6,
           ),
         ).toISOString();
-        const sourceRow = state.batch.rows[0];
+        const sourceRows =
+          batchVariant === "decided-card-pending"
+            ? state.batch.rows.slice(0, 2)
+            : state.batch.rows.slice(0, 1);
         state.batch.batchId = decidedBatchId;
-        state.batch.rows = [
-          {
-            ...sourceRow,
-            idx: 0,
-            state: batchVariant === "decided-card-sent" ? "sent" : "ready",
-            sendsAt,
-          },
-        ];
+        state.batch.rows = sourceRows.map((sourceRow, idx) => ({
+          ...sourceRow,
+          idx,
+          state: batchVariant === "decided-card-sent" ? "sent" : "ready",
+          sendsAt,
+        }));
+        const readyCount =
+          batchVariant === "decided-card-sent" ? 0 : state.batch.rows.length;
         state.batch.counts = {
-          total: 1,
-          ready: batchVariant === "decided-card-sent" ? 0 : 1,
+          total: state.batch.rows.length,
+          ready: readyCount,
           sent: batchVariant === "decided-card-sent" ? 1 : 0,
           failed: 0,
           dropped: 0,

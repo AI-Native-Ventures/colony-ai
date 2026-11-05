@@ -34,6 +34,8 @@ export const routes = rootRoute("root.tsx", [
   route("/discovery", "discovery.tsx"),
   route("/campaign", "campaign.tsx"),
   route("/leads", "leads.tsx"),
+  route("/lists", "lists.tsx"),
+  route("/lists/$listId", "lists.$listId.tsx"),
   route("/pipeline", "pipeline.tsx"),
   route("/money", "money.tsx"),
   route("/money/revenue", "money.revenue.tsx"),

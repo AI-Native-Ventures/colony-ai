@@ -81,13 +81,13 @@ export function useBusinessRecords(
   );
   const recordsQuery = useQuery<BusinessRecords>({
     queryKey: recordsKey,
-    enabled: Boolean(channelId && pubkey),
+    enabled: Boolean(channelId && pubkey && tenant.tenantId),
     staleTime: BUSINESS_CHANNEL_STALE_MS,
     queryFn: () => {
-      if (!channelId || !pubkey) {
+      if (!channelId || !pubkey || !tenant.tenantId) {
         throw new Error("Business records are not available yet.");
       }
-      return loadBusinessRecords(channelId, pubkey);
+      return loadBusinessRecords(channelId, tenant.tenantId, pubkey);
     },
   });
   React.useEffect(() => {

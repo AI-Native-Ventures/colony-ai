@@ -1342,7 +1342,21 @@ test("all screens, widths and important states", async ({ page, browser }) => {
         screen: "Lead add dialog",
         route: "/#/leads",
         action: async () => {
-          await page.getByRole("button", { name: "Add lead" }).first().click();
+          if (width < 768) {
+            const leadActions = page.locator(
+              ".c3l-mobile-leads-menu > summary",
+            );
+            await leadActions.click();
+            await page
+              .locator(".c3l-mobile-leads-menu")
+              .getByRole("button", { name: "Add lead" })
+              .click();
+          } else {
+            await page
+              .getByRole("button", { name: "Add lead" })
+              .first()
+              .click();
+          }
           await page
             .getByTestId("w10-add-lead-dialog")
             .waitFor({ state: "visible" });

@@ -62,6 +62,25 @@ test("does not attribute people or personas to a device", () => {
   );
 });
 
+test("preserves profile job titles for shared mention pickers", () => {
+  const mapped = mapMentionCandidateToSuggestion({
+    agentProvenanceReady: true,
+    candidate: candidate(),
+    currentPubkey: OWNER,
+    label: "Carl",
+    profiles: {
+      ["b".repeat(64)]: {
+        displayName: "Carl",
+        avatarUrl: null,
+        nip05Handle: null,
+        ownerPubkey: null,
+        jobTitle: "Sales",
+      },
+    },
+  });
+  assert.equal(mapped.jobTitle, "Sales");
+});
+
 test("the default agent for the always-address shortcut is the Scout this Mac runs", () => {
   const thisMac = "5".repeat(64);
   const picked = pickDefaultAgentSuggestion({

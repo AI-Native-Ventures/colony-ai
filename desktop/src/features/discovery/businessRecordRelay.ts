@@ -1,15 +1,20 @@
 import { getChannelMembers } from "@/shared/api/tauriChannels";
 import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent } from "@/shared/api/tauri";
+import { getRelaySelf } from "@/features/moderation/lib/relaySelf";
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { Channel, RelayEvent } from "@/shared/api/types";
 import {
   BUSINESS_SCOPE_KINDS,
+  businessDTag,
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_CONVERSION_RECEIPT,
   KIND_PROPOSAL_HEAD,
   KIND_PROPOSAL_VERSION,
   KIND_PROSPECT_HEAD,
   KIND_SERVICE_HEAD,
+  KIND_OUTREACH_LIST_HEAD,
+  KIND_DISCOVERY_CAMPAIGN_HEAD,
   latestByDTag,
   tryParseContent,
   type ProposalAcceptance,
@@ -18,7 +23,15 @@ import {
   type ProposalVersion,
   type ProspectHead,
   type ServiceHead,
+  type OutreachListHead,
+  type DiscoveryCampaignHead,
 } from "./businessRecordContract";
+import {
+  parseDiscoveryCampaignHead,
+  parseOutreachListHead,
+  type DiscoveryCampaignHeadView,
+  type OutreachListHeadView,
+} from "./outreachRecords";
 import { pickSalesStream } from "./salesChannel";
 
 export type BusinessRole = "owner" | "admin" | "member" | "guest" | "bot";
@@ -38,6 +51,8 @@ export type BusinessRecords = {
     receipt: ProposalConversionReceipt | null;
     dTag: string;
   }>;
+  outreachLists: OutreachListHeadView[];
+  discoveryCampaigns: DiscoveryCampaignHeadView[];
 };
 
 const QUERY_LIMIT = 500;
@@ -110,6 +125,7 @@ async function fetchKind(
 
 export async function loadBusinessRecords(
   channelId: string,
+  communityId: TenantCommunityId,
   currentPubkey: string,
 ): Promise<BusinessRecords> {
   const [
@@ -119,6 +135,7 @@ export async function loadBusinessRecords(
     proposalVersionEvents,
     acceptanceEvents,
     receiptEvents,
+    relaySelf,
     members,
   ] = await Promise.all([
     fetchKind(channelId, KIND_SERVICE_HEAD),
@@ -127,7 +144,25 @@ export async function loadBusinessRecords(
     fetchKind(channelId, KIND_PROPOSAL_VERSION),
     fetchKind(channelId, KIND_PROPOSAL_ACCEPTANCE),
     fetchKind(channelId, KIND_PROPOSAL_CONVERSION_RECEIPT),
+    getRelaySelf(),
     getChannelMembers(channelId),
+  ]);
+  if (!relaySelf) {
+    throw new Error("This relay does not advertise a signing identity.");
+  }
+  const [outreachListEvents, discoveryCampaignEvents] = await Promise.all([
+    relayClient.fetchEvents({
+      kinds: [KIND_OUTREACH_LIST_HEAD],
+      authors: [relaySelf],
+      limit: QUERY_LIMIT,
+      "#h": [channelId],
+    }),
+    relayClient.fetchEvents({
+      kinds: [KIND_DISCOVERY_CAMPAIGN_HEAD],
+      authors: [relaySelf],
+      limit: QUERY_LIMIT,
+      "#h": [channelId],
+    }),
   ]);
   const role = members.find(
     (member) =>
@@ -200,13 +235,82 @@ export async function loadBusinessRecords(
       dTag,
     };
   });
+  const outreachLists = latestByDTag<OutreachListHead>(
+    outreachListEvents,
+    (event) =>
+      parseOutreachListHead(event, communityId, channelId)?.record ?? null,
+  ).map(({ event, record, dTag }) => ({
+    eventId: event.id,
+    dTag,
+    record,
+  }));
+  const discoveryCampaigns = latestByDTag<DiscoveryCampaignHead>(
+    discoveryCampaignEvents,
+    (event) =>
+      parseDiscoveryCampaignHead(event, communityId, channelId)?.record ?? null,
+  ).map(({ event, record, dTag }) => ({
+    eventId: event.id,
+    dTag,
+    record,
+  }));
   return {
     channelId,
     role: role ?? null,
     services,
     prospects,
     proposals,
+    outreachLists,
+    discoveryCampaigns,
   };
+}
+
+/** Fresh relay view used to make campaign backfill retries idempotent. */
+export async function loadDiscoveryCampaignHeads(
+  channelId: string,
+  communityId: TenantCommunityId,
+): Promise<DiscoveryCampaignHeadView[]> {
+  const relaySelf = await getRelaySelf();
+  if (!relaySelf) {
+    throw new Error("This relay does not advertise a signing identity.");
+  }
+  const events = await relayClient.fetchEvents({
+    kinds: [KIND_DISCOVERY_CAMPAIGN_HEAD],
+    authors: [relaySelf],
+    limit: QUERY_LIMIT,
+    "#h": [channelId],
+  });
+  return latestByDTag<DiscoveryCampaignHead>(
+    events,
+    (event) =>
+      parseDiscoveryCampaignHead(event, communityId, channelId)?.record ?? null,
+  ).map(({ event, record, dTag }) => ({
+    eventId: event.id,
+    dTag,
+    record,
+  }));
+}
+
+/** Reads one current prospect head for a retryable bulk stage update. */
+export async function loadProspectHead(
+  channelId: string,
+  communityId: TenantCommunityId,
+  prospectId: string,
+): Promise<{ eventId: string; record: ProspectHead } | null> {
+  const dTag = businessDTag(communityId, "prospect", prospectId);
+  const events = await relayClient.fetchEvents({
+    kinds: [KIND_PROSPECT_HEAD],
+    limit: QUERY_LIMIT,
+    "#h": [channelId],
+    "#d": [dTag],
+  });
+  const current = latestByDTag<ProspectHead>(events, (event) => {
+    const record = tryParseContent<ProspectHead>(event);
+    return record?.prospectId === prospectId &&
+      record.prospect?.prospectId === prospectId
+      ? record
+      : null;
+  }).find((candidate) => candidate.dTag === dTag);
+  return current ? { eventId: current.event.id, record: current.record } : null;
 }
 
 export async function publishBusinessCommand(input: {

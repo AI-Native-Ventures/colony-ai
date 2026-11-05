@@ -296,6 +296,7 @@ mod tests {
                 location: None,
                 email: None,
                 phone: None,
+                whatsapp_phone: None,
                 evidence: Vec::new(),
                 last_verified_at: None,
                 qualification: ProspectQualification::Qualified,

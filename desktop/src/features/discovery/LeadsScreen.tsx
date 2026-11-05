@@ -1,47 +1,114 @@
 import * as React from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-
+import { ArrowLeft, ChevronDown, MoreHorizontal } from "lucide-react";
+import { useChannelsQuery } from "@/features/channels/hooks";
+import { useProfileQuery } from "@/features/profile/hooks";
 import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
+
 import { useCustomerRecords } from "@/features/cofounder/customerHooks";
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
-import { formatZar } from "./BusinessCommon";
 import { BusinessLogoMark } from "./BusinessLogoMark";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import { AddLeadDialog } from "./LeadDialogs";
-import { LeadPill, PlusGlyph, RunnerMark, SearchGlyph } from "./LeadParts";
+import { LeadPill, PlusGlyph, SearchGlyph } from "./LeadParts";
+import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
+import { OutreachBatchDialog } from "./OutreachBatchDialog";
+import { OutreachFilterControls } from "./OutreachFilterControls";
+import { OutreachSelectionBar } from "./OutreachSelectionBar";
+import {
+  filterOutreachRows,
+  selectAllMatching,
+  toggleOutreachSelection,
+  type OutreachFilters,
+  type OutreachWhatsAppStatus,
+} from "./outreachSelection";
 import {
   canEdit,
+  findScoutDirectMessage,
   labelForStage,
-  leadInitial,
-  STAGES,
   toneForStage,
   type LeadContext,
 } from "./leadShared";
+import { errorMessage } from "./BusinessCommon";
+import { PendingBulkProspectUpdateNotice } from "./PendingBulkProspectUpdateNotice";
+import {
+  getPendingBulkProspectUpdate,
+  markProspectsLost,
+  resumePendingProspectUpdate,
+  updateProspectsStage,
+} from "./bulkProspectUpdateRuntime";
+import type { PendingBulkProspectUpdate } from "./bulkProspectUpdate";
 import {
   findWhatsAppContactForLead,
   getWhatsAppLeadStatus,
   useWhatsAppLeadData,
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
+import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
+import type { ProspectStage } from "./businessRecordContract";
+import { buildLeadLink } from "@/shared/lib/entityLink";
+import type { OutreachBatchLead } from "./outreachBatch";
 
 import "./colony3-leads.css";
+
+function whatsappStatusLabel(status: OutreachWhatsAppStatus): string {
+  return status === "no-number"
+    ? "No WhatsApp number"
+    : whatsappLeadStatusLabel(status);
+}
 
 export function LeadsScreen(context: LeadContext) {
   const navigate = useNavigate();
   const routeOrigin = useRouteOrigin();
   const restored = routeOrigin.pageSnapshot?.viewState as
-    | { query?: string; stage?: string; whatsappFilter?: string }
+    | {
+        query?: string;
+        filters?: OutreachFilters;
+        selected?: string[];
+        page?: number;
+      }
     | undefined;
+  const channelsQuery = useChannelsQuery();
+  const profileQuery = useProfileQuery();
   const { campaign } = useDiscoveryCampaign();
   const customerAccess = useCustomerRecordCapabilities();
   const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
   const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const [query, setQuery] = React.useState(restored?.query ?? "");
-  const [stage, setStage] = React.useState(restored?.stage ?? "all");
-  const [whatsappFilter, setWhatsappFilter] = React.useState(
-    restored?.whatsappFilter ?? "all",
+  const [filters, setFilters] = React.useState<OutreachFilters>(
+    () =>
+      restored?.filters ?? {
+        hasPhone: true,
+        whatsappStatuses: new Set(["not-contacted"]),
+        stages: new Set(["new"]),
+      },
   );
+  const [selected, setSelected] = React.useState<Set<string>>(
+    () => new Set(restored?.selected ?? []),
+  );
+  const selectionAnchor = React.useRef<string | null>(
+    restored?.selected?.[restored.selected.length - 1] ?? null,
+  );
+  const [page, setPage] = React.useState(restored?.page ?? 0);
+  const [listDialogOpen, setListDialogOpen] = React.useState(false);
+  const [batchDialogOpen, setBatchDialogOpen] = React.useState(false);
+  const [selectionError, setSelectionError] = React.useState("");
+  const [selectionBusy, setSelectionBusy] = React.useState(false);
+  const [pendingBulkUpdate, setPendingBulkUpdate] =
+    React.useState<PendingBulkProspectUpdate | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const canWrite = canEdit(context.role);
+  React.useEffect(() => {
+    try {
+      setPendingBulkUpdate(
+        getPendingBulkProspectUpdate({
+          channelId: context.channelId,
+          communityId: context.communityId,
+        }),
+      );
+    } catch (pendingError) {
+      setSelectionError(errorMessage(pendingError));
+    }
+  }, [context.channelId, context.communityId]);
   const customerRecordByPartyId = React.useMemo(
     () =>
       new Map(
@@ -52,43 +119,92 @@ export function LeadsScreen(context: LeadContext) {
       ),
     [customerRecordsQuery.data],
   );
-  const normalizedQuery = query.trim().toLocaleLowerCase();
   const activeProspects = context.records.prospects.filter(
     ({ record }) => record.status === "active",
   );
-  const prospects = activeProspects.filter(({ record }) => {
-    const prospect = record.prospect;
-    const matchesQuery =
-      !normalizedQuery ||
-      [
-        prospect.party.displayName,
-        prospect.contactName ?? "",
-        prospect.industry,
-        prospect.vertical,
-        prospect.location ?? "",
-      ]
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(normalizedQuery);
-    const customerRecord = customerRecordByPartyId.get(prospect.party.partyId);
-    const matchesStage =
-      stage === "all" ||
-      (customerRecord?.stage === "client"
-        ? stage === "client"
-        : stage === "new"
-          ? prospect.qualification === "unreviewed"
-          : prospect.stage === stage);
-    const contact = findWhatsAppContactForLead(
-      record.prospectId,
-      contactsQuery.data ?? [],
-    );
-    const matchesWhatsApp =
-      whatsappFilter === "all" ||
-      getWhatsAppLeadStatus(contact, inBatchLeadIds.has(record.prospectId)) ===
-        whatsappFilter;
-    return matchesQuery && matchesStage && matchesWhatsApp;
-  });
-  const runner = campaign?.runBy ?? null;
+  const outreachRows = React.useMemo(() => {
+    const contacts = contactsQuery.data ?? [];
+    return activeProspects.map((row) => {
+      const prospect = row.record.prospect;
+      const customerRecord = customerRecordByPartyId.get(
+        prospect.party.partyId,
+      );
+      const contact = findWhatsAppContactForLead(
+        row.record.prospectId,
+        contacts,
+      );
+      const whatsappStatus: OutreachWhatsAppStatus =
+        contact?.stage === "not_on_whatsapp"
+          ? "no-number"
+          : getWhatsAppLeadStatus(
+              contact,
+              inBatchLeadIds.has(row.record.prospectId),
+            );
+      const stage =
+        customerRecord?.stage === "client"
+          ? "client"
+          : prospect.qualification === "unreviewed"
+            ? "new"
+            : prospect.stage;
+      return {
+        ...row,
+        id: row.record.prospectId,
+        searchableText: [
+          prospect.party.displayName,
+          prospect.contactName ?? "",
+          prospect.industry,
+          prospect.vertical,
+          prospect.location ?? "",
+          prospect.phone ?? "",
+        ].join(" "),
+        hasPhone: Boolean(
+          prospect.whatsappPhone?.trim() ||
+            prospect.phone?.trim() ||
+            contact?.e164,
+        ),
+        whatsappStatus,
+        stage,
+        contact,
+        customerRecord,
+      };
+    });
+  }, [
+    activeProspects,
+    contactsQuery.data,
+    customerRecordByPartyId,
+    inBatchLeadIds,
+  ]);
+  const filteredRows = filterOutreachRows(outreachRows, filters, query);
+  const pageSize = 8;
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const pageRows = filteredRows.slice(page * pageSize, (page + 1) * pageSize);
+  const pageIds = pageRows.map(({ id }) => id);
+  const selectedPageCount = pageIds.filter((id) => selected.has(id)).length;
+  const selectedRows = outreachRows.filter(({ id }) => selected.has(id));
+  const selectionMatchesOutreachBoard =
+    filters.hasPhone === true &&
+    filters.whatsappStatuses.has("not-contacted") &&
+    filters.stages.has("new");
+  const outreachListDefaultName = selectionMatchesOutreachBoard
+    ? "Guesthouses with a phone, not contacted"
+    : `Selected leads, ${new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(new Date())}`;
+  const outreachListDescription = selectionMatchesOutreachBoard
+    ? "Every lead with a phone number, not contacted on WhatsApp, stage New. You and Scout can mention the list in any chat."
+    : `${selectedRows.length} leads selected. You and Scout can mention this shared list in any chat.`;
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const allMatchingSelected =
+    filteredRows.length > 0 && filteredRows.every(({ id }) => selected.has(id));
+  const runnerName = campaign?.runBy
+    ? profileQuery.data?.displayName?.trim() || campaign.runBy.name
+    : null;
+  const batchLeads: OutreachBatchLead[] = selectedRows.map(({ record }) => ({
+    leadId: record.prospectId,
+    name: record.prospect.party.displayName,
+    contactName: record.prospect.contactName,
+    phone: record.prospect.phone,
+    whatsappPhone: record.prospect.whatsappPhone,
+  }));
 
   React.useEffect(() => {
     const scrollTarget = document.querySelector<HTMLElement>(".c3l-page");
@@ -96,7 +212,7 @@ export function LeadsScreen(context: LeadContext) {
       routeOrigin.savePageSnapshot({
         backLabel: "All leads",
         breadcrumbs: ["Business", "Sales", "Leads"],
-        viewState: { query, stage, whatsappFilter },
+        viewState: { query, filters, selected: [...selected], page },
         scrollY: scrollTarget?.scrollTop ?? window.scrollY,
         scrollTarget: scrollTarget ? ".c3l-page" : undefined,
       });
@@ -104,7 +220,7 @@ export function LeadsScreen(context: LeadContext) {
     const scrollHost: Window | HTMLElement = scrollTarget ?? window;
     scrollHost.addEventListener("scroll", save, { passive: true });
     return () => scrollHost.removeEventListener("scroll", save);
-  }, [query, routeOrigin.savePageSnapshot, stage, whatsappFilter]);
+  }, [filters, page, query, routeOrigin.savePageSnapshot, selected]);
 
   React.useEffect(() => {
     const scrollY = routeOrigin.pageSnapshot?.scrollY;
@@ -125,20 +241,198 @@ export function LeadsScreen(context: LeadContext) {
     routeOrigin.pageSnapshot?.scrollY,
   ]);
 
+  function setFilterState(next: OutreachFilters) {
+    setFilters(next);
+    setSelected(new Set());
+    selectionAnchor.current = null;
+    setPage(0);
+  }
+
+  function toggleOne(id: string, checked: boolean, shiftKey: boolean) {
+    const next = toggleOutreachSelection({
+      selected,
+      visibleIds: pageIds,
+      id,
+      checked,
+      shiftKey,
+      anchorId: selectionAnchor.current,
+    });
+    selectionAnchor.current = next.anchorId;
+    setSelected(next.selected);
+  }
+
+  function selectCurrentPage(checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const id of pageIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+    selectionAnchor.current = pageIds[0] ?? null;
+  }
+
+  async function updateSelectedStage(stage: ProspectStage) {
+    if (!canWrite || selectionBusy || selectedRows.length === 0) return;
+    setSelectionBusy(true);
+    setSelectionError("");
+    try {
+      await updateProspectsStage({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        prospectIds: selectedRows.map(({ id }) => id),
+        stage,
+      });
+      await context.refresh();
+      setPendingBulkUpdate(null);
+      setSelected(new Set());
+    } catch (updateError) {
+      setSelectionError(errorMessage(updateError));
+      refreshPendingBulkUpdate();
+    } finally {
+      setSelectionBusy(false);
+    }
+  }
+
+  async function markSelectedLost() {
+    if (!canWrite || selectionBusy || selectedRows.length === 0) return;
+    setSelectionBusy(true);
+    setSelectionError("");
+    try {
+      await markProspectsLost({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        prospectIds: selectedRows.map(({ id }) => id),
+      });
+      await context.refresh();
+      setPendingBulkUpdate(null);
+      setSelected(new Set());
+    } catch (updateError) {
+      setSelectionError(errorMessage(updateError));
+      refreshPendingBulkUpdate();
+    } finally {
+      setSelectionBusy(false);
+    }
+  }
+
+  function refreshPendingBulkUpdate() {
+    try {
+      setPendingBulkUpdate(getPendingBulkProspectUpdate(context));
+    } catch (pendingError) {
+      setSelectionError(errorMessage(pendingError));
+    }
+  }
+
+  async function retryPendingBulkUpdate() {
+    if (selectionBusy) return;
+    setSelectionBusy(true);
+    setSelectionError("");
+    try {
+      await resumePendingProspectUpdate(context);
+      await context.refresh();
+      setPendingBulkUpdate(null);
+      setSelected(new Set());
+    } catch (retryError) {
+      setSelectionError(errorMessage(retryError));
+      refreshPendingBulkUpdate();
+    } finally {
+      setSelectionBusy(false);
+    }
+  }
+
+  async function askScout() {
+    const prompt = [
+      "Please research these leads and update their records:",
+      ...selectedRows.map(({ record }) => buildLeadLink(record.prospectId)),
+    ].join("\n");
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      copied = true;
+    } catch {
+      copied = false;
+    }
+    try {
+      const channels =
+        channelsQuery.data ?? (await channelsQuery.refetch()).data ?? [];
+      const scoutDm = findScoutDirectMessage(channels);
+      if (!scoutDm) {
+        setSelectionError(
+          copied
+            ? "Lead references copied. Scout's chat is unavailable."
+            : "Scout's chat is unavailable and the lead references could not be copied.",
+        );
+        return;
+      }
+      setSelectionError(
+        copied
+          ? "Lead references copied."
+          : "Could not copy the lead references.",
+      );
+      void navigate({
+        to: "/channels/$channelId",
+        params: { channelId: scoutDm.id },
+      });
+    } catch {
+      setSelectionError(
+        copied
+          ? "Lead references copied. Scout's chat could not be opened."
+          : "Could not copy the lead references or open Scout's chat.",
+      );
+    }
+  }
+
   return (
     <main className="c3l-page" data-testid="w10-leads-page">
       <div className="c3l-wrap c3l-wrap-leads">
-        <div className="c3l-head">
+        <header
+          className="c3l-mobile-leads-header"
+          data-testid="leads-mobile-header"
+        >
+          <button
+            aria-label="Back to discovery"
+            onClick={() => void navigate({ to: "/discovery" })}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={20} />
+          </button>
+          <div className="c3l-mobile-leads-heading">
+            <h1>Leads</h1>
+            <span>
+              {activeProspects.length}{" "}
+              {activeProspects.length === 1 ? "lead" : "leads"} · Sales
+            </span>
+          </div>
+          <details className="c3l-mobile-leads-menu">
+            <summary aria-label="Lead actions">
+              <MoreHorizontal aria-hidden="true" size={20} />
+            </summary>
+            <div className="c3l-list-row-menu-content">
+              {canWrite ? (
+                <button onClick={() => setDialogOpen(true)} type="button">
+                  Add lead
+                </button>
+              ) : null}
+              <button
+                onClick={() => void navigate({ to: "/discovery" })}
+                type="button"
+              >
+                Find prospects
+              </button>
+            </div>
+          </details>
+        </header>
+        <div className="c3l-head c3l-leads-desktop-head">
           <div className="c3l-head-text">
             <h1 className="c3l-title">Leads</h1>
             <span className="c3l-subtitle c3l-subtitle-inline">
               {activeProspects.length}{" "}
               {activeProspects.length === 1 ? "lead" : "leads"}
-              {runner ? (
+              {runnerName ? (
                 <>
                   {" · sourced by "}
-                  <RunnerMark runner={runner} size={22} />
-                  {runner.name}’s Discovery campaign
+                  {runnerName}’s Discovery campaigns
                 </>
               ) : null}
             </span>
@@ -164,143 +458,256 @@ export function LeadsScreen(context: LeadContext) {
           </div>
         </div>
 
+        <nav aria-label="Business views" className="c3l-tabs">
+          <a aria-current="page" href="#/leads">
+            Leads
+          </a>
+          <a href="#/lists">Lists</a>
+          <a href="#/pipeline">Pipeline</a>
+          <span aria-disabled="true" className="c3l-tab-placeholder">
+            Proposals
+          </span>
+          <span aria-disabled="true" className="c3l-tab-placeholder">
+            Services
+          </span>
+        </nav>
+
         <div className="c3l-filterbar">
           <label className="c3l-search">
             <SearchGlyph />
             <input
               aria-label="Search leads"
-              onChange={(event) => setQuery(event.currentTarget.value)}
+              onChange={(event) => {
+                setQuery(event.currentTarget.value);
+                setSelected(new Set());
+                selectionAnchor.current = null;
+                setPage(0);
+              }}
               placeholder="Search leads…"
               type="search"
               value={query}
             />
           </label>
-          <select
-            aria-label="Stage"
-            className="c3l-select c3l-select-filter"
-            id="w10-lead-stage-filter"
-            onChange={(event) => setStage(event.currentTarget.value)}
-            value={stage}
+          <button
+            aria-label="Show all stages"
+            className="c3l-stage-scope"
+            onClick={() => setFilterState({ ...filters, stages: new Set() })}
+            type="button"
           >
-            <option value="all">All stages</option>
-            <option value="new">New</option>
-            <option value="client">Client</option>
-            {STAGES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="WhatsApp status"
-            className="c3l-select c3l-select-filter"
-            onChange={(event) => setWhatsappFilter(event.currentTarget.value)}
-            value={whatsappFilter}
-          >
-            <option value="all">Any WhatsApp status</option>
-            <option value="not-contacted">Not contacted</option>
-            <option value="in-batch">In batch</option>
-            <option value="sent">Sent</option>
-            <option value="replied">Replied</option>
-            <option value="opted-out">Opted out</option>
-          </select>
+            All stages <ChevronDown aria-hidden="true" size={15} />
+          </button>
         </div>
 
-        {prospects.length ? (
-          <div className="c3l-card c3l-table-wrap">
-            <table aria-label="Leads" className="c3l-table">
-              <thead>
-                <tr className="c3l-row c3l-row-head">
-                  <th>Business</th>
-                  <th>Contact</th>
-                  <th>Stage</th>
-                  <th>Service / month</th>
-                  <th>Next step</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prospects.map(({ record, eventId }) => {
-                  const prospect = record.prospect;
-                  const customerRecord = customerRecordByPartyId.get(
-                    prospect.party.partyId,
-                  );
-                  return (
-                    <tr className="c3l-row" key={eventId}>
-                      <td className="c3l-cell-business">
-                        <div className="c3l-business-identity">
-                          <BusinessLogoMark
-                            className="c3l-mark"
-                            logoUrl={prospect.logoUrl}
-                            name={prospect.party.displayName}
-                            placePhotoUrl={prospect.placePhotoUrl}
-                            website={prospect.website}
-                          />
-                          <span className="c3l-business-text">
-                            <strong>{prospect.party.displayName}</strong>
-                            <small>
-                              {prospect.vertical} ·{" "}
-                              {prospect.location ?? "Location not set"}
-                            </small>
-                          </span>
-                        </div>
-                      </td>
-                      <td className="c3l-cell-contact">
-                        {prospect.contactName ? (
-                          <>
-                            <span aria-hidden="true" className="c3l-dot-mark">
-                              {leadInitial(prospect.contactName)}
-                            </span>
-                            {prospect.contactName}
-                          </>
-                        ) : (
-                          <span className="c3l-muted c3l-empty-value">
-                            Not set
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {customerRecord?.stage === "client" ? (
-                          <LeadPill tone="green">Client</LeadPill>
-                        ) : (
-                          <LeadPill
-                            tone={toneForStage(
-                              prospect.stage,
-                              prospect.qualification,
-                            )}
-                          >
-                            {labelForStage(
-                              prospect.stage,
-                              prospect.qualification,
-                              "New",
-                            )}
-                          </LeadPill>
-                        )}
-                      </td>
-                      <td className="c3l-cell-amount">
-                        {prospect.potentialMonthlyValueMinor === null ||
-                        prospect.potentialMonthlyValueMinor === undefined ? (
-                          <span className="c3l-muted c3l-empty-value">
-                            Not set
-                          </span>
-                        ) : (
-                          formatZar(prospect.potentialMonthlyValueMinor)
-                        )}
-                      </td>
-                      <td className="c3l-cell-next-step">
-                        <Link
-                          className="c3l-next-step"
-                          params={{ prospectId: record.prospectId }}
-                          to="/sales/lead/$prospectId"
-                        >
-                          Review lead
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <OutreachFilterControls
+          allMatchingSelected={allMatchingSelected}
+          filters={filters}
+          onSelectAllMatching={() =>
+            setSelected((current) =>
+              selectAllMatching(
+                current,
+                filteredRows.map(({ id }) => id),
+              ),
+            )
+          }
+          matching={filteredRows.length}
+          onChange={setFilterState}
+          pageSelectedCount={pageIds.filter((id) => selected.has(id)).length}
+          query={query}
+          rows={outreachRows}
+          showSelectAll
+        />
+
+        {selectedPageCount > 0 ? (
+          <div className="c3l-page-selection-note">
+            <span>
+              {selectedPageCount === pageIds.length
+                ? `All ${pageIds.length} on this page are selected.`
+                : `${selectedPageCount} on this page are selected.`}
+            </span>
+            {!allMatchingSelected && filteredRows.length > pageIds.length ? (
+              <button
+                onClick={() =>
+                  setSelected((current) =>
+                    selectAllMatching(
+                      current,
+                      filteredRows.map(({ id }) => id),
+                    ),
+                  )
+                }
+                type="button"
+              >
+                Select all {filteredRows.length} matching leads
+              </button>
+            ) : allMatchingSelected ? (
+              <strong>All {filteredRows.length} matching leads selected</strong>
+            ) : null}
           </div>
+        ) : null}
+
+        {pageRows.length ? (
+          <React.Fragment>
+            <div className="c3l-card c3l-table-wrap">
+              <table aria-label="Leads" className="c3l-table">
+                <thead>
+                  <tr className="c3l-row c3l-row-head">
+                    <th>
+                      <input
+                        aria-label={`Select all ${pageRows.length} leads on this page`}
+                        checked={allPageSelected}
+                        onChange={(event) =>
+                          selectCurrentPage(event.currentTarget.checked)
+                        }
+                        type="checkbox"
+                      />
+                    </th>
+                    <th>Business</th>
+                    <th>Phone</th>
+                    <th>Stage</th>
+                    <th>WhatsApp</th>
+                    <th>Next step</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map(
+                    ({
+                      record,
+                      eventId,
+                      contact,
+                      whatsappStatus,
+                      customerRecord,
+                      id,
+                    }) => {
+                      const prospect = record.prospect;
+                      return (
+                        <tr
+                          aria-selected={selected.has(id)}
+                          className={`c3l-row${selected.has(id) ? " is-selected" : ""}`}
+                          key={eventId}
+                        >
+                          <td>
+                            <input
+                              aria-label={`Select ${prospect.party.displayName}`}
+                              checked={selected.has(id)}
+                              onClick={(event) => {
+                                (
+                                  event.currentTarget as HTMLInputElement
+                                ).dataset.shiftKey = String(event.shiftKey);
+                              }}
+                              onChange={(event) =>
+                                toggleOne(
+                                  id,
+                                  event.currentTarget.checked,
+                                  event.currentTarget.dataset.shiftKey ===
+                                    "true",
+                                )
+                              }
+                              onKeyDown={(event) => {
+                                if (
+                                  event.key === " " ||
+                                  event.key === "Spacebar"
+                                ) {
+                                  event.currentTarget.dataset.shiftKey = String(
+                                    event.shiftKey,
+                                  );
+                                }
+                              }}
+                              type="checkbox"
+                            />
+                          </td>
+                          <td className="c3l-cell-business">
+                            <div className="c3l-business-identity">
+                              <BusinessLogoMark
+                                className="c3l-mark"
+                                logoUrl={prospect.logoUrl}
+                                name={prospect.party.displayName}
+                                placePhotoUrl={prospect.placePhotoUrl}
+                                website={prospect.website}
+                              />
+                              <span className="c3l-business-text">
+                                <strong>{prospect.party.displayName}</strong>
+                                <small>
+                                  {prospect.vertical} ·{" "}
+                                  {prospect.location ?? "Location not set"}
+                                </small>
+                                <span className="c3l-mobile-lead-contact">
+                                  {prospect.phone ?? contact?.e164 ?? "Not set"}
+                                  <span aria-hidden="true"> · </span>
+                                  {whatsappStatusLabel(whatsappStatus)}
+                                </span>
+                              </span>
+                            </div>
+                          </td>
+                          <td className="c3l-cell-phone">
+                            <strong>
+                              {prospect.phone ?? contact?.e164 ?? "Not set"}
+                            </strong>
+                            <small>{prospect.contactName ?? ""}</small>
+                          </td>
+                          <td>
+                            {customerRecord?.stage === "client" ? (
+                              <LeadPill tone="green">Client</LeadPill>
+                            ) : (
+                              <LeadPill
+                                tone={toneForStage(
+                                  prospect.stage,
+                                  prospect.qualification,
+                                )}
+                              >
+                                {labelForStage(
+                                  prospect.stage,
+                                  prospect.qualification,
+                                  "New",
+                                )}
+                              </LeadPill>
+                            )}
+                          </td>
+                          <td>
+                            <span className="c3l-whatsapp-status">
+                              {whatsappStatusLabel(whatsappStatus)}
+                            </span>
+                          </td>
+                          <td className="c3l-cell-next-step">
+                            <Link
+                              className="c3l-next-step"
+                              params={{ prospectId: record.prospectId }}
+                              to="/sales/lead/$prospectId"
+                            >
+                              Review lead
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    },
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {pageCount > 1 ? (
+              <nav aria-label="Lead pages" className="c3l-pagination">
+                <button
+                  className="c3l-btn c3l-btn-outline c3l-btn-small"
+                  disabled={page === 0}
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  type="button"
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {page + 1} of {pageCount}
+                </span>
+                <button
+                  className="c3l-btn c3l-btn-outline c3l-btn-small"
+                  disabled={page + 1 >= pageCount}
+                  onClick={() =>
+                    setPage((current) => Math.min(pageCount - 1, current + 1))
+                  }
+                  type="button"
+                >
+                  Next
+                </button>
+              </nav>
+            ) : null}
+          </React.Fragment>
         ) : (
           <div className="c3l-card c3l-empty">
             <h2>
@@ -318,7 +725,11 @@ export function LeadsScreen(context: LeadContext) {
                 className="c3l-btn c3l-btn-outline"
                 onClick={() => {
                   setQuery("");
-                  setStage("all");
+                  setFilterState({
+                    hasPhone: null,
+                    whatsappStatuses: new Set(),
+                    stages: new Set(),
+                  });
                 }}
                 type="button"
               >
@@ -335,7 +746,54 @@ export function LeadsScreen(context: LeadContext) {
             )}
           </div>
         )}
+        {pendingBulkUpdate ? (
+          <PendingBulkProspectUpdateNotice
+            busy={selectionBusy}
+            onRetry={() => void retryPendingBulkUpdate()}
+            pending={pendingBulkUpdate}
+          />
+        ) : null}
+        {selectionError ? (
+          <p className="c3l-outreach-note" role="status">
+            {selectionError}
+          </p>
+        ) : null}
+        {canWrite && !listDialogOpen ? (
+          <OutreachSelectionBar
+            count={selected.size}
+            onAddToList={() => setListDialogOpen(true)}
+            onAskScout={() => void askScout()}
+            onChangeStage={(stage) => void updateSelectedStage(stage)}
+            onClear={() => {
+              setSelected(new Set());
+              selectionAnchor.current = null;
+            }}
+            onMarkLost={() => void markSelectedLost()}
+            onDiscuss={() =>
+              void navigate({
+                to: "/channels/$channelId",
+                params: { channelId: context.channelId },
+              })
+            }
+            onWhatsAppBatch={() => setBatchDialogOpen(true)}
+          />
+        ) : null}
       </div>
+
+      <AddToOutreachListDialog
+        context={context}
+        defaultName={outreachListDefaultName}
+        description={outreachListDescription}
+        leadIds={selectedRows.map(({ id }) => id)}
+        onOpenChange={setListDialogOpen}
+        open={listDialogOpen}
+      />
+      <OutreachBatchDialog
+        leads={batchLeads}
+        listName="selected leads"
+        onOpenChange={setBatchDialogOpen}
+        open={batchDialogOpen}
+      />
 
       <AddLeadDialog
         canWrite={canWrite}

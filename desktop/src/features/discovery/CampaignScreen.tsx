@@ -1,11 +1,18 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-
+import { useChannelsQuery } from "@/features/channels/hooks";
 import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
-import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
-import type { BusinessRecords } from "./businessRecordRelay";
+
 import { publishProspectAction } from "./businessRecordMutations";
 import { errorMessage } from "./BusinessCommon";
+import { PendingBulkProspectUpdateNotice } from "./PendingBulkProspectUpdateNotice";
+import {
+  getPendingBulkProspectUpdate,
+  markProspectsLost,
+  resumePendingProspectUpdate,
+  updateProspectsStage,
+} from "./bulkProspectUpdateRuntime";
+import type { PendingBulkProspectUpdate } from "./bulkProspectUpdate";
 import {
   acceptButtonState,
   acceptProspects,
@@ -49,16 +56,30 @@ import {
   type CatalogueRow,
 } from "./taxonomy";
 import { compareDiscoveryTagFit } from "./discoveryTags";
+import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
+import { OutreachBatchDialog } from "./OutreachBatchDialog";
+import { OutreachFilterControls } from "./OutreachFilterControls";
+import {
+  EMPTY_OUTREACH_FILTERS,
+  filterOutreachRows,
+  type OutreachFilters,
+  type OutreachWhatsAppStatus,
+} from "./outreachSelection";
+import { buildLeadLink } from "@/shared/lib/entityLink";
+import {
+  findWhatsAppContactForLead,
+  getWhatsAppLeadStatus,
+  useWhatsAppLeadData,
+} from "@/features/whatsapp-outreach/whatsappLeadStatus";
+import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
+import type { OutreachBatchLead } from "./outreachBatch";
+import { findScoutDirectMessage } from "./leadShared";
+import type { LeadContext } from "./leadShared";
+import type { ProspectStage } from "./businessRecordContract";
 
 import "./colony3-discovery.css";
 
-type CampaignContext = {
-  channelId: string;
-  communityId: TenantCommunityId;
-  records: BusinessRecords;
-  refresh: () => Promise<void>;
-  role: BusinessRecords["role"];
-};
+type CampaignContext = LeadContext;
 
 function matchesFilter(
   prospect: CampaignProspect["record"]["prospect"],
@@ -79,21 +100,31 @@ export function CampaignScreen(context: CampaignContext) {
   const routeOrigin = useRouteOrigin();
   const restored = routeOrigin.pageSnapshot?.viewState as
     | {
+        campaignId?: string;
         query?: string;
         filter?: ProspectFilter;
         sort?: ProspectSort;
         selected?: string[];
+        page?: number;
+        outreachFilters?: OutreachFilters;
       }
     | undefined;
+  const channelsQuery = useChannelsQuery();
   const { campaign, provider } = useDiscoveryCampaign();
   const [query, setQuery] = React.useState(restored?.query ?? "");
   const [filter, setFilter] = React.useState<ProspectFilter>(
     restored?.filter ?? "all",
   );
   const [sort, setSort] = React.useState<ProspectSort>(restored?.sort ?? "fit");
+  const [page, setPage] = React.useState(restored?.page ?? 0);
   const [selected, setSelected] = React.useState<Set<string>>(
     () => new Set(restored?.selected ?? []),
   );
+  const [outreachFilters, setOutreachFilters] = React.useState<OutreachFilters>(
+    () => restored?.outreachFilters ?? EMPTY_OUTREACH_FILTERS,
+  );
+  const [listDialogOpen, setListDialogOpen] = React.useState(false);
+  const [batchDialogOpen, setBatchDialogOpen] = React.useState(false);
   const [dialogMode, setDialogMode] = React.useState<CampaignDialogMode>(null);
   const [relatedTypeId, setRelatedTypeId] = React.useState<string | null>(null);
   const [widenPending, setWidenPending] =
@@ -113,8 +144,30 @@ export function CampaignScreen(context: CampaignContext) {
   );
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
+  const [pendingBulkUpdate, setPendingBulkUpdate] =
+    React.useState<PendingBulkProspectUpdate | null>(null);
+  const whatsapp = useWhatsAppLeadData();
   const recordsRef = React.useRef(context.records);
   recordsRef.current = context.records;
+
+  const campaignId = campaign?.id;
+  const lastCampaignId = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    if (campaignId === undefined) return;
+    if (lastCampaignId.current === undefined) {
+      lastCampaignId.current = campaignId;
+      if (restored?.campaignId !== campaignId) {
+        setPage(0);
+        setSelected(new Set());
+      }
+      return;
+    }
+    if (lastCampaignId.current !== campaignId) {
+      lastCampaignId.current = campaignId;
+      setPage(0);
+      setSelected(new Set());
+    }
+  }, [campaignId, restored?.campaignId]);
 
   React.useEffect(() => {
     if (!campaign) return;
@@ -124,10 +177,13 @@ export function CampaignScreen(context: CampaignContext) {
         backLabel: campaign.name,
         breadcrumbs: ["Business", "Discovery", campaign.name],
         viewState: {
+          campaignId: campaign.id,
           query,
           filter,
           sort,
           selected: [...selected],
+          page,
+          outreachFilters,
         },
         scrollY: scrollTarget?.scrollTop ?? window.scrollY,
         scrollTarget: scrollTarget ? ".c3d-root" : undefined,
@@ -136,7 +192,16 @@ export function CampaignScreen(context: CampaignContext) {
     const scrollHost: Window | HTMLElement = scrollTarget ?? window;
     scrollHost.addEventListener("scroll", save, { passive: true });
     return () => scrollHost.removeEventListener("scroll", save);
-  }, [campaign, filter, query, routeOrigin.savePageSnapshot, selected, sort]);
+  }, [
+    campaign,
+    filter,
+    outreachFilters,
+    page,
+    query,
+    routeOrigin.savePageSnapshot,
+    selected,
+    sort,
+  ]);
 
   React.useEffect(() => {
     const scrollY = routeOrigin.pageSnapshot?.scrollY;
@@ -160,6 +225,19 @@ export function CampaignScreen(context: CampaignContext) {
   React.useEffect(() => {
     if (!provider || !campaign) void navigate({ to: "/discovery" });
   }, [campaign, navigate, provider]);
+
+  React.useEffect(() => {
+    try {
+      setPendingBulkUpdate(
+        getPendingBulkProspectUpdate({
+          channelId: context.channelId,
+          communityId: context.communityId,
+        }),
+      );
+    } catch (pendingError) {
+      setError(errorMessage(pendingError));
+    }
+  }, [context.channelId, context.communityId]);
 
   React.useEffect(() => {
     let live = true;
@@ -187,38 +265,102 @@ export function CampaignScreen(context: CampaignContext) {
     .filter((row): row is CampaignProspect =>
       Boolean(row && row.record.status === "active"),
     );
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleRows = campaignRows
-    .filter((row) => {
-      const prospect = row.record.prospect;
-      const matchesQuery =
-        !normalizedQuery ||
-        [
-          prospect.party.displayName,
-          prospect.location ?? "",
-          prospect.vertical,
-          prospect.contactName ?? "",
-        ]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(normalizedQuery);
-      return matchesQuery && matchesFilter(prospect, filter);
-    })
+  const campaignFilterRows = campaignRows.map((row) => {
+    const prospect = row.record.prospect;
+    const contact = findWhatsAppContactForLead(
+      row.record.prospectId,
+      whatsapp.contactsQuery.data ?? [],
+    );
+    const whatsappStatus: OutreachWhatsAppStatus =
+      contact?.stage === "not_on_whatsapp"
+        ? "no-number"
+        : getWhatsAppLeadStatus(
+            contact,
+            whatsapp.inBatchLeadIds.has(row.record.prospectId),
+          );
+    const stage =
+      prospect.qualification === "unreviewed" ? "new" : prospect.stage;
+    return {
+      campaign: row,
+      id: row.record.prospectId,
+      searchableText: [
+        prospect.party.displayName,
+        prospect.location ?? "",
+        prospect.vertical,
+        prospect.contactName ?? "",
+        prospect.phone ?? "",
+      ].join(" "),
+      hasPhone: Boolean(
+        prospect.whatsappPhone?.trim() ||
+          prospect.phone?.trim() ||
+          contact?.e164,
+      ),
+      whatsappStatus,
+      stage,
+      prospect,
+      contact,
+    };
+  });
+  const visibleRows = filterOutreachRows(
+    campaignFilterRows,
+    outreachFilters,
+    query,
+  )
+    .filter(({ prospect }) => matchesFilter(prospect, filter))
     .sort((left, right) => {
       if (sort === "name") {
-        return left.record.prospect.party.displayName.localeCompare(
-          right.record.prospect.party.displayName,
+        return left.prospect.party.displayName.localeCompare(
+          right.prospect.party.displayName,
         );
       }
       return compareDiscoveryTagFit(
-        left.record.prospect.discoveryTags ?? [],
-        left.record.prospect.fitScore,
-        right.record.prospect.discoveryTags ?? [],
-        right.record.prospect.fitScore,
+        left.prospect.discoveryTags ?? [],
+        left.prospect.fitScore,
+        right.prospect.discoveryTags ?? [],
+        right.prospect.fitScore,
       );
     });
-  const selectedRows = visibleRows.filter(({ record }) =>
-    selected.has(record.prospectId),
+  const pageSize = 7;
+  const pageCount = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+  const pageRows = visibleRows.slice(page * pageSize, (page + 1) * pageSize);
+  const visibleProspectRows = pageRows.map(({ campaign: row }) => row);
+  const outreachByLead = new Map(
+    campaignFilterRows.map(({ id, prospect, contact, whatsappStatus }) => [
+      id,
+      {
+        phone:
+          prospect.whatsappPhone?.trim() ||
+          prospect.phone?.trim() ||
+          contact?.e164 ||
+          "",
+        whatsapp:
+          whatsappStatus === "no-number"
+            ? "No WhatsApp number"
+            : whatsappLeadStatusLabel(whatsappStatus),
+      },
+    ]),
+  );
+  const selectedRows = visibleRows
+    .map(({ campaign: row }) => row)
+    .filter(({ record }) => selected.has(record.prospectId));
+  const selectedPageCount = pageRows.filter(({ id }) =>
+    selected.has(id),
+  ).length;
+  const allMatchingSelected =
+    visibleRows.length > 0 && visibleRows.every(({ id }) => selected.has(id));
+  const selectedLeadIds = campaign.prospectIds.filter(
+    (prospectId) =>
+      selected.has(prospectId) &&
+      visibleRows.some(({ id }) => id === prospectId),
+  );
+  const selectedBatchLeads: OutreachBatchLead[] = selectedRows.map(
+    ({ record }) => ({
+      leadId: record.prospectId,
+      name: record.prospect.party.displayName,
+      contactName: record.prospect.contactName,
+      phone: record.prospect.phone,
+      whatsappPhone: record.prospect.whatsappPhone,
+    }),
   );
   const canWrite =
     context.role === "owner" ||
@@ -284,6 +426,8 @@ export function CampaignScreen(context: CampaignContext) {
     setQuery("");
     setFilter("all");
     setSort("fit");
+    setOutreachFilters(EMPTY_OUTREACH_FILTERS);
+    setSelected(new Set());
   }
 
   function shareInSales() {
@@ -300,13 +444,135 @@ export function CampaignScreen(context: CampaignContext) {
     setSelected(next);
   }
 
+  async function changeSelectedStage(stage: ProspectStage) {
+    if (!canWrite || selectedRows.length === 0 || progress) return;
+    setError("");
+    setProgress({ done: 0, total: selectedRows.length });
+    try {
+      await updateProspectsStage({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        prospectIds: selectedRows.map(({ record }) => record.prospectId),
+        stage,
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
+      await context.refresh();
+      setPendingBulkUpdate(null);
+      setSelected(new Set());
+    } catch (stageError) {
+      setError(errorMessage(stageError));
+      refreshPendingBulkUpdate();
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function markSelectedLost() {
+    if (!canWrite || selectedRows.length === 0 || progress) return;
+    setError("");
+    setProgress({ done: 0, total: selectedRows.length });
+    try {
+      await markProspectsLost({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        prospectIds: selectedRows.map(({ record }) => record.prospectId),
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
+      await context.refresh();
+      setPendingBulkUpdate(null);
+      setSelected(new Set());
+    } catch (stageError) {
+      setError(errorMessage(stageError));
+      refreshPendingBulkUpdate();
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  function refreshPendingBulkUpdate() {
+    try {
+      setPendingBulkUpdate(getPendingBulkProspectUpdate(context));
+    } catch (pendingError) {
+      setError(errorMessage(pendingError));
+    }
+  }
+
+  async function retryPendingBulkUpdate() {
+    if (progress) return;
+    setError("");
+    setProgress({ done: 0, total: pendingBulkUpdate?.prospectIds.length ?? 0 });
+    try {
+      await resumePendingProspectUpdate({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        onProgress: (done, total) => setProgress({ done, total }),
+      });
+      await context.refresh();
+      setPendingBulkUpdate(null);
+      setSelected(new Set());
+    } catch (retryError) {
+      setError(errorMessage(retryError));
+      refreshPendingBulkUpdate();
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function askScout() {
+    const prompt = [
+      "Please research these leads and update their records:",
+      ...selectedLeadIds.map(buildLeadLink),
+    ].join("\n");
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      copied = true;
+    } catch {
+      copied = false;
+    }
+    try {
+      const channels =
+        channelsQuery.data ?? (await channelsQuery.refetch()).data ?? [];
+      const scoutDm = findScoutDirectMessage(channels);
+      if (!scoutDm) {
+        setNotice(
+          copied
+            ? "Lead references copied. Scout's chat is unavailable."
+            : "Scout's chat is unavailable and the lead references could not be copied.",
+        );
+        return;
+      }
+      setNotice(
+        copied
+          ? "Lead references copied."
+          : "Could not copy the lead references.",
+      );
+      void navigate({
+        to: "/channels/$channelId",
+        params: { channelId: scoutDm.id },
+      });
+    } catch {
+      setNotice(
+        copied
+          ? "Lead references copied. Scout's chat could not be opened."
+          : "Could not copy the lead references or open Scout's chat.",
+      );
+    }
+  }
+
   function toggleAll(checked: boolean) {
     const next = new Set(selected);
-    for (const row of visibleRows) {
+    for (const row of visibleProspectRows) {
       if (checked) next.add(row.record.prospectId);
       else next.delete(row.record.prospectId);
     }
     setSelected(next);
+  }
+
+  function selectAllMatching() {
+    setSelected(
+      (current) => new Set([...current, ...visibleRows.map(({ id }) => id)]),
+    );
   }
 
   function openWidenSearch(row: CatalogueRow, pickedTags: string[]) {
@@ -422,13 +688,61 @@ export function CampaignScreen(context: CampaignContext) {
           <CampaignToolbar
             exportDisabled={!visibleRows.length}
             filter={filter}
-            onExport={() => exportProspects(visibleRows)}
-            onFilter={setFilter}
-            onQuery={setQuery}
-            onSort={setSort}
+            onExport={() =>
+              exportProspects(visibleRows.map(({ campaign: row }) => row))
+            }
+            onFilter={(value) => {
+              setFilter(value);
+              setSelected(new Set());
+              setPage(0);
+            }}
+            onQuery={(value) => {
+              setQuery(value);
+              setSelected(new Set());
+              setPage(0);
+            }}
+            onSort={(value) => {
+              setSort(value);
+              setPage(0);
+            }}
             query={query}
             sort={sort}
           />
+          <OutreachFilterControls
+            allMatchingSelected={allMatchingSelected}
+            filters={outreachFilters}
+            matching={visibleRows.length}
+            onSelectAllMatching={selectAllMatching}
+            onChange={(next) => {
+              setOutreachFilters(next);
+              setSelected(new Set());
+              setPage(0);
+            }}
+            pageSelectedCount={0}
+            query={query}
+            rows={campaignFilterRows}
+            showSelectAll={false}
+          />
+          {selectedPageCount > 0 ? (
+            <div
+              aria-live="polite"
+              className="c3d-page-selection-notice"
+              data-testid="campaign-selection-page-notice"
+            >
+              <span>
+                {allMatchingSelected
+                  ? `All ${visibleRows.length} matching prospects are selected.`
+                  : selectedPageCount === pageRows.length
+                    ? `All ${pageRows.length} on this page are selected.`
+                    : `${selectedPageCount} selected on this page.`}
+              </span>
+              {!allMatchingSelected ? (
+                <button onClick={selectAllMatching} type="button">
+                  Select all {visibleRows.length} matching prospects
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {selectedRows.length ? (
             <CampaignSelectionBar
               accept={acceptButtonState({
@@ -437,18 +751,29 @@ export function CampaignScreen(context: CampaignContext) {
                 progress,
               })}
               count={selectedRows.length}
-              matching={visibleRows.length}
+              canWrite={canWrite}
+              busy={Boolean(progress)}
+              onAddToList={() => setListDialogOpen(true)}
+              onAskScout={() => void askScout()}
               onAccept={() => void acceptSelected()}
+              onBatch={() => setBatchDialogOpen(true)}
+              onChangeStage={(stage) => void changeSelectedStage(stage)}
               onClear={() => setSelected(new Set())}
               onDiscuss={shareInSales}
-              onSelectAll={() => toggleAll(true)}
-              runner={campaign.runBy ?? null}
+              onMarkLost={() => void markSelectedLost()}
             />
           ) : null}
           {notice ? (
             <p className="c3d-notice" role="status">
               {notice}
             </p>
+          ) : null}
+          {pendingBulkUpdate ? (
+            <PendingBulkProspectUpdateNotice
+              busy={Boolean(progress)}
+              onRetry={() => void retryPendingBulkUpdate()}
+              pending={pendingBulkUpdate}
+            />
           ) : null}
           {error ? (
             <p className="c3d-error" role="alert">
@@ -460,9 +785,35 @@ export function CampaignScreen(context: CampaignContext) {
               <CampaignTable
                 onToggle={toggleRow}
                 onToggleAll={toggleAll}
-                rows={visibleRows}
+                outreachByLead={outreachByLead}
+                rows={visibleProspectRows}
                 selected={selected}
               />
+              {pageCount > 1 ? (
+                <nav aria-label="Campaign prospect pages" className="c3d-pages">
+                  <button
+                    className="c3d-btn c3d-btn--outline c3d-btn--sm"
+                    disabled={page === 0}
+                    onClick={() => setPage((value) => Math.max(0, value - 1))}
+                    type="button"
+                  >
+                    Previous
+                  </button>
+                  <span>
+                    Page {page + 1} of {pageCount}
+                  </span>
+                  <button
+                    className="c3d-btn c3d-btn--outline c3d-btn--sm"
+                    disabled={page + 1 >= pageCount}
+                    onClick={() =>
+                      setPage((value) => Math.min(pageCount - 1, value + 1))
+                    }
+                    type="button"
+                  >
+                    Next
+                  </button>
+                </nav>
+              ) : null}
               <p className="c3d-footnote">
                 {visibleRows.length}{" "}
                 {visibleRows.length === 1 ? "prospect" : "prospects"} shown ·{" "}
@@ -531,6 +882,21 @@ export function CampaignScreen(context: CampaignContext) {
         pending={widenPending}
         runner={campaign.runBy ?? null}
         simulatedCosts={Boolean(campaign.simulated)}
+      />
+      <AddToOutreachListDialog
+        context={context}
+        defaultName={campaign.name}
+        description={`Add ${selectedLeadIds.length} leads to a shared list in Sales.`}
+        leadIds={selectedLeadIds}
+        onOpenChange={setListDialogOpen}
+        open={listDialogOpen}
+        sourceCampaignId={campaign.id}
+      />
+      <OutreachBatchDialog
+        leads={selectedBatchLeads}
+        listName={campaign.name}
+        onOpenChange={setBatchDialogOpen}
+        open={batchDialogOpen}
       />
       <DiscoveryContinuationDialog
         campaign={campaign}

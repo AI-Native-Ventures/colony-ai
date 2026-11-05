@@ -4,12 +4,15 @@ import test from "node:test";
 
 import {
   buildCommitLink,
+  buildDiscoveryCampaignLink,
   buildGoalLink,
   buildIssueLink,
   buildLeadLink,
+  buildOutreachListLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
+  buildWhatsAppTemplateLink,
   entityLinkProjectRouteId,
   ENTITY_LINK_TABS,
   isEntityLink,
@@ -109,6 +112,54 @@ test("lead links are strict: only a single UUID path segment", () => {
       href,
     );
   }
+});
+
+test("outreach links use canonical UUID and named template formats", () => {
+  const id = "ABCDEF01-2345-6789-ABCD-EF0123456789";
+  assert.equal(
+    buildOutreachListLink(id),
+    "buzz://list/abcdef01-2345-6789-abcd-ef0123456789",
+  );
+  assert.equal(
+    buildDiscoveryCampaignLink(id),
+    "buzz://campaign/abcdef01-2345-6789-abcd-ef0123456789",
+  );
+  assert.equal(
+    buildWhatsAppTemplateLink("hello_world", "en_US"),
+    "buzz://template/hello_world?lang=en_US",
+  );
+  assert.deepEqual(parseEntityLink(`colony://list/${id}`), {
+    ok: true,
+    value: { type: "list", id: "abcdef01-2345-6789-abcd-ef0123456789" },
+  });
+  assert.deepEqual(parseEntityLink(`colony://campaign/${id}`), {
+    ok: true,
+    value: {
+      type: "campaign",
+      id: "abcdef01-2345-6789-abcd-ef0123456789",
+    },
+  });
+  assert.deepEqual(
+    parseEntityLink("colony://template/hello_world?lang=en_US"),
+    {
+      ok: true,
+      value: { type: "template", name: "hello_world", language: "en_US" },
+    },
+  );
+});
+
+test("outreach links reject extra paths and query parameters", () => {
+  const id = "123e4567-e89b-12d3-a456-426614174000";
+  for (const href of [
+    `buzz://list/${id}?view=members`,
+    `buzz://campaign/${id}/leads`,
+    "buzz://template/hello?number=2",
+    "buzz://template/hello?lang=en&lang=fr",
+    "buzz://template/hello?lang=bad%20language",
+  ]) {
+    assert.equal(parseEntityLink(href).ok, false, href);
+  }
+  assert.throws(() => buildWhatsAppTemplateLink("template name"));
 });
 
 test("goal links use canonical active-community goal coordinates", () => {
