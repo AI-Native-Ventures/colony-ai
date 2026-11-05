@@ -8,6 +8,7 @@ import {
   Pill,
 } from "@/features/clients/ui/BusinessBits";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import {
   formatMoneyMinor,
   type MoneyInvoiceHead,
@@ -15,7 +16,6 @@ import {
   type deriveMoneyTotals,
 } from "./lib/moneyRecords";
 import {
-  clientInitials,
   formatCurrencyTotals,
   formatDisplayDate,
   invoiceNumber,
@@ -25,6 +25,7 @@ import {
 
 export function MoneyOverview({
   clientId,
+  clientLogos,
   clientNames,
   invoices,
   period,
@@ -32,6 +33,14 @@ export function MoneyOverview({
   totals,
 }: {
   clientId: string;
+  clientLogos: ReadonlyMap<
+    string,
+    {
+      website: string | null;
+      logoUrl: string | null;
+      placePhotoUrl: string | null;
+    }
+  >;
   clientNames: ReadonlyMap<string, string>;
   invoices: EventRecord<MoneyInvoiceHead>[];
   period: string;
@@ -95,15 +104,20 @@ export function MoneyOverview({
           {overdue.length ? (
             overdue.map(({ value }) => {
               const client = clientNames.get(value.clientId) ?? value.clientId;
+              const logo = clientLogos.get(value.clientId);
               return (
                 <a
                   className="b3-attention-row"
                   href={`#/money/invoice/${value.invoiceId}`}
                   key={value.invoiceId}
                 >
-                  <span aria-hidden="true" className="b3-attention-tile">
-                    {clientInitials(client)}
-                  </span>
+                  <BusinessLogoMark
+                    className="b3-attention-tile"
+                    logoUrl={logo?.logoUrl}
+                    name={client}
+                    placePhotoUrl={logo?.placePhotoUrl}
+                    website={logo?.website}
+                  />
                   <span className="b3-attention-copy">
                     <span className="b3-attention-title">
                       {client} ·{" "}

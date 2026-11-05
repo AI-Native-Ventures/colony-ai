@@ -174,7 +174,9 @@ export function WhatsAppContactRecordPanel({
           {identity.isLinked ? (
             <BusinessLogoMark
               className="c3wa-desk-logo-mark"
+              logoUrl={identity.logoUrl}
               name={identity.displayName}
+              placePhotoUrl={identity.placePhotoUrl}
               website={identity.website}
             />
           ) : (
