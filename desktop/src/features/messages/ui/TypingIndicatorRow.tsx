@@ -1,14 +1,14 @@
 import * as React from "react";
 
 import {
-  resolveUserLabel,
+  resolveIdentityLabels,
   type UserProfileLookup,
 } from "@/features/profile/lib/identity";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type { Channel } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Shimmer } from "@/shared/ui/Shimmer";
-import { truncateNpub } from "@/shared/lib/pubkey";
 
 type TypingIndicatorRowProps = {
   channel: Channel | null;
@@ -60,19 +60,26 @@ export function TypingIndicatorRow({
   variant = "default",
 }: TypingIndicatorRowProps) {
   const isActivityVariant = variant === "activity";
-  const labels = React.useMemo(
-    () =>
-      typingPubkeys.map((pubkey) =>
-        resolveUserLabel({
+  const labels = React.useMemo(() => {
+    const identities = resolveIdentityLabels(
+      typingPubkeys.map((pubkey) => {
+        const profile = profiles?.[normalizePubkey(pubkey)];
+        return {
           pubkey,
           currentPubkey,
           fallbackName: resolveFallbackName(channel, pubkey),
           profiles,
+          isAgent: profile?.isAgent,
+          ownerPubkey: profile?.ownerPubkey,
           preferResolvedSelfLabel: true,
-        }),
-      ),
-    [channel, currentPubkey, profiles, typingPubkeys],
-  );
+        };
+      }),
+    );
+    return typingPubkeys.map(
+      (pubkey) =>
+        identities.get(normalizePubkey(pubkey))?.text ?? "AI employee",
+    );
+  }, [channel, currentPubkey, profiles, typingPubkeys]);
 
   return (
     <div
@@ -96,7 +103,7 @@ export function TypingIndicatorRow({
           <div className="flex shrink-0 items-center">
             {typingPubkeys.map((pubkey, index) => {
               const profile = profiles?.[pubkey.toLowerCase()];
-              const label = labels[index] ?? truncateNpub(pubkey);
+              const label = labels[index] ?? "AI employee";
               return (
                 <div
                   key={pubkey}

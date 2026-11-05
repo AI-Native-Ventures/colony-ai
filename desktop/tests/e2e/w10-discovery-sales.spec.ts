@@ -22,10 +22,14 @@ async function openHomeDecorCampaignForm(page: Page) {
   return dialog;
 }
 
-async function startCampaign(page: Page, location: string, target = "50") {
+async function startCampaign(page: Page, location: string, target = "100") {
   const dialog = await openHomeDecorCampaignForm(page);
-  await dialog.getByLabel("Location").fill(location);
-  await dialog.getByLabel("Prospect target").fill(target);
+  const locationInput = dialog.getByRole("combobox", { name: "Location" });
+  await locationInput.fill(location);
+  await dialog.getByRole("option", { name: location }).click();
+  await dialog
+    .getByLabel("Prospect target")
+    .fill(Number(target) < 100 ? "100" : target);
   await dialog
     .getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
@@ -62,15 +66,17 @@ test.describe("W10 discovery and sales", () => {
     await discovery.getByRole("button", { name: "Businesses" }).click();
 
     const dialog = await openHomeDecorCampaignForm(page);
-    await dialog.getByLabel("Location").fill("");
+    await dialog.getByRole("combobox", { name: "Location" }).fill("");
     await dialog.getByLabel("Prospect target").fill("0");
     await dialog.getByRole("button", { name: "Approve & start" }).click();
     await expect(dialog.getByRole("alert")).toHaveText(
-      "Add a location, choose 1–500 prospects and approve the maximum budget.",
+      "Pick a place from the list before starting this search.",
     );
 
-    await dialog.getByLabel("Location").fill("South Africa");
-    await dialog.getByLabel("Prospect target").fill("50");
+    const locationInput = dialog.getByRole("combobox", { name: "Location" });
+    await locationInput.fill("South Africa");
+    await dialog.getByRole("option").first().click();
+    await dialog.getByLabel("Prospect target").fill("100");
     await dialog
       .getByRole("checkbox", {
         name: "I approve this campaign’s maximum budget.",
@@ -95,7 +101,7 @@ test.describe("W10 discovery and sales", () => {
 
     await page.getByRole("button", { name: "New search" }).click();
     await page.getByTestId("w10-discovery-page").waitFor();
-    await startCampaign(page, "Atlantis", "5");
+    await startCampaign(page, "Atlantis", "100");
     await expect(
       page.getByText("No prospects match these filters."),
     ).toBeVisible();
@@ -174,7 +180,9 @@ test.describe("W10 discovery and sales", () => {
     await expect(typeDetails).toBeVisible();
     await typeDetails.getByRole("button", { name: /Find prospects/ }).click();
     const dialog = page.getByTestId("discovery-campaign-dialog");
-    await dialog.getByLabel("Location").fill("South Africa");
+    const locationInput = dialog.getByRole("combobox", { name: "Location" });
+    await locationInput.fill("South Africa");
+    await dialog.getByRole("option").first().click();
     await dialog
       .getByRole("checkbox", {
         name: "I approve this campaign’s maximum budget.",
@@ -190,7 +198,7 @@ test.describe("W10 discovery and sales", () => {
     await expect(page.getByTestId("w10-campaign-page")).toHaveCount(0);
   });
 
-  test("campaign results filter, accept, and open prospect details", async ({
+  test("campaign results filter, export, accept, and open prospect details", async ({
     page,
   }) => {
     await installMockBridge(page, REFERENCE_WORKSPACE);
@@ -211,6 +219,13 @@ test.describe("W10 discovery and sales", () => {
     await expect(campaign.locator("tbody tr")).toHaveCount(5);
     await campaignPages.getByRole("button", { name: "Previous" }).click();
     await expect(campaign.locator("tbody tr")).toHaveCount(7);
+    await campaign.getByLabel("Filter prospects").selectOption("high-fit");
+    await expect(campaign.locator("tbody tr")).toHaveCount(6);
+    await campaign.getByLabel("Filter prospects").selectOption("accepted");
+    await expect(campaign.locator("tbody tr")).toHaveCount(4);
+    await campaign.getByLabel("Filter prospects").selectOption("candidates");
+    await expect(campaign.locator("tbody tr")).toHaveCount(7);
+    await campaign.getByLabel("Filter prospects").selectOption("all");
     const filterMenu = campaign.locator(".c3l-filter-menu");
     await filterMenu.locator(":scope > summary").click();
     await filterMenu
@@ -241,6 +256,13 @@ test.describe("W10 discovery and sales", () => {
       campaign.getByText("12 of 12 match", { exact: true }),
     ).toBeVisible();
     await filterMenu.locator(":scope > summary").click();
+
+    const downloadReady = page.waitForEvent("download");
+    await campaign
+      .getByRole("button", { name: "Export visible prospects" })
+      .click();
+    const download = await downloadReady;
+    expect(download.suggestedFilename()).toBe("prospects.csv");
 
     await campaign
       .getByRole("textbox", { name: "Search prospects" })
@@ -280,7 +302,7 @@ test.describe("W10 discovery and sales", () => {
   }) => {
     await installMockBridge(page, REFERENCE_WORKSPACE);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
-    await startCampaign(page, "South Africa", "10");
+    await startCampaign(page, "South Africa", "100");
 
     await expect(
       page.getByText("Finding prospects", { exact: true }),
@@ -298,16 +320,14 @@ test.describe("W10 discovery and sales", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "Retry search" }).click();
     await expect(
-      page
-        .getByTestId("w10-campaign-page")
-        .getByRole("link", { name: "Prospects 10" }),
+      page.getByText("Search complete", { exact: true }),
     ).toBeVisible({ timeout: 10_000 });
     await expect(
       page.getByTestId("w10-campaign-page").locator("tbody tr"),
     ).toHaveCount(7);
-    await expect(page.getByRole("button", { name: "Run details" })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByText("12 prospects found · 100 requested"),
+    ).toBeVisible();
   });
 
   test("lead stage actions, business phone default, and duplicate prevention persist", async ({

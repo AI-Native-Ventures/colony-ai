@@ -942,10 +942,16 @@ test.describe("Outreach lists", () => {
     await expect(
       campaign.getByRole("heading", { name: "Restaurants prospects" }),
     ).toBeVisible();
-    await expect(campaign.locator(".c3d-run")).toHaveCount(0);
-    await expect(campaign.getByLabel("Filter prospects")).toHaveCount(0);
+    await expect(campaign.locator(".c3d-run")).toHaveCount(1);
+    await expect(
+      campaign.getByText("Search complete", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      campaign.getByRole("button", { name: "Find more" }),
+    ).toBeVisible();
+    await expect(campaign.getByLabel("Filter prospects")).toHaveCount(1);
     await expect(campaign.getByLabel("Export visible prospects")).toHaveCount(
-      0,
+      1,
     );
     await campaign.locator(".c3l-filter-menu > summary").click();
     const campaignFilters = campaign.locator(".c3l-filter-menu-content");

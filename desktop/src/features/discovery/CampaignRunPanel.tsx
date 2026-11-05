@@ -11,6 +11,7 @@ import {
   SearchGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import type { DiscoveryLocation } from "./discoveryLocation";
 import type { DiscoveryCampaign } from "./discoveryProvider";
 
 import "./colony3-discovery.css";
@@ -29,18 +30,20 @@ export function CampaignRunPanel({
   campaign,
   onChangeRun,
   onDiscuss,
+  onFindMore,
   onNewSearch,
   onOpenDetails,
   onOpenSettings,
-  showProgress = true,
+  onSearchNearby,
 }: {
   campaign: DiscoveryCampaign;
   onChangeRun: (action: RunAction) => void;
   onDiscuss: () => void;
+  onFindMore: () => void;
   onNewSearch: () => void;
   onOpenDetails: () => void;
   onOpenSettings: () => void;
-  showProgress?: boolean;
+  onSearchNearby: (location: DiscoveryLocation) => void;
 }) {
   const progress = Math.min(
     100,
@@ -87,102 +90,137 @@ export function CampaignRunPanel({
           Conversation <span aria-hidden="true">→</span>
         </button>
       </nav>
-      {showProgress ? (
-        <section
-          aria-labelledby="run-title"
-          className={`c3d-run${campaign.status === "failed" ? " is-failed" : ""}`}
-        >
-          <div className="c3d-run-top">
-            <span
-              aria-hidden="true"
-              className={`c3d-run-icon c3d-run-icon--${campaign.status}`}
-            >
-              <RunIcon status={campaign.status} />
+      <section
+        aria-labelledby="run-title"
+        className={`c3d-run${campaign.status === "failed" ? " is-failed" : ""}`}
+      >
+        <div className="c3d-run-top">
+          <span
+            aria-hidden="true"
+            className={`c3d-run-icon c3d-run-icon--${campaign.status}`}
+          >
+            <RunIcon status={campaign.status} />
+          </span>
+          <div className="c3d-run-copy">
+            <h2 id="run-title">{RUN_LABELS[campaign.status]}</h2>
+            <span>{runDescription(campaign)}</span>
+          </div>
+          {campaign.runBy ? (
+            <span className="c3d-run-by">
+              <RunnerAvatar runner={campaign.runBy} size={26} />
+              Run by {campaign.runBy.name}
             </span>
-            <div className="c3d-run-copy">
-              <h2 id="run-title">{RUN_LABELS[campaign.status]}</h2>
-              <span>{runDescription(campaign)}</span>
-            </div>
-            {campaign.runBy ? (
-              <span className="c3d-run-by">
-                <RunnerAvatar runner={campaign.runBy} size={26} />
-                Run by {campaign.runBy.name}
-              </span>
-            ) : null}
-            <div className="c3d-run-actions">
-              {campaign.status === "running" ? (
-                <>
-                  <button
-                    className="c3d-btn c3d-btn--outline c3d-btn--md"
-                    onClick={() => onChangeRun("pause")}
-                    type="button"
-                  >
-                    <Pause aria-hidden size="0.9375rem" strokeWidth={2.6} />{" "}
-                    Pause
-                  </button>
-                  <button
-                    aria-label="Cancel search"
-                    className="c3d-btn c3d-btn--quiet c3d-btn--md"
-                    onClick={() => onChangeRun("cancel")}
-                    type="button"
-                  >
-                    <CloseGlyph />
-                  </button>
-                </>
-              ) : campaign.status === "paused" ? (
+          ) : null}
+          <div className="c3d-run-actions">
+            {campaign.status === "running" ? (
+              <>
                 <button
-                  className="c3d-btn c3d-btn--ink c3d-btn--md"
-                  onClick={() => onChangeRun("resume")}
+                  className="c3d-btn c3d-btn--outline c3d-btn--md"
+                  onClick={() => onChangeRun("pause")}
                   type="button"
                 >
-                  <Play aria-hidden size="0.9375rem" strokeWidth={2.6} /> Resume
+                  <Pause aria-hidden size="0.9375rem" strokeWidth={2.6} /> Pause
                 </button>
-              ) : campaign.status === "failed" ? (
                 <button
-                  className="c3d-btn c3d-btn--ink c3d-btn--md"
+                  aria-label="Cancel search"
+                  className="c3d-btn c3d-btn--quiet c3d-btn--md"
+                  onClick={() => onChangeRun("cancel")}
+                  type="button"
+                >
+                  <CloseGlyph />
+                </button>
+              </>
+            ) : campaign.status === "paused" ? (
+              <button
+                className="c3d-btn c3d-btn--ink c3d-btn--md"
+                onClick={() => onChangeRun("resume")}
+                type="button"
+              >
+                <Play aria-hidden size="0.9375rem" strokeWidth={2.6} /> Resume
+              </button>
+            ) : campaign.status === "failed" ? (
+              <>
+                <button
+                  className="c3d-btn c3d-btn--outline c3d-btn--md"
                   onClick={() => onChangeRun("retry")}
                   type="button"
                 >
                   <RotateCcw aria-hidden size="0.9375rem" strokeWidth={2.6} />{" "}
                   Retry search
                 </button>
-              ) : (
                 <button
                   className="c3d-btn c3d-btn--ink c3d-btn--md"
+                  onClick={onFindMore}
+                  type="button"
+                >
+                  <PlusGlyph /> Find more
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="c3d-btn c3d-btn--ink c3d-btn--md"
+                  onClick={onFindMore}
+                  type="button"
+                >
+                  <PlusGlyph /> Find more
+                </button>
+                <button
+                  className="c3d-btn c3d-btn--outline c3d-btn--md"
                   onClick={onNewSearch}
                   type="button"
                 >
-                  <PlusGlyph /> New search
+                  New search
                 </button>
-              )}
-            </div>
+              </>
+            )}
           </div>
-          <div
-            aria-label="Prospects found"
-            aria-valuemax={campaign.target}
-            aria-valuemin={0}
-            aria-valuenow={Math.min(campaign.count, campaign.target)}
-            className="c3d-progress"
-            role="progressbar"
+        </div>
+        <div
+          aria-label="Prospects found"
+          aria-valuemax={campaign.target}
+          aria-valuemin={0}
+          aria-valuenow={Math.min(campaign.count, campaign.target)}
+          className="c3d-progress"
+          role="progressbar"
+        >
+          <span style={{ width: `${progress}%` }} />
+        </div>
+        <div className="c3d-run-meta">
+          <span>
+            <PinGlyph /> {campaign.location}
+          </span>
+          <span>{campaign.count} prospects</span>
+          <span>
+            Search cost · {formatBudget(campaign.spentUsd ?? 0)} of{" "}
+            {formatBudget(campaign.budgetUsd)} approved
+          </span>
+          <button
+            className="c3d-text-link"
+            onClick={onOpenDetails}
+            type="button"
           >
-            <span style={{ width: `${progress}%` }} />
+            Run details
+          </button>
+        </div>
+        {campaign.status !== "running" &&
+        campaign.status !== "paused" &&
+        campaign.locationSelection?.nearby?.length ? (
+          <div className="c3d-nearby-areas">
+            <span>Search nearby areas</span>
+            {campaign.locationSelection.nearby.map((location) => (
+              <button
+                className="c3d-text-link"
+                key={`${location.label}-${location.latitude}-${location.longitude}`}
+                onClick={() => onSearchNearby(location)}
+                type="button"
+              >
+                {location.label}
+              </button>
+            ))}
           </div>
-          <div className="c3d-run-meta">
-            <span>
-              <PinGlyph /> {campaign.location}
-            </span>
-            <span>{campaign.count} prospects</span>
-            <span>Budget approved · {formatBudget(campaign.budgetUsd)}</span>
-            <button
-              className="c3d-text-link"
-              onClick={onOpenDetails}
-              type="button"
-            >
-              Run details
-            </button>
-          </div>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
     </>
   );
 }

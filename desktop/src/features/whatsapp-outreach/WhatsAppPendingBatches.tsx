@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
@@ -124,14 +125,20 @@ export function WhatsAppPendingBatches({
             batch.createdBy,
             identityQuery.data?.pubkey,
           );
-          const profileName =
-            creatorProfiles[
-              batch.createdBy.toLocaleLowerCase()
-            ]?.displayName?.trim();
+          const creatorProfile =
+            creatorProfiles[batch.createdBy.toLocaleLowerCase()];
           const creatorName =
-            profileName ||
+            (creatorProfile
+              ? resolveIdentityLabel({
+                  pubkey: batch.createdBy,
+                  currentPubkey: identityQuery.data?.pubkey,
+                  profiles: creatorProfiles,
+                  isAgent: creatorProfile.isAgent,
+                  ownerPubkey: creatorProfile.ownerPubkey,
+                }).text
+              : null) ||
             creatorChannel?.name ||
-            `Member ${batch.createdBy.slice(0, 8)}`;
+            "Teammate awaiting profile";
           const createdAt = formatWhatsAppDateTime(batch.createdAt);
           const rowCount = batch.rows.total;
 

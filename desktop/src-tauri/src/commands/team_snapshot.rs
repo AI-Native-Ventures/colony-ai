@@ -570,6 +570,7 @@ pub async fn confirm_team_snapshot_import(
             // not persist a second instance copy that can go stale after an
             // edit or survive a later definition deletion.
             description: None,
+            company_role: None,
             slug: None,
             persona_id: Some(definition.id.clone()),
             private_key_nsec: private_key_nsec.clone(),

@@ -10,10 +10,6 @@ import {
   useManagedAgentsQuery,
   usePersonasQuery,
 } from "@/features/agents/hooks";
-import {
-  agentAntAvatarDataUrl,
-  agentFunctionFromRole,
-} from "@/features/agents/ui/agentAntAvatar";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useChannelsQuery } from "@/features/channels/hooks";
@@ -26,27 +22,14 @@ import {
   materializeBuiltInRole,
   type RoleCatalogEntry,
 } from "../builtInRoles";
+import { PlusGlyph, RoleIcon, ToolChip, toolPlainText } from "./hireTools";
 import {
   HireButton,
   HirePage,
   HireRecovery,
+  HireSteps,
   HireTitle,
 } from "./HirePresentation";
-
-const FUNCTION_GROUPS = [
-  "Sales",
-  "Operations",
-  "Customer Success",
-  "Finance",
-  "Brand",
-  "Other",
-] as const;
-
-function roleFunction(entry: RoleCatalogEntry) {
-  return agentFunctionFromRole(
-    `${entry.rolePack.job} ${entry.rolePack.title} ${entry.persona.displayName}`,
-  );
-}
 
 function scoutChannel(channels: readonly Channel[], scoutPubkey: string) {
   const key = scoutPubkey.toLowerCase();
@@ -96,16 +79,17 @@ function CustomRoleComposer({
 }) {
   return (
     <section
-      aria-label="Create your own role"
+      aria-label="Ask Scout to draft"
       className="grid gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4"
       data-testid="hire-custom-role"
     >
       <div>
         <h2 className="text-base font-semibold text-foreground">
-          Create your own role
+          Ask Scout to draft
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Describe the work. Scout will draft a hire ask for you to review.
+          Prefer a guided draft? Describe the work and Scout will prepare a hire
+          ask for you to review.
         </p>
       </div>
       {sent ? (
@@ -168,6 +152,109 @@ function CustomRoleComposer({
   );
 }
 
+function allowance(entry: RoleCatalogEntry) {
+  return entry.rolePack.defaultAllowance
+    ? `USD ${entry.rolePack.defaultAllowance} / week`
+    : "No default amount";
+}
+
+function RoleCard({
+  entry,
+  onConfigure,
+  onEdit,
+  onOpen,
+  selected,
+  working,
+}: {
+  entry: RoleCatalogEntry;
+  onConfigure: (entry: RoleCatalogEntry) => void;
+  onEdit: (entry: RoleCatalogEntry) => void;
+  onOpen: (entry: RoleCatalogEntry) => void;
+  selected: boolean;
+  working: boolean;
+}) {
+  const { persona, rolePack } = entry;
+  return (
+    <article
+      className="colony-hire-role"
+      data-selected={selected}
+      data-testid={`hire-role-${persona.id}`}
+    >
+      <div className="colony-hire-role-head">
+        <span className="colony-hire-icon-tile" data-active={selected}>
+          <RoleIcon job={rolePack.job} title={rolePack.title} />
+        </span>
+        <div className="colony-hire-role-copy">
+          <button
+            aria-pressed={selected}
+            className="colony-hire-role-title"
+            onClick={() => onOpen(entry)}
+            type="button"
+          >
+            <h2>{rolePack.title}</h2>
+            <span>
+              {rolePack.job} · {rolePack.skills.join(", ")}
+            </span>
+          </button>
+        </div>
+      </div>
+      <dl className="colony-hire-facts">
+        <dt>Tools</dt>
+        <dd
+          className="colony-hire-tools"
+          data-stacked={rolePack.tools.length > 1 || undefined}
+        >
+          {rolePack.tools.length > 0 ? (
+            rolePack.tools.map((tool) => (
+              <span
+                className="colony-hire-tool"
+                key={`${tool.name}:${tool.risk}`}
+              >
+                {tool.name}{" "}
+                <ToolChip detailed={rolePack.tools.length === 1} tool={tool} />
+              </span>
+            ))
+          ) : (
+            <span data-muted="true">No tools included</span>
+          )}
+        </dd>
+        <dt>Worker</dt>
+        <dd>{rolePack.workerMenu.join(", ")}</dd>
+        <dt>Allowance</dt>
+        <dd data-muted={!rolePack.defaultAllowance || undefined}>
+          {allowance(entry)}
+        </dd>
+      </dl>
+      <div className="colony-hire-role-actions">
+        <HireButton
+          disabled={working}
+          onClick={() => onConfigure(entry)}
+          size="sm"
+          testId={`hire-configure-${persona.id}`}
+        >
+          Configure this role
+        </HireButton>
+        <HireButton
+          disabled={working}
+          onClick={() => onOpen(entry)}
+          size="sm"
+          variant="outline"
+        >
+          Open role pack
+        </HireButton>
+        <button
+          className="colony-hire-link"
+          disabled={working}
+          onClick={() => onEdit(entry)}
+          type="button"
+        >
+          Edit pack
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export function HireRolesScreen() {
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery();
@@ -175,7 +262,8 @@ export function HireRolesScreen() {
   const agentsQuery = useManagedAgentsQuery();
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
-  const { goHireConfigure, goTeam, goChannel } = useAppNavigation();
+  const { goHireConfigure, goHireRolePack, goTeam, goChannel } =
+    useAppNavigation();
   const appShell = useAppShell();
   const queryClient = useQueryClient();
   const createPersona = useCreatePersonaMutation();
@@ -183,6 +271,9 @@ export function HireRolesScreen() {
   const sendMessage = useSendMessageMutation(null, identityQuery.data);
   const [adding, setAdding] = React.useState(false);
   const [addFailed, setAddFailed] = React.useState(false);
+  const [selectedRoleId, setSelectedRoleId] = React.useState<string | null>(
+    null,
+  );
   const [customDescription, setCustomDescription] = React.useState("");
   const [customError, setCustomError] = React.useState<string | null>(null);
   const [customThread, setCustomThread] = React.useState<{
@@ -201,7 +292,6 @@ export function HireRolesScreen() {
     personasQuery.isPending ||
     runtimesQuery.isPending ||
     membershipQuery.isPending;
-
   const scout = (agentsQuery.data ?? []).find(
     (agent) =>
       agent.personaId === "builtin:fizz" ||
@@ -229,8 +319,8 @@ export function HireRolesScreen() {
     return (
       <HirePage testId="hire-roles">
         <HireTitle
-          subtitle="Choose the work you need help with."
-          title="Hire an agent"
+          subtitle="Choose the role a new AI employee will fill."
+          title="Role catalog"
         />
         {loading ? (
           <section
@@ -276,16 +366,17 @@ export function HireRolesScreen() {
   }
 
   const options = buildRoleCatalog(personasQuery.data ?? []);
+  const catalogLead = options.slice(0, 3);
+  const catalogRemainder = options.slice(3);
+  const selected =
+    options.find((entry) => entry.persona.id === selectedRoleId) ??
+    options[0] ??
+    null;
   const availableRuntimes = new Set(
     (runtimesQuery.data ?? [])
       .filter((runtime) => runtime.availability === "available")
       .map((runtime) => runtime.id),
   );
-  const groupedOptions = FUNCTION_GROUPS.map((name) => ({
-    name,
-    entries: options.filter((entry) => roleFunction(entry) === name),
-  })).filter((group) => group.entries.length > 0);
-
   const personaIdFor = (entry: RoleCatalogEntry) =>
     entry.builtIn
       ? materializeBuiltInRole(entry.builtIn, {
@@ -299,13 +390,16 @@ export function HireRolesScreen() {
           scope: activeCommunity?.relayUrl,
         })
       : Promise.resolve(entry.persona.id);
-  const configure = async (entry: RoleCatalogEntry) => {
+  const runRoleAction = async (
+    entry: RoleCatalogEntry,
+    action: (personaId: string) => Promise<unknown>,
+  ) => {
     if (addingRef.current) return;
     addingRef.current = true;
     setAdding(true);
     setAddFailed(false);
     try {
-      await goHireConfigure(await personaIdFor(entry), crypto.randomUUID());
+      await action(await personaIdFor(entry));
     } catch {
       setAddFailed(true);
     } finally {
@@ -313,6 +407,12 @@ export function HireRolesScreen() {
       setAdding(false);
     }
   };
+  const configure = (entry: RoleCatalogEntry) =>
+    runRoleAction(entry, (personaId) =>
+      goHireConfigure(personaId, crypto.randomUUID()),
+    );
+  const edit = (entry: RoleCatalogEntry) =>
+    runRoleAction(entry, (personaId) => goHireRolePack(personaId));
   const openCustomThread = () => {
     if (!customThread) return;
     void goChannel(customThread.channelId, { thread: customThread.messageId });
@@ -351,109 +451,184 @@ export function HireRolesScreen() {
   return (
     <HirePage testId="hire-roles">
       <HireTitle
-        subtitle="Choose the work you need help with."
-        title="Hire an agent"
+        action={
+          <HireButton
+            onClick={() => void goHireRolePack()}
+            size="xl"
+            testId="hire-create-role"
+          >
+            <PlusGlyph size={17} /> Create role pack
+          </HireButton>
+        }
+        subtitle="Choose the role a new AI employee will fill."
+        title="Role catalog"
       />
-      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pb-8">
-        <CustomRoleComposer
-          channel={channel}
-          disabled={sendDisabled}
-          error={customError}
-          onChange={setCustomDescription}
-          onOpenThread={openCustomThread}
-          onSubmit={() => void askScout()}
-          sending={sendMessage.isPending}
-          sent={customThread != null}
-          value={customDescription}
-        />
-        <section aria-label="Role catalog" className="space-y-7">
-          {groupedOptions.map((group) => (
-            <section
-              aria-label={group.name}
-              className="space-y-2"
-              key={group.name}
-            >
-              <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {group.name}
-              </h2>
-              <div className="space-y-2">
-                {group.entries.map((entry) => (
-                  <article
-                    className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 sm:p-4"
-                    data-testid={`hire-role-${entry.persona.id}`}
-                    key={entry.persona.id}
-                  >
-                    <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-muted">
-                      <img
-                        alt={`${entry.persona.displayName} ant`}
-                        className="h-full w-full object-contain"
-                        src={agentAntAvatarDataUrl(group.name)}
-                      />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold text-foreground">
-                        {entry.persona.displayName}
-                      </h3>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                        {entry.persona.description || entry.rolePack.job}
-                      </p>
-                    </div>
-                    <HireButton
-                      disabled={adding}
-                      onClick={() => void configure(entry)}
-                      size="sm"
-                      testId={`hire-configure-${entry.persona.id}`}
-                    >
-                      Configure
-                    </HireButton>
-                  </article>
-                ))}
-              </div>
-            </section>
+      <HireSteps current={1} />
+      <section aria-label="Role catalog" className="colony-hire-columns">
+        <section aria-label="Role packs" className="colony-hire-roles">
+          {catalogLead.map((entry) => (
+            <RoleCard
+              entry={entry}
+              key={entry.persona.id}
+              onConfigure={(role) => void configure(role)}
+              onEdit={(role) => void edit(role)}
+              onOpen={(role) => setSelectedRoleId(role.persona.id)}
+              selected={selected?.persona.id === entry.persona.id}
+              working={adding}
+            />
           ))}
-        </section>
-        {addFailed ? (
-          <p
-            className="text-sm text-destructive"
-            data-testid="hire-role-add-error"
-            role="alert"
+          <article
+            className="colony-hire-role-empty"
+            data-testid="hire-create-role-entry"
           >
-            The role could not be opened. Try again.
-          </p>
-        ) : null}
-        {availableRuntimes.size === 0 ? (
-          <section
-            aria-label="No harness is available"
-            className="rounded-xl border border-border p-4"
-            role="note"
-          >
-            <h2 className="text-sm font-semibold text-foreground">
-              No harness is available
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add a harness in settings before you configure a role.
+            <span className="colony-hire-icon-tile">
+              <PlusGlyph />
+            </span>
+            <h2>Create a role</h2>
+            <p>
+              Write the job, its skills and the tools it may use. You can
+              configure and hire this role directly.
             </p>
             <HireButton
-              onClick={() => appShell.onOpenSettings?.("agents")}
+              onClick={() => void goHireRolePack()}
               size="sm"
               variant="outline"
             >
-              Open harness settings
+              Create role pack
             </HireButton>
-          </section>
-        ) : null}
-        {agentsQuery.isError || channelsQuery.isError ? (
-          <p className="text-xs text-muted-foreground" role="status">
-            Scout’s shared conversation could not be checked. Retry after the
-            connection returns.
-          </p>
-        ) : null}
-        {agentsQuery.isPending || channelsQuery.isPending ? (
-          <p className="text-xs text-muted-foreground" role="status">
-            Checking for Scout’s shared conversation…
-          </p>
-        ) : null}
-      </div>
+          </article>
+          {catalogRemainder.map((entry) => (
+            <RoleCard
+              entry={entry}
+              key={entry.persona.id}
+              onConfigure={(role) => void configure(role)}
+              onEdit={(role) => void edit(role)}
+              onOpen={(role) => setSelectedRoleId(role.persona.id)}
+              selected={selected?.persona.id === entry.persona.id}
+              working={adding}
+            />
+          ))}
+        </section>
+        <aside aria-label="Role pack preview" className="colony-hire-aside">
+          {selected ? (
+            <section className="colony-hire-card colony-hire-panel">
+              <p className="colony-hire-eyebrow">Role pack preview</p>
+              <h2 className="colony-hire-panel-title">
+                {selected.rolePack.title}
+              </h2>
+              <dl className="colony-hire-detail">
+                <div>
+                  <dt>Job</dt>
+                  <dd>{selected.rolePack.job}</dd>
+                </div>
+                <div data-chips="true">
+                  <dt>Skills</dt>
+                  <dd data-chips="true">
+                    {selected.rolePack.skills.map((skill) => (
+                      <span className="colony-hire-skill" key={skill}>
+                        {skill}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Tools</dt>
+                  <dd>
+                    {selected.rolePack.tools.map(toolPlainText).join(", ") ||
+                      "No tools included"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Worker menu</dt>
+                  <dd>{selected.rolePack.workerMenu.join(", ")}</dd>
+                </div>
+                <div>
+                  <dt>Allowance</dt>
+                  <dd>{allowance(selected)}</dd>
+                </div>
+              </dl>
+              <div className="colony-hire-panel-actions">
+                <HireButton
+                  disabled={adding}
+                  onClick={() => void configure(selected)}
+                  size="lg"
+                >
+                  Configure this role
+                </HireButton>
+                <div className="flex gap-2">
+                  <HireButton
+                    disabled={adding}
+                    onClick={() => void configure(selected)}
+                    size="md"
+                    variant="outline"
+                  >
+                    Propose a hire
+                  </HireButton>
+                  <HireButton
+                    disabled={adding}
+                    onClick={() => void edit(selected)}
+                    size="md"
+                    variant="outline"
+                  >
+                    Edit role pack
+                  </HireButton>
+                </div>
+              </div>
+            </section>
+          ) : null}
+          {availableRuntimes.size === 0 ? (
+            <section
+              aria-label="No runtime is available"
+              className="colony-hire-notice"
+              role="note"
+            >
+              <strong>No runtime is available</strong>
+              <p>
+                A new employee needs a harness to run in. Add one, then come
+                back to finish the hire.
+              </p>
+              <HireButton
+                onClick={() => appShell.onOpenSettings?.("agents")}
+                size="sm"
+                variant="outline"
+              >
+                Open harness settings
+              </HireButton>
+            </section>
+          ) : null}
+        </aside>
+      </section>
+      {addFailed ? (
+        <p
+          className="colony-hire-error"
+          data-testid="hire-role-add-error"
+          role="alert"
+        >
+          The role could not be opened. Try again.
+        </p>
+      ) : null}
+      <CustomRoleComposer
+        channel={channel}
+        disabled={sendDisabled}
+        error={customError}
+        onChange={setCustomDescription}
+        onOpenThread={openCustomThread}
+        onSubmit={() => void askScout()}
+        sending={sendMessage.isPending}
+        sent={customThread != null}
+        value={customDescription}
+      />
+      {agentsQuery.isError || channelsQuery.isError ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Scout’s shared conversation could not be checked. Retry after the
+          connection returns.
+        </p>
+      ) : null}
+      {agentsQuery.isPending || channelsQuery.isPending ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Checking for Scout’s shared conversation…
+        </p>
+      ) : null}
     </HirePage>
   );
 }

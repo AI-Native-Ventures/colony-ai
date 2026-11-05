@@ -3,12 +3,13 @@ import { Link } from "@tanstack/react-router";
 import {
   CheckGlyph,
   CloseGlyph,
+  DownloadGlyph,
   MessageGlyph,
   SearchGlyph,
 } from "./DiscoveryIcons";
 import { ListPlus, MoreHorizontal, Sparkles } from "lucide-react";
 import { BusinessLogoMark } from "./BusinessLogoMark";
-import type { CampaignProspect } from "./CampaignHelpers";
+import type { CampaignProspect, ProspectFilter } from "./CampaignHelpers";
 import type { AcceptButtonState } from "./bulkAccept";
 import type { ProspectStage } from "./businessRecordContract";
 import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
@@ -29,11 +30,19 @@ const COLUMN_HEADER_ROLE = { role: "columnheader" } as const;
 const CELL_ROLE = { role: "cell" } as const;
 
 export function CampaignToolbar({
+  exportDisabled,
+  filter,
+  onExport,
+  onFilter,
   onQuery,
   onSort,
   query,
   sort,
 }: {
+  exportDisabled: boolean;
+  filter: ProspectFilter;
+  onExport: () => void;
+  onFilter: (filter: ProspectFilter) => void;
   onQuery: (query: string) => void;
   onSort: (sort: ProspectSort) => void;
   query: string;
@@ -51,6 +60,20 @@ export function CampaignToolbar({
         />
       </label>
       <select
+        aria-label="Filter prospects"
+        className="c3d-select"
+        id="w10-campaign-filter"
+        onChange={(event) =>
+          onFilter(event.currentTarget.value as ProspectFilter)
+        }
+        value={filter}
+      >
+        <option value="all">All prospects</option>
+        <option value="high-fit">Strong fit · 85+</option>
+        <option value="accepted">Accepted leads</option>
+        <option value="candidates">Not yet accepted</option>
+      </select>
+      <select
         aria-label="Sort prospects"
         className="c3d-select"
         id="w10-campaign-sort"
@@ -60,6 +83,15 @@ export function CampaignToolbar({
         <option value="fit">Best fit</option>
         <option value="name">Name A–Z</option>
       </select>
+      <button
+        aria-label="Export visible prospects"
+        className="c3d-icon-button"
+        disabled={exportDisabled}
+        onClick={onExport}
+        type="button"
+      >
+        <DownloadGlyph />
+      </button>
     </div>
   );
 }

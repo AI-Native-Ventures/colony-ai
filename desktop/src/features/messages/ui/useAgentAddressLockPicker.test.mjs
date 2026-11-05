@@ -932,7 +932,8 @@ test("automatic mention insertion and restoration use the registered collision-s
       isAgent: true,
     }),
   );
-  assert.equal(text, `@carl (${remote}) @carl existing`);
+  assert.equal(text, "@carl 2 @carl existing");
+  assert.doesNotMatch(text, /(?:npub1[0-9a-z]+|[0-9a-f]{40,})/i);
   assert.deepEqual(
     extractMentionPubkeys({
       text,
@@ -945,7 +946,7 @@ test("automatic mention insertion and restoration use the registered collision-s
   act(() => result.current.restoreAddressedAgentMentions());
   assert.equal(
     text,
-    `@carl (${remote}) @carl existing`,
+    "@carl 2 @carl existing",
     "restore must not append or rebind the local mention",
   );
   act(() => result.current.removeAddressedAgent(remote));
@@ -956,8 +957,8 @@ test("automatic mention insertion and restoration use the registered collision-s
   );
   text = "";
   act(() => result.current.restoreAddressedAgentMentions([remote], [remote]));
-  assert.equal(text, `@carl (${remote}) `);
-  assert.equal(prefixes.at(-1).prefix, `@carl (${remote}) `);
+  assert.equal(text, "@carl 2 ");
+  assert.equal(prefixes.at(-1).prefix, "@carl 2 ");
   assert.deepEqual(
     extractMentionPubkeys({
       text,

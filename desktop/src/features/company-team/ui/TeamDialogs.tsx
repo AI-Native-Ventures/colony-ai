@@ -20,9 +20,9 @@ import {
   useUpdateProfileMutation,
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
 import { resolveJobTitle } from "@/features/profile/lib/jobTitle";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { CloseIcon } from "@/shared/ui/colonyIcons";
 import {
   Dialog,
@@ -47,11 +47,15 @@ export type TeamDialogProps = {
 
 function useMemberName(member: TeamMember) {
   const profiles = useUsersBatchQuery([member.pubkey]);
-  return (
-    profiles.data?.profiles[member.pubkey]?.displayName?.trim() ||
-    member.fallbackName?.trim() ||
-    truncateNpub(member.pubkey)
-  );
+  const identity = useIdentityQuery();
+  return resolveIdentityLabel({
+    pubkey: member.pubkey,
+    currentPubkey: identity.data?.pubkey,
+    fallbackName: member.fallbackName,
+    profiles: profiles.data?.profiles,
+    isAgent: member.kind === "employee",
+    ownerPubkey: profiles.data?.profiles[member.pubkey]?.ownerPubkey,
+  }).text;
 }
 
 function kindLabel(member: TeamMember) {
@@ -148,9 +152,14 @@ export function EditRoleReportingDialog({
     { enabled: members.length > 0 },
   ).data?.profiles;
   const nameOf = (candidate: TeamMember) =>
-    profiles?.[candidate.pubkey]?.displayName?.trim() ||
-    candidate.fallbackName?.trim() ||
-    truncateNpub(candidate.pubkey);
+    resolveIdentityLabel({
+      pubkey: candidate.pubkey,
+      currentPubkey: identity.data?.pubkey,
+      fallbackName: candidate.fallbackName,
+      profiles,
+      isAgent: candidate.kind === "employee",
+      ownerPubkey: profiles?.[candidate.pubkey]?.ownerPubkey,
+    }).text;
   // The title on the person's own profile leads; the position title backs it.
   const currentTitle = resolveJobTitle({
     positionTitle: member.position?.head.title,
@@ -265,7 +274,7 @@ export function EditRoleReportingDialog({
               <option value="">Company owner</option>
               {manager && !members.some((c) => c.pubkey === manager) ? (
                 <option disabled value={manager}>
-                  {truncateNpub(manager)} · unavailable
+                  Teammate awaiting profile · unavailable
                 </option>
               ) : null}
               {members
@@ -504,9 +513,13 @@ export function ReviewRehireDialog({
     enabled: Boolean(managerPubkey),
   }).data?.profiles;
   const managerName = managerPubkey
-    ? profiles?.[managerPubkey]?.displayName?.trim() ||
-      manager?.fallbackName?.trim() ||
-      truncateNpub(managerPubkey)
+    ? resolveIdentityLabel({
+        pubkey: managerPubkey,
+        fallbackName: manager?.fallbackName,
+        profiles,
+        isAgent: manager?.kind === "employee",
+        ownerPubkey: profiles?.[managerPubkey]?.ownerPubkey,
+      }).text
     : "Company owner";
   const allowanceHead = allowances.data?.records.find(
     (record) => record.head.employeePubkey?.toLowerCase() === member.pubkey,

@@ -367,6 +367,30 @@ button.c3r-card:focus-visible {
   gap: 1rem;
 }
 
+.c3r-mention-name-row {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.c3r-mention-name-row .c3r-name {
+  min-width: 0;
+}
+
+.c3r-mention-agent-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border-radius: 999px;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  line-height: 1;
+  padding: 0.2rem 0.375rem;
+}
+
 .c3r-mention-picker .c3r-meta {
   flex: none;
   max-width: 48%;

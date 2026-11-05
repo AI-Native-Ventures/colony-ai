@@ -1,3 +1,5 @@
+import type { ResolvedIdentityLabel } from "@/features/profile/lib/identity";
+
 export type TimelineReaction = {
   emoji: string;
   /** Custom (image) emoji URL from the reaction's NIP-30 `emoji` tag, if any. */
@@ -25,6 +27,8 @@ export type TimelineMessage = {
    */
   signerPubkey?: string;
   author: string;
+  /** Structured label used to keep an external agent's owner suffix muted. */
+  authorIdentity?: ResolvedIdentityLabel;
   /** True when the displayed author is known to be an agent. */
   isAgent?: boolean;
   /** Verified owner pubkey for an agent author, when available. */

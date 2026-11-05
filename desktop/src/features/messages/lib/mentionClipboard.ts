@@ -1,7 +1,5 @@
-import {
-  formatLegacyMentionDisplayLabel,
-  formatMentionDisplayLabel,
-} from "@/shared/lib/mentionDisplay";
+import { formatMentionDisplayLabel } from "@/shared/lib/mentionDisplay";
+import { truncateNpub, truncatePubkey } from "@/shared/lib/pubkey";
 import { truncateInlineChipLabel } from "@/shared/ui/mentionChip";
 
 import { getMentionOffsets } from "./hasMention";
@@ -52,6 +50,37 @@ export function canonicalMentionLabel(value: string): string {
 export type ChipTextMatch = "full" | "truncated" | "fragment";
 
 /**
+ * Read legacy compact key text only to recognize a complete old chip.
+ *
+ * This is deliberately a comparison-only compatibility path. The caller
+ * always writes `formatMentionDisplayLabel` back into the clipboard or
+ * composer, so neither compact form can become visible identity text again.
+ */
+function legacyRawMentionDisplayForms(
+  label: string,
+  pubkey: string | undefined,
+): string[] {
+  const match = label.match(
+    /^(.*) \(([0-9a-f]{64})\)((?: (?:[2-9]|[1-9][0-9]+))?)$/i,
+  );
+  const normalizedPubkey = pubkey?.trim().toLowerCase();
+  if (
+    !match ||
+    !normalizedPubkey ||
+    !isMentionPubkey(normalizedPubkey) ||
+    match[2].toLowerCase() !== normalizedPubkey
+  ) {
+    return [];
+  }
+  const suffix = match[3] ?? "";
+  return [
+    label,
+    `${match[1]} (${truncateNpub(normalizedPubkey)})${suffix}`,
+    `${match[1]} (${truncatePubkey(normalizedPubkey)})${suffix}`,
+  ];
+}
+
+/**
  * Classify a chip's copied text against the label its attributes declare.
  *
  * Both clipboard sides ask this one question — the copy handler deciding
@@ -85,29 +114,21 @@ export function matchChipTextToLabel(
 ): ChipTextMatch {
   const body = canonicalMentionLabel(text);
   const matches = (form: string) => body === form || body === `${sigil}${form}`;
-  if (matches(canonicalMentionLabel(label))) return "full";
+  const displayLabel =
+    sigil === "@" ? formatMentionDisplayLabel(label, pubkey) : label;
+  if (matches(canonicalMentionLabel(displayLabel))) return "full";
   // Derived from the helper the chips render with, so the tolerated form
   // cannot drift from what a fully selected capped chip actually carries.
-  const truncated = truncateInlineChipLabel(label);
-  if (truncated !== label && matches(canonicalMentionLabel(truncated))) {
+  const truncated = truncateInlineChipLabel(displayLabel);
+  if (truncated !== displayLabel && matches(canonicalMentionLabel(truncated))) {
     return "truncated";
   }
-  // Read-only mentions abbreviate a bound key, never the identity carried by
-  // the clipboard. Restore the full literal label only for the whole display.
-  const compact =
-    sigil === "@" ? formatMentionDisplayLabel(label, pubkey) : label;
-  if (compact !== label && matches(canonicalMentionLabel(compact))) {
-    return "truncated";
-  }
-  // A chip copied before keys displayed as npub carries the hex-truncated
-  // key in its text. Accept that prior *display* form — derived from the
-  // same label and pubkey this record declares, never from the pasted text
-  // itself — so an old whole-chip copy still re-binds instead of losing its
-  // identity. The two forms are disjoint (a hex truncation cannot contain
-  // the `n` an npub starts with), so this cannot reclassify any new chip.
-  const legacy =
-    sigil === "@" ? formatLegacyMentionDisplayLabel(label, pubkey) : label;
-  if (legacy !== label && matches(canonicalMentionLabel(legacy))) {
+  if (
+    sigil === "@" &&
+    legacyRawMentionDisplayForms(label, pubkey).some((form) =>
+      matches(canonicalMentionLabel(form)),
+    )
+  ) {
     return "truncated";
   }
   return "fragment";
@@ -322,15 +343,16 @@ export function parseMentionClipboardRecords(html: string): MentionIdentity[] {
     const pubkey = readAttribute(tag, MENTION_PUBKEY_ATTRIBUTE)
       ?.trim()
       .toLowerCase();
-    const label = readAttribute(tag, MENTION_LABEL_ATTRIBUTE)?.trim();
+    const rawLabel = readAttribute(tag, MENTION_LABEL_ATTRIBUTE)?.trim();
     if (
       !pubkey ||
       !isMentionPubkey(pubkey) ||
-      !label ||
-      label.length > MAX_MENTION_LABEL_LENGTH
+      !rawLabel ||
+      rawLabel.length > MAX_MENTION_LABEL_LENGTH
     ) {
       continue;
     }
+    const label = formatMentionDisplayLabel(rawLabel, pubkey);
     const key = `${label.toLowerCase()} ${pubkey}`;
     if (seen.has(key)) continue;
     seen.add(key);

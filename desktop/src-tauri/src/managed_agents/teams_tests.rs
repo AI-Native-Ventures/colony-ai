@@ -169,6 +169,7 @@ fn managed_agent(name: &str) -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: name.to_string(),
         name: name.to_string(),
         persona_id: None,

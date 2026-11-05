@@ -29,7 +29,10 @@ import {
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { AutocompleteEdit } from "./useRichTextEditor";
 import type { ChannelMember, ChannelType } from "@/shared/api/types";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import {
+  resolveIdentityLabels,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { detectPrefixQuery } from "@/shared/lib/detectPrefixQuery";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { trimMapToSize } from "@/shared/lib/trimMapToSize";
@@ -337,17 +340,6 @@ export function useMentions(
       relayAgentsQuery.data,
     ],
   );
-  const mentionCandidatesWithTeams = React.useMemo(
-    () => [
-      ...mentionCandidates,
-      ...buildTeamMentionCandidates(
-        teamsQuery.data ?? [],
-        personasQuery.data ?? [],
-        mentionCandidates,
-      ),
-    ],
-    [mentionCandidates, personasQuery.data, teamsQuery.data],
-  );
   const ownerPubkeys = React.useMemo(
     () => [
       ...new Set(
@@ -361,6 +353,59 @@ export function useMentions(
   const ownerProfilesQuery = useUsersBatchQuery(ownerPubkeys, {
     enabled: ownerPubkeys.length > 0,
   });
+  const mentionIdentityLabels = React.useMemo(
+    () =>
+      resolveIdentityLabels(
+        mentionCandidates
+          .filter(
+            (candidate): candidate is MentionCandidate & { pubkey: string } =>
+              Boolean(candidate.pubkey),
+          )
+          .map((candidate) => ({
+            pubkey: candidate.pubkey,
+            currentPubkey,
+            fallbackName: candidate.displayName,
+            profiles,
+            ownerProfiles: ownerProfilesQuery.data?.profiles,
+            isAgent: candidate.isAgent,
+            ownerPubkey: candidate.ownerPubkey,
+          })),
+      ),
+    [
+      currentPubkey,
+      mentionCandidates,
+      ownerProfilesQuery.data?.profiles,
+      profiles,
+    ],
+  );
+  const labeledMentionCandidates = React.useMemo(
+    () =>
+      mentionCandidates.map((candidate) => {
+        if (!candidate.pubkey) return candidate;
+        const identityLabel = mentionIdentityLabels.get(
+          normalizePubkey(candidate.pubkey),
+        );
+        return {
+          ...candidate,
+          displayName: identityLabel?.text ?? candidate.displayName,
+          identityLabel,
+          baseDisplayName:
+            candidate.displayName ?? identityLabel?.primary ?? null,
+        };
+      }),
+    [mentionCandidates, mentionIdentityLabels],
+  );
+  const mentionCandidatesWithTeams = React.useMemo(
+    () => [
+      ...labeledMentionCandidates,
+      ...buildTeamMentionCandidates(
+        teamsQuery.data ?? [],
+        personasQuery.data ?? [],
+        labeledMentionCandidates,
+      ),
+    ],
+    [labeledMentionCandidates, personasQuery.data, teamsQuery.data],
+  );
   const searchableNames = React.useMemo(
     () => uniqueAutocompleteLabels(mentionCandidatesWithTeams),
     [mentionCandidatesWithTeams],
@@ -443,7 +488,7 @@ export function useMentions(
   const getDefaultAgentSuggestion = useDefaultAgentSuggestion({
     activePersonaIds,
     agentProvenanceReady: agentDirectoriesReady,
-    candidates: mentionCandidates,
+    candidates: labeledMentionCandidates,
     channelType: options?.channelType,
     currentPubkey,
     ownerProfiles: ownerProfilesQuery.data?.profiles,
@@ -493,7 +538,7 @@ export function useMentions(
   // Untrusted clipboard records only become bindable identities once trusted
   // Colony state confirms the pair , see `mentionIdentityTrust`.
   const verifyMentionIdentities = useVerifyMentionIdentities({
-    mentionCandidates,
+    mentionCandidates: labeledMentionCandidates,
     profiles,
   });
   // The map write a settled paste uses: it records a decision the user made
@@ -655,7 +700,7 @@ export function useMentions(
     for (const [label, pubkey] of mentionMapRef.current) {
       add(label, pubkey, agentNames.has(label.trim().toLowerCase()));
     }
-    for (const candidate of mentionCandidates) {
+    for (const candidate of labeledMentionCandidates) {
       if (!candidate.isMember || !candidate.pubkey || !candidate.displayName) {
         continue;
       }
@@ -666,7 +711,7 @@ export function useMentions(
       );
     }
     return identities;
-  }, [knownAgentPubkeys, mentionCandidates]);
+  }, [knownAgentPubkeys, labeledMentionCandidates]);
   const insertResolvedMention = React.useCallback(
     ({
       displayName,
@@ -698,14 +743,14 @@ export function useMentions(
           return displayName;
         }
       }
-      const candidate = mentionCandidates.find(
+      const candidate = labeledMentionCandidates.find(
         (item) =>
           item.pubkey !== undefined &&
           normalizePubkey(item.pubkey) === normalizedPubkey,
       );
       return candidate?.displayName ?? null;
     },
-    [mentionCandidates],
+    [labeledMentionCandidates],
   );
   const isAgentPubkey = React.useCallback(
     (pubkey: string): boolean => knownAgentPubkeys.has(normalizePubkey(pubkey)),
@@ -793,13 +838,13 @@ export function useMentions(
         competingDisplayNames,
         selectedMentions: mentionMapRef.current,
         selectedDisplayNames: personaMentionMapRef.current.keys(),
-        memberCandidates: mentionCandidates,
+        memberCandidates: labeledMentionCandidates,
       });
       // Selections are intent, not cached authorization. Never discard a
       // selected key because a refresh removed it from the picker.
       return extracted;
     },
-    [mentionCandidates],
+    [labeledMentionCandidates],
   );
   const getSelectedAgentPubkeys = React.useRef(
     () => selectedAgentMentionPubkeysRef.current,
@@ -825,10 +870,10 @@ export function useMentions(
         mentionMatchCandidates({
           selectedMentions: mentionMapRef.current,
           selectedDisplayNames: personaMentionMapRef.current.keys(),
-          memberCandidates: mentionCandidates,
+          memberCandidates: labeledMentionCandidates,
         }).map((candidate) => candidate.displayName),
       ),
-    [activePersonaById, mentionCandidates],
+    [activePersonaById, labeledMentionCandidates],
   );
   const cancelMentionAutocomplete = React.useCallback(() => {
     autocompleteGenerationRef.current += 1;
@@ -856,7 +901,7 @@ export function useMentions(
   }, [cancelMentionAutocomplete, pasteBinding.clearMentionIntents]);
   const { getDraftMentionRefs, restoreDraftMentionRefs } =
     useDraftMentionRouting({
-      memberCandidates: mentionCandidates,
+      memberCandidates: labeledMentionCandidates,
       mentionMapRef,
       personaMentionMapRef,
       selectedAgentNamesRef: selectedAgentMentionNamesRef,

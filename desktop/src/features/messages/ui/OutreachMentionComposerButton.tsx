@@ -10,7 +10,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { MentionSuggestion } from "./MentionAutocomplete";
+import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
+import {
+  showMentionAgentProvenanceMarker,
+  type MentionSuggestion,
+} from "./MentionAutocomplete";
 import { COMPOSER_MESSAGE_LINK_NODE_NAME } from "@/features/messages/lib/composerMessageLinkNode";
 import {
   leadReferenceContent,
@@ -120,6 +124,8 @@ function MentionIdentityGroup({
     title: string;
     detail: string;
     person: MentionSuggestion;
+    testId: string;
+    showAgentProvenanceMarker: boolean;
   }>;
   onSelect: (person: MentionSuggestion) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
@@ -129,36 +135,58 @@ function MentionIdentityGroup({
     <section aria-label={title} className="c3r-mention-group">
       <h3 className="c3r-mention-group-title">{title}</h3>
       <ul className="c3r-picker-list">
-        {choices.map(({ key, title: label, detail, person }) => (
-          <li key={key}>
-            <button
-              aria-label={`Mention ${label}`}
-              className="c3r-picker-item"
-              onClick={() => onSelect(person)}
-              onKeyDown={onKeyDown}
-              type="button"
-            >
-              <span aria-hidden="true" className="c3r-mention-avatar">
-                <ProfileAvatar
-                  avatarUrl={person.avatarUrl ?? null}
-                  className="h-full w-full"
-                  label={label}
-                  pubkey={person.pubkey}
-                  shape={
-                    person.isAgent || person.kind === "persona"
-                      ? "squircle"
-                      : "circle"
-                  }
-                  testId="mention-suggestion-avatar"
-                />
-              </span>
-              <span className="c3r-copy">
-                <span className="c3r-name">{label}</span>
-                <span className="c3r-meta">{detail}</span>
-              </span>
-            </button>
-          </li>
-        ))}
+        {choices.map(
+          ({
+            key,
+            title: label,
+            detail,
+            person,
+            testId,
+            showAgentProvenanceMarker,
+          }) => (
+            <li data-testid={testId} key={key}>
+              <button
+                aria-label={`Mention ${label}`}
+                className="c3r-picker-item"
+                onClick={() => onSelect(person)}
+                onKeyDown={onKeyDown}
+                type="button"
+              >
+                <span aria-hidden="true" className="c3r-mention-avatar">
+                  <ProfileAvatar
+                    avatarUrl={person.avatarUrl ?? null}
+                    className="h-full w-full"
+                    label={label}
+                    pubkey={person.pubkey}
+                    shape={
+                      person.isAgent || person.kind === "persona"
+                        ? "squircle"
+                        : "circle"
+                    }
+                    testId="mention-suggestion-avatar"
+                  />
+                </span>
+                <span className="c3r-copy">
+                  <span className="c3r-mention-name-row">
+                    <span className="c3r-name">{label}</span>
+                    {person.isAgent ? (
+                      <span
+                        className="c3r-mention-agent-pill"
+                        data-testid="mention-agent-icon"
+                      >
+                        agent
+                      </span>
+                    ) : null}
+                    {showAgentProvenanceMarker ? (
+                      <OtherSetupAgentMarker testId="mention-agent-provenance" />
+                    ) : null}
+                  </span>
+                  <span className="c3r-meta">{detail}</span>
+                </span>
+              </button>
+            </li>
+          ),
+        )}
       </ul>
     </section>
   );
@@ -196,45 +224,71 @@ function OutreachMentionPickerContent({
   const currentPubkeyNormalized = currentPubkey
     ? normalizePubkey(currentPubkey)
     : null;
-  const people = peopleAndAgents
+  const agentNameCounts = new Map<string, number>();
+  for (const person of peopleAndAgents) {
+    if (!person.isAgent) continue;
+    const name = (person.baseDisplayName ?? person.displayName)
+      .trim()
+      .toLocaleLowerCase();
+    agentNameCounts.set(name, (agentNameCounts.get(name) ?? 0) + 1);
+  }
+  const identities = peopleAndAgents
     .filter(
       (item) =>
-        !item.isAgent &&
-        item.kind !== "team" &&
-        (!item.pubkey ||
-          !currentPubkeyNormalized ||
-          normalizePubkey(item.pubkey) !== currentPubkeyNormalized),
+        item.isAgent ||
+        item.kind === "team" ||
+        !item.pubkey ||
+        !currentPubkeyNormalized ||
+        normalizePubkey(item.pubkey) !== currentPubkeyNormalized,
     )
-    .map((item) => ({
-      key: `person:${item.pubkey ?? item.displayName}`,
-      title: item.displayName,
-      detail:
-        item.jobTitle ??
-        (item.pubkey
-          ? personProfilesQuery.data?.profiles[normalizePubkey(item.pubkey)]
-              ?.jobTitle
-          : null) ??
-        item.ownerLabel ??
-        "Person",
-      person: item,
-    }));
-  const agents = peopleAndAgents
-    .filter((item) => item.isAgent)
-    .map((item) => ({
-      key: `agent:${item.pubkey ?? item.displayName}`,
-      title: item.displayName,
-      detail: "AI employee",
-      person: item,
-    }));
-  const teams = peopleAndAgents
-    .filter((item) => item.kind === "team")
-    .map((item) => ({
-      key: `team:${item.teamId ?? item.displayName}`,
-      title: item.displayName,
-      detail: "Team",
-      person: item,
-    }));
-  const identities = [...agents, ...people, ...teams];
+    .map((item) => {
+      const suggestionKey =
+        item.pubkey ??
+        (item.personaId ? `persona-${item.personaId}` : null) ??
+        (item.teamId ? `team-${item.teamId}` : null) ??
+        item.displayName;
+      const showAgentProvenanceMarker = showMentionAgentProvenanceMarker(item);
+      const agentName = (item.baseDisplayName ?? item.displayName)
+        .trim()
+        .toLocaleLowerCase();
+      const hasAgentNameCollision =
+        item.isAgent && (agentNameCounts.get(agentName) ?? 0) > 1;
+      const detailParts: string[] = [];
+
+      if (item.kind === "team") {
+        detailParts.push(`Team · ${item.teamMembers?.length ?? 0} agents`);
+      } else if (item.isAgent) {
+        detailParts.push("AI employee");
+        if (item.jobTitle) detailParts.push(item.jobTitle);
+        if (!item.identityLabel && item.ownerLabel) {
+          detailParts.push(`managed by ${item.ownerLabel}`);
+        }
+        if (hasAgentNameCollision && showAgentProvenanceMarker) {
+          detailParts.push("Not on this Mac");
+        }
+        if (item.notInChannel) detailParts.push("not in channel");
+      } else {
+        detailParts.push(
+          item.jobTitle ??
+            (item.pubkey
+              ? personProfilesQuery.data?.profiles[normalizePubkey(item.pubkey)]
+                  ?.jobTitle
+              : null) ??
+            item.ownerLabel ??
+            "Person",
+        );
+        if (item.notInChannel) detailParts.push("not in channel");
+      }
+
+      return {
+        key: suggestionKey,
+        title: item.displayName,
+        detail: detailParts.join(" · "),
+        person: item,
+        testId: `mention-suggestion-${suggestionKey}`,
+        showAgentProvenanceMarker,
+      };
+    });
   const lists: EntityChoice[] = [...(records?.outreachLists ?? [])]
     .filter(({ record }) => record.status === "active")
     .sort((left, right) => right.record.updatedAt - left.record.updatedAt)
@@ -477,12 +531,6 @@ export function OutreachMentionComposerButton({
   ) => void;
 }) {
   const [open, setOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    if (mentionQuery === null) return;
-    setOpen(true);
-    onOpenChange(true);
-  }, [mentionQuery, onOpenChange]);
 
   function closePicker(nextOpen: boolean) {
     setOpen(nextOpen);

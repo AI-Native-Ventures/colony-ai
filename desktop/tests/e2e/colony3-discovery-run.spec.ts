@@ -26,13 +26,15 @@ type StubMode = "pages" | "not-configured" | "gated";
 type DiscoveryWindow = Window & {
   __discoveryCalls?: Array<Record<string, unknown>>;
   __releaseDiscoveryPage?: () => void;
+  __BUZZ_E2E_DISCOVERY_LOCATIONS__?: (
+    request: Record<string, unknown>,
+  ) => Promise<unknown>;
 };
 
 /**
- * Two canned pages. Page one: a new business, one that is already in Leads
- * (same name as a reference lead), one without a website, one with an http
- * website, and one without a name. Page two: a repeat of page one's first
- * business and two more new ones.
+ * Two canned pages. The first is a full provider page: three new businesses
+ * plus leads already in the reference workspace. The second repeats one
+ * provider place and adds two more new businesses.
  */
 async function installSearchStub(page: Page, mode: StubMode = "pages") {
   await page.addInitScript((stubMode) => {
@@ -42,6 +44,19 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
       ) => Promise<unknown>;
     };
     w.__discoveryCalls = [];
+    w.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async () => ({
+      locations: [
+        {
+          label: "South Africa",
+          latitude: -30.5595,
+          longitude: 22.9375,
+          countryCode: "ZA",
+          region: "ZA",
+          kind: "country",
+          boundingBox: null,
+        },
+      ],
+    });
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -89,7 +104,9 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
             place("pl-linen", "Linen Lane", {
               website: "http://linen-lane.example",
             }),
-            place("pl-nameless", ""),
+            ...Array.from({ length: 16 }, (_, index) =>
+              place(`pl-existing-${String(index + 1)}`, "The Olive House"),
+            ),
           ],
           estimatedCostUsd: 0.012,
           nextSkip: 20,
@@ -116,8 +133,8 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
 }
 
 async function openDiscovery(page: Page, mode: StubMode = "pages") {
-  await installMockBridge(page, REAL_RUNNER);
   await installSearchStub(page, mode);
+  await installMockBridge(page, REAL_RUNNER);
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
 }
@@ -139,8 +156,10 @@ async function openCampaignForm(page: Page) {
 
 async function approveAndStart(page: Page) {
   const dialog = await openCampaignForm(page);
-  await dialog.getByLabel("Location").fill("South Africa");
-  await dialog.getByLabel("Prospect target").fill("50");
+  const location = dialog.getByRole("combobox", { name: "Location" });
+  await location.fill("South Africa");
+  await dialog.getByRole("option", { name: /South Africa/ }).click();
+  await dialog.getByLabel("Prospect target").fill("100");
   await dialog
     .getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
@@ -208,7 +227,8 @@ test.describe("Real discovery run", () => {
     expect(calls.map((call) => call.skip)).toEqual([0, 20]);
     expect(calls[0]).toMatchObject({
       location: "South Africa",
-      country: "South Africa",
+      country: "ZA",
+      coordinates: { latitude: -30.5595, longitude: 22.9375 },
       limit: 20,
     });
     expect(String(calls[0]?.query)).toMatch(/home furnishings/i);

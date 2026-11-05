@@ -4,9 +4,11 @@ import { Link } from "@tanstack/react-router";
 
 import { parseWorkItemReferenceCoordinate } from "@/features/clients/lib/businessRecords";
 import { WorkItemReferenceContext } from "@/features/clients/ui/WorkItemReferenceContext";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import {
+  resolveIdentityLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { KIND_STREAM_MESSAGE } from "@/shared/constants/kinds";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import type { TimelineMessage } from "@/features/messages/types";
 
 export function WorkItemReferenceCard({
@@ -54,9 +56,12 @@ export function WorkItemReferenceCard({
   const ownerNames = record.value.assignedPubkeys
     .map((pubkey) => {
       const normalized = pubkey.toLowerCase();
-      return (
-        profiles?.[normalized]?.displayName?.trim() || truncateNpub(normalized)
-      );
+      return resolveIdentityLabel({
+        pubkey: normalized,
+        profiles,
+        isAgent: profiles?.[normalized]?.isAgent,
+        ownerPubkey: profiles?.[normalized]?.ownerPubkey ?? null,
+      }).text;
     })
     .join(", ");
   const status = record.value.status;

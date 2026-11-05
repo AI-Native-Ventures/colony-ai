@@ -48,9 +48,9 @@ test("unnamed members order by full canonical npub, not the compact label", () =
   assert.deepEqual(rosterOrder([v5, v24]), [V24_HEX, V5_HEX]);
   assert.deepEqual(rosterOrder([v24, v5]), [V24_HEX, V5_HEX]);
 
-  // The compact 8+4 label stays the display form.
-  assert.equal(formatMemberName(v5), "npub1qqq…2hcx");
-  assert.equal(formatMemberName(v24), "npub1qqq…2w5c");
+  // An unresolved roster entry must never turn its routing key into a label.
+  assert.equal(formatMemberName(v5), "AI employee");
+  assert.equal(formatMemberName(v24), "AI employee");
 
   // Authored names still order against npub surfaces as before.
   const bob = member("0".repeat(64), { displayName: "Bob" });
@@ -108,8 +108,8 @@ test("invalid keys keep the neutral surface and break ties deterministically", (
 
   // Both render the neutral label — never raw input — and the label
   // collision breaks by the normalized key, not incoming order.
-  assert.equal(formatMemberName(first), "Unavailable");
-  assert.equal(formatMemberName(second), "Unavailable");
+  assert.equal(formatMemberName(first), "AI employee");
+  assert.equal(formatMemberName(second), "AI employee");
   assert.deepEqual(rosterOrder([second, first]), [
     "not-a-key",
     "zzz-definitely-not-a-key",

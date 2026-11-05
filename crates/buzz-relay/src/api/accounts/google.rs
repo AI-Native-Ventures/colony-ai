@@ -31,6 +31,8 @@ pub struct VerifiedGoogleIdentity {
     pub sub: String,
     /// Normalized and verified email address.
     pub email: String,
+    /// The `nonce` claim when the sign-in request carried one (browser redirect flows).
+    pub nonce: Option<String>,
 }
 
 struct CachedKeys {
@@ -123,6 +125,7 @@ impl GoogleIdTokenVerifier {
         Ok(VerifiedGoogleIdentity {
             sub: claims.sub,
             email,
+            nonce: claims.nonce,
         })
     }
 
@@ -185,6 +188,8 @@ struct GoogleClaims {
     exp: u64,
     email: String,
     email_verified: bool,
+    #[serde(default)]
+    nonce: Option<String>,
 }
 
 fn cache_ttl(headers: &reqwest::header::HeaderMap) -> Duration {

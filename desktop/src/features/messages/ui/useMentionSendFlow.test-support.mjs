@@ -203,6 +203,9 @@ export async function setup({ lifecycle = false, ...startup } = {}) {
     "@/features/profile/hooks": {
       useUsersBatchQuery: () => ({ data: { profiles: {} } }),
     },
+    "@/features/profile/lib/identity": {
+      resolveIdentityLabel: () => ({ text: "AI employee" }),
+    },
     "@/features/channels/lib/channelMemberAdmission": {},
     "@/features/messages/lib/dmThreadAgentMentionError": {
       dmThreadAgentMentionError: () => null,

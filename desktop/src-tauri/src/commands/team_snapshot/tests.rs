@@ -203,6 +203,7 @@ fn team_export_with_instance_and_memory_level_uses_supplied_entries() {
     let instance = ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: "a".repeat(64),
         name: "Alice".to_string(),
         display_name: None,

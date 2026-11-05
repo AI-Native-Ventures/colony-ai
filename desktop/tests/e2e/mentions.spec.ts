@@ -1,6 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
 
-import { truncateNpub } from "../../src/shared/lib/pubkey";
 import { waitForAnimations } from "../helpers/animations";
 
 import {
@@ -129,18 +128,6 @@ function autocomplete(page: import("@playwright/test").Page) {
   return page
     .getByTestId("message-composer")
     .getByTestId("mention-autocomplete");
-}
-
-async function selectUnifiedMention(
-  page: import("@playwright/test").Page,
-  name: string,
-) {
-  const peopleAndAgents = page
-    .getByTestId("lead-reference-picker")
-    .getByRole("region", { name: "People and agents" });
-  const choice = peopleAndAgents.getByRole("button").filter({ hasText: name });
-  await expect(choice).toBeVisible();
-  await choice.click();
 }
 
 async function readCommandLog(page: import("@playwright/test").Page) {
@@ -473,7 +460,7 @@ test("@ trigger prioritizes channel members before other Team agents", async ({
   await expect(dropdown.getByText("bob")).toBeVisible();
   await expect(dropdown.getByText("Scout")).toBeVisible();
   await expect(dropdown.getByText("charlie")).toBeVisible();
-  await expect(dropdown.getByText("outsider")).toHaveCount(0);
+  await expect(dropdown.getByText("outsider")).toBeVisible();
   const charlieRow = dropdown.locator("button", { hasText: "charlie" });
   await expect(charlieRow.getByTestId("mention-agent-icon")).toBeVisible();
   await expect(charlieRow.getByText("not in channel")).toBeVisible();
@@ -498,10 +485,11 @@ test("@ trigger prioritizes channel members before other Team agents", async ({
   expect(fizzIndex).toBeGreaterThanOrEqual(0);
   expect(bobIndex).toBeGreaterThanOrEqual(0);
   expect(charlieIndex).toBeGreaterThanOrEqual(0);
-  expect(outsiderIndex).toEqual(-1);
+  expect(outsiderIndex).toBeGreaterThanOrEqual(0);
   expect(aliceIndex).toBeLessThan(fizzIndex);
   expect(bobIndex).toBeLessThan(fizzIndex);
   expect(fizzIndex).toBeLessThan(charlieIndex);
+  expect(fizzIndex).toBeLessThan(outsiderIndex);
 });
 
 test("duplicate owned agents preserve provenance and exact pubkey selection", async ({
@@ -590,13 +578,12 @@ test("duplicate owned agents preserve provenance and exact pubkey selection", as
     (dropdownBox?.x ?? 0) + (dropdownBox?.width ?? 0) + 1,
   );
 
-  const collisionKeys = dropdown.getByTestId("mention-collision-npub");
-  await expect(collisionKeys).toHaveCount(2);
-  const fullNpubs = await collisionKeys.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("title")),
-  );
-  expect(fullNpubs).toHaveLength(2);
-  expect(new Set(fullNpubs).size).toBe(2);
+  // Same-owner names remain human-readable and route to distinct keys through
+  // their short ordinal, never through a visible public-key fragment.
+  await expect(managedRow).toContainText(/carl [12]/);
+  await expect(relayRow).toContainText(/carl [12]/);
+  const pickerText = await dropdown.innerText();
+  expect(pickerText).not.toMatch(/(?:npub1|[0-9a-f]{40,})/i);
 
   await managedRow.getByRole("button", { name: "Mention carl" }).click();
   await expect(
@@ -606,9 +593,11 @@ test("duplicate owned agents preserve provenance and exact pubkey selection", as
     page.getByTestId(`composer-address-lock-${relayPubkey}`),
   ).toHaveCount(0);
   await input.pressSequentially("local");
+  const localContent = await input.innerText();
+  expect(localContent).toMatch(/^@carl [12] local$/);
   await page.getByTestId("send-message").click();
   await expect
-    .poll(() => readOutgoingMentionPubkeys(page, "@carl local"))
+    .poll(() => readOutgoingMentionPubkeys(page, localContent))
     .toEqual([managedPubkey]);
   await expect(input).toHaveText("");
 
@@ -626,6 +615,8 @@ test("duplicate owned agents preserve provenance and exact pubkey selection", as
     page.getByTestId(`composer-address-lock-${managedPubkey}`),
   ).toHaveCount(0);
   await input.pressSequentially("remote");
+  const remoteContent = await input.innerText();
+  expect(remoteContent).toMatch(/^@carl [12] remote$/);
   await page.getByTestId("send-message").click();
   const sendWithoutInviting = page.getByRole("button", {
     name: "Send anyway",
@@ -638,7 +629,7 @@ test("duplicate owned agents preserve provenance and exact pubkey selection", as
   }
   await expect
     // Sending the first root message clears its draft-local label reservation.
-    .poll(() => readOutgoingMentionPubkeys(page, "@carl remote"))
+    .poll(() => readOutgoingMentionPubkeys(page, remoteContent))
     .toEqual([relayPubkey]);
 
   await page.getByTestId("channel-members-trigger").click();
@@ -898,13 +889,18 @@ test("thread autocomplete keeps multiple long names readable in a narrow panel",
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await page.setViewportSize({ width: 760, height: 640 });
+  await waitForMockLiveSubscription(page, "general");
 
   await emitMockMessage(page, "general", "Reply to open the thread", {
     parentEventId: "mock-general-welcome",
   });
-  const threadSummary = page.getByTestId("message-thread-summary").first();
-  await expect(threadSummary).toBeVisible();
-  await threadSummary.click();
+  await waitForTimelineSettled(page);
+  const threadRoot = page.locator(
+    '[data-testid="message-row"][data-message-id="mock-general-welcome"]',
+  );
+  await expect(threadRoot).toBeVisible();
+  await threadRoot.hover();
+  await threadRoot.getByRole("button", { name: "Reply" }).click();
 
   const threadPanel = page.getByTestId("message-thread-panel");
   await expect(threadPanel).toBeVisible();
@@ -924,11 +920,9 @@ test("thread autocomplete keeps multiple long names readable in a narrow panel",
   ]) {
     const row = dropdown.locator("button", { hasText: name });
     await expect(row).toBeVisible();
-    await expect(
-      row.getByTestId("mention-suggestion-avatar-fallback"),
-    ).toBeVisible();
+    await expect(row.locator(".c3c-mention-avatar")).toBeVisible();
     await expect(row.getByText("agent")).toBeVisible();
-    await expect(row.getByText("managed by you")).toBeVisible();
+    await expect(row.getByText("not in channel")).toBeVisible();
 
     await expect(row.getByText(name)).not.toHaveCSS(
       "text-overflow",
@@ -1533,9 +1527,10 @@ test("selecting a managed agent mention inserts @Name into input", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
+  const dropdown = autocomplete(page);
   for (let attempt = 0; attempt < 5; attempt++) {
     await input.fill("Hey @ali");
-    await selectUnifiedMention(page, "alice");
+    await dropdown.getByText("alice").click();
     await page.keyboard.type("hello");
     await expect(input).toHaveText("Hey @alice hello");
   }
@@ -2610,10 +2605,12 @@ test("owner-only builds admit cross-owner relay agents authorized by allowlist",
   await expect(quinnRow).toBeVisible();
   await quinnRow.click();
   await page.keyboard.type("hello");
+  const content = await input.innerText();
+  expect(content).toBe("@quinn (outsider) hello");
   await page.getByTestId("send-message").click();
 
   await expect
-    .poll(() => readOutgoingMentionPubkeys(page, "@quinn hello"))
+    .poll(() => readOutgoingMentionPubkeys(page, content))
     .toContain(ALLOWLIST_RELAY_AGENT_PUBKEY);
 });
 
@@ -2775,13 +2772,10 @@ test("mentioning an in-channel stopped managed agent publishes first and starts 
   const input = page.getByTestId("message-input");
   await input.fill("Hey @scout");
 
-  const scoutChoice = page
-    .getByTestId("lead-reference-picker")
-    .getByRole("region", { name: "People and agents" })
-    .getByRole("button")
-    .filter({ hasText: "scout" });
-  await expect(scoutChoice).toContainText("AI employee");
-  await selectUnifiedMention(page, "scout");
+  const dropdown = autocomplete(page);
+  await expect(dropdown.getByText("scout")).toBeVisible();
+  await expect(dropdown.getByText("agent")).toBeVisible();
+  await input.press("Enter");
   await page.keyboard.type(" can you help?");
 
   const baselineCommands = await readCommandLog(page);
@@ -2873,6 +2867,7 @@ test("a second mention while the first wake is in flight does not start the agen
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
+  const dropdown = autocomplete(page);
   const baselineCommands = await readCommandLog(page);
   const baselineStartCount = commandCount(
     baselineCommands,
@@ -2880,7 +2875,8 @@ test("a second mention while the first wake is in flight does not start the agen
   );
 
   await input.fill("Hey @scout");
-  await selectUnifiedMention(page, "scout");
+  await expect(dropdown.getByText("scout")).toBeVisible();
+  await input.press("Enter");
   await expect(input.locator(".mention-chip")).toHaveText("scout");
   await page.keyboard.type("do X");
   await expect(input).toHaveText("Hey @scout do X");
@@ -2895,7 +2891,8 @@ test("a second mention while the first wake is in flight does not start the agen
     .toBe(baselineStartCount + 1);
 
   await input.fill("Hey @scout");
-  await selectUnifiedMention(page, "scout");
+  await expect(dropdown.getByText("scout")).toBeVisible();
+  await input.press("Enter");
   await expect(input.locator(".mention-chip")).toHaveText("scout");
   await page.keyboard.type("also Y");
   await expect(input).toHaveText("Hey @scout also Y");
@@ -2949,10 +2946,14 @@ test("a detached agent start failure surfaces as a toast after the message sends
   await page.getByTestId("send-message").click();
 
   // The message still publishes , the start runs off the critical path.
-  const mentionChip = page
+  const sentRow = page
     .getByTestId("message-row")
-    .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "scout" });
+    .filter({ hasText: "can you help?" });
+  await expect(sentRow).toBeVisible();
+  const mentionChip = sentRow.locator(
+    "[data-mention].agent-mention-highlight",
+    { hasText: "scout" },
+  );
   await expect(mentionChip).toBeVisible();
 
   // The failed start surfaces as a post-send toast instead of blocking the
@@ -2992,7 +2993,8 @@ test("a failed publish drops the queued agent wake and never claims the message 
 
   const input = page.getByTestId("message-input");
   await input.fill("Hey @scout");
-  await selectUnifiedMention(page, "scout");
+  await expect(autocomplete(page).getByText("scout")).toBeVisible();
+  await input.press("Enter");
   await page.keyboard.type(" do X");
 
   const baselineStartCount = commandCount(
@@ -3408,13 +3410,11 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   const input = page.getByTestId("message-input");
   await input.fill("Loop in @scout");
 
-  const scoutChoice = page
-    .getByTestId("lead-reference-picker")
-    .getByRole("region", { name: "People and agents" })
-    .getByRole("button")
-    .filter({ hasText: "scout" });
-  await expect(scoutChoice).toContainText("AI employee");
-  await scoutChoice.click();
+  const dropdown = autocomplete(page);
+  const fizzRow = dropdown.locator("button", { hasText: "scout" });
+  await expect(fizzRow).toBeVisible();
+  await expect(fizzRow.getByText("not in channel")).toBeVisible();
+  await input.press("Enter");
 
   const baselineCommands = await readCommandLog(page);
   const baselineAddCount = commandCount(
@@ -4064,6 +4064,7 @@ test("profile-only agent author hides actions without agent access", async ({
         pubkey: PROFILE_ONLY_AGENT_PUBKEY,
         displayName: "mira",
         isAgent: true,
+        ownerPubkey: TEST_IDENTITIES.outsider.pubkey,
       },
     ],
   });
@@ -4224,10 +4225,11 @@ test("sent non-member person mention uses the normal mention style", async ({
   await page.keyboard.type(" please");
   await page.getByTestId("send-message").click();
 
-  const mentionChip = page
-    .getByTestId("message-row")
-    .last()
-    .locator("[data-mention]", { hasText: "outsider" });
+  const sentRow = page.getByTestId("message-row").filter({ hasText: "please" });
+  await expect(sentRow).toBeVisible();
+  const mentionChip = sentRow.locator("[data-mention]", {
+    hasText: "outsider",
+  });
   await expect(mentionChip).toBeVisible();
   await expect(mentionChip).toHaveClass(/inline-chip-icon-human/);
 });
@@ -4257,10 +4259,9 @@ test("sent managed non-member agent mention uses the agent mention style", async
   await page.keyboard.type(" too");
   await page.getByTestId("send-message").click();
 
-  const mentionChip = page
-    .getByTestId("message-row")
-    .last()
-    .locator("[data-mention]", { hasText: "charlie" });
+  const sentRow = page.getByTestId("message-row").filter({ hasText: "too" });
+  await expect(sentRow).toBeVisible();
+  const mentionChip = sentRow.locator("[data-mention]", { hasText: "charlie" });
   await expect(mentionChip).toBeVisible();
   await expect(mentionChip).toHaveText("charlie");
   await expect(mentionChip).toHaveClass(/agent-mention-highlight/);
@@ -4412,13 +4413,14 @@ test("qualified mentions wrap without changing message line rhythm", async ({
     prose.style.width = "8rem";
   });
   const mentionChip = row.locator("[data-mention]", { hasText: "bob" });
-  await expect(mentionChip).toHaveText(/bob \(npub1hv3…tpuc\)/);
+  await expect(mentionChip).toHaveText("bob (teammate)");
+  await expect(mentionChip).not.toContainText("npub1");
   await expect(mentionChip).toHaveClass(/wrapping-inline-chip/);
 
   const layout = await timelineChipLayout(mentionChip);
   expect(layout.boxDecorationBreak).toBe("clone");
   expect(layout.chipLineHeight).toBe(25.1999);
-  expect(layout.fragmentCount).toBe(3);
+  expect(layout.fragmentCount).toBeGreaterThan(1);
   expect(layout.fragmentHeight).toBeLessThanOrEqual(layout.paragraphLineHeight);
   expect(layout.fragmentGap).toBeGreaterThan(0);
   expect(layout.fragmentStep).toBe(27);
@@ -4441,17 +4443,19 @@ test("clicking author name opens user profile panel", async ({ page }) => {
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-  // The seed message in general is from the mock identity (npub1mock...)
+  // The seed message in general is from the mock identity (Morgan).
   const firstMessage = page.getByTestId("message-row").first();
   const authorButton = firstMessage.locator("button", {
-    hasText: "npub1mock...",
+    hasText: "Morgan",
   });
   await authorButton.click();
 
   // Click now opens the full profile panel instead of the popover
   const panel = page.getByTestId("user-profile-panel");
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText(truncateNpub(MOCK_VIEWER_PUBKEY));
+  await expect(panel.getByTestId("user-profile-copy-pubkey")).toBeVisible();
+  await expect(panel).toContainText("Identity key");
+  await expect(panel).not.toContainText("npub1");
   await expect(panel).not.toContainText("deadbeefdeadbeef");
 });
 
@@ -4609,7 +4613,7 @@ test("agent profile popover labels an agent owned by the viewer as you", async (
   ).toHaveText("managed by you");
 });
 
-test("agent profile popover falls back to the owner's pubkey", async ({
+test("agent profile popover resolves the owner's identity label", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -4646,7 +4650,7 @@ test("agent profile popover falls back to the owner's pubkey", async ({
     profilePopover.getByTestId(
       `user-profile-popover-owner-${OWNED_AGENT_PROFILE_PUBKEY}`,
     ),
-  ).toHaveText(`managed by ${truncateNpub(CASEY_PROFILE_PUBKEY)}`);
+  ).toHaveText("managed by teammate");
 });
 
 test("human profile popover does not show an owner", async ({ page }) => {
@@ -4789,7 +4793,7 @@ test("profile popover wave sends a direct message for a human profile", async ({
   await expect(page.getByText("Sending")).toHaveCount(0, { timeout: 4_000 });
   await waitForTimelineSettled(page);
   await expect(waveAttachment).toContainText("👋");
-  await expect(waveAttachment).toContainText("npub1mock... waved at you.");
+  await expect(waveAttachment).toContainText("Morgan waved at you.");
   await expect(waveAttachment.getByRole("button")).toHaveCount(0);
 
   const commandLog = await readCommandPayloadLog(page);
@@ -4798,7 +4802,7 @@ test("profile popover wave sends a direct message for a human profile", async ({
       expect.objectContaining({
         command: "send_channel_message",
         payload: expect.objectContaining({
-          content: expect.stringContaining("npub1mock... waved at you."),
+          content: expect.stringContaining("Morgan waved at you."),
         }),
       }),
     ]),

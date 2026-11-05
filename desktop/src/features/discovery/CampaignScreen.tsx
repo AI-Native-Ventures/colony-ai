@@ -20,7 +20,13 @@ import {
   reconcileAccepted,
   type BulkAcceptProgress,
 } from "./bulkAccept";
-import { acceptChanges, type CampaignProspect } from "./CampaignHelpers";
+import {
+  acceptChanges,
+  exportProspects,
+  isAccepted,
+  type CampaignProspect,
+  type ProspectFilter,
+} from "./CampaignHelpers";
 import { CampaignDialog, type CampaignDialogMode } from "./CampaignDialogs";
 import {
   DiscoveryCampaignDialog,
@@ -34,6 +40,7 @@ import {
   type ProspectSort,
 } from "./CampaignProspectTable";
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
+import type { DiscoveryLocation } from "./discoveryLocation";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import {
   DiscoveryTypeDetailsDialog,
@@ -70,6 +77,20 @@ import "./colony3-discovery.css";
 
 type CampaignContext = LeadContext;
 
+function matchesFilter(
+  prospect: CampaignProspect["record"]["prospect"],
+  filter: ProspectFilter,
+): boolean {
+  const accepted = isAccepted(prospect);
+  const score = prospect.fitScore ?? 0;
+  return (
+    filter === "all" ||
+    (filter === "high-fit" && score >= 85) ||
+    (filter === "accepted" && accepted) ||
+    (filter === "candidates" && !accepted)
+  );
+}
+
 export function CampaignScreen(context: CampaignContext) {
   const navigate = useNavigate();
   const routeOrigin = useRouteOrigin();
@@ -77,6 +98,7 @@ export function CampaignScreen(context: CampaignContext) {
     | {
         campaignId?: string;
         query?: string;
+        filter?: ProspectFilter;
         sort?: ProspectSort;
         selected?: string[];
         page?: number;
@@ -86,6 +108,9 @@ export function CampaignScreen(context: CampaignContext) {
   const channelsQuery = useChannelsQuery();
   const { campaign, provider } = useDiscoveryCampaign();
   const [query, setQuery] = React.useState(restored?.query ?? "");
+  const [filter, setFilter] = React.useState<ProspectFilter>(
+    restored?.filter ?? "all",
+  );
   const [sort, setSort] = React.useState<ProspectSort>(restored?.sort ?? "fit");
   const [page, setPage] = React.useState(restored?.page ?? 0);
   const [selected, setSelected] = React.useState<Set<string>>(
@@ -101,7 +126,8 @@ export function CampaignScreen(context: CampaignContext) {
   const [widenPending, setWidenPending] =
     React.useState<PendingCampaign | null>(null);
   const [widenOpen, setWidenOpen] = React.useState(false);
-  const [widenLocation, setWidenLocation] = React.useState("");
+  const [widenLocation, setWidenLocation] =
+    React.useState<DiscoveryLocation | null>(null);
   const [, setTagsReady] = React.useState(false);
   const [progress, setProgress] = React.useState<BulkAcceptProgress | null>(
     null,
@@ -143,6 +169,7 @@ export function CampaignScreen(context: CampaignContext) {
         viewState: {
           campaignId: campaign.id,
           query,
+          filter,
           sort,
           selected: [...selected],
           page,
@@ -157,6 +184,7 @@ export function CampaignScreen(context: CampaignContext) {
     return () => scrollHost.removeEventListener("scroll", save);
   }, [
     campaign,
+    filter,
     outreachFilters,
     page,
     query,
@@ -214,7 +242,7 @@ export function CampaignScreen(context: CampaignContext) {
   if (!provider || !campaign) {
     return null;
   }
-  const campaignLocation = campaign.location;
+  const currentCampaign = campaign;
   const campaignRunner = campaign.runBy;
 
   const campaignRows = campaign.prospectIds
@@ -267,19 +295,21 @@ export function CampaignScreen(context: CampaignContext) {
     campaignFilterRows,
     outreachFilters,
     query,
-  ).sort((left, right) => {
-    if (sort === "name") {
-      return left.prospect.party.displayName.localeCompare(
-        right.prospect.party.displayName,
+  )
+    .filter(({ prospect }) => matchesFilter(prospect, filter))
+    .sort((left, right) => {
+      if (sort === "name") {
+        return left.prospect.party.displayName.localeCompare(
+          right.prospect.party.displayName,
+        );
+      }
+      return compareDiscoveryTagFit(
+        left.prospect.discoveryTags ?? [],
+        left.prospect.fitScore,
+        right.prospect.discoveryTags ?? [],
+        right.prospect.fitScore,
       );
-    }
-    return compareDiscoveryTagFit(
-      left.prospect.discoveryTags ?? [],
-      left.prospect.fitScore,
-      right.prospect.discoveryTags ?? [],
-      right.prospect.fitScore,
-    );
-  });
+    });
   const pageSize = 7;
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / pageSize));
   const pageRows = visibleRows.slice(page * pageSize, (page + 1) * pageSize);
@@ -384,6 +414,7 @@ export function CampaignScreen(context: CampaignContext) {
 
   function clearFilters() {
     setQuery("");
+    setFilter("all");
     setSort("fit");
     setOutreachFilters(EMPTY_OUTREACH_FILTERS);
     setSelected(new Set());
@@ -536,7 +567,7 @@ export function CampaignScreen(context: CampaignContext) {
 
   function openWidenSearch(row: CatalogueRow, pickedTags: string[]) {
     setRelatedTypeId(null);
-    setWidenLocation(campaignLocation);
+    setWidenLocation(currentCampaign.locationSelection ?? null);
     setWidenPending({
       audience: "businesses",
       industryId: row.parentId,
@@ -559,6 +590,21 @@ export function CampaignScreen(context: CampaignContext) {
     await navigate({ to: "/campaign" });
   }
 
+  /** A new approved run inherits coverage through the provider's query key. */
+  function openFindMore(location = currentCampaign.locationSelection ?? null) {
+    setRelatedTypeId(null);
+    setWidenLocation(location);
+    setWidenPending({
+      audience: currentCampaign.audience,
+      industryId: currentCampaign.industryId,
+      industryName: currentCampaign.industryName,
+      verticalId: currentCampaign.verticalId,
+      verticalName: currentCampaign.verticalName,
+      pickedTags: currentCampaign.pickedTags ?? [],
+    });
+    setWidenOpen(true);
+  }
+
   const waiting = campaign.status === "running" && campaign.count === 0;
   const footnote = campaign.simulated
     ? "Example public profiles · Review before outreach"
@@ -573,10 +619,11 @@ export function CampaignScreen(context: CampaignContext) {
             campaign={campaign}
             onChangeRun={(action) => void changeRun(action)}
             onDiscuss={shareInSales}
+            onFindMore={() => openFindMore()}
             onNewSearch={() => void navigate({ to: "/discovery" })}
             onOpenDetails={() => setDialogMode("details")}
             onOpenSettings={() => setDialogMode("settings")}
-            showProgress={campaign.status !== "complete"}
+            onSearchNearby={(location) => openFindMore(location)}
           />
           {relatedTypes.length ? (
             <section
@@ -594,6 +641,16 @@ export function CampaignScreen(context: CampaignContext) {
             </section>
           ) : null}
           <CampaignToolbar
+            exportDisabled={!visibleRows.length}
+            filter={filter}
+            onExport={() =>
+              exportProspects(visibleRows.map(({ campaign: row }) => row))
+            }
+            onFilter={(value) => {
+              setFilter(value);
+              setSelected(new Set());
+              setPage(0);
+            }}
             onQuery={(value) => {
               setQuery(value);
               setSelected(new Set());

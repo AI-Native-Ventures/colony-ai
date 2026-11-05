@@ -2560,7 +2560,7 @@ const E2E_IDENTITY_OVERRIDE_STORAGE_KEY = "buzz:e2e-identity-override.v1";
 const MOCK_APP_VERSION = "0.0.0-e2e";
 const DEFAULT_MOCK_IDENTITY = {
   pubkey: "deadbeef".repeat(8),
-  display_name: "npub1mock...",
+  display_name: "Morgan",
 };
 const DEFAULT_REAL_IDENTITY = {
   privateKey:
@@ -2795,7 +2795,7 @@ function syncMockChannel(channel: MockChannel) {
 
   channel.participant_pubkeys = channel.members.map((member) => member.pubkey);
   channel.participants = channel.members.map(
-    (member) => member.display_name ?? member.pubkey.slice(0, 8),
+    (member) => member.display_name ?? "AI employee",
   );
 }
 
@@ -4547,9 +4547,7 @@ function seedVisualFixture(fixture: VisualFixtureSeed) {
             : [],
         participants:
           channel.channelType === "dm"
-            ? members.map(
-                (member) => member.display_name ?? member.pubkey.slice(0, 8),
-              )
+            ? members.map((member) => member.display_name ?? "AI employee")
             : [],
         members,
       });

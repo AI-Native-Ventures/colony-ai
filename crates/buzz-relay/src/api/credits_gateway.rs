@@ -536,8 +536,10 @@ async fn complete_and_settle(
     .await;
     let elapsed = started.elapsed();
     let streamed = elapsed >= gateway.keepalive.after;
+    let handed_on = tried.contains(',');
     match result {
         Ok((response, answered_by)) => {
+            crate::metrics_collect::record_gateway(Outcome::Ok.code(), handed_on);
             outcome::log(Finished {
                 outcome: Outcome::Ok,
                 status: 200,
@@ -551,6 +553,7 @@ async fn complete_and_settle(
             Ok(response)
         }
         Err(failure) => {
+            crate::metrics_collect::record_gateway(failure.outcome.code(), handed_on);
             outcome::log(Finished {
                 outcome: failure.outcome,
                 status: failure.response.0.as_u16(),

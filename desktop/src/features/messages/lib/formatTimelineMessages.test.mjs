@@ -814,3 +814,212 @@ test("verified agent owner may publish a suppression edit", () => {
     true,
   );
 });
+
+test("two viewers resolve the same published agent profile by ownership, never a key", () => {
+  const owner = PUBKEY_B;
+  const teammate = "3".repeat(64);
+  const agent = PUBKEY_A;
+  const event = streamMessage({ pubkey: agent, content: "Two-viewer proof" });
+  const agentProfile = {
+    displayName: "Scout",
+    name: "scout",
+    avatarUrl: null,
+    nip05Handle: null,
+    ownerPubkey: owner,
+    isAgent: true,
+  };
+  const ownerProfile = {
+    displayName: "Basheer Khan",
+    name: "Basheer Khan",
+    avatarUrl: null,
+    nip05Handle: null,
+    ownerPubkey: null,
+    isAgent: false,
+  };
+
+  const seenByTeammate = formatTimelineMessages(
+    [event],
+    null,
+    teammate,
+    null,
+    { [agent]: agentProfile },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { [owner]: ownerProfile },
+  );
+  const seenByOwner = formatTimelineMessages(
+    [event],
+    null,
+    owner,
+    null,
+    { [agent]: agentProfile },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { [owner]: ownerProfile },
+  );
+
+  assert.equal(seenByTeammate[0].author, "Scout (Basheer)");
+  assert.equal(seenByOwner[0].author, "Scout");
+  assert.doesNotMatch(seenByTeammate[0].author, /(?:npub1|[0-9a-f]{40,})/i);
+});
+
+test("a message keeps its same-owner Scout ordinal when its twin is offscreen", () => {
+  const owner = PUBKEY_B;
+  const teammate = "3".repeat(64);
+  const twin = "4".repeat(64);
+  const profiles = {
+    [PUBKEY_A]: {
+      displayName: "Scout",
+      name: "Scout",
+      avatarUrl: null,
+      nip05Handle: null,
+      ownerPubkey: owner,
+      isAgent: true,
+    },
+    [twin]: {
+      displayName: "Scout",
+      name: "Scout",
+      avatarUrl: null,
+      nip05Handle: null,
+      ownerPubkey: owner,
+      isAgent: true,
+    },
+  };
+  const [row] = formatTimelineMessages(
+    [streamMessage({ pubkey: PUBKEY_A, content: "Only one Scout speaks." })],
+    null,
+    teammate,
+    null,
+    profiles,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      [owner]: {
+        displayName: "Basheer Phiri",
+        name: "Basheer Phiri",
+        avatarUrl: null,
+        nip05Handle: null,
+        ownerPubkey: null,
+        isAgent: false,
+      },
+    },
+  );
+  assert.equal(row.author, "Scout (Basheer) 1");
+});
+
+test("reaction tooltips share same-owner Scout ordinals", () => {
+  const owner = PUBKEY_B;
+  const teammate = "3".repeat(64);
+  const twin = "4".repeat(64);
+  const narrator = "5".repeat(64);
+  const profiles = {
+    [PUBKEY_A]: {
+      displayName: "Scout",
+      name: "Scout",
+      avatarUrl: null,
+      nip05Handle: null,
+      ownerPubkey: owner,
+      isAgent: true,
+    },
+    [twin]: {
+      displayName: "Scout",
+      name: "Scout",
+      avatarUrl: null,
+      nip05Handle: null,
+      ownerPubkey: owner,
+      isAgent: true,
+    },
+    [narrator]: {
+      displayName: "Morgan",
+      name: "Morgan",
+      avatarUrl: null,
+      nip05Handle: null,
+      ownerPubkey: null,
+      isAgent: false,
+    },
+  };
+  const reaction = (id, pubkey) => ({
+    id,
+    pubkey,
+    kind: 7,
+    created_at: 1_700_000_001,
+    content: "+",
+    tags: [
+      ["h", CHANNEL_ID],
+      ["e", HEX64_A],
+    ],
+    sig: "sig",
+  });
+
+  const [row] = formatTimelineMessages(
+    [
+      streamMessage({ pubkey: narrator }),
+      reaction(HEX64_B, PUBKEY_A),
+      reaction("c".repeat(64), twin),
+    ],
+    null,
+    teammate,
+    null,
+    profiles,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      [owner]: {
+        displayName: "Basheer Phiri",
+        name: "Basheer Phiri",
+        avatarUrl: null,
+        nip05Handle: null,
+        ownerPubkey: null,
+        isAgent: false,
+      },
+    },
+  );
+
+  assert.deepEqual(
+    row.reactions?.[0].users.map((user) => user.displayName),
+    ["Scout (Basheer) 1", "Scout (Basheer) 2"],
+  );
+});
+
+test("a missing agent profile renders AI employee across message and reaction labels", () => {
+  const reaction = {
+    id: HEX64_B,
+    pubkey: PUBKEY_A,
+    kind: 7,
+    created_at: 1_700_000_001,
+    content: "+",
+    tags: [
+      ["h", CHANNEL_ID],
+      ["e", HEX64_A],
+    ],
+    sig: "sig",
+  };
+  const rows = formatTimelineMessages(
+    [streamMessage(), reaction],
+    {
+      id: CHANNEL_ID,
+      channelType: "stream",
+      members: [],
+    },
+    undefined,
+    null,
+    {},
+    [{ pubkey: PUBKEY_A, role: "bot", isAgent: true }],
+  );
+  const renderedText = [
+    rows[0].author,
+    ...(rows[0].reactions?.flatMap((item) =>
+      item.users.map((user) => user.displayName),
+    ) ?? []),
+  ].join(" ");
+  assert.equal(rows[0].author, "AI employee");
+  assert.doesNotMatch(renderedText, /(?:npub1|[0-9a-f]{40,})/i);
+});
