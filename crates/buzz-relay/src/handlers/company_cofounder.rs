@@ -28,7 +28,7 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 
 /// Handles an owner or admin co-founder settings action (kind 47060).
-pub(super) async fn handle(
+pub(crate) async fn handle(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,

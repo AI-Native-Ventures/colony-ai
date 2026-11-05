@@ -18,6 +18,7 @@ use buzz_core::business_records::{
     invoice_head_d_tag, invoice_version_d_tag, InvoiceHead, InvoiceStatus, InvoiceVersion,
     InvoiceVersionAction, ProposalLine, BUSINESS_RECORD_SCHEMA_VERSION,
 };
+use buzz_core::company_cofounder::CofounderSettings;
 use buzz_core::kind::{
     KIND_INVOICE_HEAD, KIND_INVOICE_VERSION, KIND_MONEY_CONNECTION_ACTION, KIND_PAYMENT,
     KIND_PAYMENT_LINK_ACTION,
@@ -698,6 +699,29 @@ impl Fixture {
         self.link_action(&self.owner, action).await
     }
 
+    /// Turns on co-founder mode through the production settings broker so approval wakes use
+    /// the same durable queue as a real company.
+    async fn enable_cofounder(&self) {
+        let event = buzz_sdk::company_records::build_cofounder_action(
+            &CofounderSettings {
+                enabled: true,
+                ..CofounderSettings::default()
+            },
+            None,
+        )
+        .expect("build co-founder action")
+        .sign_with_keys(&self.owner)
+        .expect("sign co-founder action");
+        crate::handlers::company_cofounder::handle(
+            &self.tenant,
+            &self.state,
+            event,
+            http_auth(&self.owner),
+        )
+        .await
+        .expect("enable co-founder mode");
+    }
+
     /// Draft, approve and run the create job: the card ends up with a created link.
     async fn created_card(&self, connection_id: Uuid) -> Uuid {
         let link_id = self.draft(connection_id).await;
@@ -1338,6 +1362,34 @@ async fn the_browser_grant_allows_exactly_one_create_on_the_provider_host() {
     let second = step(DASHBOARD_HOST, "create", "Create link").await;
     assert!(!second.allow);
     assert_eq!(second.code, "grant_used");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn an_approved_browser_card_wakes_scout_after_the_card_commits() {
+    // GUARD: a browser approval reaches the production co-founder wake queue only after the
+    // card action has committed. Without this enqueue, Scout has to poll blindly.
+    let fx = fixture().await;
+    fx.enable_cofounder().await;
+    let connection_id = fx.connect_browser().await;
+    let link_id = fx.draft(connection_id).await;
+    fx.approve(link_id).await.expect("owner approves");
+
+    assert_eq!(fx.head(link_id).await.1.state, LinkState::CreatingLink);
+    let wakes = fx
+        .state
+        .db
+        .cofounder_pending_wakes(
+            *fx.community().as_uuid(),
+            chrono::Utc::now() + chrono::Duration::days(1),
+            20,
+        )
+        .await
+        .expect("read pending wakes");
+    assert!(
+        wakes.iter().any(|wake| wake.reason == "approval_given"),
+        "the browser approval must wake Scout: {wakes:?}"
+    );
 }
 
 #[tokio::test]

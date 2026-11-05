@@ -209,6 +209,14 @@ async fn apply(
         }
         LinkChange::Changed(outcome) => *outcome,
     };
+    // A browser-route approval is the one moment Scout should resume work. Keep the wake out of
+    // the transaction so a failed queue write cannot claim a card was approved before it was
+    // durable. The wake queue is idempotent and the daily start remains its backstop.
+    let wake_scout = action.op == LinkOp::Approve
+        && outcome
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, LinkEffect::WakeBrowser));
     apply_effects_tx(
         &mut tx,
         community,
@@ -219,7 +227,7 @@ async fn apply(
     )
     .await?;
     let head_json = serde_json::to_string(&outcome.head).map_err(internal)?;
-    commit_head(
+    let result = commit_head(
         tenant,
         state,
         tx,
@@ -235,7 +243,18 @@ async fn apply(
             label: "payment link",
         },
     )
-    .await
+    .await?;
+    if wake_scout {
+        crate::cofounder_wake::enqueue(
+            state,
+            community,
+            crate::cofounder_wake::WakeReason::ApprovalGiven,
+            &format!("payment-link-approval:{}", action.link_id),
+            "",
+        )
+        .await;
+    }
+    Ok(result)
 }
 
 fn parse_head(stored: &StoredEvent) -> Result<LinkHead, IngestError> {

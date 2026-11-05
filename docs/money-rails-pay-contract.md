@@ -611,7 +611,7 @@ table), each with `attach_community_write_fence`:
 Without it the new routes answer `503 money_not_configured`/missing table errors and the
 UI must show "Money connections are not ready yet" (a distinct state, not an empty list).
 
-## 13. Builder findings the coordinator should answer (OPEN)
+## 13. Remaining product boundaries
 
 1. **A bare deposit cannot create an invoice.** Invoice version 1 exists only through proposal
    acceptance (`previous_version_event_id` is absent only for acceptance). The spec's "a bare
@@ -625,15 +625,18 @@ UI must show "Money connections are not ready yet" (a distinct state, not an emp
    "<Business> via Colony" name, no reply-to: the relay does not know the owner's email). If
    the coordinator prefers WhatsApp only for v1, say so and email recipients become "copy the
    message" on the card.
-5. **Scout is not woken on approval.** The browser route needs Scout to notice the approved
-   card. v1 adds no wake reason: Scout finds it with `colony pay cards --state
-   creating_link` on its normal wake. A wake reason is a one line follow-up if wanted.
-3. **Evidence is written as the approving owner or admin.** The business record handler
-   needs that person to be in the client's private channel. If this fails in practice the
-   fallback is the `evidence_pending` state above, which the owner clears by ticking again.
-4. **Cancel does not deactivate the provider's link.** No recipe purpose for it in v1
+3. **Cancel does not deactivate the provider's link.** No recipe purpose for it in v1
    (deactivating is not moving money, but it is a write the owner has not approved shapes
    for). The card tells the owner the link may still be open.
+
+Resolved safety boundaries:
+
+* A browser-route approval queues the existing `approval_given` wake only after the card
+  transaction commits. The queue is idempotent and the daily wake remains a backstop.
+* Payment evidence is always a 47027 event in the invoice's private client channel (`h` tag
+  equals `clientId`). The approving owner or admin must still be a member of that channel. If
+  that authorization check fails, the card remains `payment_reported` with
+  `failure.code = evidence_pending`; it never becomes `paid` without evidence.
 
 ## 14. Privacy (spec section 11)
 
