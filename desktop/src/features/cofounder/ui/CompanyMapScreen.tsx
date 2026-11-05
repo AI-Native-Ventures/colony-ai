@@ -70,7 +70,7 @@ function MapFunctionNode({
   return (
     <Link
       aria-label={description}
-      className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-xl text-center outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4"
+      className="group absolute flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-xl text-center outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-4 sm:w-32"
       data-function={slot.functionId}
       data-state={slot.state}
       data-testid={`cofounder-map-${slot.functionId}`}
@@ -281,7 +281,7 @@ export function CompanyMapScreen() {
 
         <figure
           aria-label="Scout, Chief of Staff"
-          className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
+          className="absolute flex w-28 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1"
           data-testid="cofounder-map-scout"
           style={{ left: "50%", top: "31%" }}
         >
