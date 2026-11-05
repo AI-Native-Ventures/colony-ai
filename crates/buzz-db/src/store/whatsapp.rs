@@ -288,6 +288,23 @@ pub struct AccountFailureOutcome {
     pub became_unhealthy: bool,
 }
 
+/// The leased outbound row and Meta details that caused an account-wide sender pause.
+#[derive(Clone, Debug)]
+pub struct WhatsappAccountFailure<'a> {
+    /// Leased message that Graph definitely refused.
+    pub message_id: Uuid,
+    /// Lease token held by the sender that called Graph.
+    pub lease_token: Uuid,
+    /// Meta error code.
+    pub error_code: &'a str,
+    /// Meta error message.
+    pub error_text: &'a str,
+    /// Plain account-level pause reason stored with the queue fence.
+    pub pause_reason: &'a str,
+    /// Time the account health incident was observed.
+    pub at: DateTime<Utc>,
+}
+
 /// Result of applying one Meta delivery callback.
 #[derive(Clone, Debug)]
 pub struct WhatsappStatusUpdate {
@@ -295,6 +312,23 @@ pub struct WhatsappStatusUpdate {
     pub message: Option<WhatsappMessage>,
     /// The callback made the connection newly unhealthy.
     pub became_unhealthy: bool,
+}
+
+/// A delivery callback and, when applicable, the account-health pause it causes.
+#[derive(Clone, Debug)]
+pub struct WhatsappStatusHealthUpdate<'a> {
+    /// Meta WhatsApp message identifier from the callback.
+    pub wamid: &'a str,
+    /// Delivery state supplied by Meta.
+    pub state: &'a str,
+    /// Meta error code, when supplied.
+    pub error_code: Option<&'a str>,
+    /// Meta error text, when supplied.
+    pub error_text: Option<&'a str>,
+    /// Plain account-level pause reason for an account-wide failed callback.
+    pub account_pause_reason: Option<&'a str>,
+    /// Time the callback was handled.
+    pub at: DateTime<Utc>,
 }
 
 /// One inbound or outbound message.
@@ -2152,12 +2186,7 @@ impl Db {
     pub async fn whatsapp_fail_send_and_pause_account(
         &self,
         community: CommunityId,
-        message_id: Uuid,
-        lease_token: Uuid,
-        error_code: &str,
-        error_text: &str,
-        pause_reason: &str,
-        now: DateTime<Utc>,
+        failure: &WhatsappAccountFailure<'_>,
     ) -> Result<AccountFailureOutcome> {
         let mut tx = begin(&self.pool).await?;
         let result = sqlx::query(
@@ -2166,10 +2195,10 @@ impl Db {
              WHERE community_id = $1 AND id = $2 AND state = 'sending' AND lease_token = $3",
         )
         .bind(community.as_uuid())
-        .bind(message_id)
-        .bind(lease_token)
-        .bind(error_code.chars().take(64).collect::<String>())
-        .bind(error_text.chars().take(500).collect::<String>())
+        .bind(failure.message_id)
+        .bind(failure.lease_token)
+        .bind(failure.error_code.chars().take(64).collect::<String>())
+        .bind(failure.error_text.chars().take(500).collect::<String>())
         .execute(&mut *tx)
         .await?;
         if result.rows_affected() != 1 {
@@ -2179,10 +2208,10 @@ impl Db {
         let became_unhealthy = mark_account_unhealthy_in(
             &mut tx,
             community,
-            error_code,
-            error_text,
-            pause_reason,
-            now,
+            failure.error_code,
+            failure.error_text,
+            failure.pause_reason,
+            failure.at,
         )
         .await?;
         tx.commit().await?;
@@ -2627,12 +2656,7 @@ impl Db {
     pub async fn whatsapp_update_status_with_account_health(
         &self,
         community: CommunityId,
-        wamid: &str,
-        state: &str,
-        error_code: Option<&str>,
-        error_text: Option<&str>,
-        account_pause_reason: Option<&str>,
-        now: DateTime<Utc>,
+        update: &WhatsappStatusHealthUpdate<'_>,
     ) -> Result<WhatsappStatusUpdate> {
         let mut tx = begin(&self.pool).await?;
         let row = sqlx::query(
@@ -2651,21 +2675,30 @@ impl Db {
                  new_chat, send_after, sender_pubkey, sent_at, created_at",
         )
         .bind(community.as_uuid())
-        .bind(wamid)
-        .bind(state)
-        .bind(error_code.map(|c| c.chars().take(64).collect::<String>()))
-        .bind(error_text.map(|t| t.chars().take(500).collect::<String>()))
+        .bind(update.wamid)
+        .bind(update.state)
+        .bind(
+            update
+                .error_code
+                .map(|c| c.chars().take(64).collect::<String>()),
+        )
+        .bind(
+            update
+                .error_text
+                .map(|t| t.chars().take(500).collect::<String>()),
+        )
         .fetch_optional(&mut *tx)
         .await?;
         let message = row.as_ref().map(row_to_message).transpose()?;
         let became_unhealthy = match (
             message.as_ref(),
-            error_code,
-            error_text,
-            account_pause_reason,
+            update.error_code,
+            update.error_text,
+            update.account_pause_reason,
         ) {
-            (Some(_), Some(code), Some(text), Some(pause_reason)) if state == "failed" => {
-                mark_account_unhealthy_in(&mut tx, community, code, text, pause_reason, now).await?
+            (Some(_), Some(code), Some(text), Some(pause_reason)) if update.state == "failed" => {
+                mark_account_unhealthy_in(&mut tx, community, code, text, pause_reason, update.at)
+                    .await?
             }
             _ => false,
         };

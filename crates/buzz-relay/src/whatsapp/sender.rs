@@ -16,7 +16,9 @@ use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use buzz_core::tenant::{CommunityId, TenantContext};
-use buzz_db::whatsapp::{NewOutboundMessage, WhatsappContact, WhatsappMessage};
+use buzz_db::whatsapp::{
+    NewOutboundMessage, WhatsappAccountFailure, WhatsappContact, WhatsappMessage,
+};
 
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
 use super::graph::{GraphError, SendRequest};
@@ -634,12 +636,14 @@ pub async fn process_community(
                         .db
                         .whatsapp_fail_send_and_pause_account(
                             community,
-                            message.id,
-                            lease,
-                            &code_text,
-                            &text,
-                            failure.health_title(),
-                            now,
+                            &WhatsappAccountFailure {
+                                message_id: message.id,
+                                lease_token: lease,
+                                error_code: &code_text,
+                                error_text: &text,
+                                pause_reason: failure.health_title(),
+                                at: now,
+                            },
                         )
                         .await
                     {

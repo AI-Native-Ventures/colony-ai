@@ -11,7 +11,7 @@ use serde_json::Value;
 use buzz_core::business_records::ProspectHead;
 use buzz_core::kind::KIND_PROSPECT_HEAD;
 use buzz_core::TenantContext;
-use buzz_db::whatsapp::WhatsappConnection;
+use buzz_db::whatsapp::{WhatsappConnection, WhatsappStatusHealthUpdate};
 use buzz_db::EventQuery;
 
 use super::channel;
@@ -698,12 +698,14 @@ async fn handle_status(
         .db
         .whatsapp_update_status_with_account_health(
             community,
-            &status.wamid,
-            status.state,
-            code.as_deref(),
-            (status.state == "failed").then_some(error_text),
-            account_failure.map(|failure| failure.health_title()),
-            Utc::now(),
+            &WhatsappStatusHealthUpdate {
+                wamid: &status.wamid,
+                state: status.state,
+                error_code: code.as_deref(),
+                error_text: (status.state == "failed").then_some(error_text),
+                account_pause_reason: account_failure.map(|failure| failure.health_title()),
+                at: Utc::now(),
+            },
         )
         .await
         .map_err(|error| error.to_string())?;
