@@ -13,6 +13,7 @@ import {
 } from "../../src/shared/constants/kinds";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { setup as setupTeamFixture } from "../helpers/companyTeamFixture";
 
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
@@ -485,6 +486,49 @@ test("Team lets an owner confirm access changes and removals for a human member"
   await expect(page.getByTestId(`company-team-member-${member}`)).toHaveCount(
     0,
   );
+});
+
+test("Team removes a managed AI employee from this device through the managed agent action", async ({
+  page,
+}) => {
+  const { minaPk } = await setupTeamFixture(page);
+
+  await page.goto(`/#/team/detail/${minaPk}`);
+  await expect(page.getByTestId("agent-profile")).toBeVisible({
+    timeout: 20_000,
+  });
+
+  await page.getByRole("button", { name: "More agent actions" }).click();
+  await expect(page.getByTestId("team-remove-agent")).toBeVisible();
+  await page.getByTestId("team-remove-agent").click();
+
+  const dialog = page.getByTestId("confirm-remove-agent-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Remove Mina?");
+  await expect(dialog).toContainText(
+    "Remove this managed AI employee from this device.",
+  );
+  await expect(dialog).toContainText("removes it from every channel");
+
+  await page.evaluate(() => {
+    window.__BUZZ_E2E_COMMAND_LOG__ = [];
+  });
+  await dialog.getByTestId("confirm-remove-agent").click();
+
+  await expect(page).toHaveURL(/#\/team$/);
+  await page.goto(`/#/team/detail/${minaPk}`);
+  await expect(page.getByTestId("company-position-unlinked")).toContainText(
+    "Not on this device",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__BUZZ_E2E_COMMAND_LOG__?.some(
+          (entry) => entry.command === "delete_managed_agent",
+        ),
+      ),
+    )
+    .toBe(true);
 });
 
 test("Team hides access actions for an admin's self, owner, and admin targets", async ({
