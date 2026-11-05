@@ -12,6 +12,8 @@ export type OutreachContactIdentity = Readonly<{
   personName: string | null;
   location: string | null;
   website: string | null;
+  logoUrl: string | null;
+  placePhotoUrl: string | null;
   phone: string;
   partyId: string | null;
   leadId: string | null;
@@ -49,6 +51,8 @@ export function resolveOutreachContactIdentity(
     personName: lead?.contactName ?? contact.profileName,
     location: lead?.location ?? null,
     website: linkedWebsite,
+    logoUrl: lead?.logoUrl ?? null,
+    placePhotoUrl: lead?.placePhotoUrl ?? null,
     phone: formatWhatsAppNumber(contact.e164),
     partyId: lead?.party.partyId ?? null,
     leadId: contact.leadId,

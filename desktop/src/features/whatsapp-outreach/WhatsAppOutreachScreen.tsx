@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Settings, UserRound } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import {
   customerRecordForContact,
@@ -43,12 +43,10 @@ import {
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import {
-  whatsappInitials,
-  WhatsAppThreadMessage,
-} from "./WhatsAppThreadMessage";
+import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
 import { WhatsAppOutreachContactRow } from "./WhatsAppOutreachContactRow";
+import { WhatsAppThreadAvatar } from "./WhatsAppThreadAvatar";
 import {
   type ContactFilter,
   WhatsAppOutreachContactFilters,
@@ -677,9 +675,11 @@ export function WhatsAppOutreachScreen({
                 contact={rowContact}
                 hasDraft={hasDraft}
                 key={contact.waId}
+                logoUrl={identity.logoUrl}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
                 personName={identity.personName}
+                placePhotoUrl={identity.placePhotoUrl}
                 preview={preview}
                 selected={isSelected}
                 website={identity.website}
@@ -689,10 +689,10 @@ export function WhatsAppOutreachScreen({
               />
             ) : (
               <WhatsAppContactRow
-                businessName={identity.displayName}
                 canReviewBatch={Boolean(rowBatch)}
                 contact={rowContact}
                 hasDraft={hasDraft}
+                identity={identity}
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
@@ -726,13 +726,10 @@ export function WhatsAppOutreachScreen({
             >
               ‹
             </button>
-            <span aria-hidden="true" className="c3wa-thread-avatar">
-              {selectedContactIsAnonymous ? (
-                <UserRound aria-hidden="true" size={18} strokeWidth={1.8} />
-              ) : (
-                whatsappInitials(selectedIdentity?.displayName ?? "WhatsApp")
-              )}
-            </span>
+            <WhatsAppThreadAvatar
+              identity={selectedIdentity}
+              isAnonymous={selectedContactIsAnonymous}
+            />
             <div className="c3wa-thread-head-copy">
               <strong>
                 {selectedIdentity?.displayName ?? "WhatsApp contact"}

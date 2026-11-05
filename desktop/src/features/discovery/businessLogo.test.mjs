@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   businessLogoUrl,
   extractBusinessDomain,
+  resolveBusinessLogoSource,
   shouldShowBusinessLogo,
 } from "./businessLogo.ts";
 
@@ -26,6 +27,18 @@ test("rejects missing and malformed website domains", () => {
   assert.equal(extractBusinessDomain("file://example.com/logo.png"), null);
 });
 
+test("does not use shared or directory hosts as a business domain", () => {
+  for (const website of [
+    "https://apexcom.co.za/pathways-guesthouse",
+    "https://www.facebook.com/pathwaysguesthouse",
+    "https://instagram.com/pathwaysguesthouse",
+    "https://sites.google.com/view/pathwaysguesthouse",
+    "https://booking.com/hotel/za/pathways-guesthouse",
+  ]) {
+    assert.equal(extractBusinessDomain(website), null, website);
+  }
+});
+
 test("builds the 2x logo.dev request from the publishable build token", () => {
   const result = businessLogoUrl(
     "https://www.example.com/about",
@@ -42,20 +55,47 @@ test("builds the 2x logo.dev request from the publishable build token", () => {
   assert.equal(url.searchParams.get("fallback"), "404");
 });
 
-test("uses the letter tile when website, token, or image is unavailable", () => {
-  assert.equal(businessLogoUrl(null, "publishable-fixture"), null);
-  assert.equal(businessLogoUrl("https://example.com", ""), null);
+test("uses the business domain before stored media", () => {
+  const source = resolveBusinessLogoSource({
+    website: "https://example.com",
+    logoUrl: "https://cdn.example.org/example.png",
+    placePhotoUrl: "https://images.example.org/example.jpg",
+    token: "publishable-fixture",
+  });
+  assert.ok(source);
+  assert.equal(new URL(source).hostname, "img.logo.dev");
+});
+
+test("resolves a stored logo or place photo when no eligible domain is available", () => {
   assert.equal(
-    shouldShowBusinessLogo(null, "publishable-fixture", false),
-    false,
+    resolveBusinessLogoSource({
+      website: "https://facebook.com/pathwaysguesthouse",
+      logoUrl: "https://cdn.example.org/pathways.png",
+      token: "publishable-fixture",
+    }),
+    "https://cdn.example.org/pathways.png",
   );
-  assert.equal(shouldShowBusinessLogo("https://example.com", "", false), false);
   assert.equal(
-    shouldShowBusinessLogo("https://example.com", "publishable-fixture", true),
-    false,
+    resolveBusinessLogoSource({
+      website: null,
+      placePhotoUrl: "https://images.example.org/pathways.webp",
+      token: "publishable-fixture",
+    }),
+    "https://images.example.org/pathways.webp",
   );
   assert.equal(
-    shouldShowBusinessLogo("https://example.com", "publishable-fixture", false),
-    true,
+    resolveBusinessLogoSource({ website: null, token: "publishable-fixture" }),
+    null,
   );
+});
+
+test("falls back to the initial when the chosen image fails", () => {
+  const source = resolveBusinessLogoSource({
+    website: "https://example.com",
+    token: "publishable-fixture",
+  });
+  assert.ok(source);
+  assert.equal(shouldShowBusinessLogo(source, true), false);
+  assert.equal(shouldShowBusinessLogo(source, false), true);
+  assert.equal(shouldShowBusinessLogo(null, false), false);
 });
