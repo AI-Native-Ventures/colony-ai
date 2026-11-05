@@ -2655,6 +2655,20 @@ CREATE TABLE relay_operator_read_audit (
 );
 CREATE INDEX relay_operator_read_audit_recent ON relay_operator_read_audit (read_at DESC);
 
+-- Append-only audit for the allowlisted emailed operator-session flow. It has
+-- only keyed identity hashes: the code, code hash, and salt are short-lived
+-- Redis state and never enter the durable audit database.
+CREATE TABLE relay_operator_email_login_audit (
+    id UUID NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+    operation TEXT NOT NULL CHECK (operation IN ('start', 'verify')),
+    outcome TEXT NOT NULL CHECK (char_length(outcome) BETWEEN 1 AND 64),
+    email_hash BYTEA NOT NULL CHECK (octet_length(email_hash) = 32),
+    ip_bucket_hash BYTEA NOT NULL CHECK (octet_length(ip_bucket_hash) = 32),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX relay_operator_email_login_audit_recent
+    ON relay_operator_email_login_audit (created_at DESC);
+
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('metrics_daily_active', 'deployment-global daily people and business rollup for the operator admin'),
     ('metrics_person_daily', 'deployment-global per-person activity counts for the operator admin'),
@@ -2663,4 +2677,5 @@ INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('metrics_app_sessions_daily', 'deployment-global app session counter for the operator admin'),
     ('metrics_http_hourly', 'deployment-global relay HTTP response counter'),
     ('metrics_gateway_outcomes_hourly', 'deployment-global free AI gateway outcome counter'),
-    ('relay_operator_read_audit', 'deployment-global append-only record of operator admin reads');
+    ('relay_operator_read_audit', 'deployment-global append-only record of operator admin reads'),
+    ('relay_operator_email_login_audit', 'deployment-global append-only audit for emailed operator-session attempts');

@@ -510,6 +510,7 @@ mod postgres_tests {
             "metrics_http_hourly",
             "metrics_gateway_outcomes_hourly",
             "relay_operator_read_audit",
+            "relay_operator_email_login_audit",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -2394,6 +2395,7 @@ mod postgres_tests {
             "relay_admin_actions",
             "relay_admin_outbox",
             "relay_operator_audit",
+            "relay_operator_email_login_audit",
             "accounts",
             "account_credit_ledger",
             "account_payment_intents",

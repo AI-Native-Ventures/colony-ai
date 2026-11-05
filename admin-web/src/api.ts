@@ -170,6 +170,55 @@ export async function createGoogleAdminSession(
   }>;
 }
 
+type EmailCodeStartResponse = {
+  status: "email_code_requested";
+  retryAfterSeconds: number;
+};
+
+type EmailCodeVerifyResponse = {
+  status: "ok";
+  pubkeyShort: string;
+  expiresInSeconds: number;
+};
+
+async function emailCodeRequest<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${PREFIX}${path}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const envelope = await response.json().catch(() => null);
+    throw new ApiFailure(
+      response.status,
+      envelope?.error?.message ?? "The code could not be verified.",
+    );
+  }
+  return response.json() as Promise<T>;
+}
+
+/// Request an emailed one-time code. This unauthenticated endpoint performs
+/// its own same-origin and admin-host checks before returning its generic 202.
+export function startEmailAdminSession(
+  email: string,
+): Promise<EmailCodeStartResponse> {
+  return emailCodeRequest<EmailCodeStartResponse>("/session/email/start", {
+    email,
+  });
+}
+
+/// Exchange an emailed one-time code for the existing HttpOnly operator cookie.
+export function verifyEmailAdminSession(
+  email: string,
+  code: string,
+): Promise<EmailCodeVerifyResponse> {
+  return emailCodeRequest<EmailCodeVerifyResponse>("/session/email/verify", {
+    email,
+    code,
+  });
+}
+
 /// Send a body-bearing mutation (PATCH/PUT/POST) and parse the JSON response.
 /// The body is serialized once and signed over those exact bytes so the NIP-98
 /// `payload` tag matches what the relay verifies.

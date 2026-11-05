@@ -84,6 +84,34 @@ impl LimitType {
     }
 }
 
+/// Deployment-global quota dimensions keyed by a caller-provided opaque
+/// identifier. The identifier is always a keyed hash, never an email address
+/// or source IP, so Redis counters cannot become an identity directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OpaqueRateLimitScope {
+    /// Beginning an emailed admin session, grouped by source IP.
+    AdminEmailStartIp,
+    /// Beginning an emailed admin session, grouped by normalized email hash.
+    AdminEmailStartEmail,
+    /// Verifying an emailed admin session, grouped by source IP.
+    AdminEmailVerifyIp,
+    /// Verifying an emailed admin session, grouped by normalized email hash.
+    AdminEmailVerifyEmail,
+}
+
+impl OpaqueRateLimitScope {
+    /// Short suffix used in the deployment-global Redis counter key.
+    pub fn key_suffix(self) -> &'static str {
+        match self {
+            Self::AdminEmailStartIp => "admin-email-start-ip",
+            Self::AdminEmailStartEmail => "admin-email-start-email",
+            Self::AdminEmailVerifyIp => "admin-email-verify-ip",
+            Self::AdminEmailVerifyEmail => "admin-email-verify-email",
+        }
+    }
+}
+
 /// Per-tier rate limit thresholds.
 ///
 /// All values are counts per the relevant time window (per-minute or per-second).
@@ -213,6 +241,16 @@ pub trait RateLimiter: Send + Sync {
         window_secs: u64,
         limit: u64,
     ) -> impl std::future::Future<Output = Result<RateLimitResult, AuthError>> + Send;
+
+    /// Increment a deployment-global counter keyed by a fixed-size opaque
+    /// identifier. This is for security flows before a user has a public key.
+    fn check_opaque(
+        &self,
+        scope: OpaqueRateLimitScope,
+        identifier: &[u8; 32],
+        window_secs: u64,
+        limit: u64,
+    ) -> impl std::future::Future<Output = Result<RateLimitResult, AuthError>> + Send;
 }
 
 /// Redis key for pubkey-based rate limit:
@@ -236,6 +274,19 @@ pub fn ip_rate_limit_key(ip: &IpAddr) -> String {
     format!("buzz:ratelimit:ip:{}:conn", ip)
 }
 
+/// Redis key for a deployment-global opaque identity counter.
+///
+/// The value is a fixed-width keyed hash supplied by the caller. Keeping the
+/// hash instead of the raw source value prevents a Redis inspection from
+/// revealing email addresses or IP addresses.
+pub fn opaque_rate_limit_key(scope: OpaqueRateLimitScope, identifier: &[u8; 32]) -> String {
+    format!(
+        "buzz:ratelimit:opaque:{}:{}",
+        scope.key_suffix(),
+        hex::encode(identifier)
+    )
+}
+
 /// Always-allow rate limiter for unit tests.
 #[cfg(any(test, feature = "test-utils"))]
 pub struct AlwaysAllowRateLimiter;
@@ -256,6 +307,16 @@ impl RateLimiter for AlwaysAllowRateLimiter {
     async fn check_ip_connection(
         &self,
         _ip: &IpAddr,
+        window_secs: u64,
+        limit: u64,
+    ) -> Result<RateLimitResult, AuthError> {
+        Ok(RateLimitResult::allowed(1, limit, window_secs))
+    }
+
+    async fn check_opaque(
+        &self,
+        _scope: OpaqueRateLimitScope,
+        _identifier: &[u8; 32],
         window_secs: u64,
         limit: u64,
     ) -> Result<RateLimitResult, AuthError> {
@@ -354,6 +415,19 @@ mod tests {
         // IP fence stays operator-global — no community in the key.
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
         assert_eq!(ip_rate_limit_key(&ip), "buzz:ratelimit:ip:192.168.1.1:conn");
+    }
+
+    #[test]
+    fn opaque_rate_limit_key_uses_only_the_fixed_hash() {
+        let identifier = [0x42; 32];
+        let key = opaque_rate_limit_key(OpaqueRateLimitScope::AdminEmailStartEmail, &identifier);
+        assert_eq!(
+            key,
+            format!(
+                "buzz:ratelimit:opaque:admin-email-start-email:{}",
+                "42".repeat(32)
+            )
+        );
     }
 
     #[tokio::test]
