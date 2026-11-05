@@ -27,6 +27,7 @@ import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import { AccessibilitySettingsPanel } from "./AccessibilitySettingsPanel";
 import { BusinessProfileSettingsPanel } from "./BusinessProfileSettingsPanel";
 import { WhatsAppSettingsPanel } from "@/features/whatsapp-outreach/WhatsAppSettingsPanel";
+import { MoneyRailsSettingsPanel } from "@/features/cofounder/ui/MoneyRailsSettingsPanel";
 import {
   AppPreferencesSettingsPanel,
   FeedbackSettingsPanel,
@@ -45,6 +46,7 @@ export type SettingsSection =
   | "appearance"
   | "accessibility"
   | "business-profile"
+  | "money-calendar"
   | "people"
   | "shortcuts"
   | "community-members"
@@ -130,6 +132,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     subtitle: "{business}\u2019s profile, and who can get in.",
     sections: [
       { value: "business-profile", label: "Profile" },
+      { value: "money-calendar", label: "Money and calendar" },
       { value: "people", label: "People & access" },
     ],
   },
@@ -232,6 +235,7 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "appearance",
   "accessibility",
   "business-profile",
+  "money-calendar",
   "people",
   "shortcuts",
   "community-members",
@@ -323,6 +327,8 @@ export function renderSettingsSection(
       return <AccessibilitySettingsPanel />;
     case "business-profile":
       return <BusinessProfileSettingsPanel />;
+    case "money-calendar":
+      return <MoneyRailsSettingsPanel />;
     case "people":
       return (
         <CommunityMembersSettingsCard

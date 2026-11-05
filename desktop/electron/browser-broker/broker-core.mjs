@@ -1,7 +1,11 @@
 import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { randomUUID } from "node:crypto";
 import { createActionLog, summarizeToolArgs } from "./action-log.mjs";
-import { classifyAction, confirmationSummary } from "./classifier.mjs";
+import {
+  classifyAction,
+  confirmationSummary,
+  isPaymentLinkCreateControl,
+} from "./classifier.mjs";
 import {
   redactUrl,
   sanitizeBlock,
@@ -374,7 +378,10 @@ export function createBroker({
     return true;
   }
 
-  async function requestConfirmation(ctx, { tabId, summary, result }) {
+  async function requestConfirmation(
+    ctx,
+    { tabId, summary, result, paymentLinkStep },
+  ) {
     if (listeners.size === 0) throw new BrokerError("confirmation_required");
     const actionId = randomUUID();
     const outcome = await new Promise((resolve) => {
@@ -390,6 +397,7 @@ export function createBroker({
         timer,
         summary,
         category: result.category,
+        ...(paymentLinkStep ? { paymentLinkStep } : {}),
         expiresAt: now() + confirmationTimeoutMs,
       });
       void Promise.resolve()
@@ -405,6 +413,7 @@ export function createBroker({
         summary,
         category: result.category,
         reasons: result.reasons.map((reason) => reason.code),
+        ...(paymentLinkStep ? { paymentLinkStep } : {}),
         expiresAt: now() + confirmationTimeoutMs,
       });
       ctx.signal.addEventListener("abort", () => settle(actionId, "fenced"), {
@@ -428,6 +437,30 @@ export function createBroker({
       );
     }
     throw new BrokerError("confirmation_denied");
+  }
+
+  function browserPaymentLinkStep(input, pageUrl) {
+    let url;
+    try {
+      url = new URL(pageUrl);
+    } catch {
+      return null;
+    }
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return null;
+    const labelParts = [input.element?.name, input.element?.text]
+      .map((value) => sanitizeUntrusted(value, 160))
+      .filter((value, index, all) => value && all.indexOf(value) === index);
+    return {
+      host: url.hostname.toLowerCase(),
+      url: `${url.origin}${url.pathname}`,
+      label: sanitizeUntrusted(labelParts.join(" "), 256),
+      kind: "create",
+    };
   }
 
   // ---- shared helpers ----------------------------------------------------
@@ -682,12 +715,13 @@ export function createBroker({
         code === "external_protocol_link" ? "scheme_denied" : code,
       );
     }
-    if (verdict.decision === "confirm") {
-      await requestConfirmation(ctx, {
-        tabId: args.tab,
-        summary: confirmationSummary(input, verdict),
-        result: verdict,
-      });
+    const paymentLinkConfirmation =
+      verdict.decision === "confirm" &&
+      action === "click" &&
+      isPaymentLinkCreateControl(input.element) &&
+      verdict.reasons.length === 1 &&
+      verdict.reasons[0]?.code === "payment_link_create";
+    const recheckDescribedElement = async () => {
       ctx.check();
       if (registryFor(args.tab).generation !== generation)
         throw new BrokerError(
@@ -707,6 +741,20 @@ export function createBroker({
       if (!fresh || fresh.controlOwner === "human")
         throw new BrokerError("fenced");
       requireApprovedPage(ctx, args.tab, fresh);
+      return fresh;
+    };
+
+    if (verdict.decision === "confirm") {
+      const paymentLinkStep = paymentLinkConfirmation
+        ? browserPaymentLinkStep(input, info.url)
+        : undefined;
+      await requestConfirmation(ctx, {
+        tabId: args.tab,
+        summary: confirmationSummary(input, verdict),
+        result: verdict,
+        ...(paymentLinkStep ? { paymentLinkStep } : {}),
+      });
+      await recheckDescribedElement();
     }
     ctx.check();
     return { info, entry, origin, described, generation };
@@ -1228,6 +1276,9 @@ export function createBroker({
         tabId: entry.tabId,
         summary: entry.summary,
         category: entry.category,
+        ...(entry.paymentLinkStep
+          ? { paymentLinkStep: entry.paymentLinkStep }
+          : {}),
         expiresAt: entry.expiresAt,
       }));
     },

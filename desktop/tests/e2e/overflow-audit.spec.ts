@@ -178,6 +178,11 @@ const routeScreens = [
     selector: '[data-testid="settings-business-profile"]',
   },
   {
+    screen: "Settings: Money and calendar",
+    route: "/#/settings?section=money-calendar",
+    selector: '[data-testid="settings-panel-money-calendar"]',
+  },
+  {
     screen: "Settings: Agents",
     route: "/#/settings?section=agent-defaults",
     selector: '[data-testid="settings-global-agent-config"]',
@@ -1046,8 +1051,14 @@ async function setSidebarMode(
   const state = await sidebar.getAttribute("data-state").catch(() => null);
   const wanted = mode === "expanded" ? "expanded" : "collapsed";
   if (state !== wanted) {
-    await page.getByRole("button", { name: "Toggle Sidebar" }).click();
-    await expect(sidebar).toHaveAttribute("data-state", wanted);
+    const toggleSidebar = page.getByRole("button", {
+      name: "Toggle Sidebar",
+    });
+    await expect(toggleSidebar).toBeVisible({ timeout: 8_000 });
+    await toggleSidebar.click({ timeout: 8_000 });
+    await expect(sidebar).toHaveAttribute("data-state", wanted, {
+      timeout: 8_000,
+    });
     await waitForAnimations(page);
   }
 }
@@ -1334,6 +1345,20 @@ test("all screens, widths and important states", async ({ page, browser }) => {
         },
       },
       {
+        screen: "Money provider dialog",
+        route: "/#/settings?section=money-calendar",
+        selector: '[data-testid="settings-panel-money-calendar"]',
+        action: async () => {
+          const addProvider = page.getByTestId("money-rail-add-provider");
+          await expect(addProvider).toBeVisible({ timeout: 8_000 });
+          await addProvider.scrollIntoViewIfNeeded({ timeout: 8_000 });
+          await addProvider.click({ timeout: 8_000 });
+          await page
+            .getByTestId("money-rail-connect-dialog")
+            .waitFor({ state: "visible" });
+        },
+      },
+      {
         screen: "Channel management sheet",
         route: `/#/channels/${REFERENCE_CHANNEL_IDS.sales}`,
         action: async () => {
@@ -1481,7 +1506,10 @@ test("all screens, widths and important states", async ({ page, browser }) => {
         continue;
       }
       try {
-        if (dialog.screen !== "Settings status dialog") {
+        if (
+          dialog.screen !== "Settings status dialog" &&
+          dialog.screen !== "Money provider dialog"
+        ) {
           const needsSidebar =
             width < 768 &&
             ["Channel browser dialog", "Search dialog"].includes(dialog.screen);

@@ -38,6 +38,12 @@ export type BrowserConfirmation = {
   summary: string;
   category?: string | null;
   expiresAt?: number;
+  paymentLinkStep?: {
+    host: string;
+    url: string;
+    label: string;
+    kind: "create";
+  };
 };
 
 export type BrowserActionEntry = {
