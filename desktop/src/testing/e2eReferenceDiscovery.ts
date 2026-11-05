@@ -192,6 +192,31 @@ function createReferenceDiscoveryProvider(
     getCurrent: () => cloneCampaign(current),
     getCampaigns: () =>
       campaigns.map((campaign) => cloneCampaign(campaign) as DiscoveryCampaign),
+    getContinuation() {
+      if (current?.status !== "complete" || current.count >= current.target) {
+        return null;
+      }
+      return {
+        campaignId: current.id,
+        state: "ready" as const,
+        message: null,
+        remainingTarget: current.target - current.count,
+        pagesAtProviderCeiling: 1,
+        spentUsd: current.spentUsd ?? 0,
+        approvedBudgetUsd: current.budgetUsd,
+        minimumAdditionalBudgetUsd: 0,
+        recommendedAdditionalBudgetUsd: 0,
+        estimatedPages: 1,
+        estimatedCostUsd: 0,
+      };
+    },
+    async continueCampaign() {
+      if (current?.status !== "complete" || current.count >= current.target) {
+        return;
+      }
+      update({ ...current, status: "running" });
+      advanceProgress();
+    },
     async select(campaignId) {
       if (current?.id === campaignId) return;
       if (current?.status === "running") {

@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { formatBudget } from "./CampaignHelpers";
 import { campaignStatusLabel } from "./CampaignHelpers";
 import {
   ArrowRightGlyph,
@@ -29,6 +30,7 @@ import { searchDiscoveryLocations } from "./discoveryLocationClient";
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
+  DiscoveryContinuation,
   DiscoveryRunner,
 } from "./discoveryProvider";
 
@@ -274,6 +276,7 @@ export function DiscoveryCampaignDialog({
   runner,
   simulatedCosts,
   initialLocation,
+  continuationSourceCampaign,
 }: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: CampaignFormInput) => Promise<void>;
@@ -284,6 +287,8 @@ export function DiscoveryCampaignDialog({
   /** The test-build stand-in keeps the design's example wording. */
   simulatedCosts: boolean;
   initialLocation?: DiscoveryLocation | null;
+  /** A nearby place is intentionally a separate campaign, not Find more. */
+  continuationSourceCampaign?: string | null;
 }) {
   const [name, setName] = React.useState("");
   const [location, setLocation] = React.useState("");
@@ -298,14 +303,18 @@ export function DiscoveryCampaignDialog({
 
   React.useEffect(() => {
     if (!open || !pending) return;
-    setName(`${pending.verticalName} prospects`);
+    setName(
+      continuationSourceCampaign
+        ? `Continues ${continuationSourceCampaign}`
+        : `${pending.verticalName} prospects`,
+    );
     setLocation(initialLocation?.label ?? "");
     setLocationSelection(initialLocation ?? null);
     setTarget("100");
     setCriteria("");
     setApproved(false);
     setError("");
-  }, [initialLocation, open, pending]);
+  }, [continuationSourceCampaign, initialLocation, open, pending]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -356,14 +365,22 @@ export function DiscoveryCampaignDialog({
         showCloseButton={false}
       >
         <div className="c3d-dialog-head">
-          <p className="c3d-eyebrow">New discovery campaign</p>
+          <p className="c3d-eyebrow">
+            {continuationSourceCampaign
+              ? "New campaign for a nearby area"
+              : "New discovery campaign"}
+          </p>
           <DialogTitle className="c3d-dialog-title">
-            Find the right fit.
+            {continuationSourceCampaign
+              ? "Continue in a nearby area."
+              : "Find the right fit."}
           </DialogTitle>
           <DialogDescription className="c3d-dialog-sub">
-            {pending
-              ? `${pending.industryName} / ${pending.verticalName}`
-              : "Choose a category."}
+            {continuationSourceCampaign
+              ? `This starts a new campaign that continues ${continuationSourceCampaign} in a different place.`
+              : pending
+                ? `${pending.industryName} / ${pending.verticalName}`
+                : "Choose a category."}
           </DialogDescription>
         </div>
         <form
@@ -459,7 +476,165 @@ export function DiscoveryCampaignDialog({
               disabled={submitting || !pending}
               type="submit"
             >
-              Approve &amp; start <ArrowRightGlyph size={16} />
+              Approve &amp; {continuationSourceCampaign ? "start new" : "start"}{" "}
+              <ArrowRightGlyph size={16} />
+            </button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Approval for an in-place continuation after a campaign used its budget. */
+export function DiscoveryContinuationDialog({
+  campaign,
+  continuation,
+  onOpenChange,
+  onSubmit,
+  open,
+}: {
+  campaign: DiscoveryCampaign;
+  continuation: DiscoveryContinuation | null;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (additionalBudgetUsd: number) => Promise<void>;
+  open: boolean;
+}) {
+  const [additionalBudget, setAdditionalBudget] = React.useState("0");
+  const [approved, setApproved] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const approvedBudget = continuation?.approvedBudgetUsd ?? campaign.budgetUsd;
+  const spent = continuation?.spentUsd ?? campaign.spentUsd ?? 0;
+  const remainingTarget = continuation?.remainingTarget ?? 0;
+  const estimatedPages = continuation?.estimatedPages ?? 0;
+  const pagesAtProviderCeiling = continuation?.pagesAtProviderCeiling ?? 0;
+  const estimatedCost = continuation?.estimatedCostUsd ?? 0;
+  const minimum = continuation?.minimumAdditionalBudgetUsd ?? 0;
+
+  React.useEffect(() => {
+    if (!open || !continuation) return;
+    setAdditionalBudget(continuation.recommendedAdditionalBudgetUsd.toFixed(2));
+    setApproved(false);
+    setError("");
+  }, [continuation, open]);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = Number(additionalBudget);
+    if (!Number.isFinite(amount) || amount < minimum || !approved) {
+      setError(
+        `Approve at least ${formatBudget(minimum)} more to cover the next provider page.`,
+      );
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await onSubmit(amount);
+      onOpenChange(false);
+    } catch (continueError) {
+      setError(startFailureMessage(continueError));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent
+        className="c3d-dialog c3d-dialog--form"
+        data-testid="discovery-continuation-dialog"
+        showCloseButton={false}
+      >
+        <div className="c3d-dialog-head">
+          <p className="c3d-eyebrow">Continue this campaign</p>
+          <DialogTitle className="c3d-dialog-title">
+            Approve more search budget.
+          </DialogTitle>
+          <DialogDescription className="c3d-dialog-sub">
+            {campaign.name} · {remainingTarget} new prospects remaining
+          </DialogDescription>
+        </div>
+        <form
+          className="contents"
+          noValidate
+          onSubmit={(event) => void submit(event)}
+        >
+          <dl className="c3d-facts">
+            <dt>Campaign</dt>
+            <dd>{campaign.name}</dd>
+            <dt>Spent</dt>
+            <dd>
+              {formatBudget(spent)} of {formatBudget(approvedBudget)} approved
+            </dd>
+            <dt>Target</dt>
+            <dd>
+              {campaign.count} new saved · {remainingTarget} remaining
+            </dd>
+          </dl>
+          <div className="c3d-field">
+            <label htmlFor="w10-continuation-budget">
+              Additional budget to approve
+            </label>
+            <input
+              id="w10-continuation-budget"
+              min={minimum.toFixed(2)}
+              onChange={(event) =>
+                setAdditionalBudget(event.currentTarget.value)
+              }
+              required
+              step="0.01"
+              type="number"
+              value={additionalBudget}
+            />
+          </div>
+          <div className="c3d-budget">
+            <span>
+              <strong>What this estimate covers</strong>
+              <small>
+                At $0.003 per returned record, {remainingTarget} new prospects
+                need at least {estimatedPages}{" "}
+                {estimatedPages === 1 ? "page" : "pages"} and{" "}
+                {formatBudget(estimatedCost)}. Results already in your Leads are
+                skipped, so it may take more pages. This query can use up to{" "}
+                {pagesAtProviderCeiling}{" "}
+                {pagesAtProviderCeiling === 1 ? "page" : "pages"} before the
+                400-record provider ceiling.
+              </small>
+            </span>
+            <span className="c3d-budget-amount">
+              {formatBudget(Math.max(0, Number(additionalBudget) || 0))}
+            </span>
+          </div>
+          <label className="c3d-approval">
+            <input
+              checked={approved}
+              onChange={(event) => setApproved(event.currentTarget.checked)}
+              type="checkbox"
+            />
+            I approve this additional search budget for the same campaign.
+          </label>
+          {error ? (
+            <p className="c3d-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="c3d-dialog-actions c3d-form-actions">
+            <button
+              className="c3d-btn c3d-btn--outline c3d-btn--lg c3d-btn--px20"
+              disabled={submitting}
+              onClick={() => onOpenChange(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="c3d-btn c3d-btn--ink c3d-btn--lg c3d-btn--px22"
+              disabled={submitting || !continuation}
+              type="submit"
+            >
+              Approve &amp; continue <ArrowRightGlyph size={16} />
             </button>
           </div>
         </form>

@@ -30,6 +30,46 @@ export type DiscoveryQueryEndReason = Extract<
   "provider_end" | "provider_ceiling" | "provider_repeat"
 >;
 
+/** What the relay returned and the campaign saved for one paid provider page. */
+export type DiscoveryPageLog = {
+  /** One-based page number within this campaign, including resumed pages. */
+  page: number;
+  /** The provider offset requested for this page. */
+  skip: number;
+  /** Normalized places the relay returned to the desktop for this page. */
+  placesReturned: number;
+  /** New prospects persisted from this page. */
+  newProspectsSaved: number;
+  /** Results skipped because the business was already in Leads. */
+  alreadyInLeads: number;
+  /** Provider place ids on this page already returned to this campaign. */
+  repeatedInCampaign: number;
+  /** Provider-estimated charge for the returned records. */
+  costUsd: number;
+  /** The evidence-backed reason this page ended the run, if it did. */
+  stopReason: DiscoveryEndReason | null;
+};
+
+/** What Find more can safely do without starting a separate campaign. */
+export type DiscoveryContinuation = {
+  campaignId: string;
+  state: "ready" | "approval_required" | "unavailable";
+  /** Plain-language reason when a query genuinely cannot continue. */
+  message: string | null;
+  remainingTarget: number;
+  pagesAtProviderCeiling: number;
+  spentUsd: number;
+  approvedBudgetUsd: number;
+  /** Extra approval needed before one more full provider page can be requested. */
+  minimumAdditionalBudgetUsd: number;
+  /** A sensible pre-filled additional approval for the remaining target. */
+  recommendedAdditionalBudgetUsd: number;
+  /** Minimum pages needed for the remaining target before duplicate skips. */
+  estimatedPages: number;
+  /** Cost of those minimum pages at the provider's $0.003 record price. */
+  estimatedCostUsd: number;
+};
+
 /**
  * A saved page boundary for a business type, its chosen tags and one exact
  * place. New campaigns use it to avoid paying for the same provider pages.
@@ -88,6 +128,10 @@ export type DiscoveryCampaign = {
   endReason?: DiscoveryEndReason | null;
   /** Device-local page boundaries, one for each provider query stream. */
   coverage?: DiscoveryCoverage[];
+  /** Per-page evidence from the relay response and the persisted outcomes. */
+  runLog?: DiscoveryPageLog[];
+  /** Pages saved so far, including pages from any in-place continuation. */
+  pagesFetched?: number;
 };
 
 export type DiscoveryCampaignInput = Omit<
@@ -103,6 +147,10 @@ export type DiscoveryCampaignProvider = {
     listener: (campaign: DiscoveryCampaign | null) => void,
   ) => () => void;
   start: (input: DiscoveryCampaignInput) => Promise<DiscoveryCampaign>;
+  /** Describes whether the current short campaign can safely continue in place. */
+  getContinuation: () => DiscoveryContinuation | null;
+  /** Continues the current campaign, optionally after a newly approved amount. */
+  continueCampaign: (additionalBudgetUsd?: number) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   cancel: () => Promise<void>;

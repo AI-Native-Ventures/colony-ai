@@ -30,6 +30,7 @@ import {
 import { CampaignDialog, type CampaignDialogMode } from "./CampaignDialogs";
 import {
   DiscoveryCampaignDialog,
+  DiscoveryContinuationDialog,
   type CampaignFormInput,
   type PendingCampaign,
 } from "./DiscoveryCampaignDialogs";
@@ -41,7 +42,10 @@ import {
 } from "./CampaignProspectTable";
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
 import type { DiscoveryLocation } from "./discoveryLocation";
-import { useDiscoveryCampaign } from "./discoveryProvider";
+import {
+  type DiscoveryContinuation,
+  useDiscoveryCampaign,
+} from "./discoveryProvider";
 import {
   DiscoveryTypeDetailsDialog,
   RelatedVerticalOptions,
@@ -128,6 +132,12 @@ export function CampaignScreen(context: CampaignContext) {
   const [widenOpen, setWidenOpen] = React.useState(false);
   const [widenLocation, setWidenLocation] =
     React.useState<DiscoveryLocation | null>(null);
+  const [widenSourceCampaign, setWidenSourceCampaign] = React.useState<
+    string | null
+  >(null);
+  const [continuation, setContinuation] =
+    React.useState<DiscoveryContinuation | null>(null);
+  const [continuationOpen, setContinuationOpen] = React.useState(false);
   const [, setTagsReady] = React.useState(false);
   const [progress, setProgress] = React.useState<BulkAcceptProgress | null>(
     null,
@@ -568,6 +578,7 @@ export function CampaignScreen(context: CampaignContext) {
   function openWidenSearch(row: CatalogueRow, pickedTags: string[]) {
     setRelatedTypeId(null);
     setWidenLocation(currentCampaign.locationSelection ?? null);
+    setWidenSourceCampaign(null);
     setWidenPending({
       audience: "businesses",
       industryId: row.parentId,
@@ -590,10 +601,42 @@ export function CampaignScreen(context: CampaignContext) {
     await navigate({ to: "/campaign" });
   }
 
-  /** A new approved run inherits coverage through the provider's query key. */
-  function openFindMore(location = currentCampaign.locationSelection ?? null) {
+  async function continueCampaign(additionalBudgetUsd?: number) {
+    if (!provider) return;
+    try {
+      setError("");
+      setNotice("");
+      await provider.continueCampaign(additionalBudgetUsd);
+    } catch (continueError) {
+      setError(errorMessage(continueError));
+    }
+  }
+
+  async function openFindMore() {
+    if (!provider) return;
+    const next = provider.getContinuation();
+    if (!next) {
+      setError(
+        "This campaign cannot continue from its current state. Retry an interrupted search or start a nearby campaign.",
+      );
+      return;
+    }
+    if (next.state === "unavailable") {
+      setError(next.message ?? "This provider query has no next page.");
+      return;
+    }
+    if (next.state === "approval_required") {
+      setContinuation(next);
+      setContinuationOpen(true);
+      return;
+    }
+    await continueCampaign();
+  }
+
+  function openNearbySearch(location: DiscoveryLocation) {
     setRelatedTypeId(null);
     setWidenLocation(location);
+    setWidenSourceCampaign(currentCampaign.name);
     setWidenPending({
       audience: currentCampaign.audience,
       industryId: currentCampaign.industryId,
@@ -619,11 +662,11 @@ export function CampaignScreen(context: CampaignContext) {
             campaign={campaign}
             onChangeRun={(action) => void changeRun(action)}
             onDiscuss={shareInSales}
-            onFindMore={() => openFindMore()}
+            onFindMore={() => void openFindMore()}
             onNewSearch={() => void navigate({ to: "/discovery" })}
             onOpenDetails={() => setDialogMode("details")}
             onOpenSettings={() => setDialogMode("settings")}
-            onSearchNearby={(location) => openFindMore(location)}
+            onSearchNearby={openNearbySearch}
           />
           {relatedTypes.length ? (
             <section
@@ -632,7 +675,9 @@ export function CampaignScreen(context: CampaignContext) {
             >
               <div>
                 <h2 id="c3d-widen-title">Widen this search</h2>
-                <p>Explore related business types in a new campaign.</p>
+                <p>
+                  Choose a related business type to start a separate campaign.
+                </p>
               </div>
               <RelatedVerticalOptions
                 onSelect={setRelatedTypeId}
@@ -830,6 +875,7 @@ export function CampaignScreen(context: CampaignContext) {
       />
       <DiscoveryCampaignDialog
         initialLocation={widenLocation}
+        continuationSourceCampaign={widenSourceCampaign}
         onOpenChange={setWidenOpen}
         onSubmit={startWidenSearch}
         open={widenOpen}
@@ -851,6 +897,16 @@ export function CampaignScreen(context: CampaignContext) {
         listName={campaign.name}
         onOpenChange={setBatchDialogOpen}
         open={batchDialogOpen}
+      />
+      <DiscoveryContinuationDialog
+        campaign={campaign}
+        continuation={continuation}
+        onOpenChange={(open) => {
+          setContinuationOpen(open);
+          if (!open) setContinuation(null);
+        }}
+        onSubmit={continueCampaign}
+        open={continuationOpen}
       />
     </>
   );
