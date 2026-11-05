@@ -13,8 +13,8 @@ BUZZ_METRICS_PORT = "9102"
 BUZZ_GIT_REPO_PATH = "/data/git"
 BUZZ_AUTO_MIGRATE = "false"
 BUZZ_MEDIA_BASE_URL = "https://relay.colony.ainative.ventures/media"
-BUZZ_ADMIN_HOST = "admin.colony.ainative.ventures"
-RELAY_OPERATOR_API_ORIGIN = "https://admin.colony.ainative.ventures"
+BUZZ_ADMIN_HOST = "admin.colony.global"
+RELAY_OPERATOR_API_ORIGIN = "https://admin.colony.global"
 # Multi-tenant hosting: each community is <slug>.colony.ainative.ventures (the wildcard
 # certificate and DNS already exist on this app). These values match the production
 # app's deployed configuration and must not be dropped by a redeploy.

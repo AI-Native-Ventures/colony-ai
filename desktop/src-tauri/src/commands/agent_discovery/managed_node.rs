@@ -214,6 +214,18 @@ pub(super) fn managed_node_orphaned() -> bool {
     managed_node_runtime_supported() && !managed_node_runtime_ready()
 }
 
+/// Whether a resolved shim belongs to Colony's managed Codex package and needs
+/// the pinned Node runtime restored. System/npm adapters and healthy managed
+/// runtimes do not get a repair affordance.
+pub(super) fn codex_shim_needs_managed_node_repair(
+    resolved: &std::path::Path,
+    managed_codex_bin: &std::path::Path,
+    runtime_supported: bool,
+    node_ready: bool,
+) -> bool {
+    runtime_supported && !node_ready && resolved.starts_with(managed_codex_bin)
+}
+
 /// Returns `true` when an adapter at `resolved` should be invalidated.
 ///
 /// Only a Buzz-managed shim (path under `managed_prefix`) with an orphaned

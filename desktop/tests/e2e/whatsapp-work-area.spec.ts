@@ -112,28 +112,24 @@ test.describe("WhatsApp work area dock", () => {
       ],
     });
 
-    await expect(page.getByTestId("whatsapp-channel-connected")).toContainText(
-      "WhatsApp number connected.",
+    const activity = page.getByTestId("whatsapp-discussion-activity");
+    const summary = activity.locator("summary");
+    await expect(summary).toHaveText(
+      "3 updates: Number connected, Batch sent, Corner Cottage Parkhurst replied",
     );
-    await expect(
-      page.getByTestId("whatsapp-channel-batch-pending"),
-    ).toBeVisible();
-    await expect(page.getByTestId("whatsapp-channel-batch-sent")).toContainText(
-      "18 delivered",
+    await summary.click();
+    await expect(activity).toContainText("WhatsApp number connected.");
+    await expect(activity).toContainText(
+      "18 guesthouses messaged, 18 delivered",
     );
-    const replyCard = page.getByTestId("whatsapp-channel-reply");
-    await expect(replyCard).toContainText("Corner Cottage Parkhurst");
-    await expect(replyCard).toContainText(
+    const replyActivity = activity
+      .getByRole("listitem")
+      .filter({ hasText: "Corner Cottage Parkhurst replied" });
+    await expect(replyActivity).toContainText(
       "Please send the details. I can talk tomorrow morning.",
     );
-    await expect(
-      replyCard.getByRole("button", { name: "Open in WhatsApp" }),
-    ).toBeVisible();
-    await expect(
-      replyCard.getByRole("button", { name: "Open lead" }),
-    ).toBeVisible();
 
-    await replyCard.getByRole("button", { name: "Open in WhatsApp" }).click();
+    await replyActivity.getByRole("button", { name: "Open chat" }).click();
     await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
     await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
     await expect(

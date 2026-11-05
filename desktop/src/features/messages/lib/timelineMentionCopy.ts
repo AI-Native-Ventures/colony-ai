@@ -1,5 +1,6 @@
 import type * as React from "react";
 
+import { formatMentionDisplayLabel } from "@/shared/lib/mentionDisplay";
 import { MESSAGE_MARKDOWN_CLASS } from "@/shared/ui/mentionChip";
 
 import {
@@ -48,19 +49,24 @@ function restoreChipSigils(root: HTMLElement): boolean {
 
   for (const element of root.querySelectorAll<HTMLElement>("[data-mention]")) {
     const label = element.getAttribute(MENTION_LABEL_ATTRIBUTE);
+    const pubkey = element.getAttribute(MENTION_PUBKEY_ATTRIBUTE) ?? undefined;
+    const displayLabel = label
+      ? formatMentionDisplayLabel(label, pubkey)
+      : null;
     if (
       label &&
-      matchChipTextToLabel(
-        element.textContent ?? "",
-        label,
-        "@",
-        element.getAttribute(MENTION_PUBKEY_ATTRIBUTE) ?? undefined,
-      ) !== "fragment"
+      matchChipTextToLabel(element.textContent ?? "", label, "@", pubkey) !==
+        "fragment"
     ) {
-      element.textContent = `@${label}`;
+      element.textContent = `@${displayLabel}`;
+      element.setAttribute(MENTION_LABEL_ATTRIBUTE, displayLabel ?? label);
       restored = true;
       continue;
     }
+    element.textContent = formatMentionDisplayLabel(
+      element.textContent ?? "",
+      pubkey,
+    );
     element.removeAttribute("data-mention");
     element.removeAttribute(MENTION_PUBKEY_ATTRIBUTE);
     element.removeAttribute(MENTION_KIND_ATTRIBUTE);

@@ -26,13 +26,15 @@ type StubMode = "pages" | "not-configured" | "gated";
 type DiscoveryWindow = Window & {
   __discoveryCalls?: Array<Record<string, unknown>>;
   __releaseDiscoveryPage?: () => void;
+  __BUZZ_E2E_DISCOVERY_LOCATIONS__?: (
+    request: Record<string, unknown>,
+  ) => Promise<unknown>;
 };
 
 /**
- * Two canned pages. Page one: a new business, one that is already in Leads
- * (same name as a reference lead), one without a website, one with an http
- * website, and one without a name. Page two: a repeat of page one's first
- * business and two more new ones.
+ * Two canned pages. The first is a full provider page: three new businesses
+ * plus leads already in the reference workspace. The second repeats one
+ * provider place and adds two more new businesses.
  */
 async function installSearchStub(page: Page, mode: StubMode = "pages") {
   await page.addInitScript((stubMode) => {
@@ -42,6 +44,19 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
       ) => Promise<unknown>;
     };
     w.__discoveryCalls = [];
+    w.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async () => ({
+      locations: [
+        {
+          label: "South Africa",
+          latitude: -30.5595,
+          longitude: 22.9375,
+          countryCode: "ZA",
+          region: "ZA",
+          kind: "country",
+          boundingBox: null,
+        },
+      ],
+    });
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -89,7 +104,9 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
             place("pl-linen", "Linen Lane", {
               website: "http://linen-lane.example",
             }),
-            place("pl-nameless", ""),
+            ...Array.from({ length: 16 }, (_, index) =>
+              place(`pl-existing-${String(index + 1)}`, "The Olive House"),
+            ),
           ],
           estimatedCostUsd: 0.012,
           nextSkip: 20,
@@ -116,8 +133,8 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
 }
 
 async function openDiscovery(page: Page, mode: StubMode = "pages") {
-  await installMockBridge(page, REAL_RUNNER);
   await installSearchStub(page, mode);
+  await installMockBridge(page, REAL_RUNNER);
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
 }
@@ -139,8 +156,10 @@ async function openCampaignForm(page: Page) {
 
 async function approveAndStart(page: Page) {
   const dialog = await openCampaignForm(page);
-  await dialog.getByLabel("Location").fill("South Africa");
-  await dialog.getByLabel("Prospect target").fill("50");
+  const location = dialog.getByRole("combobox", { name: "Location" });
+  await location.fill("South Africa");
+  await dialog.getByRole("option", { name: /South Africa/ }).click();
+  await dialog.getByLabel("Prospect target").fill("100");
   await dialog
     .getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
@@ -167,6 +186,14 @@ async function goTo(page: Page, hash: string) {
   }, hash);
 }
 
+async function expectCompletedRun(page: Page) {
+  await goTo(page, "/discovery");
+  await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Ready to review/ })).toBeVisible(
+    { timeout: 15_000 },
+  );
+}
+
 test.describe("Real discovery run", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -178,9 +205,6 @@ test.describe("Real discovery run", () => {
 
     const campaign = page.getByTestId("w10-campaign-page");
     await expect(campaign).toBeVisible();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
 
     // Five new businesses: the repeat, the nameless place and the business
     // that is already in Leads are not added.
@@ -203,13 +227,15 @@ test.describe("Real discovery run", () => {
     expect(calls.map((call) => call.skip)).toEqual([0, 20]);
     expect(calls[0]).toMatchObject({
       location: "South Africa",
-      country: "South Africa",
+      country: "ZA",
+      coordinates: { latitude: -30.5595, longitude: 22.9375 },
       limit: 20,
     });
     expect(String(calls[0]?.query)).toMatch(/home furnishings/i);
 
-    // Pick up where you left off: the run is on the Discovery page.
-    await goTo(page, "/discovery");
+    // Completed runs hide the progress panel on the campaign page. The
+    // Discovery resume card presents the terminal state as "Ready to review".
+    await expectCompletedRun(page);
     await expect(
       page.getByRole("heading", { name: "Pick up where you left off" }),
     ).toBeVisible();
@@ -226,30 +252,20 @@ test.describe("Real discovery run", () => {
   }) => {
     await openDiscovery(page);
     await approveAndStart(page);
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
     await expect(campaignRows(page)).toHaveCount(5);
-
-    await goTo(page, "/discovery");
-    await page.getByTestId("w10-discovery-page").waitFor();
+    await expectCompletedRun(page);
     await approveAndStart(page);
     await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expectCompletedRun(page);
+    await page.getByRole("link", { name: /Ready to review/ }).click();
+    await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
     await expect(campaignRows(page)).toHaveCount(0);
 
     // Both searches are in the campaigns list.
     await goTo(page, "/discovery");
     await page.getByRole("button", { name: /All campaigns/ }).click();
-    const list = page.getByRole("dialog");
-    await expect(
-      list.getByRole("heading", { name: "Your discovery campaigns." }),
-    ).toBeVisible();
-    await expect(list.getByRole("button", { name: /prospects/ })).toHaveCount(
-      2,
-    );
+    await expect(page.getByTestId("discovery-campaigns-page")).toBeVisible();
+    await expect(page.getByTestId("discovery-campaign-row")).toHaveCount(2);
   });
 
   test("a server that is not set up says so in the dialog and creates no campaign", async ({
@@ -294,10 +310,8 @@ test.describe("Real discovery run", () => {
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Resume" }).click();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
     await expect(campaignRows(page)).toHaveCount(5);
+    await expectCompletedRun(page);
     // The page that arrived after the pause was already paid for, so Resume
     // saves it instead of asking for it again.
     const calls = await searchCalls(page);

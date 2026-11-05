@@ -32,6 +32,9 @@ const PR_ID = "c".repeat(64);
 const PR_HREF = `buzz://pr?id=${PR_ID}&owner=${OWNER}&d=buzz-world`;
 const GOAL_HREF = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
 const LEAD_HREF = "buzz://lead/123e4567-e89b-12d3-a456-426614174000";
+const LIST_HREF = "buzz://list/123e4567-e89b-12d3-a456-426614174000";
+const CAMPAIGN_HREF = "buzz://campaign/123e4567-e89b-12d3-a456-426614174000";
+const TEMPLATE_HREF = "buzz://template/spring_follow_up?lang=en";
 // Repositories, projects, pull requests, issues and goals are no longer part
 // of the app, so their links never become composer chips.
 const UNSUPPORTED_ENTITY_HREFS = [
@@ -716,6 +719,33 @@ test("composer node renders a lead chip with the lead name, or its short id", ()
   const unnamed = render("");
   assert.equal(unnamed[1]["aria-label"], "Open lead 123e4567");
   assert.equal(renderedChipLabel(unnamed), "Lead 123e4567");
+});
+
+test("composer node keeps list, campaign and template names on reference chips", () => {
+  const render = (href, channelName = "") =>
+    globalThis.structuredClone(
+      ComposerMessageLinkNode.config.renderHTML.call(
+        { options: { resolveChannelName: () => undefined } },
+        {
+          HTMLAttributes: {},
+          node: { attrs: { channelName, href } },
+        },
+      ),
+    );
+
+  for (const [href, kind, name, label] of [
+    [LIST_HREF, "list", "Spring follow-up", "Spring follow-up"],
+    [CAMPAIGN_HREF, "campaign", "Winter campaign", "Winter campaign"],
+    [TEMPLATE_HREF, "template", "spring_follow_up", "spring_follow_up"],
+  ]) {
+    const named = render(href, name);
+    assert.equal(named[1]["data-buzz-link-kind"], kind);
+    assert.equal(renderedChipLabel(named), label);
+    assert.match(named[1]["aria-label"], new RegExp(name));
+
+    const unnamed = render(href);
+    assert.notEqual(renderedChipLabel(unnamed), "Colony link");
+  }
 });
 
 test("a lead link canonicalizes through the composer attribute resolver", () => {

@@ -76,6 +76,8 @@ export function useAddRelayMemberMutation() {
         queryClient.invalidateQueries({
           queryKey: myRelayMembershipLookupQueryKey,
         }),
+        queryClient.invalidateQueries({ queryKey: ["company-team"] }),
+        queryClient.invalidateQueries({ queryKey: ["company-team-count"] }),
       ]);
     },
   });
@@ -109,6 +111,8 @@ export function useRemoveRelayMemberMutation() {
         queryClient.invalidateQueries({
           queryKey: myRelayMembershipLookupQueryKey,
         }),
+        queryClient.invalidateQueries({ queryKey: ["company-team"] }),
+        queryClient.invalidateQueries({ queryKey: ["company-team-count"] }),
       ]);
     },
   });
@@ -155,6 +159,8 @@ export function useChangeRelayMemberRoleMutation() {
         queryClient.invalidateQueries({
           queryKey: myRelayMembershipLookupQueryKey,
         }),
+        queryClient.invalidateQueries({ queryKey: ["company-team"] }),
+        queryClient.invalidateQueries({ queryKey: ["company-team-count"] }),
       ]);
     },
   });

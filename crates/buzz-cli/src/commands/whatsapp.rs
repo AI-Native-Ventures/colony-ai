@@ -981,7 +981,7 @@ mod tests {
             json!({"v": 1, "waId": "+27821234567", "stage": "call_booked"})
         );
         // Facts cannot be set, and neither can a word that is not a stage.
-        for bad in ["stopped", "not_on_whatsapp", "won", ""] {
+        for bad in ["queued", "stopped", "not_on_whatsapp", "won", ""] {
             assert!(contact_stage_content("+27821234567", bad).is_err(), "{bad}");
         }
         assert!(contact_stage_content("  ", "client").is_err());
@@ -1247,6 +1247,7 @@ mod tests {
                     location: None,
                     email: None,
                     phone: phone.map(str::to_owned),
+                    whatsapp_phone: None,
                     evidence: Vec::new(),
                     last_verified_at: None,
                     qualification: ProspectQualification::Unreviewed,

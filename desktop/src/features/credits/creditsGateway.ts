@@ -116,6 +116,24 @@ export function colonyCreditsCandidate(
   };
 }
 
+/** Select only the relay's configured free route; no balance or checkout check is involved. */
+export async function connectColonyFreeAi(
+  prove: (candidate: GlobalAgentConfig) => Promise<void>,
+  isCurrent: () => boolean,
+  deps = { models: readConfiguredFreeAiModels, config: getGlobalAgentConfig },
+) {
+  const models = await deps.models();
+  if (!isCurrent()) return;
+  const model = models[0];
+  if (!model)
+    throw new Error(
+      "Colony free AI is not configured for this workspace. Try again later or use your own AI.",
+    );
+  const config = await deps.config();
+  if (!isCurrent()) return;
+  await prove({ ...colonyCreditsCandidate(config), model });
+}
+
 /** Recheck service and funds at selection, then pass a keyless in-memory candidate to proof. */
 export async function connectColonyCredits(
   prove: (candidate: GlobalAgentConfig) => Promise<void>,

@@ -159,8 +159,11 @@ export function AppSidebarPinnedHeader({
                 relayUrl={activeWorkspace?.relayUrl}
               />
               <span className="sidebar-company-name">
-                <span>{activeWorkspaceName}</span>
-                <span className="sidebar-company-context">
+                <span title={activeWorkspaceName}>{activeWorkspaceName}</span>
+                <span
+                  className="sidebar-company-context"
+                  title="Company workspace"
+                >
                   Company workspace
                 </span>
               </span>

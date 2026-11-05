@@ -250,7 +250,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { useCommunityJoinAlerts } from "@/features/community-members/useCommunityJoinAlerts.ts";
 import { joinAlertStorageKey } from "@/features/community-members/lib/joinAlerts.ts";
-import { truncateNpub } from "@/shared/lib/pubkey.ts";
 import { relayClient } from "@/shared/api/relayClient.ts";
 import { CommunitiesProvider } from "@/features/communities/useCommunities.tsx";
 import { useCommunities } from "@/features/communities/useCommunities.tsx";
@@ -268,6 +267,7 @@ const BOB = "c".repeat(64);
 const CAROL = "d".repeat(64);
 const COMMUNITY_A = "community-a";
 const COMMUNITY_B = "community-b";
+const RAW_IDENTITY_PATTERN = /(?:npub1[0-9a-z]+|[0-9a-f]{40,})/i;
 
 const KIND_SNAPSHOT = 13534;
 const KIND_MEMBER_ADDED = 8000;
@@ -1716,7 +1716,9 @@ describe("useCommunityJoinAlerts — mounted subscription behaviour", () => {
       "a frame that predates the demotion must not re-open disclosure",
     );
     assert.ok(
-      !notifications.some((entry) => entry.body?.includes(truncateNpub(BOB))),
+      !notifications.some((entry) =>
+        RAW_IDENTITY_PATTERN.test(entry.body ?? ""),
+      ),
       "the demoted viewer must never learn the new member's identity",
     );
     assert.equal(
@@ -1982,13 +1984,17 @@ describe("useCommunityJoinAlerts — mounted subscription behaviour", () => {
       2,
       "a community switch clears the latch: the feature recovers without a reload",
     );
-    assert.ok(
-      notifications.some((entry) => entry.body?.includes(truncateNpub(BOB))),
-      "the join suppressed by the latch is re-announced, not lost",
+    assert.equal(
+      notifications.filter((entry) => entry.body?.includes("AI employee"))
+        .length,
+      2,
+      "the suppressed and new joins are both re-announced with safe fallbacks",
     );
     assert.ok(
-      notifications.some((entry) => entry.body?.includes(truncateNpub(CAROL))),
-      "and the new join lands too",
+      notifications.every(
+        (entry) => !RAW_IDENTITY_PATTERN.test(entry.body ?? ""),
+      ),
+      "a profile lookup gap never puts a key in a join alert",
     );
 
     await unmount();

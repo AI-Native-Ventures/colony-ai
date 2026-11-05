@@ -4,6 +4,7 @@ import {
   MENTION_LABEL_ATTRIBUTE,
   MENTION_PUBKEY_ATTRIBUTE,
 } from "./mentionClipboard";
+import { formatMentionDisplayLabel } from "@/shared/lib/mentionDisplay";
 
 /**
  * Detect whether clipboard HTML contains Buzz mention / channel-link
@@ -149,6 +150,16 @@ export function normalizeMentionClipboardContent(
       isMention ? MENTION_LABEL_ATTRIBUTE : CHANNEL_LABEL_ATTRIBUTE,
     );
     const text = el.textContent ?? "";
+    const pubkey = isMention
+      ? (el.getAttribute(MENTION_PUBKEY_ATTRIBUTE) ?? undefined)
+      : undefined;
+    const displayLabel =
+      isMention && label !== null
+        ? formatMentionDisplayLabel(label, pubkey)
+        : label;
+    const displayText = isMention
+      ? formatMentionDisplayLabel(text, pubkey)
+      : text;
     // The rendered chip strips its sigil for display, so flattening it
     // verbatim would paste dead text that no composer can re-light. Restore
     // the sigil unless the source already carries it (Buzz's own copy
@@ -176,16 +187,14 @@ export function normalizeMentionClipboardContent(
     const match =
       label === null
         ? "full"
-        : matchChipTextToLabel(
-            text,
-            label,
-            sigil,
-            el.getAttribute(MENTION_PUBKEY_ATTRIBUTE) ?? undefined,
-          );
+        : matchChipTextToLabel(text, label, sigil, pubkey);
     span.textContent =
       match === "fragment"
-        ? text
-        : restoreChipSigil(label === null ? text : label.trim(), sigil);
+        ? displayText
+        : restoreChipSigil(
+            displayLabel === null ? displayText : displayLabel.trim(),
+            sigil,
+          );
     el.replaceWith(span);
   }
 

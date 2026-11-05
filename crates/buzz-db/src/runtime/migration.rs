@@ -502,6 +502,14 @@ mod postgres_tests {
             "account_payment_notifications",
             "account_ai_sessions",
             "account_ai_requests",
+            "metrics_daily_active",
+            "metrics_person_daily",
+            "metrics_agent_daily",
+            "metrics_ai_daily",
+            "metrics_app_sessions_daily",
+            "metrics_http_hourly",
+            "metrics_gateway_outcomes_hourly",
+            "relay_operator_read_audit",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -715,7 +723,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 62);
+        assert_eq!(migrations.len(), 63);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -730,6 +738,11 @@ mod postgres_tests {
             .contains("ADD COLUMN media JSONB"));
         assert_eq!(migrations[61].version, 62);
         assert!(migrations[61]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE metrics_daily_active"));
+        assert_eq!(migrations[62].version, 63);
+        assert!(migrations[62]
             .sql
             .as_str()
             .contains("CREATE TABLE money_rails_connections"));

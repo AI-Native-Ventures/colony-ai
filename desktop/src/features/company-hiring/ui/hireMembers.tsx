@@ -2,17 +2,21 @@ import type { AgentPersona } from "@/shared/api/types";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { resolveJobTitle } from "@/features/profile/lib/jobTitle";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
-import { truncateNpub } from "@/shared/lib/pubkey";
+import {
+  resolveIdentityLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
 /** A team member's display name: profile first, then the directory name. */
 export function memberName(member: TeamMember, profiles: UserProfileLookup) {
-  return (
-    profiles[member.pubkey]?.displayName?.trim() ||
-    member.fallbackName?.trim() ||
-    truncateNpub(member.pubkey)
-  );
+  return resolveIdentityLabel({
+    pubkey: member.pubkey,
+    fallbackName: member.fallbackName,
+    profiles,
+    isAgent: member.kind === "employee",
+    ownerPubkey: profiles[member.pubkey]?.ownerPubkey ?? null,
+  }).text;
 }
 
 /** A team member's job title, shown beside their name ("Scout · Chief of Staff"). */

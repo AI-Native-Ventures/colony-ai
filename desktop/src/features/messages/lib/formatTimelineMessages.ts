@@ -15,7 +15,8 @@ import {
 } from "@/features/messages/lib/threading";
 import {
   formatOwnerLabel,
-  resolveUserLabel,
+  resolveIdentityLabel,
+  resolveIdentityLabels,
   type UserProfileLookup,
 } from "@/features/profile/lib/identity";
 import { getMentionTagPubkey } from "@/shared/lib/resolveMentionNames";
@@ -46,7 +47,6 @@ import { formatTime } from "@/features/messages/lib/dateFormatters";
 // Pure overlay helper lives in a sibling .mjs so node:test (no TS loader)
 // can exercise the exact same source the renderer uses.
 import { applyEditTagOverlay } from "@/features/messages/lib/applyEditTagOverlay.mjs";
-import { truncateNpub } from "@/shared/lib/pubkey";
 import { askIdFromAction } from "@/features/company-asks/askRecords";
 
 const HEX_RE = /^[0-9a-f]+$/i;
@@ -135,41 +135,6 @@ function getReactionTargetId(tags: string[][]) {
   }
 
   return null;
-}
-
-function formatMessageAuthor(
-  event: RelayEvent,
-  channel: Channel | null,
-  currentPubkey: string | undefined,
-  profiles: UserProfileLookup | undefined,
-  relaySelfPubkey: string | null | undefined,
-) {
-  const authorPubkey = resolveEventAuthorPubkey({
-    event,
-    preferActorTag: true,
-    relaySelfPubkey,
-    requireChannelTagForPTags: true,
-  });
-  const fallbackName =
-    channel?.channelType === "dm"
-      ? (() => {
-          const participantIndex =
-            channel.participantPubkeys.indexOf(authorPubkey);
-          if (participantIndex < 0) {
-            return null;
-          }
-
-          return channel.participants[participantIndex] ?? null;
-        })()
-      : null;
-
-  return resolveUserLabel({
-    pubkey: authorPubkey,
-    currentPubkey,
-    fallbackName,
-    profiles,
-    preferResolvedSelfLabel: true,
-  });
 }
 
 function getAuthorAvatarUrl(input: {
@@ -304,6 +269,86 @@ export function formatTimelineMessages(
     (event) => isTimelineContentEvent(event) && !deletedEventIds.has(event.id),
   );
   const eventsById = new Map(visibleEvents.map((event) => [event.id, event]));
+  const authorIdentityByEventId = new Map<
+    string,
+    {
+      authorPubkey: string;
+      isAgent: boolean;
+      ownerPubkey: string | null;
+    }
+  >();
+  const authorIdentityInputs = new Map<
+    string,
+    Parameters<typeof resolveIdentityLabel>[0]
+  >();
+
+  for (const event of visibleEvents) {
+    const authorPubkey = resolveEventAuthorPubkey({
+      event,
+      preferActorTag: true,
+      relaySelfPubkey,
+      requireChannelTagForPTags: true,
+    });
+    const normalizedAuthorPubkey = normalizePubkey(authorPubkey);
+    const profile = profiles?.[normalizedAuthorPubkey];
+    const role = roleByPubkey.get(normalizedAuthorPubkey);
+    const isAgent =
+      role === "bot" ||
+      profile?.isAgent === true ||
+      personaLookup?.has(normalizedAuthorPubkey) === true;
+    const ownerPubkey = isAgent ? (profile?.ownerPubkey ?? null) : null;
+    const fallbackName =
+      channel?.channelType === "dm"
+        ? (() => {
+            const participantIndex =
+              channel.participantPubkeys.indexOf(authorPubkey);
+            return participantIndex >= 0
+              ? (channel.participants[participantIndex] ?? null)
+              : null;
+          })()
+        : null;
+
+    authorIdentityByEventId.set(event.id, {
+      authorPubkey,
+      isAgent,
+      ownerPubkey,
+    });
+    if (!authorIdentityInputs.has(normalizedAuthorPubkey)) {
+      authorIdentityInputs.set(normalizedAuthorPubkey, {
+        pubkey: authorPubkey,
+        currentPubkey,
+        fallbackName,
+        profiles,
+        ownerProfiles,
+        isAgent,
+        ownerPubkey,
+        preferResolvedSelfLabel: true,
+      });
+    }
+  }
+  // The visible event set can contain only one of two same-name agents. Bring
+  // the already-fetched roster profiles into the shared label set as well, so
+  // that row still receives the same ordinal the mention picker and composer
+  // use for the pair.
+  for (const [pubkey, profile] of Object.entries(profiles ?? {})) {
+    const normalizedPubkey = normalizePubkey(pubkey);
+    const isAgent =
+      profile.isAgent === true || roleByPubkey.get(normalizedPubkey) === "bot";
+    if (!isAgent || authorIdentityInputs.has(normalizedPubkey)) continue;
+    authorIdentityInputs.set(normalizedPubkey, {
+      pubkey,
+      currentPubkey,
+      fallbackName: profile.displayName ?? profile.name ?? null,
+      profiles,
+      ownerProfiles,
+      isAgent,
+      ownerPubkey: profile.ownerPubkey ?? null,
+      preferResolvedSelfLabel: true,
+    });
+  }
+  const authorLabelsByPubkey = resolveIdentityLabels([
+    ...authorIdentityInputs.values(),
+  ]);
   const reactionPresence = new Map<
     string,
     {
@@ -386,11 +431,16 @@ export function formatTimelineMessages(
 
     const profile = profiles?.[actorPubkey];
     const displayName =
-      currentPubkeyLower && actorPubkey === currentPubkeyLower
-        ? "You"
-        : profile?.displayName?.trim() ||
-          profile?.nip05Handle?.trim() ||
-          truncateNpub(actorPubkey);
+      authorLabelsByPubkey.get(actorPubkey)?.text ??
+      resolveIdentityLabel({
+        pubkey: actorPubkey,
+        currentPubkey,
+        profiles,
+        ownerProfiles,
+        isAgent:
+          profile?.isAgent === true || roleByPubkey.get(actorPubkey) === "bot",
+        ownerPubkey: profile?.ownerPubkey ?? null,
+      }).text;
     existing.users.push({
       pubkey: actorPubkey,
       displayName,
@@ -412,19 +462,26 @@ export function formatTimelineMessages(
       return cached;
     }
 
-    const authorPubkey = resolveEventAuthorPubkey({
-      event,
-      preferActorTag: true,
-      relaySelfPubkey,
-      requireChannelTagForPTags: true,
-    });
-    const author = formatMessageAuthor(
-      event,
-      channel,
-      currentPubkey,
-      profiles,
-      relaySelfPubkey,
-    );
+    const identity = authorIdentityByEventId.get(event.id);
+    const authorPubkey =
+      identity?.authorPubkey ??
+      resolveEventAuthorPubkey({
+        event,
+        preferActorTag: true,
+        relaySelfPubkey,
+        requireChannelTagForPTags: true,
+      });
+    const author =
+      authorLabelsByPubkey.get(normalizePubkey(authorPubkey))?.text ??
+      resolveIdentityLabel({
+        pubkey: authorPubkey,
+        currentPubkey,
+        profiles,
+        ownerProfiles,
+        isAgent: identity?.isAgent,
+        ownerPubkey: identity?.ownerPubkey,
+        preferResolvedSelfLabel: true,
+      }).text;
 
     authorPubkeyByEventId.set(event.id, authorPubkey);
     authorLabelByEventId.set(event.id, author);
@@ -476,8 +533,23 @@ export function formatTimelineMessages(
     const edit = editsByTargetId.get(event.id);
     const role = roleByPubkey.get(authorPubkey.toLowerCase());
     const authorProfile = profiles?.[authorPubkey.toLowerCase()];
-    const isAgent = role === "bot" || authorProfile?.isAgent === true;
-    const ownerPubkey = isAgent ? (authorProfile?.ownerPubkey ?? null) : null;
+    const identity = authorIdentityByEventId.get(event.id);
+    const isAgent =
+      identity?.isAgent ?? (role === "bot" || authorProfile?.isAgent === true);
+    const ownerPubkey =
+      identity?.ownerPubkey ??
+      (isAgent ? (authorProfile?.ownerPubkey ?? null) : null);
+    const authorIdentity =
+      authorLabelsByPubkey.get(normalizePubkey(authorPubkey)) ??
+      resolveIdentityLabel({
+        pubkey: authorPubkey,
+        currentPubkey,
+        profiles,
+        ownerProfiles,
+        isAgent,
+        ownerPubkey,
+        preferResolvedSelfLabel: true,
+      });
     return {
       id: event.id,
       renderKey: event.localKey ?? event.id,
@@ -485,6 +557,7 @@ export function formatTimelineMessages(
       pubkey: authorPubkey,
       signerPubkey: normalizePubkey(event.pubkey),
       author,
+      authorIdentity,
       isAgent,
       ownerPubkey,
       ownerLabel: isAgent

@@ -68,7 +68,11 @@ async function resolveContext(community: Community): Promise<DiscoveryContext> {
   });
   if (outcome.status !== "ready") throw new Error(SALES_NOT_ALLOWED_MESSAGE);
   const channelId = outcome.channelId;
-  const records = await loadBusinessRecords(channelId, identity.pubkey);
+  const records = await loadBusinessRecords(
+    channelId,
+    tenantCommunityId,
+    identity.pubkey,
+  );
   if (records.role === "guest" || records.role === null) {
     throw new Error(GUEST_ERROR);
   }

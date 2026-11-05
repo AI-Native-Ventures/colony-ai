@@ -200,6 +200,14 @@ type MockBridgeOptions = {
   referenceWorkspaceLongLeadNames?: boolean;
   /** Add bounded synthetic lead rows for dense Leads screen proof. */
   referenceWorkspaceLeadCount?: number;
+  /** Give Form & Field a phone for outreach-list mock browser flows. */
+  referenceWorkspaceOutreachReady?: boolean;
+  /** Seed the approved dense Leads selection board fixture. */
+  referenceWorkspaceOutreachBoard?: boolean;
+  /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
+  referenceWorkspaceOutreachSidebar?: boolean;
+  /** Limit global people search to explicitly seeded board identities. */
+  searchProfilesOnly?: boolean;
   /** Leave one reference lead's contact and value blank for visual proof. */
   referenceWorkspaceMissingLeadFields?: boolean;
   /** Seed South African guesthouses for WhatsApp outreach E2E proofs. */
@@ -1237,6 +1245,61 @@ export async function installMockBridge(
     identity?: RelayBridgeIdentity;
   },
 ) {
+  // Discovery tests replace the relay-owned Photon route at the browser
+  // boundary. Individual specs can register a later init script to replace
+  // these suggestions with their own fixture; no test reaches a real geocoder.
+  await page.addInitScript(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_DISCOVERY_LOCATIONS__?: (request: {
+        query: string;
+      }) => Promise<unknown>;
+    };
+    if (testWindow.__BUZZ_E2E_DISCOVERY_LOCATIONS__) return;
+    testWindow.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async ({ query }) => {
+      const normalized = query.trim().replace(/\s+/g, " ");
+      const lower = normalized.toLocaleLowerCase();
+      const location = lower.includes("cape town")
+        ? {
+            label: "Cape Town, Western Cape, South Africa",
+            latitude: -33.9249,
+            longitude: 18.4241,
+            countryCode: "ZA",
+            region: "Western Cape",
+            kind: "city",
+            boundingBox: null,
+          }
+        : lower.includes("johannesburg")
+          ? {
+              label: "Johannesburg, Gauteng, South Africa",
+              latitude: -26.2041,
+              longitude: 28.0473,
+              countryCode: "ZA",
+              region: "Gauteng",
+              kind: "city",
+              boundingBox: null,
+            }
+          : lower.includes("atlantis")
+            ? {
+                label: "Atlantis, Western Cape, South Africa",
+                latitude: -33.5667,
+                longitude: 18.4833,
+                countryCode: "ZA",
+                region: "Western Cape",
+                kind: "city",
+                boundingBox: null,
+              }
+            : {
+                label: "South Africa",
+                latitude: -30.5595,
+                longitude: 22.9375,
+                countryCode: "ZA",
+                region: "ZA",
+                kind: "country",
+                boundingBox: null,
+              };
+      return { locations: [location] };
+    };
+  });
   const proofTheme = process.env.COLONY3_PROOF_THEME;
   if (
     proofTheme === "dark" ||

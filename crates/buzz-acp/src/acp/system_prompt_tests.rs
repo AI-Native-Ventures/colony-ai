@@ -200,6 +200,52 @@ async fn session_new_full_sends_private_folder_deny_rules_to_claude_adapter() {
 }
 
 #[tokio::test]
+async fn claude_session_keeps_colony_mcp_servers_with_private_folder_rules() {
+    // Production seam: a Claude session must receive Colony's MCP configuration
+    // and its private-folder restrictions in the same session/new request.
+    let script = r#"
+            read -t 2 _init
+            echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
+            read -r -t 2 REQ
+            echo '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"ses_claude_mcp","_receivedRequest":'"$REQ"'}}'
+            sleep 1
+        "#;
+    let mut client = spawn_script(script).await;
+    client.standard_adapter = Some(StandardAdapterKind::Claude);
+    client
+        .initialize()
+        .await
+        .expect("initialize should succeed");
+
+    let server = McpServer {
+        name: "colony_browser".into(),
+        command: "colony-browser-mcp".into(),
+        args: vec!["--session-scope".into()],
+        env: vec![EnvVar {
+            name: "COLONY_SESSION_ID".into(),
+            value: "session-123".into(),
+        }],
+    };
+    let resp = client
+        .session_new_full("/tmp", vec![server], None, None)
+        .await
+        .expect("session_new_full should succeed");
+
+    let request = &resp.raw["_receivedRequest"]["params"];
+    assert_eq!(request["mcpServers"].as_array().unwrap().len(), 1);
+    assert_eq!(request["mcpServers"][0]["name"], "colony_browser");
+    assert_eq!(request["mcpServers"][0]["command"], "colony-browser-mcp");
+    assert_eq!(request["mcpServers"][0]["args"][0], "--session-scope");
+    assert_eq!(request["mcpServers"][0]["env"][0]["value"], "session-123");
+    let deny_rules = request["_meta"]["claudeCode"]["options"]["disallowedTools"]
+        .as_array()
+        .expect("private-folder deny rules must remain present");
+    assert!(deny_rules
+        .iter()
+        .any(|rule| rule.as_str() == Some("Read(~/Pictures/**)")));
+}
+
+#[tokio::test]
 async fn session_new_full_sends_no_deny_rules_to_other_adapters() {
     let script = r#"
             read -t 2 _init

@@ -42,7 +42,14 @@ import {
 type Props = {
   channelIsMember: boolean;
   onOpenChat: (waId: string) => void;
+  onOpenLead: (leadId: string) => void;
 };
+
+function pipelineStage(contact: WhatsAppContact): WhatsAppStage {
+  return contact.lastOutboundState === "failed" && contact.stage === "none"
+    ? "contacted"
+    : contact.stage;
+}
 
 function nextStep(
   contact: WhatsAppContact,
@@ -50,6 +57,12 @@ function nextStep(
   customerStep: string | null,
   personName: string,
 ) {
+  if (contact.lastOutboundState === "failed") {
+    return (
+      contact.lastFailureSummary ?? "Send failed. Open the chat to review it."
+    );
+  }
+  if (contact.stage === "queued") return null;
   if (contact.stage === "contacted") {
     return contact.lastOutboundState
       ? `Waiting for a reply, ${contact.lastOutboundState}`
@@ -98,6 +111,7 @@ function PipelineCard({
   busy,
   onMove,
   onOpenChat,
+  onOpenLead,
 }: {
   contact: WhatsAppContact;
   canEdit: boolean;
@@ -107,8 +121,16 @@ function PipelineCard({
   busy: boolean;
   onMove: (contact: WhatsAppContact, stage: WhatsAppStage) => void;
   onOpenChat: (waId: string) => void;
+  onOpenLead: (leadId: string) => void;
 }) {
-  const stageLabel = WHATSAPP_STAGE_LABELS[contact.stage];
+  const effectiveStage = pipelineStage(contact);
+  const isQueued = contact.stage === "queued";
+  const stageLabel =
+    contact.lastOutboundState === "failed"
+      ? "Send failed"
+      : isQueued
+        ? "Queued"
+        : WHATSAPP_STAGE_LABELS[effectiveStage];
   const primaryName = identity.displayName;
   const step = nextStep(
     contact,
@@ -117,6 +139,7 @@ function PipelineCard({
     identity.personName || primaryName,
   );
   const contactedOn = relativeContactDay(contact.lastContactedAt);
+  const queuedLeadId = isQueued ? identity.leadId : null;
   return (
     <article
       className="c3wa-pipeline-card"
@@ -132,7 +155,9 @@ function PipelineCard({
           {identity.isLinked ? (
             <BusinessLogoMark
               className="c3wa-desk-logo-mark"
+              logoUrl={identity.logoUrl}
               name={primaryName}
+              placePhotoUrl={identity.placePhotoUrl}
               website={identity.website}
             />
           ) : (
@@ -140,7 +165,7 @@ function PipelineCard({
           )}
         </span>
         <div className="c3wa-pipeline-card-copy">
-          <h3>{primaryName}</h3>
+          <h3 title={primaryName}>{primaryName}</h3>
           <p>{identity.personName || "No name yet"}</p>
         </div>
         {canEdit ? (
@@ -173,10 +198,15 @@ function PipelineCard({
           </DropdownMenu>
         ) : null}
       </div>
-      {identity.isLinked ? (
+      {identity.isLinked || isQueued ? (
         <p className="c3wa-pipeline-phone">{contact.e164}</p>
       ) : null}
-      {contactedOn ? (
+      {isQueued ? (
+        <p className="c3wa-pipeline-last-contacted">
+          <Clock3 aria-hidden="true" size={12} />
+          Queued from {contact.queuedFrom ?? "Outreach queue"}
+        </p>
+      ) : contactedOn ? (
         <p className="c3wa-pipeline-last-contacted">
           <Clock3 aria-hidden="true" size={12} />
           Last contacted {contactedOn}
@@ -188,7 +218,11 @@ function PipelineCard({
         </span>
       ) : null}
       <div className="c3wa-pipeline-card-foot">
-        <span className={`c3wa-pipeline-stage-chip is-${contact.stage}`}>
+        <span
+          className={`c3wa-pipeline-stage-chip is-${
+            contact.lastOutboundState === "failed" ? "failed" : effectiveStage
+          }`}
+        >
           {stageLabel}
         </span>
         {step ? (
@@ -208,20 +242,38 @@ function PipelineCard({
           )
         ) : null}
       </div>
-      <Button
-        className="c3wa-pipeline-open-chat"
-        onClick={() => onOpenChat(contact.waId)}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        Open chat
-      </Button>
+      {isQueued ? (
+        queuedLeadId ? (
+          <Button
+            className="c3wa-pipeline-open-chat"
+            onClick={() => onOpenLead(queuedLeadId)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Open lead
+          </Button>
+        ) : null
+      ) : (
+        <Button
+          className="c3wa-pipeline-open-chat"
+          onClick={() => onOpenChat(contact.waId)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Open chat
+        </Button>
+      )}
     </article>
   );
 }
 
-export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
+export function OutreachPipeline({
+  channelIsMember,
+  onOpenChat,
+  onOpenLead,
+}: Props) {
   const { activeCommunity } = useCommunities();
   const businessName = activeCommunity?.name.trim() || "This business";
   const contactsQuery = useWhatsAppContactsQuery();
@@ -249,7 +301,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
   const search = searchTerm.trim().toLocaleLowerCase();
   const eligible = contacts.filter((contact) => {
     const inPipeline =
-      isWhatsAppPipelineStage(contact.stage) ||
+      isWhatsAppPipelineStage(pipelineStage(contact)) ||
       contact.stage === "no_thanks" ||
       contact.stage === "stopped" ||
       contact.stage === "not_on_whatsapp";
@@ -263,7 +315,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
     );
   });
   const pipelineContacts = eligible.filter((contact) =>
-    isWhatsAppPipelineStage(contact.stage),
+    isWhatsAppPipelineStage(pipelineStage(contact)),
   );
   const collapsedStages = ["no_thanks", "stopped", "not_on_whatsapp"] as const;
   const records = customerRecords.data ?? [];
@@ -315,6 +367,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
     event: React.DragEvent<HTMLElement>,
     stage: WhatsAppStage,
   ) {
+    if (!canEdit || stage === "queued") return;
     event.preventDefault();
     const waId = event.dataTransfer.getData("text/plain");
     const contact = contacts.find((candidate) => candidate.waId === waId);
@@ -366,7 +419,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
       >
         {WHATSAPP_PIPELINE_STAGES.map((stage) => {
           const stageContacts = pipelineContacts.filter(
-            (contact) => contact.stage === stage,
+            (contact) => pipelineStage(contact) === stage,
           );
           return (
             <section
@@ -375,7 +428,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
               data-stage={stage}
               key={stage}
               onDragOver={(event) => {
-                if (canEdit) event.preventDefault();
+                if (canEdit && stage !== "queued") event.preventDefault();
               }}
               onDrop={(event) => handleDrop(event, stage)}
             >
@@ -408,6 +461,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
                         void move(selectedContact, nextStage)
                       }
                       onOpenChat={onOpenChat}
+                      onOpenLead={onOpenLead}
                       busy={busyWaId === contact.waId}
                     />
                   );
@@ -427,7 +481,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
       >
         {WHATSAPP_PIPELINE_STAGES.map((stage) => {
           const stageContacts = pipelineContacts.filter(
-            (contact) => contact.stage === stage,
+            (contact) => pipelineStage(contact) === stage,
           );
           return (
             <details
@@ -461,6 +515,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
                       void move(selectedContact, nextStage)
                     }
                     onOpenChat={onOpenChat}
+                    onOpenLead={onOpenLead}
                     busy={busyWaId === contact.waId}
                   />
                 );
@@ -495,6 +550,7 @@ export function OutreachPipeline({ channelIsMember, onOpenChat }: Props) {
                     void move(selectedContact, nextStage)
                   }
                   onOpenChat={onOpenChat}
+                  onOpenLead={onOpenLead}
                   busy={busyWaId === contact.waId}
                 />
               ))}

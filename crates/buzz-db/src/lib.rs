@@ -62,12 +62,12 @@ pub(crate) use runtime::{
     RoutePredicate,
 };
 pub use store::{
-    accounts, admin_moderation, allowlist, api_token, archived_identities, business_records,
-    channel, channel_members, cofounder_wakes, community, company_work_watchdog, credits_gateway,
-    deletion, discovery_usage, dm, event, feed, git_repo, moderation, money_rails, partition,
-    payments, product_feedback, push, reaction, relay_admin_actions, relay_invite, relay_members,
-    relay_operators, reminder, replaceable, storage_accounting, thread, usage, user, whatsapp,
-    workflow,
+    accounts, admin_metrics, admin_metrics_read, admin_moderation, allowlist, api_token,
+    archived_identities, business_records, channel, channel_members, cofounder_wakes, community,
+    company_work_watchdog, credits_gateway, deletion, discovery_usage, dm, event, feed, git_repo,
+    moderation, money_rails, partition, payments, product_feedback, push, reaction,
+    relay_admin_actions, relay_invite, relay_members, relay_operators, reminder, replaceable,
+    storage_accounting, thread, usage, user, whatsapp, workflow,
 };
 
 pub use allowlist::AllowlistEntry;

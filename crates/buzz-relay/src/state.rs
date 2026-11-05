@@ -251,6 +251,11 @@ impl ConnectionManager {
         }
     }
 
+    /// Number of connections currently registered on this pod.
+    pub fn connection_count(&self) -> usize {
+        self.connections.len()
+    }
+
     /// Registers a connection with its outbound sender, cancellation token,
     /// server-resolved community, shared backpressure counter, mutable
     /// subscription map, and grace limit.
@@ -735,6 +740,10 @@ pub struct AppState {
     pub gif_http_client: reqwest::Client,
     /// Shared HTTP client for relay-proxied prospect search requests.
     pub discovery_http_client: reqwest::Client,
+    /// Shared HTTP client for relay-owned free location autocomplete.
+    pub discovery_location_http_client: reqwest::Client,
+    /// Bounded cache and fair-use throttle for free location autocomplete.
+    pub discovery_location_lookup: Arc<crate::api::discovery::DiscoveryLocationLookup>,
     /// Meta Graph API client for WhatsApp outreach. Tests swap in a fake; nothing else calls Meta.
     pub whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi>,
     /// The only door out to a payment provider's API (money rails). Tests swap in a fake.
@@ -873,6 +882,10 @@ impl AppState {
             Arc::new(RedisNip98ReplayGuard::new(redis_pool.clone()));
         let gif_http_client = crate::api::gifs::build_gif_http_client();
         let discovery_http_client = crate::api::discovery::build_discovery_http_client();
+        let discovery_location_http_client =
+            crate::api::discovery::build_discovery_location_http_client();
+        let discovery_location_lookup =
+            Arc::new(crate::api::discovery::DiscoveryLocationLookup::new());
         let whatsapp_graph: Arc<dyn crate::whatsapp::graph::GraphApi> =
             Arc::new(crate::whatsapp::graph::ReqwestGraph::new());
         let money_http: Arc<dyn crate::money_rails::provider::ProviderHttp> =
@@ -944,6 +957,8 @@ impl AppState {
             nip98_replay,
             gif_http_client,
             discovery_http_client,
+            discovery_location_http_client,
+            discovery_location_lookup,
             whatsapp_graph,
             money_http,
             account_services,

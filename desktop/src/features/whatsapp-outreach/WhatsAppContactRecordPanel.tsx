@@ -174,7 +174,9 @@ export function WhatsAppContactRecordPanel({
           {identity.isLinked ? (
             <BusinessLogoMark
               className="c3wa-desk-logo-mark"
+              logoUrl={identity.logoUrl}
               name={identity.displayName}
+              placePhotoUrl={identity.placePhotoUrl}
               website={identity.website}
             />
           ) : (
@@ -268,6 +270,12 @@ export function WhatsAppContactRecordPanel({
         >
           <h3 id="whatsapp-record-activity-heading">Activity</h3>
           <dl className="c3wa-record-facts">
+            {contact.stage === "queued" ? (
+              <div>
+                <dt>Queued from</dt>
+                <dd>{contact.queuedFrom ?? "Outreach queue"}</dd>
+              </div>
+            ) : null}
             <div>
               <dt>Last contacted</dt>
               <dd>{formatStamp(contact.lastContactedAt)}</dd>

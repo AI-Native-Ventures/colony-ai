@@ -188,22 +188,38 @@ test("copy inlines a blockified chip but preserves its block ancestor", () => {
   }
 });
 
-test("copy expands compact key text but preserves the exact label and identity", () => {
-  const label = `Scout (${JOHN_SMITH_PUBKEY}) 2`;
+test("copy redacts compact key text while preserving the exact identity", () => {
+  const rawLabel = `Scout (${JOHN_SMITH_PUBKEY}) 2`;
+  const safeLabel = "Scout (teammate) 2";
+  const prototype = dom.window.HTMLElement.prototype;
+  const previous = Object.getOwnPropertyDescriptor(prototype, "innerText");
+  Object.defineProperty(prototype, "innerText", {
+    configurable: true,
+    get() {
+      return this.textContent;
+    },
+  });
   // Chips render the npub compact today; a chip copied before that switch
-  // still carries the hex compact. A whole chip in either form expands to
-  // the declared identity.
-  for (const compact of ["npub1037…08vj", "7c7c7c7c…7c7c"]) {
-    const flavors = copyRenderedBody(
-      `<span data-mention="" data-mention-pubkey="${JOHN_SMITH_PUBKEY}" ` +
-        `data-mention-label="${label}" class="mention-chip">` +
-        `<span class="inline-chip-leading-fragment">Scout</span> (${compact}) 2</span>`,
-    );
-    assert.ok(flavors);
-    assert.ok(flavors.html.includes(`@${label}`));
-    assert.ok(
-      flavors.html.includes(`data-mention-pubkey="${JOHN_SMITH_PUBKEY}"`),
-    );
-    assert.ok(!flavors.html.includes("…"));
+  // still carries the hex compact. A whole chip in either form keeps the
+  // declared identity while text and label metadata become safe.
+  try {
+    for (const compact of ["npub1037…08vj", "7c7c7c7c…7c7c"]) {
+      const flavors = copyRenderedBody(
+        `<span data-mention="" data-mention-pubkey="${JOHN_SMITH_PUBKEY}" ` +
+          `data-mention-label="${rawLabel}" class="mention-chip">` +
+          `<span class="inline-chip-leading-fragment">Scout</span> (${compact}) 2</span>`,
+      );
+      assert.ok(flavors);
+      assert.ok(flavors.html.includes(`@${safeLabel}`));
+      assert.ok(flavors.html.includes(`data-mention-label="${safeLabel}"`));
+      assert.ok(
+        flavors.html.includes(`data-mention-pubkey="${JOHN_SMITH_PUBKEY}"`),
+      );
+      assert.ok(!flavors.html.includes("…"));
+      assert.equal(flavors.text, `@${safeLabel}`);
+    }
+  } finally {
+    if (previous) Object.defineProperty(prototype, "innerText", previous);
+    else delete prototype.innerText;
   }
 });

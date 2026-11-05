@@ -34,6 +34,8 @@ type PubKeyProps = {
   variant?: "compact" | "full";
   /** Render compact keys as text when a parent row owns the interaction. */
   interactive?: boolean;
+  /** A neutral visible label for a key that is available to copy on request. */
+  label?: string;
   className?: string;
   testId?: string;
 };
@@ -86,6 +88,7 @@ export function PubKey({
   variant = "compact",
   interactive = true,
   className,
+  label,
   testId,
 }: PubKeyProps) {
   const [open, setOpen] = React.useState(false);
@@ -168,7 +171,7 @@ export function PubKey({
   if (!interactive) {
     return (
       <span className={cn("font-mono", className)} data-testid={testId}>
-        {truncateNpub(pubkey)}
+        {label ?? truncateNpub(pubkey)}
       </span>
     );
   }
@@ -187,7 +190,7 @@ export function PubKey({
           onMouseLeave={handleMouseLeave}
           type="button"
         >
-          {truncateNpub(pubkey)}
+          {label ?? truncateNpub(pubkey)}
         </button>
       </PopoverTrigger>
       <PopoverContent

@@ -2,6 +2,10 @@
 
 /// Deployment-global email and Google account persistence.
 pub mod accounts;
+/// Operator admin metrics: rollups and live collectors (counts only).
+pub mod admin_metrics;
+/// Operator admin metrics: board reads (counts only).
+pub mod admin_metrics_read;
 /// Explicit deployment-global admin report reads.
 pub mod admin_moderation;
 /// Community-scoped authentication allowlist persistence.

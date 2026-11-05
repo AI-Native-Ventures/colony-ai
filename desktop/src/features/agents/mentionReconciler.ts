@@ -167,6 +167,13 @@ function messageOf(error: unknown) {
     : "Could not start the agent.";
 }
 
+function stoppedAgentNote(agent: ManagedAgent) {
+  const detail = agent.lastError?.replace(/\s+/g, " ").trim().slice(0, 240);
+  return detail
+    ? `${agent.name} could not answer: ${detail}`
+    : `${agent.name} stopped before answering, and Colony did not receive an error detail.`;
+}
+
 export function createMentionReconciler(
   deps: MentionReconcilerDeps,
 ): MentionReconciler {
@@ -395,7 +402,7 @@ export function createMentionReconciler(
           return;
         }
         if (run.restarts >= MAX_AUTOMATIC_RESTARTS) {
-          deps.stall(pubkey, `${agent.name} keeps stopping before it answers.`);
+          deps.stall(pubkey, stoppedAgentNote(agent));
           return;
         }
         run.restarts += 1;

@@ -1,12 +1,10 @@
 import * as React from "react";
 import { MoreHorizontal, Plus, Shield, ShieldCheck, User } from "lucide-react";
-import { toast } from "sonner";
 
+import { relayMemberPermissions } from "@/features/community-members/memberPermissions";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { truncateNpub } from "@/shared/lib/pubkey";
-import { PubKey } from "@/shared/ui/PubKey";
+import { resolveUserLabel } from "@/features/profile/lib/identity";
 import {
-  useChangeRelayMemberRoleMutation,
   useMyRelayMembershipQuery,
   useRelayMembersQuery,
 } from "@/features/community-members/hooks";
@@ -21,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { AddMemberDialog } from "./AddMemberDialog";
+import { ConfirmMemberRoleDialog } from "./ConfirmMemberRoleDialog";
 import { ConfirmRemoveDialog } from "./ConfirmRemoveDialog";
 
 function formatRelativeDate(dateString: string): string {
@@ -76,18 +75,14 @@ function MemberRow({
   currentPubkey?: string;
   viewerRole: RelayMemberRole | null;
   onRemove: (member: RelayMember) => void;
-  onChangeRole: (pubkey: string, newRole: string) => void;
+  onChangeRole: (member: RelayMember) => void;
 }) {
   const isSelf = currentPubkey?.toLowerCase() === member.pubkey.toLowerCase();
-  const isOwner = viewerRole === "owner";
-  const isAdmin = viewerRole === "admin";
-
-  const canRemove =
-    !isSelf &&
-    ((isAdmin && member.role === "member") ||
-      (isOwner && member.role !== "owner"));
-
-  const canChangeRole = !isSelf && isOwner && member.role !== "owner";
+  const { canChangeRole, canRemove } = relayMemberPermissions({
+    currentPubkey,
+    member,
+    viewerRole,
+  });
 
   const showActions = canRemove || canChangeRole;
 
@@ -101,16 +96,15 @@ function MemberRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">
-              {displayName || truncateNpub(member.pubkey)}
+              {displayName || resolveUserLabel({ pubkey: member.pubkey })}
             </span>
             <RoleBadge role={member.role} />
             {isSelf ? (
               <span className="text-xs text-muted-foreground">(you)</span>
             ) : null}
           </div>
-          <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            <PubKey className="text-xs" pubkey={member.pubkey} />
-            <span>Joined {formatRelativeDate(member.createdAt)}</span>
+          <p className="text-xs text-muted-foreground">
+            Joined {formatRelativeDate(member.createdAt)}
           </p>
         </div>
       </div>
@@ -131,16 +125,12 @@ function MemberRow({
             {canChangeRole ? (
               <>
                 {member.role === "member" ? (
-                  <DropdownMenuItem
-                    onClick={() => onChangeRole(member.pubkey, "admin")}
-                  >
+                  <DropdownMenuItem onClick={() => onChangeRole(member)}>
                     Make Admin
                   </DropdownMenuItem>
                 ) : null}
                 {member.role === "admin" ? (
-                  <DropdownMenuItem
-                    onClick={() => onChangeRole(member.pubkey, "member")}
-                  >
+                  <DropdownMenuItem onClick={() => onChangeRole(member)}>
                     Make Member
                   </DropdownMenuItem>
                 ) : null}
@@ -171,12 +161,12 @@ export function CommunityMembersCard({
 }) {
   const membersQuery = useRelayMembersQuery();
   const myMembershipQuery = useMyRelayMembershipQuery();
-  const changeRoleMutation = useChangeRelayMemberRoleMutation();
 
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
   const [removeTarget, setRemoveTarget] = React.useState<RelayMember | null>(
     null,
   );
+  const [roleTarget, setRoleTarget] = React.useState<RelayMember | null>(null);
 
   const members = React.useMemo(() => {
     const raw = membersQuery.data ?? [];
@@ -195,22 +185,6 @@ export function CommunityMembersCard({
   );
   const profilesQuery = useUsersBatchQuery(memberPubkeys);
   const profiles = profilesQuery.data?.profiles ?? {};
-
-  function handleChangeRole(pubkey: string, newRole: string) {
-    changeRoleMutation.mutate(
-      { pubkey, newRole },
-      {
-        onSuccess: () => {
-          toast.success(`Role changed to ${newRole}`);
-        },
-        onError: (error) => {
-          toast.error(
-            error instanceof Error ? error.message : "Failed to change role",
-          );
-        },
-      },
-    );
-  }
 
   return (
     <section className="min-w-0" data-testid="settings-community-members">
@@ -257,7 +231,7 @@ export function CommunityMembersCard({
               }
               key={member.pubkey}
               member={member}
-              onChangeRole={handleChangeRole}
+              onChangeRole={setRoleTarget}
               onRemove={setRemoveTarget}
               viewerRole={myMembership?.role ?? null}
             />
@@ -283,6 +257,25 @@ export function CommunityMembersCard({
           if (!open) setRemoveTarget(null);
         }}
         open={removeTarget !== null}
+      />
+      <ConfirmMemberRoleDialog
+        displayName={
+          roleTarget
+            ? (profiles[roleTarget.pubkey.toLowerCase()]?.displayName ?? null)
+            : null
+        }
+        initialRole={
+          roleTarget?.role === "member"
+            ? "admin"
+            : roleTarget?.role === "admin"
+              ? "member"
+              : undefined
+        }
+        member={roleTarget}
+        onOpenChange={(open) => {
+          if (!open) setRoleTarget(null);
+        }}
+        open={roleTarget !== null}
       />
     </section>
   );

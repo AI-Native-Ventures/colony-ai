@@ -5,9 +5,17 @@ import { useWorkingChannels } from "@/features/agents/agentWorkingSignal";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { useJobTitleLookup } from "@/features/company-team/useJobTitleLookup";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
+import { firstLeadReferenceId } from "@/features/leads/leadReferenceModel";
+import { useLeadReference } from "@/features/leads/useLeadHead";
 import { readChannelSectionsStore } from "@/features/sidebar/lib/channelSectionsStorage";
 import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
-import { resolveUserLabel } from "@/features/profile/lib/identity";
+import {
+  resolveIdentityLabel,
+  type ResolvedIdentityLabel,
+  type UserProfileLookup,
+} from "@/features/profile/lib/identity";
+import { IdentityLabelText } from "@/features/profile/ui/IdentityLabelText";
 import { getMinimumSearchQueryLength } from "@/features/search/hooks";
 import { parseSearchOperators } from "@/features/search/lib/parseSearchOperators";
 import { buildSearchResultPreview } from "@/features/search/lib/searchMatch";
@@ -27,7 +35,7 @@ import { HighlightedSearchText } from "@/features/search/ui/HighlightedSearchTex
 import { useSearchMenuKeyboardNavigation } from "@/features/search/ui/useSearchMenuKeyboardNavigation";
 import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -157,12 +165,19 @@ function getChannelPreview(channel: Channel) {
   return "";
 }
 
-function getUserDisplayName(user: UserSearchResult) {
-  return (
-    user.displayName?.trim() ||
-    user.nip05Handle?.trim() ||
-    truncateNpub(user.pubkey)
-  );
+function getUserIdentityLabel(
+  user: UserSearchResult,
+  currentPubkey: string | undefined,
+  profiles: UserProfileLookup | undefined,
+): ResolvedIdentityLabel {
+  return resolveIdentityLabel({
+    pubkey: user.pubkey,
+    currentPubkey,
+    fallbackName: user.displayName ?? user.nip05Handle,
+    profiles,
+    isAgent: user.isAgent,
+    ownerPubkey: user.ownerPubkey,
+  });
 }
 
 function getUserSecondaryLabel(user: UserSearchResult) {
@@ -722,17 +737,21 @@ export function TopbarSearch({
       result.kind === "channel"
         ? getChannelDisplayName(result.channel, channelLabels)
         : null;
-    const userDisplayName =
-      result.kind === "user" ? getUserDisplayName(result.user) : null;
-    const messageAuthorLabel =
+    const userIdentity =
+      result.kind === "user"
+        ? getUserIdentityLabel(result.user, currentPubkey, resultProfiles)
+        : null;
+    const userDisplayName = userIdentity?.text ?? null;
+    const messageIdentity =
       result.kind === "message"
-        ? resolveUserLabel({
+        ? resolveIdentityLabel({
             currentPubkey,
             profiles: resultProfiles,
             pubkey: result.hit.pubkey,
             preferResolvedSelfLabel: true,
           })
         : null;
+    const messageAuthorLabel = messageIdentity?.text ?? null;
     const messageContextLabel =
       result.kind === "message"
         ? getSearchHitContextLabel(result.hit, channelLookup, channelLabels)
@@ -785,6 +804,10 @@ export function TopbarSearch({
           : result.kind === "user"
             ? userSubtitle
             : buildSearchResultPreview(result.hit.content, resultQuery);
+    const messageLeadId =
+      result.kind === "message"
+        ? firstLeadReferenceId(result.hit.content)
+        : null;
     const trailingLabel =
       result.kind === "channel" && !inQueryResults
         ? getChannelSuggestionMeta(result.channel)
@@ -835,7 +858,7 @@ export function TopbarSearch({
             avatarUrl={result.user.avatarUrl}
             pubkey={result.user.pubkey}
             className="c3s-avatar"
-            label={userDisplayName ?? result.user.pubkey}
+            label={userDisplayName ?? "AI employee"}
             shape={result.user.isAgent ? "squircle" : "circle"}
           />
         ) : result.kind === "channel" && result.channel.channelType === "dm" ? (
@@ -873,7 +896,13 @@ export function TopbarSearch({
           {isMessage ? (
             <>
               <span className="c3s-hit-head">
-                <strong>{title}</strong>
+                <strong>
+                  {messageIdentity ? (
+                    <IdentityLabelText label={messageIdentity} />
+                  ) : (
+                    title
+                  )}
+                </strong>
                 {messageContextLabel ? (
                   <SearchHitContextLine
                     label={messageContextLabel}
@@ -886,14 +915,20 @@ export function TopbarSearch({
                   <HighlightedSearchText query={resultQuery} text={preview} />
                 </span>
               ) : null}
+              {messageLeadId ? (
+                <TopbarSearchLeadPreview leadId={messageLeadId} />
+              ) : null}
             </>
           ) : (
             <>
               <span
                 className="c3s-title"
                 data-action={result.kind === "action" ? "true" : undefined}
+                title={title ?? undefined}
               >
-                {result.kind === "channel" || result.kind === "user" ? (
+                {result.kind === "user" && userIdentity ? (
+                  <IdentityLabelText label={userIdentity} />
+                ) : result.kind === "channel" ? (
                   <HighlightedSearchText
                     query={resultQuery}
                     text={title ?? ""}
@@ -903,7 +938,7 @@ export function TopbarSearch({
                 )}
               </span>
               {preview ? (
-                <span className="c3s-sub">
+                <span className="c3s-sub" title={preview}>
                   {result.kind === "channel" || result.kind === "user" ? (
                     <HighlightedSearchText query={resultQuery} text={preview} />
                   ) : (
@@ -1123,5 +1158,27 @@ export function TopbarSearch({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function TopbarSearchLeadPreview({ leadId }: { leadId: string }) {
+  const { view } = useLeadReference(leadId);
+  if (view.kind !== "ready") return null;
+  const { lead } = view;
+
+  return (
+    <span
+      className="mt-1 inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+      data-testid={`search-lead-preview-${lead.leadId}`}
+    >
+      <BusinessLogoMark
+        className="size-5 shrink-0 rounded-md bg-secondary text-2xs text-secondary-foreground"
+        logoUrl={lead.logoUrl}
+        name={lead.name}
+        placePhotoUrl={lead.placePhotoUrl}
+        website={lead.website}
+      />
+      <span className="truncate font-semibold">{lead.name}</span>
+    </span>
   );
 }

@@ -286,7 +286,7 @@ Buzz Desktop supports registering any ACP-speaking agent tool as a selectable ru
 
 ### How it works
 
-**Tier-1 — compiled-in runtimes** (Goose, Claude Code, Codex, Buzz Agent, OpenCode): have auto-installers, auth probes, and first-class onboarding. Their IDs (`goose`, `claude`, `codex`, `buzz-agent`, `opencode`) are reserved and cannot be overridden. OpenCode is installed by Colony itself: a pinned release, checksum-verified, in Colony's app-data folder (Start free).
+**Tier-1: compiled-in runtimes** (Goose, Claude Code, Codex, Buzz Agent, OpenCode) have auto-installers, auth probes, and first-class onboarding. Their IDs (`goose`, `claude`, `codex`, `buzz-agent`, `opencode`) are reserved and cannot be overridden. Colony installs its managed OpenCode in app data from a pinned, checksum-verified release. Start free uses the bundled Colony Agent and Colony's free AI gateway.
 
 **Tier-2 — preset catalog** (Cursor, Oh My Pi, Pi, Grok Build, Kimi Code, Amp, Hermes Agent, OpenClaw): static `HarnessDefinition` entries in `desktop/src-tauri/src/managed_agents/discovery/presets.rs` (`PRESET_HARNESSES`). They are always present in the runtime catalog, PATH-probed for availability, not editable or deletable by the user. Displayed with bundled logos; if not installed, a docs link appears instead.
 

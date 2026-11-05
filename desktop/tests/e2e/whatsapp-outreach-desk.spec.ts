@@ -5,6 +5,7 @@ import {
   GREEN_SHUTTER_WA_ID,
   JACARANDA_WA_ID,
   OUTREACH_CHANNEL_ID,
+  QUEUED_LEAD_WA_ID,
   installWhatsAppMockBridge,
   gotoWhatsAppScreen,
 } from "../helpers/whatsappOutreach";
@@ -116,6 +117,44 @@ test.describe("Outreach desk", () => {
     await expect
       .soft(page.getByTestId("outreach-desk-pipeline"))
       .not.toContainText("Horizon Labs");
+  });
+
+  test("shows approved unsent outreach in the first pipeline column but not Needs you", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      queuedFixture: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+
+    const needs = page.getByTestId("outreach-desk-needs-you");
+    await expect(needs).not.toContainText("Linden Tree Lodge");
+
+    await page.getByTestId("channel-view-tab-pipeline").click();
+    const queuedColumn = page.locator(
+      '.c3wa-pipeline-column[data-stage="queued"]',
+    );
+    await expect(queuedColumn).toBeVisible();
+    await expect(
+      queuedColumn.getByRole("heading", { name: "Queued to contact" }),
+    ).toBeVisible();
+    await expect(queuedColumn.locator("> header > span")).toHaveText("1");
+
+    const queuedCard = queuedColumn.getByTestId(
+      `outreach-pipeline-card-${QUEUED_LEAD_WA_ID}`,
+    );
+    await expect(queuedCard).toContainText("Linden Tree Lodge");
+    await expect(queuedCard).toContainText("+27 79 444 1101");
+    await expect(queuedCard).toContainText("Queued");
+    await expect(queuedCard).toContainText(
+      "Queued from Batch: Message 12 guesthouses in Melville",
+    );
+    const openLead = queuedCard.getByRole("button", { name: "Open lead" });
+    await expect(openLead).toBeVisible();
+    await openLead.click();
+    await expect(page.getByTestId("w10-prospect-page")).toBeVisible();
   });
 
   test("opens on Needs you, approves a batch, books a call, and moves a pipeline card with the keyboard", async ({
@@ -240,7 +279,7 @@ test.describe("Outreach desk", () => {
     await expect(unlinkedRow.locator("svg.lucide-user-round")).toBeVisible();
 
     const linkedRow = page.getByTestId(`whatsapp-contact-${JACARANDA_WA_ID}`);
-    await expect(linkedRow).toContainText("Mpho");
+    await expect(linkedRow).toContainText("Jacaranda Lane Guesthouse");
     await expect(linkedRow).not.toContainText("+27 82 123 4410");
 
     const noWebsiteRow = page.getByTestId(
@@ -301,16 +340,70 @@ test.describe("Outreach desk", () => {
       .toBe("Mpho");
   });
 
+  test("an owner sees the payment failure, a count-bound recovery, and a per-message send again", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      paymentRetryCount: 63,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+    await page.getByTestId("channel-view-tab-chats").click();
+    await page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`).click();
+
+    const failedMessage = page.getByTestId("whatsapp-message-e2e-wa-failed");
+    await expect(failedMessage).toContainText(
+      "Meta blocked this send: payment problem on your WhatsApp account.",
+    );
+    const sendAgain = page.getByTestId("whatsapp-send-again-e2e-wa-failed");
+    await expect(sendAgain).toHaveText("Send again");
+    await sendAgain.click();
+    await expect(
+      page.getByTestId("whatsapp-resume-retry-dialog"),
+    ).toContainText("Retry 63 messages?");
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await page.getByTestId("channel-view-tab-pipeline").click();
+    await expect(
+      page
+        .locator(".c3wa-pipeline-columns")
+        .getByTestId(`outreach-pipeline-card-${PLANE_TREE_WA_ID}`),
+    ).toContainText("Send failed");
+    await page.getByTestId("channel-view-tab-chats").click();
+    const resume = page.getByTestId("whatsapp-resume-retry-trigger");
+    await expect(resume).toHaveText("Resume and retry");
+    await resume.click();
+    await page.getByRole("button", { name: "Retry 63 messages" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47051 && body.resumeAndRetry === true,
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
+  });
+
   test("plain members have no stage or rename controls", async ({ page }) => {
     await installWhatsAppMockBridge(page, "light", {
       deskFixture: true,
       outreachChannelMember: false,
       relayRole: "member",
+      paymentRetryCount: 63,
     });
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoWhatsAppScreen(page, `/channels/${OUTREACH_CHANNEL_ID}`);
     await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
     await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
+    await expect(page.getByTestId("whatsapp-resume-retry-trigger")).toHaveCount(
+      0,
+    );
     await page.getByTestId("channel-view-tab-pipeline").click();
     await expect(
       page.getByTestId(`outreach-move-${JACARANDA_WA_ID}`),

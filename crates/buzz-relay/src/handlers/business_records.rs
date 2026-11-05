@@ -2861,6 +2861,15 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
         return Err(invalid("prospect email is invalid"));
     }
     validate_optional_text(prospect.phone.as_deref(), 50, "phone")?;
+    validate_optional_text(prospect.whatsapp_phone.as_deref(), 50, "WhatsApp phone")?;
+    if let Some(phone) = prospect.whatsapp_phone.as_deref() {
+        let Some(wa_id) = crate::whatsapp::policy::normalize_wa_id(phone) else {
+            return Err(invalid("WhatsApp phone must be a valid E.164 number"));
+        };
+        if phone != format!("+{wa_id}") {
+            return Err(invalid("WhatsApp phone must use normalized E.164 format"));
+        }
+    }
     if prospect
         .last_verified_at
         .is_some_and(|timestamp| timestamp <= 0)
@@ -4488,6 +4497,7 @@ mod tests {
                 location: Some("Cape Town".into()),
                 email: Some("hello@example.test".into()),
                 phone: None,
+                whatsapp_phone: None,
                 evidence: Vec::new(),
                 last_verified_at: None,
                 qualification: buzz_core::business_records::ProspectQualification::Unreviewed,
@@ -4634,6 +4644,19 @@ mod tests {
         assert!(validate_prospect_action(&action).is_err());
         action.prospect.lost_reason = Some("Timing".into());
         assert!(validate_prospect_action(&action).is_ok());
+    }
+
+    #[test]
+    fn prospect_validation_requires_normalized_whatsapp_override() {
+        let mut action = prospect_action();
+        action.prospect.whatsapp_phone = Some("+27825554410".into());
+        assert!(validate_prospect_action(&action).is_ok());
+
+        action.prospect.whatsapp_phone = Some("082 555 4410".into());
+        assert!(validate_prospect_action(&action).is_err());
+
+        action.prospect.whatsapp_phone = Some("not a phone number".into());
+        assert!(validate_prospect_action(&action).is_err());
     }
 
     #[test]

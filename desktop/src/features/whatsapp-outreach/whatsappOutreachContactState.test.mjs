@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { sendNowBatchIdForQueuedMessage } from "./whatsappOutreachContactState.ts";
+import {
+  contactStatus,
+  sendNowBatchIdForQueuedMessage,
+} from "./whatsappOutreachContactState.ts";
 
 const contact = {
   waId: "27821234410",
@@ -86,5 +89,18 @@ test("uses the schedule field to distinguish queued messages for the same contac
       "2026-10-30T11:00:00+02:00",
     ),
     null,
+  );
+});
+
+test("a failed latest outbound message is never called sent", () => {
+  assert.equal(
+    contactStatus({
+      optedOut: false,
+      awaitingApproval: false,
+      unanswered: false,
+      lastInboundAt: null,
+      lastOutboundState: "failed",
+    }),
+    "Send failed",
   );
 });

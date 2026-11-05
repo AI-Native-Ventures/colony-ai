@@ -14,7 +14,8 @@ use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTempl
 use super::channel;
 use super::graph::{GraphError, PhoneInfo};
 use super::policy::{
-    default_template_title, hash_verify_token, sast_day_start, template_slot_count,
+    account_retry_error_codes, default_template_title, hash_verify_token, sast_day_start,
+    template_slot_count,
 };
 use super::secrets::{self, SecretField};
 use crate::state::AppState;
@@ -679,6 +680,12 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         .whatsapp_count_new_chats_since(community, sast_day_start(Utc::now()))
         .await
         .map_err(|error| error.to_string())?;
+    let account_retry_codes = account_retry_error_codes();
+    let account_retry_count = state
+        .db
+        .whatsapp_count_retryable_account_failures(community, &account_retry_codes)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(json!({
         "connected": connection.is_some(),
         "connectionId": connection.as_ref().map(|c| c.id.to_string()),
@@ -688,6 +695,7 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         "phoneStatus": connection.as_ref().and_then(|c| c.phone_status.clone()),
         "dailyNewChatCap": settings.daily_new_chat_cap,
         "newChatsSentToday": sent_today,
+        "accountRetryCount": account_retry_count,
         "sendingPaused": settings.send_paused,
         "pauseReason": settings.pause_reason,
         "issues": settings.issues,

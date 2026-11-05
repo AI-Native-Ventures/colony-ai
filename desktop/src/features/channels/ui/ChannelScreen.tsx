@@ -409,16 +409,23 @@ export function ChannelScreen({
     relayAgents,
   });
   const messageOwnerProfiles = useMessageOwnerProfiles(messageProfiles);
+  // Keep owner profiles in the same lookup passed to every message renderer.
+  // This lets historical owner-qualified mentions resolve after a teammate's
+  // client fetches the agent and owner kind:0 records independently.
+  const displayProfiles = React.useMemo(
+    () => ({ ...messageProfiles, ...(messageOwnerProfiles ?? {}) }),
+    [messageOwnerProfiles, messageProfiles],
+  );
   const communityAgentPubkeys = useKnownAgentPubkeys();
   const agentPubkeys = React.useMemo(() => {
     const pubkeys = new Set([...communityAgentPubkeys, ...knownAgentPubkeys]);
-    for (const [pubkey, profile] of Object.entries(messageProfiles)) {
+    for (const [pubkey, profile] of Object.entries(displayProfiles)) {
       if (profile.isAgent) {
         pubkeys.add(normalizePubkey(pubkey));
       }
     }
     return pubkeys;
-  }, [knownAgentPubkeys, messageProfiles, communityAgentPubkeys]);
+  }, [knownAgentPubkeys, displayProfiles, communityAgentPubkeys]);
   const personasQuery = usePersonasQuery();
   const { personaLookup, respondToLookup } = React.useMemo(() => {
     const agents = managedAgentsQuery.data ?? [];
@@ -442,7 +449,7 @@ export function ChannelScreen({
         activeChannel,
         currentPubkey,
         currentProfile?.avatarUrl ?? null,
-        messageProfiles,
+        displayProfiles,
         channelMembers,
         personaLookup,
         respondToLookup,
@@ -454,7 +461,7 @@ export function ChannelScreen({
       channelMembers,
       currentProfile?.avatarUrl,
       currentPubkey,
-      messageProfiles,
+      displayProfiles,
       messageOwnerProfiles,
       personaLookup,
       relaySelfPubkey,
@@ -471,7 +478,7 @@ export function ChannelScreen({
     expandedReplyIds: expandedThreadReplyIds,
     currentPubkey,
     currentAvatarUrl: currentProfile?.avatarUrl ?? null,
-    profiles: messageProfiles,
+    profiles: displayProfiles,
     ownerProfiles: messageOwnerProfiles,
     members: channelMembers,
     personaLookup,
@@ -541,7 +548,7 @@ export function ChannelScreen({
     getFirstReplyIdForMessage,
     getReplyDescendantIdsForMessage,
     markRevealedRepliesRead,
-    profiles: messageProfiles,
+    profiles: displayProfiles,
     recordThreadInteraction,
     openThreadHeadId: effectiveOpenThreadHeadId,
     onOptimisticOpenThreadHeadIdChange: setOptimisticOpenThreadHeadId,
@@ -879,10 +886,10 @@ export function ChannelScreen({
                     editTargetMessage
                       ? buildMessageComposerEditTarget(
                           editTargetMessage,
-                          messageProfiles,
+                          displayProfiles,
                           (pubkey) =>
                             knownAgentPubkeys.has(pubkey) ||
-                            !!messageProfiles?.[pubkey]?.isAgent,
+                            !!displayProfiles?.[pubkey]?.isAgent,
                         )
                       : null
                   }
@@ -950,8 +957,7 @@ export function ChannelScreen({
                   profilePanelTab={profilePanelTab}
                   profilePanelView={profilePanelView}
                   personaLookup={personaLookup}
-                  profiles={messageProfiles}
-                  ownerProfiles={messageOwnerProfiles}
+                  profiles={displayProfiles}
                   firstUnreadMessageId={firstUnreadMessageId}
                   unreadCount={unreadCount}
                   targetMessageId={mainTimelineTargetMessageId}

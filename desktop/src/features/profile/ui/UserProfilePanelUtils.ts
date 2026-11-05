@@ -8,9 +8,8 @@ import type {
   RelayAgent,
   UpdateManagedAgentInput,
 } from "@/shared/api/types";
-import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
-
-export { truncateNpub };
+import { resolveIdentityLabel } from "@/features/profile/lib/identity";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 export type ProfileChannelLink = {
   id: string;
@@ -223,19 +222,24 @@ function normalizeProfileFallbackAvatarUrl(
 }
 
 export function resolveProfileDisplayName({
+  currentPubkey,
   persona,
   profile,
   pubkey,
 }: {
+  currentPubkey?: string;
   persona: AgentPersona | undefined;
   profile: Profile | undefined;
   pubkey: string | null;
 }) {
-  return (
-    profile?.displayName ??
-    persona?.displayName ??
-    (pubkey ? truncateNpub(pubkey) : "Agent")
-  );
+  if (!pubkey) return persona?.displayName ?? "AI employee";
+  return resolveIdentityLabel({
+    pubkey,
+    currentPubkey,
+    fallbackName: profile?.displayName ?? persona?.displayName,
+    isAgent: Boolean(persona ?? profile?.ownerPubkey),
+    ownerPubkey: profile?.ownerPubkey,
+  }).text;
 }
 
 export function resolveOwnerHandle(
@@ -247,9 +251,7 @@ export function resolveOwnerHandle(
   }
 
   return (
-    profile?.nip05Handle?.trim() ||
-    profile?.displayName?.trim() ||
-    truncateNpub(currentPubkey)
+    profile?.nip05Handle?.trim() || profile?.displayName?.trim() || "teammate"
   );
 }
 

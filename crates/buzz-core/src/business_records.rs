@@ -345,6 +345,9 @@ pub struct ProspectRecordInput {
     pub email: Option<String>,
     /// Business contact phone, if known.
     pub phone: Option<String>,
+    /// Number used for WhatsApp when it differs from the business phone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub whatsapp_phone: Option<String>,
     /// Source evidence and observation times.
     pub evidence: Vec<ProspectEvidence>,
     /// Time the prospect's current details were last checked.
@@ -1888,6 +1891,7 @@ mod tests {
                 location: Some("Cape Town".into()),
                 email: None,
                 phone: None,
+                whatsapp_phone: None,
                 evidence: Vec::new(),
                 last_verified_at: None,
                 qualification: ProspectQualification::Unreviewed,

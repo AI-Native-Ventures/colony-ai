@@ -456,7 +456,10 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
 
   if (functionId === "operations") {
     return (
-      <div data-testid="cofounder-function-screen">
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        data-testid="cofounder-function-screen"
+      >
         <OperationsPlaybookScreen
           scorecardAndGoals={
             <div className="space-y-5">

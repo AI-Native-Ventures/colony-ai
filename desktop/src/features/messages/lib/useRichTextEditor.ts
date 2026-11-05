@@ -65,6 +65,8 @@ export type AutocompleteEdit = {
   preserveSelection?: boolean;
   /** Skip asynchronous DOM caret reassertion when focus may move elsewhere. */
   reassertMentionCaret?: boolean;
+  /** Keep focus in an external picker until its own close lifecycle restores it. */
+  focus?: boolean;
   /**
    * When set, the replaced range becomes a CustomEmojiNode for this
    * shortcode (followed by `insertText`, which carries the trailing space)
@@ -764,6 +766,7 @@ export function useRichTextEditor({
       customEmojiShortcode?: string,
       preserveSelection = false,
       reassertMentionCaret = !preserveSelection,
+      shouldFocus = true,
     ) => {
       if (!editor) return;
       const projection = buildPlainTextProjection(editor.state.doc);
@@ -789,7 +792,7 @@ export function useRichTextEditor({
           const cursorPM = afterNode + (text ? text.length : 0);
           tr = tr.setSelection(TextSelection.create(tr.doc, cursorPM));
           editor.view.dispatch(tr);
-          editor.view.focus();
+          if (shouldFocus) editor.view.focus();
           return;
         }
         // No node type (shouldn't happen) → fall through to literal text.
@@ -811,8 +814,10 @@ export function useRichTextEditor({
       }
       settleAutocompleteMentionInsert(editor, tr, text, !preserveSelection);
       editor.view.dispatch(tr);
-      editor.view.focus();
-      if (reassertMentionCaret) reassertMentionCaretAfterFocus(editor.view);
+      if (shouldFocus) {
+        editor.view.focus();
+        if (reassertMentionCaret) reassertMentionCaretAfterFocus(editor.view);
+      }
     },
     [editor, customEmojiWiring.resolveUrl],
   );

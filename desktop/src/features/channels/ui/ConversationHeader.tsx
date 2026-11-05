@@ -98,6 +98,7 @@ export function ConversationHeader({
                 descriptionBelow && "c3c-subtitle",
               )}
               data-testid="chat-description"
+              title={trimmedDescription}
             >
               {trimmedDescription}
             </p>

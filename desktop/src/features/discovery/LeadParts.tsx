@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import type {
   DiscoveryCampaign,
@@ -146,42 +147,49 @@ export function campaignFor(
 /** Top bar trail for a lead, with the real source page as its parent. */
 export function LeadBreadcrumb({
   name,
+  backLabel,
   parent,
   onBack,
 }: {
   name: string;
+  backLabel: string;
   parent: readonly string[];
   onBack: () => void;
 }) {
-  return (
-    <AppTopChromePortal>
-      <nav
-        aria-label="Breadcrumb"
-        className="c3l-crumbs"
-        data-testid="lead-breadcrumb"
-      >
-        {parent.map((label, index) => (
-          <React.Fragment key={label}>
-            {index > 0 ? <span aria-hidden="true">/</span> : null}
-            {index === parent.length - 1 ? (
-              <button
-                aria-label={`Back to ${label}`}
-                className="c3l-crumb-link"
-                onClick={onBack}
-                type="button"
-              >
-                {label}
-              </button>
-            ) : (
-              <span>{label}</span>
-            )}
-          </React.Fragment>
-        ))}
-        <span aria-hidden="true">/</span>
-        <span aria-current="page" data-current="true">
-          {name}
-        </span>
-      </nav>
-    </AppTopChromePortal>
+  const isMobile = useIsMobile();
+  const breadcrumb = (
+    <nav
+      aria-label="Breadcrumb"
+      className={`c3l-crumbs${isMobile ? " c3l-crumbs-inline" : ""}`}
+      data-testid="lead-breadcrumb"
+    >
+      {parent.map((label, index) => (
+        <React.Fragment key={label}>
+          {index > 0 ? <span aria-hidden="true">/</span> : null}
+          {index === parent.length - 1 ? (
+            <button
+              aria-label={`Back to ${backLabel}`}
+              className="c3l-crumb-link"
+              onClick={onBack}
+              title={backLabel}
+              type="button"
+            >
+              {label}
+            </button>
+          ) : (
+            <span>{label}</span>
+          )}
+        </React.Fragment>
+      ))}
+      <span aria-hidden="true">/</span>
+      <span aria-current="page" data-current="true">
+        {name}
+      </span>
+    </nav>
+  );
+  return isMobile ? (
+    breadcrumb
+  ) : (
+    <AppTopChromePortal>{breadcrumb}</AppTopChromePortal>
   );
 }

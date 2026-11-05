@@ -10,6 +10,24 @@ import test from "node:test";
 
 const { fromRawAcpRuntimeCatalogEntry } = await import("./tauri.ts");
 
+test("fromRawAcpRuntimeCatalogEntry preserves unavailable command candidates", () => {
+  const entry = fromRawAcpRuntimeCatalogEntry({
+    id: "codex",
+    label: "Codex",
+    availability: "adapter_missing",
+    command: null,
+    command_candidates: ["codex-acp"],
+    source: "builtin",
+    default_args: ["acp"],
+    can_auto_install: true,
+    requires_external_cli: false,
+    install_hint: "",
+    install_instructions_url: "",
+  });
+
+  assert.deepStrictEqual(entry.commandCandidates, ["codex-acp"]);
+});
+
 test("fromRawAcpRuntimeCatalogEntry maps definition_env to definitionEnv", () => {
   const raw = {
     id: "my-harness",

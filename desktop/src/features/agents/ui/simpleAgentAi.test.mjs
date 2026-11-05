@@ -187,8 +187,8 @@ test("Colony Agent effort uses model capability values without ACP options", () 
 test("changing harness clears the previous model and provider labels through the production transition", () => {
   const next = selectionOnRuntimeChange(
     {
-      provider: "opencode-free",
-      model: "opencode/deepseek-v4.1-flash-free",
+      provider: "colony-credits",
+      model: "openai/gpt-4.1-mini:free",
       isCustomProviderEditing: false,
       isCustomModelEditing: false,
       envVars: {
@@ -197,7 +197,7 @@ test("changing harness clears the previous model and provider labels through the
       },
     },
     {
-      previousRuntime: "opencode",
+      previousRuntime: "buzz-agent",
       nextRuntime: "claude",
       nextRuntimeCanChooseProvider: false,
       lockedRuntimeReset: "full",

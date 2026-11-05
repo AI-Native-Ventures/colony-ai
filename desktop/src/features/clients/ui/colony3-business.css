@@ -522,6 +522,7 @@
 
 .b3-detail-main-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: calc(12 * var(--b3u));
 }

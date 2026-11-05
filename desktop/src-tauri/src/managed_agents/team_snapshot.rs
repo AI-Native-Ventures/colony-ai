@@ -256,6 +256,7 @@ mod tests {
         ManagedAgentRecord {
             session_policy: Default::default(),
             description: None,
+            company_role: None,
             pubkey: format!("{name}-pubkey"),
             name: name.to_string(),
             display_name: Some(format!("{name} Display")),

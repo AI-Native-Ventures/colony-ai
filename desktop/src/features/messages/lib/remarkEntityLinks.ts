@@ -2,7 +2,7 @@
 import { createRemarkPrefixPlugin } from "../../../shared/lib/createRemarkPrefixPlugin.ts";
 
 const ENTITY_URL_PATTERN =
-  /buzz:\/\/(?:(?:pr|issue|repo|project)\?[^\s<>"')\]]+|lead\/[^\s<>"')\]]+)/g;
+  /(?:buzz|colony):\/\/(?:(?:pr|issue|repo|project)\?[^\s<>"')\]]+|(?:lead|list|campaign|template)\/[^\s<>"')\]]+)/g;
 const TRAILING_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
 
 export default function remarkEntityLinks() {

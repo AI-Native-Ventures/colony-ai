@@ -50,6 +50,17 @@ async function readStartCalls(page: Page): Promise<StartCall[]> {
   );
 }
 
+async function waitForManagedStartToSettle(page: Page) {
+  await expect
+    .poll(
+      async () =>
+        (await readCommands(page)).filter(
+          (command) => command === "start_managed_agent:settled",
+        ).length,
+    )
+    .toBe(1);
+}
+
 /** The page clock in unix seconds: the clock the app stamps replay floors with. */
 async function pageNowSeconds(page: Page) {
   return page.evaluate(() => Math.floor(Date.now() / 1000));
@@ -268,6 +279,9 @@ test.describe("a mention to an agent that has to be started", () => {
 
     await mentionScout(page, "are you there?");
 
+    // The bridge marker is emitted only after the same command invocation the
+    // app uses rejects. Await it before checking the React watch for its error.
+    await waitForManagedStartToSettle(page);
     await expect(indicator(page)).toHaveAttribute("data-state", "stalled");
     await expect(
       indicator(page).getByTestId("agent-working-indicator-label"),

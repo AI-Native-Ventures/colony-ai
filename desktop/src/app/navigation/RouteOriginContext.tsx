@@ -94,6 +94,12 @@ function fallbackOriginDetails(
   if (location.pathname === "/discovery") {
     return { backLabel: "Discovery", breadcrumbs: ["Business", "Discovery"] };
   }
+  if (location.pathname === "/discovery/campaigns") {
+    return {
+      backLabel: "All campaigns",
+      breadcrumbs: ["Business", "Discovery", "All campaigns"],
+    };
+  }
   if (location.pathname === "/whatsapp/outreach") {
     return { backLabel: "Outreach", breadcrumbs: ["Business", "Outreach"] };
   }
@@ -227,6 +233,13 @@ export function routeBackFallback(
     };
   }
   if (pathname === "/campaign") {
+    return {
+      to: "/discovery",
+      label: "Discovery",
+      breadcrumbs: ["Business", "Discovery"],
+    };
+  }
+  if (pathname === "/discovery/campaigns") {
     return {
       to: "/discovery",
       label: "Discovery",

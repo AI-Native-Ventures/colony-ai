@@ -8,10 +8,11 @@ import { useCofounderMode } from "@/features/cofounder/customerRecordAccess";
 import type { WorkItemHead } from "@/features/clients/lib/businessRecords";
 import { usePeople } from "@/features/clients/lib/usePeople";
 import { useAllWorkItemHeadsQuery } from "@/features/clients/useBusinessRecords";
+import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
+import { useBusinessRecords } from "@/features/discovery/useBusinessRecords";
 import {
   BriefcaseIcon,
   ChevronRightIcon,
-  clientInitial,
   ClientStatusPill,
   PersonAvatar,
   WorkStatusPill,
@@ -50,6 +51,7 @@ export function sharedWorkForClient(
 
 export function ClientsScreen() {
   const workQuery = useAllWorkItemHeadsQuery();
+  const salesRecords = useBusinessRecords({ createIfMissing: false });
   const { goClient } = useAppNavigation();
   const navigate = useNavigate();
   const cofounderMode = useCofounderMode();
@@ -87,6 +89,16 @@ export function ClientsScreen() {
     return [...byPartyId.values()];
   }, [clientsQuery.data, cofounderOn, customerRecordsQuery.data]);
   const work = workQuery.data;
+  const prospectByPartyId = React.useMemo(
+    () =>
+      new Map(
+        (salesRecords.records?.prospects ?? []).map(({ record }) => [
+          record.prospect.party.partyId,
+          record.prospect,
+        ]),
+      ),
+    [salesRecords.records?.prospects],
+  );
   const channelNameById = React.useMemo(
     () =>
       new Map(
@@ -180,6 +192,7 @@ export function ClientsScreen() {
             </thead>
             <tbody>
               {rows.map(({ event, value, work: sharedWork }) => {
+                const prospect = prospectByPartyId.get(value.partyId) ?? null;
                 const owner = sharedWork?.assignedPubkeys[0]
                   ? person(sharedWork.assignedPubkeys[0])
                   : null;
@@ -207,9 +220,13 @@ export function ClientsScreen() {
                   >
                     <td>
                       <span className="b3-clients-cell" data-first="true">
-                        <span aria-hidden="true" className="b3-tile">
-                          {clientInitial(value.displayName)}
-                        </span>
+                        <BusinessLogoMark
+                          className="b3-tile"
+                          logoUrl={prospect?.logoUrl}
+                          name={value.displayName}
+                          placePhotoUrl={prospect?.placePhotoUrl}
+                          website={prospect?.website}
+                        />
                         <span className="b3-stack">
                           {cofounderOn || !value.clientId ? (
                             <Link
@@ -250,10 +267,16 @@ export function ClientsScreen() {
                               <PersonAvatar person={owner} size={32} />
                             ) : null}
                             <span className="b3-stack b3-grow">
-                              <span className="b3-work-title">
+                              <span
+                                className="b3-work-title"
+                                title={sharedWork.title}
+                              >
                                 {sharedWork.title}
                               </span>
-                              <span className="b3-meta">
+                              <span
+                                className="b3-meta"
+                                title={owner?.name ?? "Unassigned"}
+                              >
                                 {owner?.name ?? "Unassigned"}
                               </span>
                             </span>

@@ -181,6 +181,7 @@ fn local_agent() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
         description: None,
+        company_role: None,
         pubkey: AGENT_PUBKEY.to_string(),
         name: "Local Agent".to_string(),
         persona_id: Some("persona-local".to_string()),

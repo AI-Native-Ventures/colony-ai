@@ -51,9 +51,15 @@ fn unsupported_platform_step_has_hint() {
 }
 
 #[test]
-fn managed_binary_runtime_is_opencode_only() {
-    assert!(crate::managed_agents::managed_binary_runtime("opencode"));
-    assert!(!crate::managed_agents::managed_binary_runtime("codex"));
+fn managed_binary_runtime_includes_colony_provided_runtimes_only() {
+    assert_eq!(
+        crate::managed_agents::managed_binary_runtime("opencode"),
+        crate::managed_agents::managed_opencode_platform().is_some()
+    );
+    assert_eq!(
+        crate::managed_agents::managed_binary_runtime("codex"),
+        crate::managed_agents::managed_codex_platform().is_some()
+    );
     assert!(!crate::managed_agents::managed_binary_runtime("buzz-agent"));
 }
 

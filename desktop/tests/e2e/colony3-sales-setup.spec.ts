@@ -119,8 +119,9 @@ async function startHomeDecorSearch(page: Page) {
   await expect(
     dialog.getByRole("heading", { name: "Find the right fit." }),
   ).toBeVisible();
-  await dialog.getByLabel("Location").fill("South Africa");
-  await dialog.getByLabel("Prospect target").fill("50");
+  await dialog.getByRole("combobox", { name: "Location" }).fill("South Africa");
+  await dialog.getByRole("option").first().click();
+  await dialog.getByLabel("Prospect target").fill("100");
   await dialog
     .getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
@@ -255,8 +256,8 @@ test.describe("Sales channel setup", () => {
   test("Discovery Approve & start creates the missing Sales channel, then runs the search", async ({
     page,
   }) => {
-    await installMockBridge(page, NO_SALES);
     await installSearchStub(page);
+    await installMockBridge(page, NO_SALES);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
     expect(await salesChannels(page)).toHaveLength(0);
@@ -264,12 +265,13 @@ test.describe("Sales channel setup", () => {
     await startHomeDecorSearch(page);
     await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
     await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
       page.getByTestId("w10-campaign-page").locator("tbody tr"),
     ).toHaveCount(2);
     await expect(page.getByText("not set up here yet")).toHaveCount(0);
+    await goTo(page, "/discovery");
+    await expect(
+      page.getByRole("link", { name: /Ready to review/ }),
+    ).toBeVisible({ timeout: 15_000 });
 
     // One Sales channel, and the results were posted in it.
     const sales = await salesChannels(page);
@@ -291,12 +293,12 @@ test.describe("Sales channel setup", () => {
   test("Discovery for a person who cannot create channels says who can, and starts no search", async ({
     page,
   }) => {
+    await installSearchStub(page);
     await installMockBridge(page, {
       ...NO_SALES,
       relayRequiresMembership: true,
       relayRole: "member",
     });
-    await installSearchStub(page);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
 

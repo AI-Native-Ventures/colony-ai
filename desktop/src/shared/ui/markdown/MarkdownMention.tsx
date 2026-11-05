@@ -46,14 +46,14 @@ export function createMarkdownMention(interactive: boolean) {
         data-mention-kind={
           pubkey === undefined ? undefined : isAgentMention ? "agent" : "human"
         }
-        data-mention-label={mentionLabel}
+        data-mention-label={displayLabel}
         data-mention-pubkey={pubkey}
         className={cn(
           WRAPPING_INLINE_CHIP_CLASSES,
           isAgentMention && "agent-mention-highlight",
         )}
-        title={mentionLabel}
-        aria-label={mentionLabel}
+        title={displayLabel}
+        aria-label={displayLabel}
         icon={icon}
         interactive={opensProfile}
       >
@@ -73,7 +73,7 @@ export function createMarkdownMention(interactive: boolean) {
 
     return opensProfile ? (
       <UserProfilePopover
-        botIdenticonValue={mentionLabel}
+        botIdenticonValue={displayLabel}
         pubkey={pubkey}
         role={isAgentMention ? "bot" : undefined}
         triggerElement="span"

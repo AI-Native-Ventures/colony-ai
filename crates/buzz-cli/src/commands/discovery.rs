@@ -465,6 +465,7 @@ fn map_place_to_prospect(
             location: location_summary(place),
             email,
             phone,
+            whatsapp_phone: None,
             evidence: evidence_url
                 .map(|url| {
                     vec![ProspectEvidence {

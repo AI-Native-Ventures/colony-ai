@@ -162,8 +162,8 @@ test("Agent AI summary keeps support details collapsed", async ({ page }) => {
   const ai = page.getByTestId("agent-model-selection");
   await ai.scrollIntoViewIfNeeded();
   await expect(ai).toBeVisible();
-  await expect(ai.getByText("GPT-5.5")).toBeVisible();
-  await expect(ai.getByText("Codex")).toBeVisible();
+  await expect(ai.getByText("GPT-4o", { exact: true })).toBeVisible();
+  await expect(ai.getByText("Codex", { exact: true })).toBeVisible();
   await expect(page.getByTestId("agent-technical-details")).not.toHaveAttribute(
     "open",
     "",

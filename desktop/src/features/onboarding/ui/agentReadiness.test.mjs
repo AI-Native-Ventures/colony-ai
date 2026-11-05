@@ -535,28 +535,31 @@ test("saved keyless credits route keeps native prerequisites and bundled availab
   );
 });
 
-test("resolveAgentReadiness_start_free_opencode_is_ready_after_a_verified_test", () => {
-  // Start free: OpenCode has no sign-in, so Welcome readiness rests on the
-  // verified connection receipt for the preferred runtime.
-  const opencode = makeRuntime({
-    id: "opencode",
-    label: "OpenCode",
-    command: "opencode",
+test("resolveAgentReadiness_start_free_colony_gateway_uses_the_saved_keyless_route", () => {
+  const colonyAgent = makeRuntime({
+    id: "buzz-agent",
+    label: "Colony Agent",
+    command: "buzz-agent",
     authStatus: { status: "not_applicable" },
   });
   const config = makeConfig({
-    preferred_runtime: "opencode",
-    provider: "opencode-free",
-    model: "opencode/deepseek-v4.1-flash-free",
+    preferred_runtime: "buzz-agent",
+    provider: "colony-credits",
+    model: "openai/gpt-4.1-mini:free",
   });
   assert.equal(
-    resolveAgentReadiness([opencode], config, "preferred", null, "opencode")
-      .ready,
+    resolveAgentReadiness(
+      [colonyAgent],
+      config,
+      "preferred",
+      null,
+      "buzz-agent",
+    ).ready,
     true,
   );
   assert.equal(
-    resolveAgentReadiness([opencode], config, "preferred", null, null).ready,
-    false,
+    resolveAgentReadiness([colonyAgent], config, "preferred", null, null).ready,
+    true,
   );
 });
 
