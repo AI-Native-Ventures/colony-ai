@@ -837,6 +837,19 @@ pub const KIND_CUSTOMER_ACTION: u32 = 47069;
 /// Relay-authored record of whether Scout can be reached while co-founder mode is on (community-wide, one per business). Relay only: no member action writes it. The 30670 to 30679 co-founder block is full, so this is the first kind after it.
 pub const KIND_COFOUNDER_LEAD_HEAD: u32 = 30680;
 
+// Money rails payment kinds. 30680 is the co-founder lead head and 30684, 30685, 47075 and
+// 47076 belong to the outreach lists design, so these four sit after them. Only the payment
+// kinds are defined; signing and booking get their own numbers in their own PRs.
+// Contract: docs/money-rails-pay-contract.md.
+/// Relay-authored payment link card head (money rails, community-wide, one per card).
+pub const KIND_PAYMENT_LINK_HEAD: u32 = 30686;
+/// Member or owned-agent payment link card command (money rails, community-wide).
+pub const KIND_PAYMENT_LINK_ACTION: u32 = 47077;
+/// Relay-authored money rails connection head (provider connections, never a secret value).
+pub const KIND_MONEY_CONNECTION_HEAD: u32 = 30687;
+/// Member or owned-agent money rails connection command (recipes, notice map, default).
+pub const KIND_MONEY_CONNECTION_ACTION: u32 = 47078;
+
 // Outreach lists and shared Discovery campaigns (Sales channel scope, business broker).
 // Contract: docs/outreach-lists-contract.md. 30681 to 30683 and 47070 to 47074 stay free;
 // money rails owns 30686, 30687, 47077 and 47078.
@@ -935,6 +948,10 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_NUMBERS_ACTION,
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
+    KIND_PAYMENT_LINK_HEAD,
+    KIND_PAYMENT_LINK_ACTION,
+    KIND_MONEY_CONNECTION_HEAD,
+    KIND_MONEY_CONNECTION_ACTION,
     KIND_COFOUNDER_LEAD_HEAD,
 ];
 
@@ -965,6 +982,8 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_ACTION
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_ACTION
+            | KIND_PAYMENT_LINK_ACTION
+            | KIND_MONEY_CONNECTION_ACTION
     )
 }
 
@@ -1014,6 +1033,10 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_HEAD
             | KIND_CUSTOMER_ACTION
+            | KIND_PAYMENT_LINK_HEAD
+            | KIND_PAYMENT_LINK_ACTION
+            | KIND_MONEY_CONNECTION_HEAD
+            | KIND_MONEY_CONNECTION_ACTION
             | KIND_COFOUNDER_LEAD_HEAD
     )
 }
@@ -1353,6 +1376,10 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_NUMBERS_ACTION,
     KIND_CUSTOMER_HEAD,
     KIND_CUSTOMER_ACTION,
+    KIND_PAYMENT_LINK_HEAD,
+    KIND_PAYMENT_LINK_ACTION,
+    KIND_MONEY_CONNECTION_HEAD,
+    KIND_MONEY_CONNECTION_ACTION,
     KIND_COFOUNDER_LEAD_HEAD,
     KIND_OUTREACH_LIST_HEAD,
     KIND_OUTREACH_LIST_ACTION,
@@ -1462,6 +1489,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_ACTION
             | KIND_NUMBERS_ACTION
             | KIND_CUSTOMER_ACTION
+            | KIND_PAYMENT_LINK_ACTION
+            | KIND_MONEY_CONNECTION_ACTION
             | KIND_WHATSAPP_BATCH
             | KIND_WHATSAPP_BATCH_DECISION
             | KIND_WHATSAPP_SEND_REQUEST
@@ -1521,6 +1550,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_PLAYBOOK_HEAD
             | KIND_NUMBERS_HEAD
             | KIND_CUSTOMER_HEAD
+            | KIND_PAYMENT_LINK_HEAD
+            | KIND_MONEY_CONNECTION_HEAD
             | KIND_COFOUNDER_LEAD_HEAD
     )
 }
@@ -1577,6 +1608,8 @@ const _: () = assert!(is_parameterized_replaceable(KIND_PLAN_HEAD)); // 30673 �
 const _: () = assert!(is_parameterized_replaceable(KIND_PLAYBOOK_HEAD)); // 30677 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_NUMBERS_HEAD)); // 30678 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_CUSTOMER_HEAD)); // 30679 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_PAYMENT_LINK_HEAD)); // 30686 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_CONNECTION_HEAD)); // 30687 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_LEAD_HEAD)); // 30680 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_OUTREACH_LIST_HEAD)); // 30684 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_DISCOVERY_CAMPAIGN_HEAD)); // 30685 ∈ 30000–39999
@@ -1798,6 +1831,29 @@ mod tests {
         assert_eq!(KIND_CUSTOMER_ACTION, 47069);
         assert!((30670..=30679).contains(&KIND_CUSTOMER_HEAD));
         assert!((47060..=47069).contains(&KIND_CUSTOMER_ACTION));
+    }
+
+    #[test]
+    fn money_rails_kinds_have_expected_write_authority() {
+        for head in [KIND_PAYMENT_LINK_HEAD, KIND_MONEY_CONNECTION_HEAD] {
+            assert!(COMPANY_RECORD_KINDS.contains(&head));
+            assert!(is_company_global_kind(head));
+            assert!(is_relay_only_kind(head));
+            assert!(!is_company_command_kind(head));
+            assert!((30686..=30689).contains(&head));
+        }
+        for action in [KIND_PAYMENT_LINK_ACTION, KIND_MONEY_CONNECTION_ACTION] {
+            assert!(COMPANY_RECORD_KINDS.contains(&action));
+            assert!(is_company_global_kind(action));
+            assert!(is_company_command_kind(action));
+            assert!(is_command_kind(action));
+            assert!(!is_relay_only_kind(action));
+            assert!((47077..=47079).contains(&action));
+        }
+        assert_eq!(KIND_PAYMENT_LINK_HEAD, 30686);
+        assert_eq!(KIND_PAYMENT_LINK_ACTION, 47077);
+        assert_eq!(KIND_MONEY_CONNECTION_HEAD, 30687);
+        assert_eq!(KIND_MONEY_CONNECTION_ACTION, 47078);
     }
 
     #[test]
