@@ -707,6 +707,9 @@ pub async fn create_auth_event(
                 .map_err(|error| format!("relay tag failed: {error}"))?,
             Tag::parse(vec!["challenge", &challenge])
                 .map_err(|error| format!("challenge tag failed: {error}"))?,
+            // The relay counts people per app version for the operator admin.
+            Tag::parse(vec!["client", "colony-desktop", env!("CARGO_PKG_VERSION")])
+                .map_err(|error| format!("client tag failed: {error}"))?,
         ];
 
         let event = EventBuilder::new(Kind::Custom(22242), "")

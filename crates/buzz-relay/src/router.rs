@@ -275,6 +275,13 @@ fn is_admin_spa_path(path: &str) -> bool {
         || path.starts_with("/reports/")
         || path == "/feedback"
         || path.starts_with("/feedback/")
+        // Operator boards and the Colony-account sign-in landing page.
+        || path == "/overview"
+        || path == "/businesses"
+        || path.starts_with("/businesses/")
+        || path == "/ai-usage"
+        || path == "/system"
+        || path == "/sign-in"
 }
 
 /// Files served from the admin bundle directory verbatim. `/assets/*` is the

@@ -6,6 +6,10 @@
 
 mod auth;
 mod error;
+mod metrics;
+#[cfg(test)]
+mod metrics_postgres_tests;
+mod session;
 
 use std::sync::Arc;
 
@@ -60,6 +64,8 @@ pub fn router(state: Arc<crate::state::AppState>) -> Router {
         .route("/operators", get(list_operators))
         .route("/operators/{pubkey}", put(upsert_operator))
         .route("/operators/{pubkey}", delete(delete_operator))
+        .merge(metrics::routes())
+        .merge(session::routes())
         .layer(middleware::from_fn(security_headers))
         // Mutation routes carry a JSON body (max ~4 KB); read-only routes have no body.
         .layer(RequestBodyLimitLayer::new(4096))
@@ -1265,7 +1271,7 @@ mod postgres_tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    fn database_url() -> String {
+    pub(super) fn database_url() -> String {
         std::env::var("BUZZ_TEST_DATABASE_URL").unwrap_or_else(|_| {
             "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string() // sadscan:disable np.postgres.1 -- local test-only credentials
         })
@@ -1275,7 +1281,7 @@ mod postgres_tests {
     /// Rostered as a config operator in `test_state()` so `authorized()` can
     /// mint NIP-98 credentials that resolve to an Operator principal without a
     /// DB lookup.
-    fn test_operator_keys() -> nostr::Keys {
+    pub(super) fn test_operator_keys() -> nostr::Keys {
         nostr::Keys::parse("0000000000000000000000000000000000000000000000000000000000000001")
             .expect("valid test secret key")
     }
@@ -1285,11 +1291,11 @@ mod postgres_tests {
     /// Operator principal. The `AlwaysFreshReplayGuard` (via `nip98_state`)
     /// lets repeated signed requests in a single test avoid tripping replay
     /// protection.
-    async fn test_state() -> Arc<crate::state::AppState> {
+    pub(super) async fn test_state() -> Arc<crate::state::AppState> {
         nip98_state(vec![test_operator_keys().public_key().to_hex()]).await
     }
 
-    async fn disabled_mode_state() -> Arc<crate::state::AppState> {
+    pub(super) async fn disabled_mode_state() -> Arc<crate::state::AppState> {
         let mut config = crate::config::Config::from_env().expect("default config loads");
         config.require_relay_membership = false;
         config.redis_url = "redis://127.0.0.1:1".to_string();
@@ -1345,6 +1351,11 @@ mod postgres_tests {
             "/feedback".to_string(),
             format!("/feedback/{id}"),
             format!("/feedback/{id}/attachments/{HASH}"),
+            "/metrics/overview".to_string(),
+            "/metrics/businesses".to_string(),
+            format!("/metrics/businesses/{id}"),
+            "/metrics/ai-usage".to_string(),
+            "/metrics/health".to_string(),
         ]
     }
 
@@ -1354,7 +1365,7 @@ mod postgres_tests {
     /// change the method (e.g. to probe 405 on a read-only route) still pass the
     /// router's method check before any auth code runs, so the GET credential is
     /// fine there.
-    fn authorized(uri: &str) -> axum::http::request::Builder {
+    pub(super) fn authorized(uri: &str) -> axum::http::request::Builder {
         Request::builder()
             .uri(uri)
             .header(header::HOST, "admin.example")
@@ -1364,11 +1375,11 @@ mod postgres_tests {
             )
     }
 
-    fn status_request(builder: axum::http::request::Builder) -> Request<Body> {
+    pub(super) fn status_request(builder: axum::http::request::Builder) -> Request<Body> {
         builder.body(Body::empty()).expect("request")
     }
 
-    async fn status_for(
+    pub(super) async fn status_for(
         state: Arc<crate::state::AppState>,
         request: Request<Body>,
     ) -> axum::response::Response {
@@ -1841,7 +1852,7 @@ mod postgres_tests {
     /// on `admin.example` (the test host). The path should be the handler-level
     /// path (e.g. `/reports`); this helper prefixes it with `ADMIN_API_PREFIX`
     /// to match the canonical URL the auth layer constructs in production.
-    fn make_nostr_auth(keys: &nostr::Keys, path: &str) -> String {
+    pub(super) fn make_nostr_auth(keys: &nostr::Keys, path: &str) -> String {
         use nostr::{EventBuilder, Kind, Tag};
         let url = format!("https://admin.example{ADMIN_API_PREFIX}{path}");
         let tags = vec![

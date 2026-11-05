@@ -596,6 +596,7 @@ pub async fn track_metrics(req: Request, next: Next) -> Response {
 
     let start = Instant::now();
     let response = next.run(req).await;
+    crate::metrics_collect::record_http(&action, response.status().as_u16());
     let status = response.status().as_u16().to_string();
     let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
 
