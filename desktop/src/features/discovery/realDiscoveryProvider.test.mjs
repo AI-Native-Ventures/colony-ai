@@ -7,7 +7,10 @@ import {
   serializeState,
   upsertCampaign,
 } from "./discoveryCampaignStore.ts";
-import { DiscoverySearchError } from "./discoverySearch.ts";
+import {
+  discoveryCoverageKey,
+  DiscoverySearchError,
+} from "./discoverySearch.ts";
 import { resetVerticalTagsForTest, setVerticalTags } from "./taxonomy.ts";
 import {
   buildEndNote,
@@ -214,7 +217,7 @@ test("a run saves each business, posts the best fits in Sales and stops at the a
   const lines = log.posts[0].split("\n");
   assert.equal(
     lines[0],
-    'Found 20 prospects for "Independent brands" (Home Decor & Gift Shops · South Africa). The approved search budget was used after 1 pages. Find more to approve a new budget and continue from the next page. Best fits:',
+    'Found 20 prospects for "Independent brands" (Home Decor & Gift Shops · South Africa). The approved search budget was used after 1 pages. Find more asks you to approve more before this campaign continues from its next saved page. Best fits:',
   );
   assert.equal(lines.length, 6);
   assert.match(lines[1], /^- \[Shop 1\]\(buzz:\/\/lead\/id-p1\)$/);
@@ -289,7 +292,7 @@ test("picked tags take turns with full pages, deduplicate places and persist cur
     ]),
     [
       [20, "provider_end"],
-      [20, "provider_repeat"],
+      [20, "provider_end"],
     ],
   );
 });
@@ -328,7 +331,7 @@ test("owner incident: a provider that repeats its results with three tags stops 
   assert.equal(done.count, 20);
   assert.equal(
     done.endNote,
-    "The search provider repeated places already returned in this campaign, so this query stopped before it could charge twice. Find more or search a nearby area.",
+    "The provider returned only places already seen in this campaign on page 4. The search stopped before another paid request. Find more retries this campaign from its next saved page, or search a nearby area.",
   );
   assert.match(log.posts[0], /^Found 20 prospects /);
   assert.ok(log.posts[0].includes(done.endNote), "the Sales message says why");
@@ -340,7 +343,7 @@ test("owner incident: a provider that repeats its results with three tags stops 
   ]);
 });
 
-test("a provider that repeats its results without tags ends after one wasted page", async () => {
+test("an all-repeat provider page ends without a further paid request", async () => {
   const { controller, log } = harness({ pages: () => page(1, 20, 20) });
   await controller.start({
     ...INPUT,
@@ -352,13 +355,19 @@ test("a provider that repeats its results without tags ends after one wasted pag
   await controller.whenIdle();
   assertPagedByTwenty(log.searches);
   assert.equal(log.searches.length, 2);
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20],
+  );
   const done = controller.getCurrent();
   assert.equal(done.status, "complete");
   assert.equal(done.count, 20);
   assert.equal(
     done.endNote,
-    "The search provider repeated places already returned in this campaign, so this query stopped before it could charge twice. Find more or search a nearby area.",
+    "The provider returned only places already seen in this campaign on page 2. The search stopped before another paid request. Find more retries this campaign from its next saved page, or search a nearby area.",
   );
+  assert.equal(done.runLog.at(-1).repeatedInCampaign, 20);
+  assert.equal(done.runLog.at(-1).stopReason, "provider_repeat");
 });
 
 test("a page made only of existing Leads continues to the next provider page", async () => {
@@ -394,6 +403,228 @@ test("a relay cursor continues past a normalized short page", async () => {
   assert.equal(controller.getCurrent().endReason, "provider_end");
 });
 
+test("owner incident: partial provider overlap keeps paging, saves each new prospect once, and ends only when the relay ends", async () => {
+  // This mirrors the reported real-provider shape. Page one contains nine
+  // businesses already in Leads. Page two shifts two places back from page
+  // one, contains eight new businesses, and contains ten more existing
+  // businesses. That overlap is normal Google Maps pagination, not a loop.
+  const existing = [
+    ...Array.from({ length: 9 }, (_, index) => `id-p${index + 1}`),
+    ...Array.from({ length: 10 }, (_, index) => `id-p${index + 29}`),
+  ];
+  const { controller, log } = harness({
+    existing,
+    pages: (request) => {
+      if (request.skip === 0) return page(1, 20, 20);
+      if (request.skip === 20) {
+        return {
+          provider: "outscraper",
+          places: [
+            place(19),
+            place(20),
+            ...Array.from({ length: 8 }, (_, index) => place(index + 21)),
+            ...Array.from({ length: 10 }, (_, index) => place(index + 29)),
+          ],
+          estimatedCostUsd: 0.06,
+          nextSkip: 40,
+        };
+      }
+      if (request.skip === 40) return page(39, 20, null);
+      assert.fail(`unexpected provider request at skip ${request.skip}`);
+    },
+  });
+
+  await controller.start({ ...INPUT, target: 100 });
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40],
+  );
+  const done = controller.getCurrent();
+  assert.equal(done.count, 39);
+  assert.equal(done.skippedDuplicates, 19);
+  assert.equal(done.endReason, "provider_end");
+  assert.deepEqual(
+    done.runLog.map((entry) => [
+      entry.page,
+      entry.skip,
+      entry.placesReturned,
+      entry.newProspectsSaved,
+      entry.alreadyInLeads,
+      entry.repeatedInCampaign,
+      entry.costUsd,
+      entry.stopReason,
+    ]),
+    [
+      [1, 0, 20, 11, 9, 0, 0.06, null],
+      [2, 20, 20, 8, 10, 2, 0.06, null],
+      [3, 40, 20, 20, 0, 0, 0.06, "provider_end"],
+    ],
+  );
+});
+
+test("a legacy provider-repeat campaign resumes in place from its consumed cursor", async () => {
+  const storageMap = new Map();
+  const location = selectedLocation("Johannesburg");
+  const queryKey = discoveryCoverageKey({
+    verticalId: INPUT.verticalId,
+    location: location.label,
+    locationSelection: location,
+  });
+  // This is the persisted shape from the owner report: two paid pages, 11 new
+  // prospects, a consumed cursor, and the old false provider_repeat terminal.
+  storageMap.set(
+    "test-key",
+    JSON.stringify({
+      version: 2,
+      ownerPubkey: OWNER,
+      currentId: "real-estate-stuck",
+      campaigns: [
+        {
+          id: "real-estate-stuck",
+          name: "Real Estate Agents and Brokers prospects",
+          audience: "businesses",
+          industryId: "real-estate",
+          industryName: "Real Estate",
+          verticalId: INPUT.verticalId,
+          verticalName: "Real Estate Agents and Brokers",
+          pickedTags: [],
+          location: location.label,
+          locationSelection: location,
+          target: 100,
+          count: 11,
+          budgetUsd: 0.3,
+          criteria: "",
+          status: "complete",
+          prospectIds: Array.from(
+            { length: 11 },
+            (_, index) => `id-p${index + 10}`,
+          ),
+          created: true,
+          runBy: { name: "Lerato", pubkey: OWNER },
+          failureReason: null,
+          postedInSales: false,
+          createdAt: 1_700_000_000,
+          skippedDuplicates: 29,
+          seenProviderPlaceIds: Array.from(
+            { length: 40 },
+            (_, index) => `p${index + 1}`,
+          ),
+          spentUsd: 0.12,
+          endReason: "provider_repeat",
+          coverage: [
+            {
+              queryKey,
+              nextSkip: 40,
+              terminalReason: "provider_repeat",
+            },
+          ],
+          skip: 40,
+          tagCursors: [],
+          pendingTagCursors: null,
+          pagesFetched: 2,
+          exhausted: true,
+          pendingPost: false,
+          postState: "none",
+          stopNotePosted: false,
+          topFits: [],
+          pendingPage: null,
+        },
+      ],
+    }),
+  );
+  const { controller, log } = harness({
+    storageMap,
+    pages: (request) => {
+      assert.equal(request.skip, 40);
+      return page(41, 20, null);
+    },
+  });
+
+  const continuation = controller.getContinuation();
+  assert.deepEqual(
+    {
+      campaignId: continuation.campaignId,
+      state: continuation.state,
+      minimumAdditionalBudgetUsd: continuation.minimumAdditionalBudgetUsd,
+      spentUsd: continuation.spentUsd,
+    },
+    {
+      campaignId: "real-estate-stuck",
+      state: "ready",
+      minimumAdditionalBudgetUsd: 0,
+      spentUsd: 0.12,
+    },
+  );
+
+  await controller.continueCampaign();
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [40],
+  );
+  assert.equal(controller.getCampaigns().length, 1);
+  const resumed = controller.getCurrent();
+  assert.equal(resumed.id, "real-estate-stuck");
+  assert.equal(resumed.count, 31);
+  assert.equal(resumed.pagesFetched, 3);
+  assert.equal(resumed.endReason, "provider_end");
+  assert.deepEqual(resumed.runLog, [
+    {
+      page: 3,
+      skip: 40,
+      placesReturned: 20,
+      newProspectsSaved: 20,
+      alreadyInLeads: 0,
+      repeatedInCampaign: 0,
+      costUsd: 0.06,
+      stopReason: "provider_end",
+    },
+  ]);
+});
+
+test("Find more approves budget and keeps the same campaign instead of creating one", async () => {
+  const existing = Array.from(
+    { length: 100 },
+    (_, index) => `id-p${index + 1}`,
+  );
+  const { controller, log } = harness({
+    existing,
+    pages: (request) => {
+      if (request.skip < 100)
+        return page(request.skip + 1, 20, request.skip + 20);
+      if (request.skip === 100) return page(101, 5, null);
+      assert.fail(`unexpected provider request at skip ${request.skip}`);
+    },
+  });
+  const started = await controller.start({ ...INPUT, target: 100 });
+  await controller.whenIdle();
+
+  const exhausted = controller.getCurrent();
+  assert.equal(exhausted.id, started.id);
+  assert.equal(exhausted.count, 0);
+  assert.equal(exhausted.endReason, "approved_budget");
+  const continuation = controller.getContinuation();
+  assert.equal(continuation.state, "approval_required");
+  assert.equal(continuation.minimumAdditionalBudgetUsd, 0.06);
+
+  await controller.continueCampaign(0.06);
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60, 80, 100],
+  );
+  assert.equal(controller.getCampaigns().length, 1);
+  const resumed = controller.getCurrent();
+  assert.equal(resumed.id, started.id);
+  assert.equal(resumed.count, 5);
+  assert.equal(resumed.budgetUsd, 0.36);
+  assert.equal(resumed.endReason, "provider_end");
+});
+
 test("owner incident: 24 existing leads keep paging and never claim Google has no more", async () => {
   const { controller, log } = harness({
     existing: Array.from({ length: 24 }, (_, index) => `id-p${index + 1}`),
@@ -415,7 +646,10 @@ test("owner incident: 24 existing leads keep paging and never claim Google has n
   assert.equal(current.count, 19);
   assert.equal(current.skippedDuplicates, 24);
   assert.equal(current.endReason, "provider_end");
-  assert.match(current.endNote, /^The provider did not offer another page /);
+  assert.match(
+    current.endNote,
+    /^The relay returned nextSkip null after 3 pages /,
+  );
   assert.ok(!current.endNote.includes("Google has no more"));
 });
 
@@ -509,7 +743,7 @@ test("a query that is used up at the provider's 400 places ends honestly with 20
   assert.equal(done.status, "complete");
   assert.match(
     done.endNote,
-    /^This query reached the provider's 400-place limit in Johannesburg\./,
+    /^The relay offered no next page after 20 pages because this query reached the provider's 400-place ceiling in Johannesburg\./,
   );
   assert.ok(log.posts[0].includes(done.endNote));
 });
@@ -559,16 +793,16 @@ test("the end note tells why a run finished short, and is empty when the target 
   };
   assert.equal(
     buildEndNote(base),
-    "The provider did not offer another page for restaurants with these tags in Johannesburg, so this query stopped. Find more in a nearby area or with another tag.",
+    "The relay returned nextSkip null after 5 pages for restaurants with these tags in Johannesburg. The provider did not offer another page. Search a nearby area or use another tag.",
   );
   assert.equal(
     buildEndNote({ ...base, pickedTags: [] }),
-    "The provider did not offer another page for restaurants in Johannesburg, so this query stopped. Find more in a nearby area or with another tag.",
+    "The relay returned nextSkip null after 5 pages for restaurants in Johannesburg. The provider did not offer another page. Search a nearby area or use another tag.",
   );
   assert.equal(buildEndNote({ ...base, count: 100 }), null);
   assert.equal(
     buildEndNote({ ...base, verticalName: "IT support" }),
-    "The provider did not offer another page for IT support with these tags in Johannesburg, so this query stopped. Find more in a nearby area or with another tag.",
+    "The relay returned nextSkip null after 5 pages for IT support with these tags in Johannesburg. The provider did not offer another page. Search a nearby area or use another tag.",
   );
   assert.equal(
     buildEndNote({
@@ -576,7 +810,7 @@ test("the end note tells why a run finished short, and is empty when the target 
       endReason: "approved_budget",
       pagesFetched: MAX_PAGES,
     }),
-    `The approved search budget was used after ${MAX_PAGES} pages. Find more to approve a new budget and continue from the next page.`,
+    `The approved search budget was used after ${MAX_PAGES} pages. Find more asks you to approve more before this campaign continues from its next saved page.`,
   );
   for (const note of [
     buildEndNote(base),
@@ -593,7 +827,10 @@ test("the end note is stored with the campaign and read back", async () => {
   await controller.start({ ...INPUT, target: 100 });
   await controller.whenIdle();
   const saved = stored(storageMap).campaigns[0];
-  assert.match(saved.endNote, /^The provider did not offer another page /);
+  assert.match(
+    saved.endNote,
+    /^The relay returned nextSkip null after 1 pages /,
+  );
   assert.equal(controller.getCurrent().endNote, saved.endNote);
 });
 

@@ -31,7 +31,10 @@ import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
   DiscoveryCampaignProvider,
+  DiscoveryContinuation,
   DiscoveryCoverage,
+  DiscoveryEndReason,
+  DiscoveryPageLog,
   DiscoveryQueryEndReason,
 } from "./discoveryProvider";
 import {
@@ -60,6 +63,11 @@ export const SEARCH_BACKOFF_MS = [1_000, 3_000] as const;
 /** A 20-place provider page is approximately US$0.06. */
 export const BUDGET_USD_PER_PROSPECT = 0.003;
 const PAGE_BUDGET_USD = SEARCH_PAGE_SIZE * BUDGET_USD_PER_PROSPECT;
+const BUDGET_EPSILON_USD = 0.0001;
+
+function roundUsd(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
 
 export type DiscoveryContext = {
   /** The private Sales channel that holds business records. */
@@ -353,23 +361,23 @@ export function buildEndNote(
   const what = inSentence(campaign.verticalName) || "results";
   switch (campaign.endReason) {
     case "provider_repeat":
-      return `The search provider repeated places already returned in this campaign, so this query stopped before it could charge twice. Find more or search a nearby area.`;
+      return `The provider returned only places already seen in this campaign on page ${campaign.pagesFetched}. The search stopped before another paid request. Find more retries this campaign from its next saved page, or search a nearby area.`;
     case "provider_ceiling":
-      return `This query reached the provider's 400-place limit in ${campaign.location}. Find more with another area or tag.`;
+      return `The relay offered no next page after ${campaign.pagesFetched} pages because this query reached the provider's 400-place ceiling in ${campaign.location}. Search a nearby area or use another tag.`;
     case "provider_end": {
       const tagged = (campaign.pickedTags ?? []).length > 0;
       return tagged
-        ? `The provider did not offer another page for ${what} with these tags in ${campaign.location}, so this query stopped. Find more in a nearby area or with another tag.`
-        : `The provider did not offer another page for ${what} in ${campaign.location}, so this query stopped. Find more in a nearby area or with another tag.`;
+        ? `The relay returned nextSkip null after ${campaign.pagesFetched} pages for ${what} with these tags in ${campaign.location}. The provider did not offer another page. Search a nearby area or use another tag.`
+        : `The relay returned nextSkip null after ${campaign.pagesFetched} pages for ${what} in ${campaign.location}. The provider did not offer another page. Search a nearby area or use another tag.`;
     }
     case "approved_budget":
-      return `The approved search budget was used after ${campaign.pagesFetched} pages. Find more to approve a new budget and continue from the next page.`;
+      return `The approved search budget was used after ${campaign.pagesFetched} pages. Find more asks you to approve more before this campaign continues from its next saved page.`;
     case "target_reached":
       return null;
     default:
       return campaign.exhausted
         ? `This saved campaign stopped before reaching its target, but it has no provider end reason. Find more to continue from its cursor or search a nearby area.`
-        : `The approved search budget was used after ${campaign.pagesFetched} pages. Find more to approve a new budget and continue from the next page.`;
+        : `The approved search budget was used after ${campaign.pagesFetched} pages. Find more asks you to approve more before this campaign continues from its next saved page.`;
   }
 }
 
@@ -495,14 +503,19 @@ export function createDiscoveryController(
     );
   }
 
-  /** `fresh` is how many places on the page were new to the campaign and Leads. */
+  /** Each outcome records what this paid page actually added or skipped. */
   type PageOutcome =
     | {
         ok: true;
-        fresh: number;
-        /** Ids that prove whether the upstream repeated this campaign's page. */
+        /** Prospects actually persisted from this provider page. */
+        newProspectsSaved: number;
+        /** Results that were already in Leads when this page was processed. */
+        alreadyInLeads: number;
+        /** Ids that identify overlap with an earlier campaign page. */
         providerPlaceIds: string[];
-        providerRepeated: boolean;
+        repeatedInCampaign: number;
+        /** Only a page made entirely of prior campaign ids is a provider loop. */
+        providerLooped: boolean;
       }
     | { ok: false; error: unknown };
 
@@ -520,9 +533,11 @@ export function createDiscoveryController(
     if (!campaign) {
       return {
         ok: true,
-        fresh: 0,
+        newProspectsSaved: 0,
+        alreadyInLeads: 0,
         providerPlaceIds: [],
-        providerRepeated: false,
+        repeatedInCampaign: 0,
+        providerLooped: false,
       };
     }
     const nowSeconds = deps.nowSeconds();
@@ -536,15 +551,17 @@ export function createDiscoveryController(
         ),
       ),
     ];
-    // This is intentionally different from an existing Lead. Only an id the
-    // provider already returned to *this campaign* proves that its cursor has
-    // looped. Existing Leads are skipped but the next paid page can still hold
-    // new businesses.
-    const providerRepeated = providerPlaceIds.some((id) =>
+    // Google Maps pages can overlap when its ordering shifts. A partial overlap
+    // is normal and is only deduplicated. It is a loop only when every provider
+    // id on the page was already returned to this campaign.
+    const repeatedInCampaign = providerPlaceIds.filter((id) =>
       previousProviderIds.has(id),
-    );
+    ).length;
+    const providerLooped =
+      providerPlaceIds.length > 0 &&
+      repeatedInCampaign === providerPlaceIds.length;
     const fresh: Array<{ id: string; place: DiscoveryPlace }> = [];
-    let duplicates = 0;
+    let alreadyInLeads = 0;
     for (const place of response.places) {
       const id = await deps.prospectId(place);
       if (own.has(id) || seen.has(id)) continue;
@@ -553,7 +570,7 @@ export function createDiscoveryController(
         context.existingProspectIds.has(id) ||
         context.existingNames.has(leadNameKey(place.name))
       ) {
-        duplicates += 1;
+        alreadyInLeads += 1;
         continue;
       }
       fresh.push({ id, place });
@@ -562,6 +579,7 @@ export function createDiscoveryController(
     const queue = fresh.slice(0, room);
 
     let failure: unknown = null;
+    let newProspectsSaved = 0;
     for (
       let index = 0;
       index < queue.length && failure === null && !run.abort.signal.aborted;
@@ -598,17 +616,18 @@ export function createDiscoveryController(
           const { id, name, outcome, place } = result.value;
           if (outcome === "created") {
             recordSaved(run, context, id, name, fitScore(place));
+            newProspectsSaved += 1;
           } else {
             context.existingProspectIds.add(id);
-            duplicates += 1;
+            alreadyInLeads += 1;
           }
         }
       }
     }
-    if (duplicates > 0) {
+    if (alreadyInLeads > 0) {
       patch(run.campaignId, (existing) => ({
         ...existing,
-        skippedDuplicates: existing.skippedDuplicates + duplicates,
+        skippedDuplicates: existing.skippedDuplicates + alreadyInLeads,
       }));
     }
     if (failure !== null && !isAbortError(failure)) {
@@ -616,9 +635,11 @@ export function createDiscoveryController(
     }
     return {
       ok: true,
-      fresh: fresh.length,
+      newProspectsSaved,
+      alreadyInLeads,
       providerPlaceIds,
-      providerRepeated,
+      repeatedInCampaign,
+      providerLooped,
     };
   }
 
@@ -642,6 +663,15 @@ export function createDiscoveryController(
     }));
   }
 
+  function markLastPageStop(
+    pageLog: DiscoveryPageLog[],
+    stopReason: DiscoveryEndReason,
+  ): DiscoveryPageLog[] {
+    const last = pageLog.at(-1);
+    if (!last) return pageLog;
+    return [...pageLog.slice(0, -1), { ...last, stopReason }];
+  }
+
   async function runLoop(
     run: ActiveRun,
     context: DiscoveryContext,
@@ -657,6 +687,7 @@ export function createDiscoveryController(
             patch(run.campaignId, (existing) => ({
               ...existing,
               endReason: "target_reached",
+              pageLog: markLastPageStop(existing.pageLog, "target_reached"),
             }));
           }
           await finish(run, context);
@@ -674,6 +705,7 @@ export function createDiscoveryController(
             ...existing,
             exhausted: true,
             endReason: "approved_budget",
+            pageLog: markLastPageStop(existing.pageLog, "approved_budget"),
           }));
           await finish(run, context);
           return;
@@ -706,9 +738,9 @@ export function createDiscoveryController(
         }
         // Only a fully saved page moves the cursor, so a retry never skips
         // places that were found but not saved. Existing Leads do not end a
-        // query: their next page can still hold new prospects. A repeated
-        // provider id is different evidence: stop that stream before paying
-        // for another copy of the same results.
+        // query: their next page can still hold new prospects. A page is a
+        // loop only when every provider id on it was previously returned to
+        // this campaign, so a normal partial overlap continues to its cursor.
         const next = responseCursor(response);
         patch(run.campaignId, (existing) => {
           const moved = existing.pendingTagCursors ?? page.tagCursors;
@@ -723,7 +755,7 @@ export function createDiscoveryController(
           // exact provider query that was asked.
           const providerEnded =
             asked === null ? next === null : moved[asked] === null;
-          const pageReason = outcome.providerRepeated
+          const pageReason = outcome.providerLooped
             ? "provider_repeat"
             : providerEnded
               ? response.places.length >= SEARCH_PAGE_SIZE &&
@@ -738,6 +770,7 @@ export function createDiscoveryController(
           const exhausted = tagged
             ? !tagCursors.some(cursorHasPages)
             : pageReason !== null;
+          const reachedTarget = existing.count >= existing.target;
           const coverageNext = requestedSkip + SEARCH_PAGE_SIZE;
           const coverageTerminalReason =
             pageReason === "provider_end" ||
@@ -757,6 +790,17 @@ export function createDiscoveryController(
               ...outcome.providerPlaceIds,
             ]),
           ].slice(-QUERY_PLACE_CEILING);
+          const stopReason = reachedTarget ? "target_reached" : pageReason;
+          const pageLog: DiscoveryPageLog = {
+            page: existing.pagesFetched + 1,
+            skip: requestedSkip,
+            placesReturned: response.places.length,
+            newProspectsSaved: outcome.newProspectsSaved,
+            alreadyInLeads: outcome.alreadyInLeads,
+            repeatedInCampaign: outcome.repeatedInCampaign,
+            costUsd: response.estimatedCostUsd,
+            stopReason,
+          };
           return {
             ...existing,
             skip: next ?? existing.skip + SEARCH_PAGE_SIZE,
@@ -766,9 +810,14 @@ export function createDiscoveryController(
               Math.round(
                 (existing.spentUsd + response.estimatedCostUsd) * 10_000,
               ) / 10_000,
-            endReason: exhausted ? pageReason : null,
+            endReason: reachedTarget
+              ? "target_reached"
+              : exhausted
+                ? pageReason
+                : null,
             coverage,
             seenProviderPlaceIds,
+            pageLog: [...existing.pageLog, pageLog].slice(-MAX_PAGES),
             pendingPage: null,
             tagCursors,
             pendingTagCursors: null,
@@ -914,6 +963,253 @@ export function createDiscoveryController(
     return run;
   }
 
+  function cappedCursor(cursor: number): number {
+    return Math.min(QUERY_PLACE_CEILING, Math.max(0, cursor));
+  }
+
+  function continuationCursors(campaign: StoredCampaign): {
+    skip: number;
+    tagCursors: Array<number | null>;
+    coverage: DiscoveryCoverage[];
+  } {
+    const keys = discoveryCoverageKeys({
+      verticalId: campaign.verticalId,
+      pickedTags: campaign.pickedTags,
+      location: campaign.location,
+      locationSelection: campaign.locationSelection,
+    });
+    const priorCoverage = new Map(
+      campaign.coverage.map((entry) => [entry.queryKey, entry]),
+    );
+    const wasProviderRepeat = new Set(
+      campaign.coverage
+        .filter((entry) => entry.terminalReason === "provider_repeat")
+        .map((entry) => entry.queryKey),
+    );
+    const coverage = campaign.coverage.map((entry) =>
+      entry.terminalReason === "provider_repeat"
+        ? { ...entry, terminalReason: null }
+        : { ...entry },
+    );
+    const tagged = (campaign.pickedTags ?? []).length > 0;
+    if (!tagged) {
+      const skip = cappedCursor(campaign.pagesFetched * SEARCH_PAGE_SIZE);
+      const queryKey = keys[0];
+      const index = coverage.findIndex((entry) => entry.queryKey === queryKey);
+      const resumed = { queryKey, nextSkip: skip, terminalReason: null };
+      if (index >= 0) coverage[index] = resumed;
+      else coverage.push(resumed);
+      return { skip, tagCursors: [], coverage };
+    }
+
+    const tagCursors = (campaign.pickedTags ?? []).map((_, index) => {
+      const queryKey = keys[index];
+      const coverageEntry = queryKey ? priorCoverage.get(queryKey) : null;
+      if (queryKey && wasProviderRepeat.has(queryKey)) {
+        return cappedCursor(coverageEntry?.nextSkip ?? 0);
+      }
+      return campaign.tagCursors[index] ?? null;
+    });
+    // Very old records did not retain coverage. Recover the tag that was most
+    // recently asked from its saved turn count rather than discarding the run.
+    if (!tagCursors.some(cursorHasPages)) {
+      const index = Math.max(0, campaign.pagesFetched - 1) % tagCursors.length;
+      const queryKey = keys[index];
+      const cursor = cappedCursor(campaign.pagesFetched * SEARCH_PAGE_SIZE);
+      tagCursors[index] = cursor;
+      if (queryKey) {
+        const coverageIndex = coverage.findIndex(
+          (entry) => entry.queryKey === queryKey,
+        );
+        const resumed = { queryKey, nextSkip: cursor, terminalReason: null };
+        if (coverageIndex >= 0) coverage[coverageIndex] = resumed;
+        else coverage.push(resumed);
+      }
+    }
+    return {
+      skip: campaign.skip,
+      tagCursors,
+      coverage,
+    };
+  }
+
+  function pagesAvailableForContinuation(
+    campaign: StoredCampaign,
+    tagCursors: Array<number | null>,
+    skip: number,
+  ): number {
+    const tagged = (campaign.pickedTags ?? []).length > 0;
+    const cursorPages: number = tagged
+      ? tagCursors.reduce<number>(
+          (total, cursor) =>
+            total +
+            (cursorHasPages(cursor)
+              ? Math.ceil(
+                  (QUERY_PLACE_CEILING - (cursor ?? 0)) / SEARCH_PAGE_SIZE,
+                )
+              : 0),
+          0,
+        )
+      : cursorHasPages(skip)
+        ? Math.ceil((QUERY_PLACE_CEILING - skip) / SEARCH_PAGE_SIZE)
+        : 0;
+    return Math.max(
+      0,
+      Math.min(MAX_PAGES - campaign.pagesFetched, cursorPages),
+    );
+  }
+
+  function continuationFor(
+    campaign: StoredCampaign,
+  ): DiscoveryContinuation | null {
+    if (campaign.count >= campaign.target || campaign.status !== "complete") {
+      return null;
+    }
+    const remainingTarget = Math.max(0, campaign.target - campaign.count);
+    const isFalseRepeat = campaign.endReason === "provider_repeat";
+    const cursors = isFalseRepeat
+      ? continuationCursors(campaign)
+      : {
+          skip: campaign.skip,
+          tagCursors: [...campaign.tagCursors],
+          coverage: campaign.coverage,
+        };
+    const pagesAtProviderCeiling = pagesAvailableForContinuation(
+      campaign,
+      cursors.tagCursors,
+      cursors.skip,
+    );
+    const estimatedPages = Math.min(
+      pagesAtProviderCeiling,
+      Math.max(1, Math.ceil(remainingTarget / SEARCH_PAGE_SIZE)),
+    );
+    const estimatedCostUsd = roundUsd(estimatedPages * PAGE_BUDGET_USD);
+    const approvedRemainingUsd = Math.max(
+      0,
+      roundUsd(campaign.budgetUsd - campaign.spentUsd),
+    );
+    const minimumAdditionalBudgetUsd = roundUsd(
+      Math.max(0, PAGE_BUDGET_USD - approvedRemainingUsd),
+    );
+    const recommendedAdditionalBudgetUsd = roundUsd(
+      Math.max(
+        minimumAdditionalBudgetUsd,
+        estimatedCostUsd - approvedRemainingUsd,
+      ),
+    );
+    const base = {
+      campaignId: campaign.id,
+      remainingTarget,
+      pagesAtProviderCeiling,
+      spentUsd: campaign.spentUsd,
+      approvedBudgetUsd: campaign.budgetUsd,
+      minimumAdditionalBudgetUsd,
+      recommendedAdditionalBudgetUsd,
+      estimatedPages,
+      estimatedCostUsd,
+    };
+    if (campaign.endReason === "provider_end") {
+      return {
+        ...base,
+        state: "unavailable",
+        message: `The relay returned nextSkip null after ${campaign.pagesFetched} pages, so this provider query has no next page. Search a nearby area starts a new campaign.`,
+      };
+    }
+    if (
+      campaign.endReason === "provider_ceiling" ||
+      pagesAtProviderCeiling === 0
+    ) {
+      return {
+        ...base,
+        state: "unavailable",
+        message:
+          "This query has reached the relay's 400-place provider ceiling. Search a nearby area starts a new campaign.",
+      };
+    }
+    if (
+      campaign.endReason !== "provider_repeat" &&
+      campaign.endReason !== "approved_budget"
+    ) {
+      return null;
+    }
+    return {
+      ...base,
+      state:
+        minimumAdditionalBudgetUsd > BUDGET_EPSILON_USD
+          ? "approval_required"
+          : "ready",
+      message: null,
+    };
+  }
+
+  async function continueCurrent(additionalBudgetUsd?: number): Promise<void> {
+    const target = findCampaign(state, state.currentId);
+    const continuation = target ? continuationFor(target) : null;
+    if (!target || !continuation) return;
+    if (continuation.state === "unavailable") {
+      throw new Error(continuation.message ?? GENERIC_STOP_REASON);
+    }
+    const requestedAdditional =
+      additionalBudgetUsd === undefined ? 0 : additionalBudgetUsd;
+    if (
+      !Number.isFinite(requestedAdditional) ||
+      requestedAdditional < 0 ||
+      (continuation.state === "approval_required" &&
+        requestedAdditional + BUDGET_EPSILON_USD <
+          continuation.minimumAdditionalBudgetUsd)
+    ) {
+      throw new Error(
+        `Approve at least ${continuation.minimumAdditionalBudgetUsd.toFixed(2)} more to cover the next provider page.`,
+      );
+    }
+    const context = await deps.resolveContext();
+    if (disposed) return;
+    ensureOwner(context.pubkey);
+    const fresh = findCampaign(state, target.id);
+    const freshContinuation = fresh ? continuationFor(fresh) : null;
+    if (
+      !fresh ||
+      !freshContinuation ||
+      freshContinuation.state === "unavailable"
+    ) {
+      return;
+    }
+    if (active && active.campaignId !== fresh.id) stopActive("paused");
+    const cursorState =
+      fresh.endReason === "provider_repeat"
+        ? continuationCursors(fresh)
+        : {
+            skip: fresh.skip,
+            tagCursors: [...fresh.tagCursors],
+            coverage: fresh.coverage.map((entry) => ({ ...entry })),
+          };
+    patch(fresh.id, (campaign) => ({
+      ...campaign,
+      budgetUsd: roundUsd(campaign.budgetUsd + requestedAdditional),
+      status: "running",
+      failureReason: null,
+      exhausted: false,
+      endReason: null,
+      endNote: null,
+      skip: cursorState.skip,
+      tagCursors: cursorState.tagCursors,
+      coverage: cursorState.coverage,
+    }));
+    const resumed = findCampaign(state, fresh.id);
+    if (!resumed) return;
+    beginRun(
+      resumed.id,
+      context,
+      resumed.pendingPage
+        ? {
+            response: resumed.pendingPage,
+            tagCursors: resumed.pendingTagCursors ?? resumed.tagCursors,
+          }
+        : null,
+    );
+    void flushPendingPosts();
+  }
+
   async function resumeCurrent(from: "paused" | "failed"): Promise<void> {
     const target = findCampaign(state, state.currentId);
     if (!target || target.status !== from) return;
@@ -975,6 +1271,12 @@ export function createDiscoveryController(
   const controller: DiscoveryController = {
     getCurrent: current,
     getCampaigns: () => state.campaigns.map(toPublicCampaign),
+    getContinuation: () => {
+      const campaign = findCampaign(state, state.currentId);
+      return campaign ? continuationFor(campaign) : null;
+    },
+    continueCampaign: (additionalBudgetUsd) =>
+      continueCurrent(additionalBudgetUsd),
 
     async select(campaignId) {
       if (state.currentId === campaignId) return;
@@ -1087,6 +1389,7 @@ export function createDiscoveryController(
           ? null
           : (initialCoverage.find((cursor) => cursor.terminalReason)
               ?.terminalReason ?? "provider_ceiling"),
+        pageLog: [],
         coverage: initialCoverage,
         skip: initialSkip,
         tagCursors: initialTagCursors,

@@ -166,6 +166,20 @@ async function searchCalls(page: Page) {
   );
 }
 
+async function campaignStorage(page: Page) {
+  return page.evaluate(() => {
+    const raw = window.localStorage.getItem(
+      "colony:discovery-campaigns:v1:e2e-default-community",
+    );
+    return raw
+      ? (JSON.parse(raw) as {
+          currentId: string;
+          campaigns: Array<{ id: string }>;
+        })
+      : null;
+  });
+}
+
 async function seedTheme(page: Page, dark: boolean) {
   await page.emulateMedia({ colorScheme: dark ? "dark" : "light" });
   await page.addInitScript(
@@ -181,7 +195,7 @@ test.beforeEach(async ({ page }) => {
   await installDiscoveryImageMocks(page);
 });
 
-test("same industry and city continue past existing leads, then Find more resumes the stopped cursor", async ({
+test("Find more approves extra budget and resumes the same campaign in place", async ({
   page,
 }) => {
   await openDiscovery(page);
@@ -207,14 +221,28 @@ test("same industry and city continue past existing leads, then Find more resume
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
     0, 20, 40, 60, 80,
   ]);
+  const beforeFindMore = await campaignStorage(page);
+  expect(beforeFindMore?.campaigns).toHaveLength(1);
+  expect(beforeFindMore?.currentId).toBe(beforeFindMore?.campaigns[0]?.id);
 
   await page.getByRole("button", { name: /Find more/ }).click();
-  const moreDialog = page.getByTestId("discovery-campaign-dialog");
+  const moreDialog = page.getByTestId("discovery-continuation-dialog");
   await expect(moreDialog).toBeVisible();
   await expect(
-    moreDialog.getByText(/Selected Johannesburg, Gauteng, South Africa/),
+    moreDialog.getByRole("heading", { name: "Approve more search budget." }),
   ).toBeVisible();
-  await approve(moreDialog);
+  await expect(
+    moreDialog.getByText(/\$0\.30 of \$0\.30 approved/),
+  ).toBeVisible();
+  await expect(
+    moreDialog.getByLabel("Additional budget to approve"),
+  ).toHaveValue("0.30");
+  await moreDialog
+    .getByRole("checkbox", {
+      name: "I approve this additional search budget for the same campaign.",
+    })
+    .check();
+  await moreDialog.getByRole("button", { name: /Approve & continue/ }).click();
 
   await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
     timeout: 20_000,
@@ -225,8 +253,11 @@ test("same industry and city continue past existing leads, then Find more resume
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
     0, 20, 40, 60, 80, 100,
   ]);
+  const afterFindMore = await campaignStorage(page);
+  expect(afterFindMore?.campaigns).toHaveLength(1);
+  expect(afterFindMore?.currentId).toBe(beforeFindMore?.currentId);
   await expect(
-    page.getByText(/Search cost.*\$0\.06.*\$0\.30 approved/),
+    page.getByText(/Search cost.*\$0\.36.*\$0\.60 approved/),
   ).toBeVisible();
 });
 
