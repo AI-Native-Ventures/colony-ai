@@ -114,6 +114,15 @@ export function resolveMentionProps(
     entry.keys.add(key);
     aliases.set(normalized, entry);
   };
+  const qualified: Array<{
+    displayName: string;
+    pubkey: string;
+    base: string;
+  }> = [];
+  const addQualified = (displayName: string, pubkey: string, base: string) => {
+    add(displayName, pubkey);
+    qualified.push({ displayName, pubkey, base: base.toLowerCase() });
+  };
   for (const key of taggedKeys) {
     for (const alias of collectProfileAliases(profiles?.[key])) add(alias, key);
   }
@@ -135,7 +144,7 @@ export function resolveMentionProps(
       profileLabel(profiles?.[ownerPubkey]) ?? "teammate",
     );
     for (const alias of collectProfileAliases(profile)) {
-      add(`${alias} (${ownerSuffix})`, key);
+      addQualified(`${alias} (${ownerSuffix})`, key, alias);
       const groupKey = `${alias.toLowerCase()}:${ownerPubkey}`;
       const group = sameOwnerAliases.get(groupKey) ?? [];
       group.push({ alias, key, ownerSuffix });
@@ -147,18 +156,17 @@ export function resolveMentionProps(
     for (const [index, item] of [...group]
       .sort((left, right) => left.key.localeCompare(right.key))
       .entries()) {
-      add(`${item.alias} (${item.ownerSuffix}) ${index + 1}`, item.key);
+      addQualified(
+        `${item.alias} (${item.ownerSuffix}) ${index + 1}`,
+        item.key,
+        item.alias,
+      );
     }
   }
 
   // Only event-tagged identities can supply qualified bindings. The body is not
   // an authority to add recipients. Keep the historical literal label even if
   // its profile has since been renamed or is not loaded.
-  const qualified: Array<{
-    displayName: string;
-    pubkey: string;
-    base: string;
-  }> = [];
   for (const match of content.matchAll(
     /@([^@\r\n]+) \(([0-9a-f]{64})\)(?: ((?:[1-9][0-9]+|[2-9])))?/gi,
   )) {
@@ -171,8 +179,7 @@ export function resolveMentionProps(
       )
     )
       continue;
-    qualified.push({ displayName, pubkey, base: match[1].toLowerCase() });
-    add(displayName, pubkey);
+    addQualified(displayName, pubkey, match[1]);
   }
 
   // Qualification can narrow an ambiguous base only when that literal is itself
@@ -192,8 +199,9 @@ export function resolveMentionProps(
   for (const [label, entry] of aliases) {
     let keys = [...entry.keys];
     if (keys.length > 1) {
-      // A selected second Scout is explicitly qualified. Only a unique remaining
-      // Scout can own the unqualified label; tag iteration order is irrelevant.
+      // A visible owner-qualified or legacy literal has already claimed its
+      // identity. Only a unique remaining Scout can own the unqualified label,
+      // so tag iteration order remains irrelevant.
       keys = keys.filter(
         (key) =>
           !ownedQualified.some(

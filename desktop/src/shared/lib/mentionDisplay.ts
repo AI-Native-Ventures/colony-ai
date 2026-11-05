@@ -2,11 +2,16 @@ function safeMentionDisplayLabel(
   label: string,
   _pubkey: string | undefined,
 ): string {
-  const rawIdentity = /(?:[0-9a-f]{40,}|npub1[0-9a-z]+)/i;
+  const rawIdentity =
+    /(?:[0-9a-f]{40,}|[0-9a-f]{6,}(?:\.\.\.|\u2026)[0-9a-f]{2,}|npub1[0-9a-z.\u2026-]*)/i;
   const qualified = label.match(
-    /^(.*) \((?:[0-9a-f]{40,}|npub1[0-9a-z]+)\)((?: (?:[2-9]|[1-9][0-9]+))?)$/i,
+    /^(.*) \((?:[0-9a-f]{40,}|[0-9a-f]{6,}(?:\.\.\.|\u2026)[0-9a-f]{2,}|npub1[0-9a-z.\u2026-]*)\)((?: (?:[2-9]|[1-9][0-9]+))?)$/i,
   );
-  if (label.match(/^\s*(?:[0-9a-f]{40,}|npub1[0-9a-z]+)\s*$/i)) {
+  if (
+    label.match(
+      /^\s*(?:[0-9a-f]{40,}|[0-9a-f]{6,}(?:\.\.\.|\u2026)[0-9a-f]{2,}|npub1[0-9a-z.\u2026-]*)\s*$/i,
+    )
+  ) {
     return "AI employee";
   }
   if (!qualified) return label.replace(rawIdentity, "AI employee");

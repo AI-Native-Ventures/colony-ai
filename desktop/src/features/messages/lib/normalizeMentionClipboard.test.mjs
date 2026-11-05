@@ -268,28 +268,31 @@ test("an ordinary chip still flattens to a registrable mention", () => {
 
 test("compact mention paste expands only complete bound labels", () => {
   const key = `150b20bd${"a".repeat(52)}15dc`;
-  const label = `Scout (${key}) 2`;
+  const rawLabel = `Scout (${key}) 2`;
+  const safeLabel = "Scout (teammate) 2";
   const html = (text) =>
     `<span data-mention="" data-mention-pubkey="${key}" ` +
-    `data-mention-label="${label}">${text}</span>`;
+    `data-mention-label="${rawLabel}">${text}</span>`;
   // Today's chip text renders the key as npub…
-  assert.equal(
-    normalizeMentionClipboardContent(html("Scout (npub1z59…zwkg) 2")).text,
-    `@${label}`,
-  );
-  // …and a whole chip copied before that switch still carries the hex
-  // compact, which must keep expanding to the exact declared identity.
-  assert.equal(
-    normalizeMentionClipboardContent(html("Scout (150b20bd…15dc) 2")).text,
-    `@${label}`,
-  );
-  // A dropped collision suffix — in either form — is a partial chip.
-  assert.equal(
-    normalizeMentionClipboardContent(html("Scout (npub1z59…zwkg)")).text,
-    "Scout (npub1z59…zwkg)",
-  );
-  assert.equal(
-    normalizeMentionClipboardContent(html("Scout (150b20bd…15dc)")).text,
-    "Scout (150b20bd…15dc)",
-  );
+  for (const compact of [
+    "Scout (npub1z59…zwkg) 2",
+    "Scout (150b20bd…15dc) 2",
+  ]) {
+    const content = normalizeMentionClipboardContent(html(compact));
+    assert.equal(content.text, `@${safeLabel}`);
+    assert.doesNotMatch(content.text, /(?:npub1|[0-9a-f]{40,})/i);
+    assert.deepEqual(
+      visibleIdentities(html(compact), content.text).map(
+        (record) => record.pubkey,
+      ),
+      [key],
+    );
+  }
+  // A dropped collision suffix is a partial chip, so it remains unbound but
+  // its old compact key is still never surfaced to the composer.
+  for (const compact of ["Scout (npub1z59…zwkg)", "Scout (150b20bd…15dc)"]) {
+    const content = normalizeMentionClipboardContent(html(compact));
+    assert.equal(content.text, "Scout (teammate)");
+    assert.doesNotMatch(content.text, /(?:npub1|[0-9a-f]{40,})/i);
+  }
 });
