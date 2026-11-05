@@ -37,10 +37,10 @@ pub mod lifecycle;
 pub mod mesh_boot;
 /// Prometheus metrics: recorder, upkeep, HTTP middleware.
 pub mod metrics;
-/// Money rails: payment links from any provider (connections, recipes, notices, jobs).
-pub mod money_rails;
 /// Operator admin metrics: live collectors and the rollup job (counts only).
 pub mod metrics_collect;
+/// Money rails: payment links from any provider (connections, recipes, notices, jobs).
+pub mod money_rails;
 /// NIP-11 relay information document.
 pub mod nip11;
 /// Facts the co-founder scorecard counts, read from the company's own records.
