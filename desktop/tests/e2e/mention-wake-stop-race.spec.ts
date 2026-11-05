@@ -39,6 +39,8 @@ test.describe("an agent woken for a mention whose harness is gone before it answ
 
     const sentAt = await pageNowSeconds(page);
     await mentionScout(page, "are you there?");
+    await expect.poll(async () => (await readStartCalls(page)).length).toBe(1);
+    await expect(indicator(page)).toHaveAttribute("data-state", "starting");
     await advance(page, 3 * SECOND);
     await expect(indicator(page)).toHaveAttribute("data-state", "starting");
     expect(await readStartCalls(page)).toHaveLength(1);
@@ -65,6 +67,8 @@ test.describe("GATE-304: the harness queued the mention and was stopped before i
 
     const sentAt = await pageNowSeconds(page);
     await mentionScout(page, "are you there?");
+    await expect.poll(async () => (await readStartCalls(page)).length).toBe(1);
+    await expect(indicator(page)).toHaveAttribute("data-state", "starting");
     await advance(page, 3 * SECOND);
     await expect(indicator(page)).toHaveAttribute("data-state", "starting");
     expect(await readStartCalls(page)).toHaveLength(1);
@@ -106,6 +110,8 @@ test.describe("GATE-304: the harness queued the mention and was stopped before i
     await openGeneral(page);
 
     await mentionScout(page, "are you there?");
+    await expect.poll(async () => (await readStartCalls(page)).length).toBe(1);
+    await expect(indicator(page)).toHaveAttribute("data-state", "starting");
     await advance(page, 3 * SECOND);
     const mentionId = await lastMessageId(page);
     await reactAsAgent(page, mentionId, "👀");
@@ -144,6 +150,8 @@ test.describe("GATE-304: the harness queued the mention and was stopped before i
     await openGeneral(page);
 
     await mentionScout(page, "are you there?");
+    await expect.poll(async () => (await readStartCalls(page)).length).toBe(1);
+    await expect(indicator(page)).toHaveAttribute("data-state", "starting");
     await advance(page, 3 * SECOND);
     const mentionId = await lastMessageId(page);
     // 💬: the turn began, so the model may have acted on the mention.
