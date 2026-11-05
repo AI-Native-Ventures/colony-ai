@@ -111,6 +111,7 @@ export type {
   ProvisionChannelManagedAgentResult,
 } from "@/features/agents/channelAgents";
 
+// Keeps the affected-agent E2E plan enabled for this CI-debt repair.
 export const AGENTS_FOCUS_STALE_TIME_MS = 5 * 60_000;
 
 /**
