@@ -305,7 +305,12 @@ export async function createElectronBrowserAgentHost({
       if (!pending) return { resolved: false };
       ownedGrant(pending.grantId, senderId);
     } else if (
-      !["agent-pending", "agent-log", "agent-grants"].includes(action)
+      ![
+        "agent-pending",
+        "agent-log",
+        "agent-grants",
+        "agent-access-requests",
+      ].includes(action)
     ) {
       ownedGrant(payload.grantId, senderId);
       if (packagedGate && action === "agent-approve-origin")
@@ -326,6 +331,8 @@ export async function createElectronBrowserAgentHost({
       return host.broker
         .pendingConfirmations()
         .filter((entry) => adapter.ownedBy(entry.tabId, senderId));
+    if (action === "agent-access-requests")
+      return host.handleRequest(action, payload);
     if (action === "agent-log") {
       if (payload.grantId) ownedGrant(payload.grantId, senderId);
       return (await host.handleRequest(action, payload)).filter((entry) =>
@@ -393,7 +400,14 @@ export function createBrowserBrokerIpcHandler({ windows, trusted, getHost }) {
       // The app is quitting while its window still refreshes the controls.
       // There is nothing to report, so say so instead of logging an error.
       if (action === "agent-status") return { enabled: false };
-      if (["agent-grants", "agent-pending", "agent-log"].includes(action))
+      if (
+        [
+          "agent-grants",
+          "agent-pending",
+          "agent-log",
+          "agent-access-requests",
+        ].includes(action)
+      )
         return [];
     }
     return host.handleRequest(action, payload, event.sender.id);

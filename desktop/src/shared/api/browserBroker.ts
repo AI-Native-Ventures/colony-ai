@@ -70,6 +70,8 @@ export type BrowserBrokerEvent =
   | {
       /** An agent has no browser yet. `resume` is true after the person stopped it. */
       type: "access-requested";
+      /** Stable across the live event and its retained renderer replay. */
+      accessRequestId?: string;
       agentId: string;
       taskId: string;
       communityOrigin: string;
@@ -84,6 +86,12 @@ export type BrowserBrokerEvent =
     }
   | { type: "agent-action"; entry: BrowserActionEntry }
   | { type: "control-recovery"; tabId: string; required: boolean };
+
+/** A retained first-call request which the renderer may have missed live. */
+export type BrowserAccessRequest = Extract<
+  BrowserBrokerEvent,
+  { type: "access-requested" }
+>;
 
 export type BrowserBrokerBridge = {
   request(action: string, payload?: object): Promise<unknown>;
@@ -126,6 +134,9 @@ export const browserBroker = {
   grant: (payload: BrowserGrantRequest) =>
     request<BrowserGrant>("agent-grant", payload),
   grants: () => request<BrowserGrant[]>("agent-grants"),
+  /** Durable first-call events, replayed after a late renderer subscribes. */
+  accessRequests: () =>
+    request<BrowserAccessRequest[]>("agent-access-requests"),
   revoke: (grantId: string) =>
     request<{ revoked: boolean }>("agent-revoke", { grantId }),
   takeOver: (grantId: string) =>

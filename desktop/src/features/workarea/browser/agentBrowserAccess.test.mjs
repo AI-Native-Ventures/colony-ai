@@ -15,7 +15,6 @@ import {
 import {
   DEFAULT_ACCESS_TTL_MS,
   allowAgentAccess,
-  dismissAgentAccessRequest,
   getWaitingAgentAccess,
   resetAgentBrowserAccess,
   startAgentBrowserAccess,
@@ -98,6 +97,7 @@ function fakeHost() {
 function fakeBroker() {
   let listener = null;
   const grants = [];
+  let pending = [];
   const api = {
     grants,
     failNext: 0,
@@ -114,6 +114,12 @@ function fakeBroker() {
         throw new Error("This tab already has an active browser task");
       }
       return { id: `grant-${grants.length}` };
+    },
+    async accessRequests() {
+      return structuredClone(pending);
+    },
+    setPending(requests) {
+      pending = structuredClone(requests);
     },
     emit: (event) => listener?.(event),
     listening: () => listener !== null,
@@ -305,6 +311,36 @@ test("a thread task makes its page in its channel and leaves the dock shut", asy
   assert.equal(broker.grants[0].taskId, `thread:${CHANNEL}:${root}`);
 });
 
+test("a late renderer recovers pending first calls for channel, thread and DM scopes with the dock closed", async () => {
+  const threadRoot = "cd".repeat(32);
+  const dm = "22345678-1234-4234-8234-123456789abc";
+  const scoutTwo = "b".repeat(64);
+  resetAgentBrowserAccess();
+  broker.setPending([
+    ask(),
+    ask({ agentId: scoutTwo, taskId: `thread:${CHANNEL}:${threadRoot}` }),
+    ask({ agentId: scoutTwo, taskId: `conversation:${dm}` }),
+  ]);
+  startAgentBrowserAccess({
+    businessId: "community-a",
+    communityOrigin: COMMUNITY,
+    api: broker,
+  });
+
+  await settle();
+
+  assert.deepEqual(
+    broker.grants.map((grant) => [grant.agentId, grant.taskId]),
+    [
+      [AGENT, `conversation:${CHANNEL}`],
+      [scoutTwo, `thread:${CHANNEL}:${threadRoot}`],
+      [scoutTwo, `conversation:${dm}`],
+    ],
+  );
+  assert.equal(getWorkAreaState(CHANNEL).open, false);
+  assert.equal(getWorkAreaState(dm).open, false);
+});
+
 test("several agents get a page each and each shows as using the browser once it acts", async () => {
   const other = "b".repeat(64);
   broker.emit(ask());
@@ -436,21 +472,17 @@ const watching = () => {
   });
 };
 
-test("the Allow card opens the dock when the person is watching, so the question is seen", async () => {
-  // GATE-309-R2: after the person stopped Scout, its next browser call waited
-  // 30 s and told the person to "tap Allow in the Colony browser panel", which
-  // was closed. Only a small marker showed.
+test("the Allow card stays in the visible conversation without opening the dock", async () => {
   watching();
   broker.emit(ask({ resume: true }));
   await settle();
   const state = getWorkAreaState(CHANNEL);
-  assert.equal(state.open, true);
-  assert.equal(state.activeTabId, browserTabId("page-1"));
+  assert.equal(state.open, false);
   assert.equal(getWaitingAgentAccess().length, 1);
   assert.deepEqual(broker.grants, [], "still never granted without the person");
 });
 
-test("a dock the person closed earlier does not hide the Allow card from them", async () => {
+test("a dock the person closed earlier does not change the pending Allow card", async () => {
   watching();
   broker.emit(ask());
   await settle();
@@ -459,7 +491,7 @@ test("a dock the person closed earlier does not hide the Allow card from them", 
 
   broker.emit(ask({ resume: true }));
   await settle();
-  assert.equal(getWorkAreaState(CHANNEL).open, true);
+  assert.equal(getWorkAreaState(CHANNEL).open, false);
   assert.equal(getWaitingAgentAccess().length, 1);
 });
 
@@ -488,14 +520,6 @@ test("a dock the person closed mutes the rest of the same run", async () => {
   broker.emit(ask());
   await settle();
   assert.equal(getWorkAreaState(CHANNEL).open, false);
-});
-
-test("Not now clears the card and grants nothing", async () => {
-  broker.emit(ask({ resume: true }));
-  await settle();
-  dismissAgentAccessRequest(getWaitingAgentAccess()[0]);
-  assert.deepEqual(getWaitingAgentAccess(), []);
-  assert.deepEqual(broker.grants, []);
 });
 
 test("an Allow on a page the person closed meanwhile opens a fresh page", async () => {

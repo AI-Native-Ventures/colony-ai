@@ -1,4 +1,8 @@
-import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
+import {
+  BROWSER_ACCESS_PENDING_GUIDANCE,
+  BROWSER_APPROVAL_GUIDANCE,
+  BROWSER_RESUME_PENDING_GUIDANCE,
+} from "./approval-guidance.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -20,8 +24,8 @@ import {
  * Authentication has three layers:
  *   1. the socket lives in a 0700 directory and is 0600 (same OS user only)
  *   2. `hello` carries a derived credential for its agent/task/community tuple
- *   3. every action still needs a capability token the person created; the
- *      server keeps tokens in memory, keyed by that immutable tuple, and
+ *   3. every action still needs a capability token the trusted app created;
+ *      the server keeps tokens in memory, keyed by that immutable tuple, and
  *      never sends one over the wire.
  *
  * The launch master stays in main and the trusted native harness. Same-user
@@ -34,10 +38,13 @@ const HELLO_TIMEOUT_MS = 5_000;
 const MAX_HELLO_FAILURES = 3;
 /** Under the client's own request timeout, so the agent gets an answer. */
 export const ACCESS_WAIT_MS = 30_000;
+/** Retain missed renderer events long enough for a late renderer to recover. */
+export const PENDING_ACCESS_REQUEST_MS = 10 * 60_000;
+/** Bound retained renderer work if an app never comes up. */
+export const MAX_PENDING_ACCESS_REQUESTS = 64;
 /** Ways a grant ends because the person said stop. Expiry is not one. */
 const STOP_REASONS = new Set(["person revoked", "tab closed", "taken-over"]);
-const STOPPED_MESSAGE =
-  "The person stopped your browser access. Do not try again on your own: tell them you are waiting, and ask them to tap Allow in the Colony browser panel when they want you to continue.";
+const STOPPED_MESSAGE = BROWSER_RESUME_PENDING_GUIDANCE;
 
 const digest = (value) => createHash("sha256").update(String(value)).digest();
 
@@ -96,6 +103,8 @@ export function createBrokerServer({
   defaultAccess = false,
   onAccessRequested = () => {},
   accessWaitMs = ACCESS_WAIT_MS,
+  pendingAccessRequestMs = PENDING_ACCESS_REQUEST_MS,
+  maxPendingAccessRequests = MAX_PENDING_ACCESS_REQUESTS,
 } = {}) {
   if (typeof secret !== "string" || secret.length < 16 || secret.length > 256)
     throw new Error("A broker secret of at least 16 characters is required");
@@ -106,6 +115,9 @@ export function createBrokerServer({
   const stopped = new Set();
   // Calls waiting for the app to open a browser, one wait per session.
   const waits = new Map();
+  // Access requests survive a renderer listener that starts after the event.
+  const accessRequests = new Map();
+  let accessRequestSequence = 0;
   let server = null;
 
   function connectionsFor(key) {
@@ -136,6 +148,52 @@ export function createBrokerServer({
     wait.resolve(granted);
   }
 
+  function clearAccessRequest(key) {
+    const pending = accessRequests.get(key);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    accessRequests.delete(key);
+  }
+
+  function trimAccessRequests() {
+    while (accessRequests.size >= maxPendingAccessRequests) {
+      const oldest = accessRequests.keys().next().value;
+      if (oldest === undefined) return;
+      clearAccessRequest(oldest);
+      // A bounded queue must not leave the evicted client's original call
+      // waiting behind an event the renderer can no longer recover.
+      settleWait(oldest, false);
+    }
+  }
+
+  /** Retain and publish one request for this immutable agent/task session. */
+  function requestAccess(key, context) {
+    const existing = accessRequests.get(key);
+    if (existing) return existing.request;
+    trimAccessRequests();
+    const request = Object.freeze({
+      type: "access-requested",
+      accessRequestId: String(++accessRequestSequence),
+      agentId: context.agentId,
+      taskId: context.taskId,
+      communityOrigin: context.communityOrigin,
+      resume: stopped.has(key),
+    });
+    const pending = { request, timer: null };
+    pending.timer = setTimeout(() => {
+      clearAccessRequest(key);
+      settleWait(key, false);
+    }, pendingAccessRequestMs);
+    pending.timer.unref?.();
+    accessRequests.set(key, pending);
+    try {
+      onAccessRequested(request);
+    } catch {
+      // The renderer can replay this durable request when it becomes ready.
+    }
+    return request;
+  }
+
   /** Ask the app for a browser, once, and wait for the grant it issues. */
   function waitForAccess(connection) {
     const { key, context } = connection;
@@ -148,27 +206,25 @@ export function createBrokerServer({
     wait.timer = setTimeout(() => settleWait(key, false), accessWaitMs);
     wait.timer.unref?.();
     waits.set(key, wait);
-    try {
-      onAccessRequested({
-        agentId: context.agentId,
-        taskId: context.taskId,
-        communityOrigin: context.communityOrigin,
-        resume: stopped.has(key),
-      });
-    } catch {
-      // The wait still ends; the agent hears the approval guidance.
-    }
+    requestAccess(key, context);
     return wait.promise;
   }
 
   function liveToken(connection) {
     const entry = tokens.get(connection.key);
     const grant = entry && capabilities.getGrant(entry.grantId);
-    return grant?.state === "active" &&
+    if (
+      grant?.state === "active" &&
       grant.agentId === connection.context.agentId &&
       grant.taskId === connection.context.taskId
-      ? entry.token
-      : null;
+    ) {
+      // The default grant is a sliding lease. An agent that is still working
+      // never falls off a sixty minute cliff, while an idle expired one goes
+      // through the automatic first-call path below.
+      capabilities.renewDefault?.(grant.id);
+      return entry.token;
+    }
+    return null;
   }
 
   /** Host API: create the grant and hand its token to the agent's channel. */
@@ -179,6 +235,7 @@ export function createBrokerServer({
     tokens.set(key, { token, grantId: grant.id });
     grantKeys.set(grant.id, key);
     stopped.delete(key);
+    clearAccessRequest(key);
     pushToolsChanged(key);
     settleWait(key, true);
     return grant;
@@ -240,6 +297,7 @@ export function createBrokerServer({
       return;
     }
     if (message.type === "call") {
+      let waitingForAccess = false;
       if (!token && defaultAccess) {
         const wasStopped = stopped.has(connection.key);
         if (await waitForAccess(connection)) token = liveToken(connection);
@@ -247,10 +305,14 @@ export function createBrokerServer({
           write(socket, {
             id,
             ok: true,
-            result: { ok: false, code: "no_grant", message: STOPPED_MESSAGE },
+            result: {
+              ok: false,
+              code: "access_pending",
+              message: STOPPED_MESSAGE,
+            },
           });
           return;
-        }
+        } else waitingForAccess = true;
       }
       if (!token) {
         write(socket, {
@@ -258,8 +320,10 @@ export function createBrokerServer({
           ok: true,
           result: {
             ok: false,
-            code: "no_grant",
-            message: BROWSER_APPROVAL_GUIDANCE,
+            code: waitingForAccess ? "access_pending" : "no_grant",
+            message: waitingForAccess
+              ? BROWSER_ACCESS_PENDING_GUIDANCE
+              : BROWSER_APPROVAL_GUIDANCE,
           },
         });
         return;
@@ -345,6 +409,7 @@ export function createBrokerServer({
 
   async function stop() {
     for (const key of [...waits.keys()]) settleWait(key, false);
+    for (const key of [...accessRequests.keys()]) clearAccessRequest(key);
     stopped.clear();
     tokens.clear();
     grantKeys.clear();
@@ -362,6 +427,8 @@ export function createBrokerServer({
     start,
     stop,
     issueGrant,
+    pendingAccessRequests: () =>
+      [...accessRequests.values()].map((pending) => pending.request),
     socketPath,
     connectionCount: () => connections.size,
   };

@@ -370,7 +370,13 @@ test("production socket entrypoint bounds complete concurrent frames before disp
 
 // ---- default access: the first browser call opens the browser ---------------
 
-const ASK = { agentId: AGENT_A, taskId: TASK, communityOrigin: COMMUNITY };
+const ASK = {
+  type: "access-requested",
+  accessRequestId: "1",
+  agentId: AGENT_A,
+  taskId: TASK,
+  communityOrigin: COMMUNITY,
+};
 
 test("under default access the tools are listed before any grant", async () => {
   const env = await start({ defaultAccess: true });
@@ -444,7 +450,7 @@ test("calls made together share one request", async () => {
   await env.cleanup();
 });
 
-test("when no browser can be opened the call ends with the approval guidance", async () => {
+test("a lost renderer request stays pending and never tells the agent to seek chat approval", async () => {
   const requests = [];
   const env = await start({
     defaultAccess: true,
@@ -455,11 +461,15 @@ test("when no browser can be opened the call ends with the approval guidance", a
   await until(() => client.isReady());
   const result = await client.callTool("browser_tabs", {});
   assert.equal(result.ok, false);
-  assert.equal(result.code, "no_grant");
-  assert.match(result.message, /Ask the person to approve the Colony browser/u);
-  // A later call asks again: the app may be ready now.
+  assert.equal(result.code, "access_pending");
+  assert.match(result.message, /wait/iu);
+  assert.doesNotMatch(result.message, /^Ask the person to approve/u);
+  assert.deepEqual(env.server.pendingAccessRequests(), [
+    { ...ASK, resume: false },
+  ]);
+  // A later call waits on the same durable request: the app may be ready now.
   const again = client.callTool("browser_tabs", {});
-  await until(() => requests.length === 2);
+  await until(() => requests.length === 1);
   env.grant();
   assert.equal((await again).ok, true);
   client.close();
@@ -477,7 +487,7 @@ test("a failing app handler still ends the call cleanly", async () => {
   const { client } = connectClient(env.socketPath);
   await until(() => client.isReady());
   const result = await client.callTool("browser_tabs", {});
-  assert.equal(result.code, "no_grant");
+  assert.equal(result.code, "access_pending");
   assert.ok(!JSON.stringify(result).includes("secret"));
   client.close();
   await env.cleanup();
@@ -496,12 +506,12 @@ test("the person's Stop is respected: the next call asks with resume and is not 
   assert.equal((await client.callTool("browser_tabs", {})).ok, true);
   env.broker.revoke(grant.id, "person revoked");
   const after = await client.callTool("browser_tabs", {});
-  assert.equal(after.code, "no_grant");
+  assert.equal(after.code, "access_pending");
   assert.deepEqual(requests, [{ ...ASK, resume: true }]);
   assert.match(after.message, /stopped/u);
   // Only the person allowing it again brings the browser back.
   const waiting = client.callTool("browser_tabs", {});
-  await until(() => requests.length === 2);
+  await until(() => requests.length === 1);
   env.grant();
   assert.equal((await waiting).ok, true);
   client.close();
@@ -558,6 +568,36 @@ test("a grant that runs out is renewed by the next call without asking the perso
   await env.cleanup();
 });
 
+test("a working default grant renews before its sixty minute lease ends", async () => {
+  const clock = { wall: 1_000_000, mono: 5_000 };
+  const env = await start({
+    defaultAccess: true,
+    capabilityOptions: {
+      now: () => clock.wall,
+      monotonic: () => clock.mono,
+    },
+  });
+  const { client } = connectClient(env.socketPath);
+  await until(() => client.isReady());
+  const grant = env.grant(AGENT_A, {
+    defaultAccess: true,
+    ttlMs: 60 * 60_000,
+  });
+  clock.wall += 60 * 60_000 - 1;
+  clock.mono += 60 * 60_000 - 1;
+
+  assert.equal((await client.callTool("browser_tabs", {})).ok, true);
+  clock.wall += 1;
+  clock.mono += 1;
+  assert.equal(
+    env.capabilities.getGrant(grant.id).state,
+    "active",
+    "the call extended the live default lease before its original expiry",
+  );
+  client.close();
+  await env.cleanup();
+});
+
 test("another agent's grant never answers this agent's request", async () => {
   const requests = [];
   const env = await start({
@@ -570,7 +610,7 @@ test("another agent's grant never answers this agent's request", async () => {
   const waiting = client.callTool("browser_tabs", {});
   await until(() => requests.length === 1);
   env.grant(AGENT_B);
-  assert.equal((await waiting).code, "no_grant");
+  assert.equal((await waiting).code, "access_pending");
   client.close();
   await env.cleanup();
 });

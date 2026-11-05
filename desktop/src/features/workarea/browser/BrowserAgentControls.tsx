@@ -5,10 +5,6 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { sanitizeUntrusted } from "../../../../electron/browser-broker/redaction.mjs";
 import { browserCommunityOrigin } from "../../../../electron/browser-broker/session-context.mjs";
 import { useWorkAreaChannel } from "../dock/workAreaChannelContext";
-import {
-  allowAgentAccess,
-  dismissAgentAccessRequest,
-} from "./agentBrowserAccess";
 import { createBrowserControlStore } from "./browserControlStore";
 import { getBrowserBusinessId } from "./browserTabsStore";
 import { browserHost } from "@/shared/api/browserHost";
@@ -17,7 +13,6 @@ import {
   browserConfirmationTitle,
   browserTaskScope,
 } from "./browserTaskScope";
-import { useWaitingAgentAccess } from "./useBrowserTabs";
 
 /** What the page's footer says about who can use this tab. */
 export type BrowserSharing = {
@@ -101,12 +96,6 @@ export function BrowserAgentControls({
     : channel?.channelType === "dm"
       ? "this conversation"
       : "this channel";
-  const waitingAgents = useWaitingAgentAccess(hostId);
-  const agentName = (pubkey: string) =>
-    sanitizeUntrusted(
-      agents.data?.find((agent) => agent.pubkey === pubkey)?.name ?? "Agent",
-      80,
-    );
   const busy = state.busy !== null;
   // Default access: AI employees of the business share its tabs, so there is
   // nothing to allow. The person keeps a tab private, or takes it back.
@@ -246,38 +235,6 @@ export function BrowserAgentControls({
           Open a conversation to approve a browser task.
         </p>
       ) : null}
-      {!grant
-        ? waitingAgents.map((request) => (
-            <fieldset
-              className="flex min-w-0 flex-col gap-2 rounded border border-border p-2"
-              data-testid="browser-agent-resume"
-              key={`${request.agentId}|${request.taskId}`}
-            >
-              <legend className="sr-only">Agent waiting for the browser</legend>
-              <p>
-                {agentName(request.agentId)} wants to use the browser again.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  className="colony-work-area-choice"
-                  disabled={busy}
-                  onClick={() => run(() => allowAgentAccess(request))}
-                  type="button"
-                >
-                  Allow
-                </button>
-                <button
-                  className="colony-work-area-choice"
-                  disabled={busy}
-                  onClick={() => dismissAgentAccessRequest(request)}
-                  type="button"
-                >
-                  Not now
-                </button>
-              </div>
-            </fieldset>
-          ))
-        : null}
       {approving && !grant && !shared ? (
         <form
           className="flex flex-col gap-2"

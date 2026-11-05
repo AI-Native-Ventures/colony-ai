@@ -12,6 +12,7 @@ import {
   noteWorkAreaPersonActivity,
   setAgentBrowserConversationView,
 } from "../browser/agentBrowserPresentation";
+import { AgentBrowserResumeCard } from "../browser/AgentBrowserResumeCard";
 import { listenForFilesTab, listenForWorkspaceFiles } from "../workspaceFiles";
 import {
   closeWorkAreaRestoringFocus,
@@ -366,6 +367,11 @@ export function WorkAreaLayout({
         data-testid="work-area-conversation"
       >
         <WorkAreaConversationContext.Provider value={channelId}>
+          <AgentBrowserResumeCard
+            channelId={channelId}
+            channelType={channel?.channelType ?? "stream"}
+            threadRootId={channel?.threadRootId}
+          />
           {children}
         </WorkAreaConversationContext.Provider>
       </div>
