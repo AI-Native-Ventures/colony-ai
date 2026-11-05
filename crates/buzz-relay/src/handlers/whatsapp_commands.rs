@@ -32,7 +32,8 @@ use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
 use crate::whatsapp::policy::{
-    clean_title, e164, normalize_wa_id, render_template, template_slot_count, window_open,
+    account_retry_error_codes, clean_title, e164, normalize_wa_id, render_template,
+    retry_scope_for_error_code, template_slot_count, window_open, FailureRetryScope,
     SEND_NOW_MAX_ROWS,
 };
 use crate::whatsapp::sender::{
@@ -143,6 +144,10 @@ struct SettingsCommand {
     sync_templates: Option<bool>,
     #[serde(default)]
     template_title: Option<TemplateTitleCommand>,
+    /// Owner or admin recovery action for stored account-level Meta refusals. It never creates a
+    /// new message row, so the original idempotency keys continue to fence the resend.
+    #[serde(default)]
+    resume_and_retry: bool,
 }
 
 /// Rename a template (owner or admin) or propose a better title (any Outreach member).
@@ -174,6 +179,10 @@ struct ContactUpdateCommand {
     /// Retry on a picture, sticker or voice note that could not be loaded). Sent on its own.
     #[serde(default)]
     retry_media: Option<String>,
+    /// Failed outbound message whose safe recovery the owner requested. Account-wide failures
+    /// resume all eligible rows together; temporary failures requeue only this row.
+    #[serde(default)]
+    retry_send: Option<String>,
 }
 
 /// Tell an absent field (`None`) from an explicit `null` (`Some(None)`).
@@ -910,8 +919,69 @@ async fn handle_contact_update(
     let community = tenant.community();
     let wa_id =
         normalize_wa_id(&command.wa_id).ok_or_else(|| invalid("waId must be a phone number"))?;
+    if let Some(message_id) = command.retry_send.as_deref() {
+        if command.stage.is_some() || command.label.is_some() || command.retry_media.is_some() {
+            return Err(invalid("retrySend is sent on its own"));
+        }
+        if !access.is_owner_admin() {
+            return Err(restricted(
+                "only the owner or an admin can retry a failed WhatsApp send",
+            ));
+        }
+        let message_id = parse_uuid(message_id, "retrySend").map_err(invalid)?;
+        let message = state
+            .db
+            .whatsapp_get_message(community, message_id)
+            .await
+            .map_err(internal)?
+            .filter(|message| message.wa_id == wa_id && message.direction == "out")
+            .ok_or_else(|| invalid("no such outbound message"))?;
+        if message.state != "failed" {
+            return Err(invalid(
+                "nothing to retry: this message is not a definite failed send",
+            ));
+        }
+        let error_code = message
+            .error_code
+            .as_deref()
+            .ok_or_else(|| invalid("this failed send has no retryable Meta error code"))?;
+        return match retry_scope_for_error_code(Some(error_code)) {
+            FailureRetryScope::Account(_) => {
+                let codes = account_retry_error_codes();
+                let retried = state
+                    .db
+                    .whatsapp_retry_account_failures(community, &codes)
+                    .await
+                    .map_err(internal)?;
+                Ok(ok(
+                    event,
+                    format!(
+                        "resume requested: {retried} account-level failed message(s) requeued with their original idempotency keys"
+                    ),
+                ))
+            }
+            FailureRetryScope::Temporary => {
+                let restarted = state
+                    .db
+                    .whatsapp_retry_failed_message(community, &wa_id, message_id, error_code)
+                    .await
+                    .map_err(internal)?;
+                Ok(ok(
+                    event,
+                    if restarted {
+                        "send requeued with its original idempotency key"
+                    } else {
+                        "nothing to retry: this message was already retried or the contact is unavailable"
+                    },
+                ))
+            }
+            FailureRetryScope::Never => Err(invalid(
+                "this Meta refusal is not safe to retry; check the contact or template instead",
+            )),
+        };
+    }
     if let Some(message_id) = command.retry_media.as_deref() {
-        if command.stage.is_some() || command.label.is_some() {
+        if command.stage.is_some() || command.label.is_some() || command.retry_send.is_some() {
             return Err(invalid("retryMedia is sent on its own"));
         }
         let message_id = parse_uuid(message_id, "retryMedia").map_err(invalid)?;
@@ -1080,10 +1150,18 @@ async fn handle_settings(
 ) -> Result<IngestResult, IngestError> {
     let command: SettingsCommand = parse(event)?;
     check_version(command.v)?;
+    if command.resume_and_retry
+        && (command.daily_new_chat_cap.is_some()
+            || command.sync_templates.is_some()
+            || command.template_title.is_some())
+    {
+        return Err(invalid("resumeAndRetry is sent on its own"));
+    }
     let community = tenant.community();
     let proposing_only = command.daily_new_chat_cap.is_none()
         && command.sync_templates != Some(true)
-        && command.template_title.as_ref().is_some_and(|t| t.propose);
+        && command.template_title.as_ref().is_some_and(|t| t.propose)
+        && !command.resume_and_retry;
     // GUARD: only the owner or an admin changes settings or renames; any member who can send
     // may only PROPOSE a template title.
     if proposing_only {
@@ -1100,9 +1178,10 @@ async fn handle_settings(
     if command.daily_new_chat_cap.is_none()
         && command.sync_templates != Some(true)
         && command.template_title.is_none()
+        && !command.resume_and_retry
     {
         return Err(invalid(
-            "nothing to change: set dailyNewChatCap, syncTemplates or templateTitle",
+            "nothing to change: set dailyNewChatCap, syncTemplates, templateTitle or resumeAndRetry",
         ));
     }
     let mut changes = Vec::new();
@@ -1169,6 +1248,21 @@ async fn handle_settings(
                 .map_err(internal)?;
             changes.push(format!("title \"{title}\""));
         }
+    }
+    if command.resume_and_retry {
+        let codes = account_retry_error_codes();
+        let retried = state
+            .db
+            .whatsapp_retry_account_failures(community, &codes)
+            .await
+            .map_err(internal)?;
+        changes.push(if retried == 0 {
+            "nothing to retry: no eligible account-level failed messages".to_string()
+        } else {
+            format!(
+                "resume requested: {retried} failed message(s) requeued with their original idempotency keys"
+            )
+        });
     }
     Ok(ok(event, changes.join(", ")))
 }

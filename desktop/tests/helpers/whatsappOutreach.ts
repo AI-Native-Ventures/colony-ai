@@ -90,6 +90,8 @@ type WhatsAppMockActor = {
   deskFixture?: boolean;
   /** A plain relay member can see an open Outreach channel without membership. */
   outreachChannelMember?: boolean;
+  /** Seed definite Meta payment failures that an owner can recover. */
+  paymentRetryCount?: number;
   batchVariant?:
     | "decided-card-pending"
     | "decided-card-approved"
@@ -1109,6 +1111,7 @@ export async function installWhatsAppMockBridge(
         deskPipelineAdditionalContacts,
         templates: templateSeed,
         initiallyConnected,
+        paymentRetryCount,
         ...baseSeed
       } = seed;
       const state = clone(baseSeed);
@@ -1132,6 +1135,7 @@ export async function installWhatsAppMockBridge(
       const visualBatchScreen = approvedBatch || batchVariant === "visual";
       state.status.connected = !disconnected;
       state.status.templates = disconnected ? [] : clone(seed.status.templates);
+      state.status.accountRetryCount = paymentRetryCount ?? 0;
       state.batch.status =
         approvedBatch || sendNowBatch || leadsBatch ? "approved" : "pending";
       state.secondPendingBatch.status = state.batch.status;
@@ -1648,6 +1652,33 @@ export async function installWhatsAppMockBridge(
       for (const thread of Object.values(state.threads)) {
         normalizeContactView(thread.contact);
       }
+      if (paymentRetryCount && paymentRetryCount > 0) {
+        const paymentMessage = state.threads[planeTreeWaId].messages.find(
+          (message) => message.id === "e2e-wa-failed",
+        );
+        if (paymentMessage) {
+          Object.assign(paymentMessage, {
+            errorCode: "131042",
+            errorText: "Business eligibility payment issue",
+            failureSummary:
+              "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again.",
+            retryScope: "account",
+            canRetry: true,
+          });
+        }
+        const failureContact = state.contacts.find(
+          (contact) => contact.waId === planeTreeWaId,
+        );
+        if (failureContact) {
+          Object.assign(failureContact, {
+            stage: "none",
+            lastOutboundState: "failed",
+            lastFailureSummary:
+              "Meta blocked this send: payment problem on your WhatsApp account. Fix it in Meta Business Suite, WhatsApp Manager, Payment settings, then send again.",
+          });
+          state.threads[planeTreeWaId].contact = clone(failureContact);
+        }
+      }
       const globalWindow = window as Window & {
         __BUZZ_E2E_WHATSAPP_STATE__?: typeof state;
       };
@@ -1742,6 +1773,19 @@ export async function installWhatsAppMockBridge(
             state.status.dailyNewChatCap = body.dailyNewChatCap;
           if (typeof body.sendingPaused === "boolean")
             state.status.sendingPaused = body.sendingPaused;
+          if (body.resumeAndRetry === true) {
+            state.status.accountRetryCount = 0;
+            for (const thread of Object.values(state.threads)) {
+              for (const message of thread.messages) {
+                if (message.retryScope === "account") {
+                  message.state = "queued";
+                  message.failureSummary = null;
+                  message.retryScope = null;
+                  message.canRetry = false;
+                }
+              }
+            }
+          }
         }
         if (kind === 47052 && typeof body.waId === "string") {
           const contact = state.contacts.find(
@@ -1919,6 +1963,7 @@ export async function installWhatsAppMockBridge(
       deskFirstBatchRows,
       deskFollowUpRows,
       deskPipelineAdditionalContacts,
+      paymentRetryCount: actor.paymentRetryCount ?? 0,
     },
   );
 }

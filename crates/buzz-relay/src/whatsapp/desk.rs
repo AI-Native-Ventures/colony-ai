@@ -25,7 +25,7 @@ use buzz_core::whatsapp_stage::{
 use buzz_db::whatsapp::{DeskFacts, WhatsappContact};
 use buzz_db::EventQuery;
 
-use super::policy::contact_label;
+use super::policy::{contact_label, failure_summary_for_code};
 use crate::state::AppState;
 
 /// What a linked Discovery lead says about a contact.
@@ -338,6 +338,10 @@ pub fn desk_fields(
         },
     );
     fields.insert("lastOutboundState".into(), json!(facts.last_outcome_state));
+    let last_failure_summary = (facts.last_outcome_state.as_deref() == Some("failed"))
+        .then(|| failure_summary_for_code(facts.last_outcome_code.as_deref()))
+        .flatten();
+    fields.insert("lastFailureSummary".into(), json!(last_failure_summary));
     if let Some(lead) = lead {
         fields.insert("businessName".into(), json!(lead.business_name));
         fields.insert("website".into(), json!(lead.website));

@@ -75,6 +75,7 @@ test("contact parser accepts the additive stage and identity view fields", () =>
   assert.equal(contact.lastContactedAt, "2026-10-28T09:40:00+02:00");
   assert.equal(contact.lastReplyAt, "2026-10-29T09:14:00+02:00");
   assert.equal(contact.lastOutboundState, "read");
+  assert.equal(contact.lastFailureSummary, null);
 
   const legacyContact = parseWhatsAppContact({
     ...payload,
@@ -233,6 +234,11 @@ test("status parser strips unknown secret fields and clamps invalid cap ranges",
   assert.equal("accessToken" in status, false);
   assert.equal(status.templates[0].name, "hl_vb");
   assert.equal(status.quality, "green");
+  assert.equal(status.accountRetryCount, 0);
+  assert.equal(
+    parseWhatsAppStatus(baseStatus({ accountRetryCount: 63 })).accountRetryCount,
+    63,
+  );
   assert.equal(whatsappQualityLabel(status.quality), "Green");
 });
 
@@ -391,6 +397,30 @@ test("a message from an older relay has no media and keeps its text", () => {
   const message = parseWhatsAppMessage({ ...inboundMessage, text: "Hello" });
   assert.equal("media" in message, false);
   assert.equal(whatsappMessagePreview(message), "Hello");
+});
+
+test("payment failures carry a safe account recovery scope while older relays fail closed", () => {
+  const paymentFailure = parseWhatsAppMessage({
+    ...inboundMessage,
+    direction: "out",
+    kind: "template",
+    state: "failed",
+    errorCode: "131042",
+    errorText: "Business eligibility payment issue",
+    failureSummary: "Meta blocked this send: payment problem on your WhatsApp account.",
+    retryScope: "account",
+    canRetry: true,
+  });
+  assert.equal(paymentFailure.retryScope, "account");
+  assert.equal(paymentFailure.canRetry, true);
+  assert.match(paymentFailure.failureSummary, /payment problem/u);
+  const unknownScope = parseWhatsAppMessage({
+    ...paymentFailure,
+    retryScope: "future-retry-scope",
+    canRetry: true,
+  });
+  assert.equal(unknownScope.retryScope, null);
+  assert.equal(unknownScope.canRetry, false);
 });
 
 test("a media record the app cannot read never hides the conversation", () => {

@@ -4,6 +4,10 @@ import { UserRound } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import { WhatsAppMessageMedia } from "./WhatsAppMessageMedia";
+import {
+  WhatsAppResumeAndRetryAction,
+  WhatsAppSendAgainAction,
+} from "./WhatsAppRetryActions";
 import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
 import {
   isWhatsAppPhoneLikeName,
@@ -198,6 +202,8 @@ export function WhatsAppThreadMessage({
   waitingForApproval = false,
   canSendNow = false,
   sendNowBatchId = null,
+  canRetrySend = false,
+  accountRetryCount = 0,
   mobileHistory,
   onApproveDraft,
   onRejectDraft,
@@ -213,6 +219,8 @@ export function WhatsAppThreadMessage({
   waitingForApproval?: boolean;
   canSendNow?: boolean;
   sendNowBatchId?: string | null;
+  canRetrySend?: boolean;
+  accountRetryCount?: number;
   mobileHistory: boolean;
   onApproveDraft: (draftId: string, text?: string) => Promise<void>;
   onRejectDraft: (draftId: string) => Promise<void>;
@@ -322,9 +330,23 @@ export function WhatsAppThreadMessage({
           </fieldset>
         ) : null}
         {message.state === "failed" ? (
-          <div className="c3wa-message-failure" role="status">
+          <div className="c3wa-message-failure">
             <span aria-hidden="true">!</span>
-            <span>{message.errorText ?? statusLabel}</span>
+            <span role="status">
+              {message.failureSummary ?? message.errorText ?? statusLabel}
+            </span>
+            {canRetrySend && message.canRetry ? (
+              message.retryScope === "account" && accountRetryCount > 0 ? (
+                <WhatsAppResumeAndRetryAction
+                  count={accountRetryCount}
+                  label="Send again"
+                  size="xs"
+                  testId={`whatsapp-send-again-${message.id}`}
+                />
+              ) : message.retryScope === "temporary" ? (
+                <WhatsAppSendAgainAction message={message} />
+              ) : null
+            ) : null}
           </div>
         ) : !inbound && message.state !== null ? (
           <div className="c3wa-message-receipt">

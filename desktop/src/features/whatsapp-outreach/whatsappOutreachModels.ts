@@ -69,6 +69,8 @@ export type WhatsAppStatus = Readonly<{
   phoneStatus: string | null;
   dailyNewChatCap: number;
   newChatsSentToday: number;
+  /** Eligible historic account-level failures, absent from relays before retry recovery. */
+  accountRetryCount: number;
   sendingPaused: boolean;
   pauseReason: string | null;
   issues: readonly WhatsAppIssue[];
@@ -92,6 +94,7 @@ export type WhatsAppContact = Readonly<{
   lastInboundAt: string | null;
   lastContactedAt: string | null;
   lastOutboundState: WhatsAppOutboundState | null;
+  lastFailureSummary: string | null;
   lastReplyAt: string | null;
   stage: WhatsAppStage;
   stageSetBy: "auto" | string | null;
@@ -162,6 +165,12 @@ export type WhatsAppMessage = Readonly<{
   state: WhatsAppMessageState | null;
   errorCode: string | null;
   errorText: string | null;
+  /** Plain owner-facing explanation from the relay's Meta error-code table. */
+  failureSummary: string | null;
+  /** `account` retries the failed account queue; `temporary` retries only this row. */
+  retryScope: "account" | "temporary" | null;
+  /** False for unknown, contact-specific and delivery-confirmed failures. */
+  canRetry: boolean;
   eventId: string | null;
   senderPubkey: string | null;
   createdAt: string;
@@ -330,6 +339,13 @@ export function parseWhatsAppStatus(value: unknown): WhatsAppStatus {
       0,
       finiteInteger(status.newChatsSentToday, "new-chat count"),
     ),
+    accountRetryCount:
+      status.accountRetryCount === undefined
+        ? 0
+        : Math.max(
+            0,
+            finiteInteger(status.accountRetryCount, "account retry count"),
+          ),
     sendingPaused: booleanValue(status.sendingPaused, "sending-paused flag"),
     pauseReason: nullableString(status.pauseReason, "pause reason"),
     issues: issues.map((value) => {
@@ -400,6 +416,10 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
       "last contacted time",
     ),
     lastOutboundState: parseOutboundState(contact.lastOutboundState),
+    lastFailureSummary: nullableString(
+      contact.lastFailureSummary,
+      "last failure summary",
+    ),
     lastReplyAt: nullableString(contact.lastReplyAt, "last reply time"),
     stage: stage as WhatsAppStage,
     stageSetBy: (stageSetBy as "auto" | string | null | undefined) ?? null,
@@ -491,6 +511,11 @@ function optionalNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function parseRetryScope(value: unknown): "account" | "temporary" | null {
+  if (value === "account" || value === "temporary") return value;
+  return null;
+}
+
 /**
  * Read a message's media. Forgiving on purpose: a media record the app cannot read must never
  * hide the conversation, so it reads as `null` and the message shows its text.
@@ -562,6 +587,7 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     message.state,
     direction as WhatsAppDirection,
   );
+  const retryScope = parseRetryScope(message.retryScope);
   return {
     id: stringValue(message.id, "message id"),
     waId: stringValue(message.waId, "message contact id"),
@@ -572,6 +598,12 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     state,
     errorCode: nullableString(message.errorCode, "message error code"),
     errorText: nullableString(message.errorText, "message error text"),
+    failureSummary: nullableString(
+      message.failureSummary,
+      "message failure summary",
+    ),
+    retryScope,
+    canRetry: message.canRetry === true && retryScope !== null,
     eventId: nullableString(message.eventId, "message event id"),
     senderPubkey: nullableString(message.senderPubkey, "message sender"),
     createdAt: stringValue(message.createdAt, "message time"),
