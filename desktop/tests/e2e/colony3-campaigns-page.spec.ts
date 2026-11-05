@@ -168,7 +168,7 @@ test.describe("All campaigns page", () => {
     await expect(page).toHaveURL(/q=needle(?:%20|\+)retail/u);
 
     await page
-      .locator(".c3c-desktop-filters")
+      .locator(".c3d-campaigns-desktop-filters")
       .getByLabel("Campaign status")
       .selectOption("stopped");
     await expect(rows).toHaveCount(1);
@@ -177,11 +177,15 @@ test.describe("All campaigns page", () => {
     await page.goBack();
     await expect(page).toHaveURL(/q=needle(?:%20|\+)retail/u);
     await expect(
-      page.locator(".c3c-desktop-filters").getByLabel("Campaign status"),
+      page
+        .locator(".c3d-campaigns-desktop-filters")
+        .getByLabel("Campaign status"),
     ).toHaveValue("");
     await page.goForward();
     await expect(
-      page.locator(".c3c-desktop-filters").getByLabel("Campaign status"),
+      page
+        .locator(".c3d-campaigns-desktop-filters")
+        .getByLabel("Campaign status"),
     ).toHaveValue("stopped");
   });
 
@@ -197,7 +201,7 @@ test.describe("All campaigns page", () => {
     await capture(page, "1440-light-results-sidebar-leads.png");
 
     await page
-      .locator(".c3c-desktop-filters")
+      .locator(".c3d-campaigns-desktop-filters")
       .getByLabel("Campaign status")
       .selectOption("running");
     await expect(page.getByTestId("discovery-campaign-row")).toHaveCount(
@@ -213,7 +217,7 @@ test.describe("All campaigns page", () => {
     await installCampaignFixture(page, { campaignCount: 120, theme: "dark" });
     await openCampaigns(page);
     await page
-      .locator(".c3c-desktop-filters")
+      .locator(".c3d-campaigns-desktop-filters")
       .getByLabel("Campaign industry")
       .selectOption("Hospitality");
     await expect(page.getByTestId("discovery-campaign-row")).toHaveCount(
@@ -228,9 +232,9 @@ test.describe("All campaigns page", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installCampaignFixture(page, { campaignCount: 120, theme: "dark" });
     await openCampaigns(page);
-    await page.locator(".c3c-mobile-filters > summary").click();
+    await page.locator(".c3d-campaigns-mobile-filters > summary").click();
     await page
-      .locator(".c3c-mobile-filters")
+      .locator(".c3d-campaigns-mobile-filters")
       .getByLabel("Campaign status")
       .selectOption("failed");
     await page.getByLabel("Search campaigns").fill("not-a-real-campaign");
@@ -238,7 +242,7 @@ test.describe("All campaigns page", () => {
       name: "No campaigns match these filters.",
     });
     await expect(noMatch).toBeVisible();
-    await page.locator(".c3c-mobile-filters > summary").click();
+    await page.locator(".c3d-campaigns-mobile-filters > summary").click();
     await noMatch.scrollIntoViewIfNeeded();
     await capture(page, "390-dark-no-match.png");
   });

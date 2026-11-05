@@ -89,13 +89,13 @@ function formatSpend(campaign: DiscoveryCampaign): string {
 function statusTone(campaign: DiscoveryCampaign): string {
   switch (campaignStatusFilter(campaign)) {
     case "running":
-      return "c3c-status--running";
+      return "c3d-campaigns-status--running";
     case "ready":
-      return "c3c-status--ready";
+      return "c3d-campaigns-status--ready";
     case "failed":
-      return "c3c-status--failed";
+      return "c3d-campaigns-status--failed";
     case "stopped":
-      return "c3c-status--stopped";
+      return "c3d-campaigns-status--stopped";
   }
 }
 
@@ -119,8 +119,8 @@ function campaignCountLabel(count: number): string {
 
 function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
   return (
-    <div className="c3c-filter-fields">
-      <label className="c3c-filter-field">
+    <div className="c3d-campaigns-filter-fields">
+      <label className="c3d-campaigns-filter-field">
         <span>Status</span>
         <select
           aria-label="Campaign status"
@@ -142,7 +142,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           ))}
         </select>
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>Industry</span>
         <select
           aria-label="Campaign industry"
@@ -159,7 +159,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           ))}
         </select>
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>Business type</span>
         <select
           aria-label="Campaign business type"
@@ -176,7 +176,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           ))}
         </select>
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>Location</span>
         <select
           aria-label="Campaign location"
@@ -193,7 +193,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           ))}
         </select>
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>Run by</span>
         <select
           aria-label="Campaign runner"
@@ -210,7 +210,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           ))}
         </select>
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>From</span>
         <input
           aria-label="Campaign start date"
@@ -221,7 +221,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           value={search.from ?? ""}
         />
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>To</span>
         <input
           aria-label="Campaign end date"
@@ -232,7 +232,7 @@ function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
           value={search.to ?? ""}
         />
       </label>
-      <label className="c3c-filter-field">
+      <label className="c3d-campaigns-filter-field">
         <span>Size</span>
         <select
           aria-label="Campaign size"
@@ -299,21 +299,24 @@ function CampaignRow({
 
   return (
     <tr
-      className="c3c-row"
+      className="c3d-campaigns-row"
       data-testid="discovery-campaign-row"
       onClick={() => onSelect(campaign.id)}
     >
-      <td className="c3c-cell c3c-campaign-name" data-label="Campaign">
+      <td
+        className="c3d-campaigns-cell c3d-campaigns-campaign-name"
+        data-label="Campaign"
+      >
         <button
           aria-label={`Open ${campaign.name}`}
-          className="c3c-campaign-open"
+          className="c3d-campaigns-campaign-open"
           onClick={(event) => {
             event.stopPropagation();
             onSelect(campaign.id);
           }}
           type="button"
         >
-          <span className="c3c-campaign-copy">
+          <span className="c3d-campaigns-campaign-copy">
             <strong title={campaign.name}>{campaign.name}</strong>
             <span title={campaign.verticalName || "Business type not set"}>
               {campaign.verticalName || "Business type not set"}
@@ -326,16 +329,22 @@ function CampaignRow({
           </span>
         </button>
       </td>
-      <td className="c3c-cell c3c-location" data-label="Location">
+      <td
+        className="c3d-campaigns-cell c3d-campaigns-location"
+        data-label="Location"
+      >
         {campaign.location || "Location not set"}
       </td>
-      <td className="c3c-cell c3c-prospects" data-label="Prospects">
+      <td
+        className="c3d-campaigns-cell c3d-campaigns-prospects"
+        data-label="Prospects"
+      >
         <span>
           {campaign.count.toLocaleString()} / {campaign.target.toLocaleString()}
         </span>
         <span
           aria-label={`${campaign.count} of ${campaign.target} prospects`}
-          className="c3c-progress"
+          className="c3d-campaigns-progress"
           role="progressbar"
           aria-valuemax={maximum}
           aria-valuemin={0}
@@ -344,28 +353,37 @@ function CampaignRow({
           <span style={{ width: `${progress}%` }} />
         </span>
       </td>
-      <td className="c3c-cell c3c-status-cell" data-label="Status">
-        <span className={`c3c-status ${statusTone(campaign)}`} title={label}>
+      <td
+        className="c3d-campaigns-cell c3d-campaigns-status-cell"
+        data-label="Status"
+      >
+        <span
+          className={`c3d-campaigns-status ${statusTone(campaign)}`}
+          title={label}
+        >
           {label}
         </span>
       </td>
-      <td className="c3c-cell c3c-runner" data-label="Run by">
+      <td
+        className="c3d-campaigns-cell c3d-campaigns-runner"
+        data-label="Run by"
+      >
         {runner ? (
           <span>
             <RunnerAvatar runner={runner} size={26} />
             {runner.name}
           </span>
         ) : (
-          <span className="c3c-muted">Not recorded</span>
+          <span className="c3d-campaigns-muted">Not recorded</span>
         )}
       </td>
-      <td className="c3c-cell c3c-date" data-label="Date">
+      <td className="c3d-campaigns-cell c3d-campaigns-date" data-label="Date">
         {formatDate(campaign.createdAt)}
       </td>
-      <td className="c3c-cell c3c-spend" data-label="Spend">
+      <td className="c3d-campaigns-cell c3d-campaigns-spend" data-label="Spend">
         {formatSpend(campaign)}
       </td>
-      <td aria-hidden="true" className="c3c-open">
+      <td aria-hidden="true" className="c3d-campaigns-open">
         <ChevronRightGlyph />
       </td>
     </tr>
@@ -431,7 +449,10 @@ export function CampaignsScreen({
   }
 
   return (
-    <main className="c3d-root c3c-root" data-testid="discovery-campaigns-page">
+    <main
+      className="c3d-root c3d-campaigns-root"
+      data-testid="discovery-campaigns-page"
+    >
       <AppTopChromePortal>
         <nav aria-label="Breadcrumb" className="c3d-crumbs">
           <span>Business</span>
@@ -449,8 +470,8 @@ export function CampaignsScreen({
           </span>
         </nav>
       </AppTopChromePortal>
-      <div className="c3d-page c3c-page">
-        <header className="c3c-head">
+      <div className="c3d-page c3d-campaigns-page">
+        <header className="c3d-campaigns-head">
           <div>
             <h1>All campaigns</h1>
             <p>
@@ -466,8 +487,11 @@ export function CampaignsScreen({
           </button>
         </header>
 
-        <section aria-label="Campaign filters" className="c3c-toolbar">
-          <label className="c3d-search c3c-search">
+        <section
+          aria-label="Campaign filters"
+          className="c3d-campaigns-toolbar"
+        >
+          <label className="c3d-search c3d-campaigns-search">
             <SearchGlyph size={17} />
             <input
               aria-label="Search campaigns"
@@ -480,7 +504,7 @@ export function CampaignsScreen({
               value={search.q ?? ""}
             />
           </label>
-          <label className="c3c-sort">
+          <label className="c3d-campaigns-sort">
             <span>Sort</span>
             <select
               aria-label="Sort campaigns"
@@ -496,17 +520,17 @@ export function CampaignsScreen({
               ))}
             </select>
           </label>
-          <div className="c3c-desktop-filters">
+          <div className="c3d-campaigns-desktop-filters">
             <FilterFields catalog={catalog} onChange={update} search={search} />
           </div>
-          <details className="c3c-mobile-filters">
+          <details className="c3d-campaigns-mobile-filters">
             <summary>Filters{activeCount ? ` (${activeCount})` : ""}</summary>
             <FilterFields catalog={catalog} onChange={update} search={search} />
           </details>
         </section>
 
         {chips.length ? (
-          <fieldset className="c3c-chips">
+          <fieldset className="c3d-campaigns-chips">
             <legend className="sr-only">Active campaign filters</legend>
             {chips.map((chip) => (
               <button
@@ -518,7 +542,7 @@ export function CampaignsScreen({
               </button>
             ))}
             <button
-              className="c3c-clear"
+              className="c3d-campaigns-clear"
               onClick={() => onSearchChange({})}
               type="button"
             >
@@ -527,7 +551,7 @@ export function CampaignsScreen({
           </fieldset>
         ) : null}
 
-        <div className="c3c-result-head">
+        <div className="c3d-campaigns-result-head">
           <p aria-live="polite">{campaignCountLabel(matched.length)}</p>
           {matched.length > CAMPAIGNS_PAGE_SIZE ? (
             <span>
@@ -556,8 +580,11 @@ export function CampaignsScreen({
           </EmptyCampaigns>
         ) : (
           <>
-            <div className="c3c-card">
-              <table aria-label="Discovery campaigns" className="c3c-table">
+            <div className="c3d-campaigns-card">
+              <table
+                aria-label="Discovery campaigns"
+                className="c3d-campaigns-table"
+              >
                 <thead>
                   <tr>
                     <th>Campaign</th>
@@ -565,8 +592,8 @@ export function CampaignsScreen({
                     <th>Prospects</th>
                     <th>Status</th>
                     <th>Run by</th>
-                    <th className="c3c-date">Date</th>
-                    <th className="c3c-spend">Spend</th>
+                    <th className="c3d-campaigns-date">Date</th>
+                    <th className="c3d-campaigns-spend">Spend</th>
                     <th className="sr-only">Open campaign</th>
                   </tr>
                 </thead>
@@ -582,7 +609,10 @@ export function CampaignsScreen({
               </table>
             </div>
             {pageCount > 1 ? (
-              <nav aria-label="Campaign pages" className="c3c-pagination">
+              <nav
+                aria-label="Campaign pages"
+                className="c3d-campaigns-pagination"
+              >
                 <button
                   disabled={page === 1}
                   onClick={() =>
@@ -623,7 +653,7 @@ function EmptyCampaigns({
   title: string;
 }) {
   return (
-    <section className="c3c-empty">
+    <section className="c3d-campaigns-empty">
       <h2>{title}</h2>
       <p>{children}</p>
       <button

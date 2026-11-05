@@ -2667,12 +2667,12 @@ button.c3d-search-chip {
 
 /* --------------------------------------------------------- campaigns page -- */
 
-.c3c-page {
+.c3d-campaigns-page {
   gap: 1.25rem;
   padding-top: 2.25rem;
 }
 
-.c3c-head {
+.c3d-campaigns-head {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -2680,7 +2680,7 @@ button.c3d-search-chip {
   gap: 1rem;
 }
 
-.c3c-head h1 {
+.c3d-campaigns-head h1 {
   margin: 0;
   color: var(--c3d-ink);
   font-size: calc(40 * var(--colony-px));
@@ -2689,28 +2689,28 @@ button.c3d-search-chip {
   line-height: 1.08;
 }
 
-.c3c-head p {
+.c3d-campaigns-head p {
   margin: 0.375rem 0 0;
   color: var(--c3d-ink2);
   font-size: calc(17 * var(--colony-px));
   font-weight: 500;
 }
 
-.c3c-toolbar {
+.c3d-campaigns-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.625rem;
 }
 
-.c3c-search {
+.c3d-campaigns-search {
   min-width: min(100%, 17.5rem);
   flex: 1 1 20rem;
   height: 2.875rem;
 }
 
-.c3c-sort,
-.c3c-filter-field {
+.c3d-campaigns-sort,
+.c3d-campaigns-filter-field {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -2722,9 +2722,9 @@ button.c3d-search-chip {
   text-transform: uppercase;
 }
 
-.c3c-sort select,
-.c3c-filter-field input,
-.c3c-filter-field select {
+.c3d-campaigns-sort select,
+.c3d-campaigns-filter-field input,
+.c3d-campaigns-filter-field select {
   height: 2.875rem;
   min-width: 0;
   padding: 0 0.75rem;
@@ -2739,25 +2739,25 @@ button.c3d-search-chip {
   text-transform: none;
 }
 
-.c3c-sort {
+.c3d-campaigns-sort {
   flex: 0 1 10rem;
 }
 
-.c3c-desktop-filters {
+.c3d-campaigns-desktop-filters {
   width: 100%;
 }
 
-.c3c-filter-fields {
+.c3d-campaigns-filter-fields {
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 0.625rem;
 }
 
-.c3c-mobile-filters {
+.c3d-campaigns-mobile-filters {
   display: none;
 }
 
-.c3c-chips {
+.c3d-campaigns-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2768,7 +2768,7 @@ button.c3d-search-chip {
   border: 0;
 }
 
-.c3c-chips button {
+.c3d-campaigns-chips button {
   min-height: 2rem;
   padding: 0.25rem 0.625rem;
   border: 1px solid var(--c3d-line2);
@@ -2781,18 +2781,18 @@ button.c3d-search-chip {
   font-weight: 700;
 }
 
-.c3c-chips button:hover {
+.c3d-campaigns-chips button:hover {
   border-color: var(--c3d-accent);
 }
 
-.c3c-chips .c3c-clear {
+.c3d-campaigns-chips .c3d-campaigns-clear {
   border-color: transparent;
   background: transparent;
   color: var(--c3d-accent-deep);
   text-decoration: underline;
 }
 
-.c3c-result-head {
+.c3d-campaigns-result-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2802,32 +2802,32 @@ button.c3d-search-chip {
   font-weight: 600;
 }
 
-.c3c-result-head p {
+.c3d-campaigns-result-head p {
   margin: 0;
   color: var(--c3d-ink);
   font-weight: 800;
 }
 
-.c3c-card {
+.c3d-campaigns-card {
   overflow: hidden;
   border-radius: 1.25rem;
   background: var(--c3d-card);
   box-shadow: var(--c3d-card-shadow);
 }
 
-.c3c-table {
+.c3d-campaigns-table {
   width: 100%;
   max-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
 }
 
-.c3c-table thead,
-.c3c-table tbody {
+.c3d-campaigns-table thead,
+.c3d-campaigns-table tbody {
   min-width: 0;
 }
 
-.c3c-table tr {
+.c3d-campaigns-table tr {
   display: grid;
   grid-template-columns: minmax(12.5rem, 2fr) minmax(6.5rem, 1fr) minmax(
       6.75rem,
@@ -2843,38 +2843,38 @@ button.c3d-search-chip {
   border-bottom: 1px solid var(--c3d-line);
 }
 
-.c3c-table thead tr {
+.c3d-campaigns-table thead tr {
   min-height: 3rem;
 }
 
-.c3c-table tbody tr {
+.c3d-campaigns-table tbody tr {
   min-height: 5.125rem;
   cursor: pointer;
 }
 
-.c3c-table tbody tr:hover {
+.c3d-campaigns-table tbody tr:hover {
   background: var(--colony-row-hover);
 }
 
-.c3c-table tbody tr:focus-visible {
+.c3d-campaigns-table tbody tr:focus-visible {
   position: relative;
   z-index: 1;
   outline: 2px solid var(--c3d-accent);
   outline-offset: -2px;
 }
 
-.c3c-table tbody tr:last-child {
+.c3d-campaigns-table tbody tr:last-child {
   border-bottom: 0;
 }
 
-.c3c-table th,
-.c3c-table td {
+.c3d-campaigns-table th,
+.c3d-campaigns-table td {
   min-width: 0;
   padding: 0;
   text-align: left;
 }
 
-.c3c-table th {
+.c3d-campaigns-table th {
   color: var(--c3d-muted);
   font-size: calc(12 * var(--colony-px));
   font-weight: 800;
@@ -2882,21 +2882,21 @@ button.c3d-search-chip {
   text-transform: uppercase;
 }
 
-.c3c-cell {
+.c3d-campaigns-cell {
   color: var(--c3d-ink2);
   font-size: calc(14 * var(--colony-px));
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.c3c-campaign-copy {
+.c3d-campaigns-campaign-copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 0.125rem;
 }
 
-.c3c-campaign-open {
+.c3d-campaigns-campaign-open {
   display: block;
   width: 100%;
   min-width: 0;
@@ -2909,12 +2909,12 @@ button.c3d-search-chip {
   cursor: pointer;
 }
 
-.c3c-campaign-open:focus-visible {
+.c3d-campaigns-campaign-open:focus-visible {
   outline: 2px solid hsl(var(--colony-focus));
   outline-offset: 0.25rem;
 }
 
-.c3c-campaign-copy strong {
+.c3d-campaigns-campaign-copy strong {
   overflow: hidden;
   color: var(--c3d-ink);
   font-size: calc(15.5 * var(--colony-px));
@@ -2923,8 +2923,8 @@ button.c3d-search-chip {
   white-space: nowrap;
 }
 
-.c3c-campaign-copy span,
-.c3c-campaign-copy small {
+.c3d-campaigns-campaign-copy span,
+.c3d-campaigns-campaign-copy small {
   overflow: hidden;
   color: var(--c3d-muted);
   font-size: calc(13 * var(--colony-px));
@@ -2933,7 +2933,7 @@ button.c3d-search-chip {
   white-space: nowrap;
 }
 
-.c3c-prospects {
+.c3d-campaigns-prospects {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
@@ -2942,7 +2942,7 @@ button.c3d-search-chip {
   font-weight: 800;
 }
 
-.c3c-progress {
+.c3d-campaigns-progress {
   display: block;
   width: 100%;
   height: 0.375rem;
@@ -2951,14 +2951,14 @@ button.c3d-search-chip {
   background: var(--c3d-line);
 }
 
-.c3c-progress > span {
+.c3d-campaigns-progress > span {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: var(--c3d-accent);
 }
 
-.c3c-status {
+.c3d-campaigns-status {
   display: inline-flex;
   max-width: 100%;
   min-width: 0;
@@ -2974,27 +2974,27 @@ button.c3d-search-chip {
   white-space: nowrap;
 }
 
-.c3c-status--ready {
+.c3d-campaigns-status--ready {
   background: var(--c3d-ok-bg);
   color: var(--c3d-ok);
 }
 
-.c3c-status--running {
+.c3d-campaigns-status--running {
   background: var(--c3d-accent-bg);
   color: var(--c3d-accent-deep);
 }
 
-.c3c-status--stopped {
+.c3d-campaigns-status--stopped {
   background: var(--c3d-idle-bg);
   color: var(--c3d-ink2);
 }
 
-.c3c-status--failed {
+.c3d-campaigns-status--failed {
   background: var(--c3d-bad-bg);
   color: var(--c3d-bad);
 }
 
-.c3c-runner > span {
+.c3d-campaigns-runner > span {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -3003,21 +3003,21 @@ button.c3d-search-chip {
   font-weight: 700;
 }
 
-.c3c-runner .c3d-avatar {
+.c3d-campaigns-runner .c3d-avatar {
   flex: none;
 }
 
-.c3c-muted {
+.c3d-campaigns-muted {
   color: var(--c3d-muted);
 }
 
-.c3c-open {
+.c3d-campaigns-open {
   display: grid;
   place-items: center;
   color: var(--c3d-muted);
 }
 
-.c3c-empty {
+.c3d-campaigns-empty {
   display: flex;
   min-height: 15rem;
   align-items: center;
@@ -3031,18 +3031,18 @@ button.c3d-search-chip {
   text-align: center;
 }
 
-.c3c-empty h2,
-.c3c-empty p {
+.c3d-campaigns-empty h2,
+.c3d-campaigns-empty p {
   margin: 0;
 }
 
-.c3c-empty h2 {
+.c3d-campaigns-empty h2 {
   color: var(--c3d-ink);
   font-size: calc(21 * var(--colony-px));
   font-weight: 800;
 }
 
-.c3c-empty p {
+.c3d-campaigns-empty p {
   max-width: 30rem;
   color: var(--c3d-ink2);
   font-size: calc(15 * var(--colony-px));
@@ -3050,7 +3050,7 @@ button.c3d-search-chip {
   line-height: 1.5;
 }
 
-.c3c-pagination {
+.c3d-campaigns-pagination {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3060,7 +3060,7 @@ button.c3d-search-chip {
   font-weight: 700;
 }
 
-.c3c-pagination button {
+.c3d-campaigns-pagination button {
   min-height: 2.5rem;
   padding: 0 0.875rem;
   border: 1px solid var(--c3d-line2);
@@ -3072,50 +3072,50 @@ button.c3d-search-chip {
   font-weight: 800;
 }
 
-.c3c-pagination button:disabled {
+.c3d-campaigns-pagination button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 
 @media (max-width: 80rem) {
-  .c3c-filter-fields {
+  .c3d-campaigns-filter-fields {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .c3c-table tr {
+  .c3d-campaigns-table tr {
     grid-template-columns: minmax(11rem, 2fr) minmax(6rem, 1fr) minmax(
         6.5rem,
         0.9fr
       ) minmax(7rem, 1fr) minmax(7rem, 1fr) minmax(5rem, 0.7fr) 1.25rem;
   }
 
-  .c3c-date {
+  .c3d-campaigns-date {
     display: none;
   }
 }
 
 @media (max-width: 56rem) {
-  .c3c-table tr {
+  .c3d-campaigns-table tr {
     grid-template-columns: minmax(10rem, 2fr) minmax(5.5rem, 1fr) minmax(
         6rem,
         0.8fr
       ) minmax(6.5rem, 0.9fr) minmax(6.5rem, 0.9fr) 1.25rem;
   }
 
-  .c3c-spend {
+  .c3d-campaigns-spend {
     display: none;
   }
 }
 
 @media (max-width: 80rem) {
-  .c3c-table,
-  .c3c-table tbody,
-  .c3c-table tr,
-  .c3c-table td {
+  .c3d-campaigns-table,
+  .c3d-campaigns-table tbody,
+  .c3d-campaigns-table tr,
+  .c3d-campaigns-table td {
     display: block;
   }
 
-  .c3c-table thead {
+  .c3d-campaigns-table thead {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3124,7 +3124,7 @@ button.c3d-search-chip {
     white-space: nowrap;
   }
 
-  .c3c-table tbody tr {
+  .c3d-campaigns-table tbody tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem 0.875rem;
@@ -3132,24 +3132,24 @@ button.c3d-search-chip {
     padding: 1rem;
   }
 
-  .c3c-campaign-name {
+  .c3d-campaigns-campaign-name {
     grid-column: 1;
     grid-row: 1;
   }
 
-  .c3c-open {
+  .c3d-campaigns-open {
     grid-column: 2;
     grid-row: 1;
   }
 
-  .c3c-cell:not(.c3c-campaign-name) {
+  .c3d-campaigns-cell:not(.c3d-campaigns-campaign-name) {
     display: grid;
     grid-template-columns: minmax(5.25rem, 0.75fr) minmax(0, 1fr);
     align-items: center;
     gap: 0.5rem;
   }
 
-  .c3c-cell:not(.c3c-campaign-name)::before {
+  .c3d-campaigns-cell:not(.c3d-campaigns-campaign-name)::before {
     content: attr(data-label);
     color: var(--c3d-muted);
     font-size: calc(12 * var(--colony-px));
@@ -3158,65 +3158,65 @@ button.c3d-search-chip {
     text-transform: uppercase;
   }
 
-  .c3c-date,
-  .c3c-spend {
+  .c3d-campaigns-date,
+  .c3d-campaigns-spend {
     display: grid;
   }
 
-  .c3c-prospects .c3c-progress {
+  .c3d-campaigns-prospects .c3d-campaigns-progress {
     grid-column: 2;
   }
 }
 
 @media (max-width: 40rem) {
-  .c3c-page {
+  .c3d-campaigns-page {
     gap: 1rem;
     padding: 1.25rem 1rem 2rem;
   }
 
-  .c3c-head {
+  .c3d-campaigns-head {
     align-items: flex-start;
   }
 
-  .c3c-head h1 {
+  .c3d-campaigns-head h1 {
     font-size: calc(32 * var(--colony-px));
   }
 
-  .c3c-head p {
+  .c3d-campaigns-head p {
     font-size: calc(15 * var(--colony-px));
   }
 
-  .c3c-head .c3d-btn {
+  .c3d-campaigns-head .c3d-btn {
     width: 100%;
     justify-content: center;
   }
 
-  .c3c-toolbar {
+  .c3d-campaigns-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.75fr);
   }
 
-  .c3c-search {
+  .c3d-campaigns-search {
     min-width: 0;
     width: 100%;
     grid-column: 1 / -1;
   }
 
-  .c3c-sort {
+  .c3d-campaigns-sort {
     min-width: 0;
   }
 
-  .c3c-desktop-filters {
+  .c3d-campaigns-desktop-filters {
     display: none;
   }
 
-  .c3c-mobile-filters {
+  .c3d-campaigns-mobile-filters {
     display: block;
     min-width: 0;
     align-self: end;
   }
 
-  .c3c-mobile-filters summary {
+  .c3d-campaigns-mobile-filters summary {
     display: flex;
     min-height: 2.875rem;
     align-items: center;
@@ -3232,11 +3232,11 @@ button.c3d-search-chip {
     list-style: none;
   }
 
-  .c3c-mobile-filters summary::-webkit-details-marker {
+  .c3d-campaigns-mobile-filters summary::-webkit-details-marker {
     display: none;
   }
 
-  .c3c-mobile-filters[open] .c3c-filter-fields {
+  .c3d-campaigns-mobile-filters[open] .c3d-campaigns-filter-fields {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.625rem;
@@ -3246,20 +3246,20 @@ button.c3d-search-chip {
     background: var(--c3d-card);
   }
 
-  .c3c-chips {
+  .c3d-campaigns-chips {
     align-items: flex-start;
   }
 
-  .c3c-result-head {
+  .c3d-campaigns-result-head {
     font-size: calc(13 * var(--colony-px));
   }
 
-  .c3c-pagination {
+  .c3d-campaigns-pagination {
     justify-content: space-between;
     gap: 0.5rem;
   }
 
-  .c3c-pagination span {
+  .c3d-campaigns-pagination span {
     text-align: center;
   }
 }
