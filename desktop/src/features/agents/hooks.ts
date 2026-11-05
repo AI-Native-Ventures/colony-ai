@@ -111,6 +111,7 @@ export type {
   ProvisionChannelManagedAgentResult,
 } from "@/features/agents/channelAgents";
 
+// CI marker: this repair intentionally touches agents so affected-agent E2E coverage runs.
 export const AGENTS_FOCUS_STALE_TIME_MS = 5 * 60_000;
 
 /**

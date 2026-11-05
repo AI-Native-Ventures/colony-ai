@@ -75,7 +75,11 @@ test.describe("persona model combobox screenshots", () => {
     await installMockBridge(page);
   });
 
-  test("01  -  closed trigger (model not yet selected)", async ({ page }) => {
+  // Feature gone: Company Hire's model selection is not the retired dialog
+  // combobox. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
+  test.fixme("01  -  closed trigger (model not yet selected)", async ({
+    page,
+  }) => {
     const dialog = await openNewPersonaDialog(page);
     await waitForModelCombobox(dialog);
     await waitForAnimations(page);
@@ -83,7 +87,7 @@ test.describe("persona model combobox screenshots", () => {
     await dialog.screenshot({ path: `${SHOTS}/01-closed-trigger.png` });
   });
 
-  test("02  -  open popover with full model list", async ({ page }) => {
+  test.fixme("02  -  open popover with full model list", async ({ page }) => {
     const dialog = await openNewPersonaDialog(page);
     const trigger = await waitForModelCombobox(dialog);
 
@@ -103,7 +107,7 @@ test.describe("persona model combobox screenshots", () => {
     await dialog.screenshot({ path: `${SHOTS}/02-open-full-list.png` });
   });
 
-  test("03  -  filtered results (query: gpt)", async ({ page }) => {
+  test.fixme("03  -  filtered results (query: gpt)", async ({ page }) => {
     const dialog = await openNewPersonaDialog(page);
     const trigger = await waitForModelCombobox(dialog);
 
@@ -126,7 +130,7 @@ test.describe("persona model combobox screenshots", () => {
     await dialog.screenshot({ path: `${SHOTS}/03-filtered-gpt.png` });
   });
 
-  test("04  -  empty state (no models match)", async ({ page }) => {
+  test.fixme("04  -  empty state (no models match)", async ({ page }) => {
     const dialog = await openNewPersonaDialog(page);
     const trigger = await waitForModelCombobox(dialog);
 

@@ -114,7 +114,9 @@ async function openCreateDialogOnProvider(page: Page) {
   return dialog;
 }
 
-test("typing into a defaultless provider field sticks and probes only once", async ({
+// Feature gone: Company Hire does not expose the retired create-dialog Run on
+// provider configuration. Owner decision: https://github.com/AI-Native-Ventures/colony-ai/pull/738
+test.fixme("typing into a defaultless provider field sticks and probes only once", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -152,7 +154,7 @@ test("typing into a defaultless provider field sticks and probes only once", asy
   expect(await probeInvocations(page)).toBe(1);
 });
 
-test("config fields render only after a slow probe resolves, with defaults", async ({
+test.fixme("config fields render only after a slow probe resolves, with defaults", async ({
   page,
 }) => {
   // The fields are gated on the probe result (draft.probedProvider), which is
@@ -181,7 +183,7 @@ test("config fields render only after a slow probe resolves, with defaults", asy
   expect(await probeInvocations(page)).toBe(1);
 });
 
-test("collapsed Advanced marks incomplete remote setup as required", async ({
+test.fixme("collapsed Advanced marks incomplete remote setup as required", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -206,7 +208,7 @@ test("collapsed Advanced marks incomplete remote setup as required", async ({
   await expect(submit).toBeDisabled();
 });
 
-test("provider → local → provider re-probes and resets the config", async ({
+test.fixme("provider → local → provider re-probes and resets the config", async ({
   page,
 }) => {
   await installMockBridge(page, {

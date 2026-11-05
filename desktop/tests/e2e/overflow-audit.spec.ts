@@ -1127,6 +1127,77 @@ function makeReport() {
 
 test.describe.configure({ mode: "serial", retries: 0, timeout: 15 * 60_000 });
 
+test("Company map has no horizontal overflow at every audited width, sidebar state, and theme", async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const findingStart = findings.length;
+  const coverageIssueStart = coverageIssues.length;
+  const previousTheme = process.env.COLONY3_PROOF_THEME;
+
+  try {
+    for (const theme of ["light", "dark"] as const) {
+      process.env.COLONY3_PROOF_THEME = theme;
+      for (const width of WIDTHS) {
+        const context = await browser.newContext({
+          viewport: {
+            width,
+            height: width === 390 ? PHONE_HEIGHT : HEIGHT,
+          },
+          colorScheme: theme,
+        });
+        const companyMapPage = await context.newPage();
+        companyMapPage.setDefaultTimeout(2_000);
+
+        try {
+          await companyMapPage.clock.setFixedTime(new Date(COLONY3_NOW));
+          await installMockBridge(companyMapPage, makeMock());
+          await companyMapPage.goto("/#/company/map");
+          await expect(
+            companyMapPage.getByTestId("cofounder-company-map"),
+          ).toBeVisible();
+
+          for (const mode of ["expanded", "collapsed"] as const) {
+            await setSidebarMode(companyMapPage, width, mode);
+            await scanState(
+              companyMapPage,
+              "Company map",
+              width,
+              `sidebar-${mode}`,
+              theme,
+            );
+          }
+        } catch (error) {
+          coverageIssues.push({
+            screen: "Company map",
+            width,
+            error: String(error).split("\n")[0].slice(0, 240),
+          });
+        } finally {
+          await context.close();
+        }
+      }
+    }
+  } finally {
+    if (previousTheme === undefined) delete process.env.COLONY3_PROOF_THEME;
+    else process.env.COLONY3_PROOF_THEME = previousTheme;
+  }
+
+  expect(
+    coverageIssues.slice(coverageIssueStart),
+    "Every Company map state must be reached",
+  ).toEqual([]);
+  expect(
+    findings.slice(findingStart).map((finding) => ({
+      screen: finding.screen,
+      category: finding.category,
+      element: finding.element,
+      observed: finding.observed,
+    })),
+    "Company map labels and controls must fit their non-scrolling wrappers",
+  ).toEqual([]);
+});
+
 test("all screens, widths and important states", async ({ page, browser }) => {
   process.env.COLONY3_PROOF_THEME = "light";
   page.setDefaultTimeout(2_000);
