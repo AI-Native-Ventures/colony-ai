@@ -149,11 +149,11 @@ for (const viewport of [
         .locator('[aria-current="page"]'),
     ).toHaveText("Team");
     await expect(
-      team.getByRole("button", { name: "Hire employee" }),
+      team.getByRole("button", { name: "Hire an agent" }),
     ).toBeVisible();
     const row = page.getByTestId(`company-team-member-${employeePubkey}`);
     await expect(row).toContainText("Social Media Manager · AI employee");
-    await expect(row).toHaveAttribute("aria-label", /Reports to Lerato Molefe/);
+    await expect(row).toHaveAttribute("aria-label", /Reports to You/);
     await expect(row).toContainText("Reviewing the workload.");
     await expect(row.getByText("Paused", { exact: true })).toHaveCSS(
       "text-transform",
