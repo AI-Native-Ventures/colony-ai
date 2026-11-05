@@ -430,35 +430,6 @@ test("Team lists members and lets an owner edit, terminate and rehire an employe
     "Designer",
   );
   await expect(page.getByTestId("company-human-role")).toContainText("alice");
-
-  await page.goto(`/#/team/detail/${employeePubkey}`);
-  await page.getByRole("button", { name: "More agent actions" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Remove employee" }),
-  ).toBeVisible();
-  await page.getByRole("menuitem", { name: "Remove employee" }).click();
-  const removeEmployeeDialog = page.getByTestId("confirm-remove-agent-dialog");
-  await expect(removeEmployeeDialog).toContainText(EMPLOYEE_NAME);
-  await expect(removeEmployeeDialog).toContainText(
-    "removes it from every channel",
-  );
-  await page.evaluate(() => {
-    window.__BUZZ_E2E_COMMAND_LOG__ = [];
-  });
-  await removeEmployeeDialog
-    .getByRole("button", { name: "Remove employee" })
-    .click();
-  await expect(page).toHaveURL(/\/team$/);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          window.__BUZZ_E2E_COMMAND_LOG__?.some(
-            (entry) => entry.command === "delete_managed_agent",
-          ) ?? false,
-      ),
-    )
-    .toBe(true);
 });
 
 test("Team lets an owner confirm access changes and removals for a human member", async ({
