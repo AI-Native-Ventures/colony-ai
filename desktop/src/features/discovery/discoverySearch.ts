@@ -8,6 +8,7 @@ import {
   discoveryLocationKey,
   type DiscoveryLocation,
 } from "./discoveryLocation";
+import type { ActionFailure } from "@/shared/lib/actionFailure";
 
 export type DiscoveryPlace = {
   placeId: string | null;
@@ -93,15 +94,21 @@ const TRANSIENT_CODES = new Set([
 export class DiscoverySearchError extends Error {
   readonly code: string | null;
   readonly status: number | null;
+  readonly actionFailure: ActionFailure | null;
 
   constructor(
     message: string,
-    options: { code?: string | null; status?: number | null } = {},
+    options: {
+      code?: string | null;
+      status?: number | null;
+      actionFailure?: ActionFailure | null;
+    } = {},
   ) {
     super(message);
     this.name = "DiscoverySearchError";
     this.code = options.code ?? null;
     this.status = options.status ?? null;
+    this.actionFailure = options.actionFailure ?? null;
   }
 
   /** True when trying the same page again a moment later can succeed. */

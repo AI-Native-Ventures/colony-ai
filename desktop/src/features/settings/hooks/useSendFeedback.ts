@@ -9,6 +9,11 @@ import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent, uploadMediaBytes } from "@/shared/api/tauri";
 import { pickAndUploadImage } from "@/shared/api/tauriMedia";
 import { KIND_PRODUCT_FEEDBACK } from "@/shared/constants/kinds";
+import {
+  ActionFailureError,
+  actionFailureFromError,
+  logActionFailure,
+} from "@/shared/lib/actionFailure";
 
 async function collectDiagnostics(): Promise<string> {
   let appVersion = "unknown";
@@ -43,6 +48,59 @@ export function buildProductFeedbackEvent(
       ...(mediaTags ?? []),
     ],
   };
+}
+
+async function feedbackStage<T>(
+  stage: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    const failure = actionFailureFromError({
+      action: "feedback",
+      stage,
+      error,
+    });
+    logActionFailure(failure);
+    throw new ActionFailureError(failure);
+  }
+}
+
+/** Submits feedback through the same signing and relay paths as the dialog. */
+export async function submitProductFeedback(
+  input: SendFeedbackInput,
+  attachedImage: ImetaMedia | null,
+): Promise<void> {
+  const attachments: ImetaMedia[] = [];
+  if (attachedImage) attachments.push(attachedImage);
+  if (input.includeLogs) {
+    const diagnostics = await feedbackStage("diagnostics-collect", () =>
+      collectDiagnostics(),
+    );
+    const bytes = Array.from(new TextEncoder().encode(diagnostics));
+    attachments.push(
+      await feedbackStage("diagnostics-upload", () =>
+        uploadMediaBytes(bytes, `feedback-diagnostics-${Date.now()}.txt`),
+      ),
+    );
+  }
+
+  const payload = buildProductFeedbackEvent(input, attachments);
+  const event = await feedbackStage("event-sign", () =>
+    signRelayEvent({
+      kind: KIND_PRODUCT_FEEDBACK,
+      content: payload.content,
+      tags: payload.tags,
+    }),
+  );
+  await feedbackStage("relay-publish", () =>
+    relayClient.publishEvent(
+      event,
+      "Timed out while sending feedback.",
+      "Failed to send feedback.",
+    ),
+  );
 }
 
 /** Owns private product-feedback submission and optional attachment uploads. */
@@ -98,34 +156,8 @@ export function useSendFeedback() {
   }, []);
 
   const submitMutation = useMutation({
-    mutationFn: async (input: SendFeedbackInput) => {
-      const attachments: ImetaMedia[] = [];
-      if (attachedImage) {
-        attachments.push(attachedImage);
-      }
-      if (input.includeLogs) {
-        const diagnostics = await collectDiagnostics();
-        const bytes = Array.from(new TextEncoder().encode(diagnostics));
-        attachments.push(
-          await uploadMediaBytes(
-            bytes,
-            `feedback-diagnostics-${Date.now()}.txt`,
-          ),
-        );
-      }
-
-      const payload = buildProductFeedbackEvent(input, attachments);
-      const event = await signRelayEvent({
-        kind: KIND_PRODUCT_FEEDBACK,
-        content: payload.content,
-        tags: payload.tags,
-      });
-      await relayClient.publishEvent(
-        event,
-        "Timed out while sending feedback.",
-        "Failed to send feedback.",
-      );
-    },
+    mutationFn: (input: SendFeedbackInput) =>
+      submitProductFeedback(input, attachedImage),
     onSuccess: reset,
   });
 

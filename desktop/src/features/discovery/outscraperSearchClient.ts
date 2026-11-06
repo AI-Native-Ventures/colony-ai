@@ -1,5 +1,6 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
 import { signRelayEvent } from "@/shared/api/tauri";
+import { actionFailureFromError } from "@/shared/lib/actionFailure";
 
 import {
   DiscoverySearchError,
@@ -73,6 +74,22 @@ function errorFromHook(error: unknown): Error {
   return new DiscoverySearchError(message, { code });
 }
 
+function actionFailureError(
+  error: unknown,
+  stage: string,
+): DiscoverySearchError {
+  const failure = actionFailureFromError({
+    action: "prospect-search",
+    stage,
+    error,
+  });
+  return new DiscoverySearchError(failure.message, {
+    actionFailure: failure,
+    code: failure.code,
+    status: failure.status,
+  });
+}
+
 /**
  * Runs one page of the prospect search through the community's relay. The
  * provider key stays on the server; the app only signs a NIP-98 header. Errors
@@ -117,12 +134,18 @@ export async function searchPlaces(input: {
   signal?.addEventListener("abort", onAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    let authorization: string;
+    try {
+      authorization = await nip98PostHeader(url, body);
+    } catch (error) {
+      throw actionFailureError(error, "nip98-sign");
+    }
     let response: Response;
     try {
       response = await fetch(url, {
         body,
         headers: {
-          Authorization: await nip98PostHeader(url, body),
+          Authorization: authorization,
           "Content-Type": "application/json",
         },
         method: "POST",
@@ -131,18 +154,25 @@ export async function searchPlaces(input: {
     } catch (error) {
       if (signal?.aborted) throw abortError();
       if (isAbort(error)) {
-        throw new DiscoverySearchError(
-          "The prospect search took too long. Try again.",
-          { code: "network" },
+        throw actionFailureError(
+          new DiscoverySearchError(
+            "The prospect search took too long. Try again.",
+            {
+              code: "request_timeout",
+            },
+          ),
+          "relay-request",
         );
       }
-      throw new DiscoverySearchError(NETWORK_ERROR_MESSAGE, {
-        code: "network",
-      });
+      throw actionFailureError(
+        new DiscoverySearchError(NETWORK_ERROR_MESSAGE, { code: "network" }),
+        "relay-request",
+      );
     }
     if (!response.ok) {
       const json: unknown = await response.json().catch(() => null);
-      throw searchErrorFromHttp(response.status, json);
+      const searchError = searchErrorFromHttp(response.status, json);
+      throw actionFailureError(searchError, "relay-response");
     }
     const json: unknown = await response.json().catch(() => null);
     return parseSearchResponse(json);

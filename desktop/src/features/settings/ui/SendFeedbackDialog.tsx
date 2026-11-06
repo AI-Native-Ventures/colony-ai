@@ -2,6 +2,11 @@ import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
 import { Checkbox } from "@/shared/ui/checkbox";
+import { copyTextToSystemClipboard } from "@/shared/api/tauriMedia";
+import {
+  actionFailureFromError,
+  type ActionFailure,
+} from "@/shared/lib/actionFailure";
 import {
   Dialog,
   DialogClose,
@@ -47,6 +52,8 @@ export function SendFeedbackDialog({
   const [message, setMessage] = React.useState("");
   const [includeLogs, setIncludeLogs] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<ActionFailure | null>(null);
+  const [detailsCopied, setDetailsCopied] = React.useState(false);
   const [sent, setSent] = React.useState(false);
 
   React.useEffect(() => {
@@ -55,20 +62,38 @@ export function SendFeedbackDialog({
     setMessage("");
     setIncludeLogs(false);
     setErrorMessage(null);
+    setFailure(null);
+    setDetailsCopied(false);
     setSent(false);
   }, [open, sent]);
+
+  async function copyFailureDetails() {
+    if (!failure) return;
+    try {
+      await copyTextToSystemClipboard(failure.details);
+      setDetailsCopied(true);
+    } catch {
+      setDetailsCopied(false);
+    }
+  }
 
   async function submitFeedback() {
     if (isPending || message.trim().length === 0) return;
 
     setErrorMessage(null);
+    setFailure(null);
+    setDetailsCopied(false);
     try {
       await onSubmit({ category, includeLogs, message: message.trim() });
       setSent(true);
-    } catch {
-      setErrorMessage(
-        "Your feedback wasn’t sent. Your message is saved in this window. Try again.",
-      );
+    } catch (error) {
+      const nextFailure = actionFailureFromError({
+        action: "feedback",
+        stage: "feedback-submit",
+        error,
+      });
+      setFailure(nextFailure);
+      setErrorMessage(nextFailure.message);
     }
   }
 
@@ -159,11 +184,26 @@ export function SendFeedbackDialog({
                     role="alert"
                   >
                     <p className="font-extrabold leading-normal">
-                      Your feedback wasn’t sent
+                      {failure?.title ?? "Feedback could not be sent"}
+                    </p>
+                    <p className="mt-1 font-medium leading-normal">
+                      {errorMessage}
                     </p>
                     <p className="mt-1 font-medium leading-normal">
                       Your message is saved in this window. Try again.
                     </p>
+                    {failure ? (
+                      <Button
+                        className="mt-2"
+                        data-testid="feedback-copy-details"
+                        onClick={() => void copyFailureDetails()}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        {detailsCopied ? "Copied" : "Copy details"}
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -211,6 +251,8 @@ export function SendFeedbackDialog({
                     onChange={(event) => {
                       setMessage(event.target.value);
                       setErrorMessage(null);
+                      setFailure(null);
+                      setDetailsCopied(false);
                     }}
                     rows={4}
                     value={message}

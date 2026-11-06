@@ -20,9 +20,31 @@ test("feedback keeps its message after a relay rejection and accepts a retry", a
   await message.fill("The channel list did not refresh after reconnecting.");
   await page.getByTestId("feedback-submit").click();
 
-  await expect(page.getByTestId("feedback-error")).toContainText(
-    "Your feedback wasn’t sent",
-  );
+  const error = page.getByTestId("feedback-error");
+  await expect(error).toContainText("Connection failed");
+  await expect(error).toContainText("could not reach the relay");
+  const copyDetails = page.getByTestId("feedback-copy-details");
+  await expect(copyDetails).toBeVisible();
+  await copyDetails.click();
+  await expect(copyDetails).toHaveText("Copied");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        return (
+          window as Window & {
+            __BUZZ_E2E_COMMAND_LOG__?: Array<{
+              command: string;
+              payload: { text?: string };
+            }>;
+          }
+        ).__BUZZ_E2E_COMMAND_LOG__?.findLast(
+          ({ command }) => command === "copy_text_to_clipboard",
+        )?.payload.text;
+      }),
+    )
+    .toBe(
+      "action=feedback\nstage=relay-publish\nclass=connection\nstatus=none\ncode=connection_unavailable",
+    );
   await expect(message).toHaveValue(
     "The channel list did not refresh after reconnecting.",
   );
