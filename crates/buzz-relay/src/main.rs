@@ -16,7 +16,7 @@ use buzz_db::{Db, DbConfig};
 use buzz_pubsub::PubSubManager;
 use buzz_search::SearchService;
 
-use buzz_relay::config::{Config, MAX_DRAIN_JITTER_MS};
+use buzz_relay::config::{Config, OperatorEmailLoginStatus, MAX_DRAIN_JITTER_MS};
 use buzz_relay::lifecycle::{BootTracker, LifecycleReason, StartupPhase};
 use buzz_relay::metrics as relay_metrics;
 use buzz_relay::router::{build_health_router, build_router};
@@ -202,6 +202,25 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
             anyhow::anyhow!("Configuration error: {error}")
         })?;
     boot = next_boot;
+
+    match config.operator_email_login_status() {
+        OperatorEmailLoginStatus::Enabled => info!("admin email login enabled"),
+        OperatorEmailLoginStatus::NoEmailsConfigured => {
+            info!(
+                reason = "no emails configured",
+                "admin email login disabled"
+            )
+        }
+        OperatorEmailLoginStatus::MailModeNotResend => {
+            info!(
+                reason = "mail mode not Resend",
+                "admin email login disabled"
+            )
+        }
+        OperatorEmailLoginStatus::NoKek => {
+            info!(reason = "no KEK", "admin email login disabled")
+        }
+    }
 
     let key_failure = if config.relay_private_key.is_some() {
         LifecycleReason::RequiredInvalid

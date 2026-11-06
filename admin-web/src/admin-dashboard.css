@@ -75,17 +75,12 @@
 }
 
 .ad-brand-mark {
-  display: inline-grid;
+  display: block;
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
-  place-items: center;
   border-radius: 8px;
-  color: #fff;
-  background: var(--ad-text);
-  font-size: 0.82rem;
-  font-weight: 750;
-  letter-spacing: -0.05em;
+  object-fit: cover;
 }
 
 .ad-brand > span:last-child {
@@ -1169,7 +1164,6 @@
   width: 38px;
   height: 38px;
   flex-basis: 38px;
-  font-size: 1rem;
 }
 
 .ad-recovery-card .ad-eyebrow {
@@ -1259,7 +1253,6 @@
   height: 38px;
   flex-basis: 38px;
   margin-bottom: 20px;
-  font-size: 1rem;
 }
 
 .ad-auth-card .ad-eyebrow {
@@ -1325,6 +1318,13 @@
 
 .ad-email-code-input-code {
   letter-spacing: 0.14em;
+}
+
+.ad-email-code-help {
+  margin: 0;
+  color: var(--ad-muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
 }
 
 .ad-email-code-button {
@@ -1482,7 +1482,6 @@
     width: 36px;
     height: 36px;
     flex-basis: 36px;
-    font-size: 1rem;
   }
 
   .ad-brand strong {

@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { signOutAdminSession } from "./api";
+import { ColonyAdminMark } from "./colony-admin-mark";
 
 type AdminErrorBoundaryProps = { children: ReactNode };
 
@@ -94,9 +95,7 @@ export class AdminErrorBoundary extends Component<
           aria-labelledby="ad-recovery-title"
           role="alert"
         >
-          <span className="ad-brand-mark" aria-hidden="true">
-            C
-          </span>
+          <ColonyAdminMark />
           <p className="ad-eyebrow">Colony admin</p>
           <h1 id="ad-recovery-title">Something went wrong</h1>
           <p>

@@ -294,7 +294,10 @@ test("feedback filters keep long community names usable", async ({ page }) => {
   }
 });
 
-test("feedback status is stored locally by feedback id", async ({ page }) => {
+test("feedback status is read-only without a named operator credential", async ({
+  page,
+}) => {
+  let patched = false;
   await page.route("**/api/admin/v1/feedback", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -306,28 +309,42 @@ test("feedback status is stored locally by feedback id", async ({ page }) => {
           submitterPubkey: "21".repeat(32),
           category: "bug",
           bodySummary: "Composer freezes after sleep",
+          status: "reviewed",
           receivedAt: new Date().toISOString(),
         },
       ]),
     }),
   );
+  await page.route("**/api/admin/v1/feedback/feedback-one", (route) => {
+    patched = true;
+    return route.fulfill({ contentType: "application/json", body: "{}" });
+  });
 
   await page.goto("/feedback");
-  await page.getByRole("checkbox", { name: "Acted on" }).check();
-  await page.reload();
-  await expect(page.getByRole("checkbox", { name: "Acted on" })).toBeChecked();
-  await page.getByLabel("Status").selectOption("acted-on");
+  await expect(page.getByText("Reviewed").last()).toBeVisible();
+  await expect(page.getByRole("combobox")).toHaveCount(3);
   await expect(page.getByText("Composer freezes after sleep")).toBeVisible();
-  await page.getByLabel("Status").selectOption("pending");
-  await expect(page.getByText("No matching feedback.")).toBeVisible();
+  await page.waitForTimeout(100);
+  expect(patched).toBe(false);
 });
 
 test("feedback attachments render from imeta without raw markdown", async ({
   page,
 }) => {
   const id = "feedback-with-attachments";
-  const imageUrl = `https://design.buzz.xyz/media/${"a".repeat(64)}.png`;
-  const fileUrl = `https://design.buzz.xyz/media/${"b".repeat(64)}.txt`;
+  const imageHash = "a".repeat(64);
+  const fileHash = "b".repeat(64);
+  const imageUrl = `https://design.buzz.xyz/media/${imageHash}.png`;
+  const fileUrl = `https://design.buzz.xyz/media/${fileHash}.txt`;
+  await page.route(
+    `**/api/admin/v1/feedback/${id}/attachments/${imageHash}`,
+    (route) =>
+      route.fulfill({ contentType: "image/png", body: "mock-image-bytes" }),
+  );
+  await page.route(
+    `**/api/admin/v1/feedback/${id}/attachments/${fileHash}`,
+    (route) => route.fulfill({ contentType: "text/plain", body: "mock file" }),
+  );
   await page.route(`**/api/admin/v1/feedback/${id}`, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -344,7 +361,7 @@ test("feedback attachments render from imeta without raw markdown", async ({
             "imeta",
             `url ${imageUrl}`,
             "m image/png",
-            `x ${"a".repeat(64)}`,
+            `x ${imageHash}`,
             "size 48213",
             "dim 1280x720",
             "filename screenshot.png",
@@ -353,7 +370,7 @@ test("feedback attachments render from imeta without raw markdown", async ({
             "imeta",
             `url ${fileUrl}`,
             "m text/plain",
-            `x ${"b".repeat(64)}`,
+            `x ${fileHash}`,
             "size 391",
             "filename diagnostics.txt",
           ],

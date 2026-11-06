@@ -1,20 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 466 309">
-  <style>
-    .mark { fill: #231e1e; }
-    @media (prefers-color-scheme: dark) {
-      .mark { fill: #d7d72e; }
-    }
-  </style>
-  <defs>
-    <mask id="bee-mask">
-      <circle cx="91.7" cy="154.5" r="91.7" fill="white"/>
-      <circle cx="374.3" cy="154.5" r="91.7" fill="white"/>
-      <rect x="128" y="0" width="210" height="309" rx="34" fill="white"/>
-      <circle cx="193.3" cy="84.4" r="27" fill="black"/>
-      <circle cx="276" cy="84.4" r="27" fill="black"/>
-      <rect x="166.3" y="157.2" width="136.9" height="38.3" rx="5" fill="black"/>
-      <rect x="166.9" y="235.1" width="136.2" height="37.6" rx="5" fill="black"/>
-    </mask>
-  </defs>
-  <rect class="mark" width="466" height="309" mask="url(#bee-mask)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title" data-colony-favicon="three-colour-bars">
+  <title id="title">Colony</title>
+  <rect width="64" height="64" rx="16" fill="#211b32"/>
+  <rect x="14" y="28" width="10" height="22" rx="5" fill="#7a5af8"/>
+  <rect x="27" y="20" width="10" height="30" rx="5" fill="#49b6e8"/>
+  <rect x="40" y="12" width="10" height="38" rx="5" fill="#f2aa5c"/>
 </svg>

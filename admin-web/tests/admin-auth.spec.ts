@@ -1,5 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
-import { overviewFixture } from "./helpers/admin-fixtures";
+import {
+  aiUsageFixture,
+  businessesFixture,
+  healthFixture,
+  overviewFixture,
+} from "./helpers/admin-fixtures";
 
 type SignedEvent = {
   kind: number;
@@ -165,6 +170,34 @@ test("anonymous visitors see the Colony sign-in choices", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(0);
 });
 
+test("the Colony sign-in document carries the Colony title, icon, and email guidance", async ({
+  page,
+}) => {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "unauthorized", message: "sign in" },
+      }),
+    }),
+  );
+
+  await page.goto("/sign-in");
+
+  await expect(page).toHaveTitle("Colony admin");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/favicon.svg",
+  );
+  await expect(page.locator('img[src="/favicon.svg"]')).toBeVisible();
+  await expect(
+    page.getByText(
+      "The code goes to the operator email on the allowlist. If nothing arrives, check spam or ask the coordinator.",
+    ),
+  ).toBeVisible();
+});
+
 test("an operator can request, enter, and verify an emailed code without a NIP credential", async ({
   page,
 }) => {
@@ -262,6 +295,72 @@ test("an email session renders the overview when the metrics tables are empty", 
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("No current alerts.")).toBeVisible();
   expect(pageErrors).toEqual([]);
+});
+
+test("an email session keeps every sidebar destination in the Colony shell", async ({
+  page,
+}) => {
+  await stubEmailSession(page);
+  await page.route("**/api/admin/v1/metrics/**", (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const body = pathname.endsWith("/overview")
+      ? overviewFixture
+      : pathname.endsWith("/businesses")
+        ? businessesFixture
+        : pathname.endsWith("/ai-usage")
+          ? aiUsageFixture
+          : pathname.endsWith("/health")
+            ? healthFixture
+            : overviewFixture;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
+  await page.route("**/api/admin/v1/reports?**", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" }),
+  );
+  await page.route("**/api/admin/v1/feedback", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" }),
+  );
+
+  await signInWithEmailCode(page);
+
+  const sidebar = page.locator(".ad-sidebar");
+  for (const [name, href] of [
+    ["Overview", "/overview"],
+    ["Businesses", "/businesses"],
+    ["AI usage", "/ai-usage"],
+    ["Health", "/system"],
+    ["Reports", "/reports"],
+    ["Feedback", "/feedback"],
+  ]) {
+    await expect(sidebar.getByRole("link", { name })).toHaveAttribute(
+      "href",
+      href,
+    );
+  }
+  for (const removedShortcut of ["People", "Agents", "Discovery", "WhatsApp"]) {
+    await expect(
+      sidebar.getByRole("link", { name: removedShortcut }),
+    ).toHaveCount(0);
+  }
+
+  await sidebar.getByRole("link", { name: "Reports" }).click();
+  await expect(page).toHaveURL(/\/reports$/);
+  await expect(
+    page.getByRole("heading", { name: "Open reports" }),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByText("Colony admin", { exact: true }),
+  ).toBeVisible();
+
+  await sidebar.getByRole("link", { name: "Feedback" }).click();
+  await expect(page).toHaveURL(/\/feedback$/);
+  await expect(page.getByRole("heading", { name: "Feedback" })).toBeVisible();
+  await expect(
+    sidebar.getByText("Colony admin", { exact: true }),
+  ).toBeVisible();
 });
 
 test("a partial overview response keeps an email session usable", async ({
