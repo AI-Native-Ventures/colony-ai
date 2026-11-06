@@ -56,6 +56,34 @@ test("a relay response retains only its structured status and code", () => {
   assert.doesNotMatch(failure.details, /account token/i);
 });
 
+test("allowlisted Discovery codes retain their specific safe recovery guidance", () => {
+  const search = actionFailureFromError({
+    action: "prospect-search",
+    stage: "relay-response",
+    error: Object.assign(new Error("untrusted provider text"), {
+      code: "discovery_not_configured",
+      status: 503,
+    }),
+  });
+  const sales = actionFailureFromError({
+    action: "prospect-search",
+    stage: "campaign-start",
+    error: new Error("untrusted channel text"),
+    code: "sales_channel_not_allowed",
+  });
+
+  assert.equal(
+    search.message,
+    "Prospect search is not set up on this server yet. The server owner needs to add the Outscraper key.",
+  );
+  assert.equal(
+    sales.message,
+    "The private Sales channel is not set up yet. An owner or admin of this business sets it up by opening Leads once. Ask one of them, then retry.",
+  );
+  assert.doesNotMatch(search.message, /untrusted/i);
+  assert.doesNotMatch(sales.message, /untrusted/i);
+});
+
 test("a connection failure has safe retry details", () => {
   const failure = actionFailureFromError({
     action: "feedback",

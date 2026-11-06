@@ -26,6 +26,7 @@ import {
   type DiscoveryLocation,
 } from "./discoveryLocation";
 import { searchDiscoveryLocations } from "./discoveryLocationClient";
+import { SALES_NOT_ALLOWED_MESSAGE } from "./salesChannel";
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
@@ -61,6 +62,10 @@ function discoveryActionFailure(error: unknown): ActionFailure {
     action: "prospect-search",
     stage: "campaign-start",
     error,
+    code:
+      error instanceof Error && error.message === SALES_NOT_ALLOWED_MESSAGE
+        ? "sales_channel_not_allowed"
+        : null,
   });
   logActionFailure(failure);
   return failure;

@@ -125,6 +125,22 @@ function description(input: {
   status: number | null;
   code: string | null;
 }): Pick<ActionFailure, "title" | "message"> {
+  if (input.action === "prospect-search") {
+    if (input.code === "discovery_not_configured") {
+      return {
+        title: "Prospect search is not set up",
+        message:
+          "Prospect search is not set up on this server yet. The server owner needs to add the Outscraper key.",
+      };
+    }
+    if (input.code === "sales_channel_not_allowed") {
+      return {
+        title: "Sales channel not set up",
+        message:
+          "The private Sales channel is not set up yet. An owner or admin of this business sets it up by opening Leads once. Ask one of them, then retry.",
+      };
+    }
+  }
   const label = input.action.replaceAll("-", " ");
   if (input.failureClass === "signing") {
     return {
