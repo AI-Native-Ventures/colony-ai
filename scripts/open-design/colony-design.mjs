@@ -44,6 +44,18 @@ function isPathInside(parent, target) {
   );
 }
 
+function sandboxTraversalPaths(homeRoot, target) {
+  if (!isPathInside(homeRoot, target)) return [];
+  const paths = [homeRoot];
+  let current = homeRoot;
+  for (const segment of path.relative(homeRoot, target).split(path.sep)) {
+    if (!segment || segment === ".") continue;
+    current = path.join(current, segment);
+    paths.push(current);
+  }
+  return paths;
+}
+
 function boundedInvocation(command, args) {
   if (process.platform !== "darwin") return { command, args };
   return {
@@ -158,7 +170,9 @@ export function colonySandboxProfile(
   const projectRoot = path.resolve(projectPath);
   const projectCollection = path.dirname(projectRoot);
   const sourceRoot = path.resolve(sourcePath);
-  const nodeRoot = path.resolve(nodeBinDir);
+  // Corepack's executable in bin/ is a symlink into lib/node_modules. Give
+  // the sandbox access to the managed Node runtime, rather than only bin/.
+  const nodeRoot = path.resolve(nodeBinDir, "..");
   const privatePaths = [
     "Pictures",
     "Music",
@@ -230,12 +244,27 @@ export function colonySandboxProfile(
   rules.push('(deny file-write* (subpath "/Volumes"))');
   rules.push(`(deny file-read* (subpath ${sandboxQuote(projectCollection)}))`);
   rules.push(`(deny file-write* (subpath ${sandboxQuote(projectCollection)}))`);
-  for (const target of [
+  const readableTargets = [
     projectRoot,
     sourceRoot,
     nodeRoot,
     ...activeRuntimePaths,
-  ]) {
+  ].filter(
+    (target) =>
+      target === projectRoot ||
+      target === sourceRoot ||
+      isPathInside(homeRoot, target) ||
+      isPathInside("/Users", target),
+  );
+  const traversalPaths = new Set(
+    readableTargets.flatMap((target) =>
+      sandboxTraversalPaths(homeRoot, target),
+    ),
+  );
+  for (const target of traversalPaths) {
+    rules.push(`(allow file-read-metadata (literal ${sandboxQuote(target)}))`);
+  }
+  for (const target of readableTargets) {
     if (
       target === projectRoot ||
       target === sourceRoot ||
