@@ -542,6 +542,60 @@ pub(crate) enum AccountMailMode {
     Log,
 }
 
+/// One email address permitted to begin an operator email-code sign-in.
+///
+/// Plain entries bind to the verified Colony account with the same address.
+/// Alias entries bind the delivery address to an explicit operator public key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RelayOperatorEmail {
+    /// Use the verified Colony account with this email address.
+    Account(String),
+    /// Deliver to `email` and issue a session for `pubkey` after verification.
+    Alias {
+        /// The normalized email address that receives the code.
+        email: String,
+        /// The normalized 64-character hexadecimal session subject.
+        pubkey: String,
+    },
+}
+
+impl RelayOperatorEmail {
+    /// The normalized address that receives the code.
+    pub(crate) fn email(&self) -> &str {
+        match self {
+            Self::Account(email) | Self::Alias { email, .. } => email,
+        }
+    }
+}
+
+/// Readiness of the operator email-code sign-in flow at relay startup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperatorEmailLoginStatus {
+    /// All required delivery and custody configuration is present.
+    Enabled,
+    /// No operator delivery addresses were configured.
+    NoEmailsConfigured,
+    /// Operator email login only sends through Resend, not a development sink.
+    MailModeNotResend,
+    /// The account key-encryption key required for hashes and cookies is absent.
+    NoKek,
+}
+
+fn operator_email_login_status(
+    emails: &[RelayOperatorEmail],
+    accounts: &AccountConfig,
+) -> OperatorEmailLoginStatus {
+    if emails.is_empty() {
+        OperatorEmailLoginStatus::NoEmailsConfigured
+    } else if !matches!(accounts.mail_mode(), Some(AccountMailMode::Resend)) {
+        OperatorEmailLoginStatus::MailModeNotResend
+    } else if accounts.account_kek().is_none() {
+        OperatorEmailLoginStatus::NoKek
+    } else {
+        OperatorEmailLoginStatus::Enabled
+    }
+}
+
 impl AccountConfig {
     /// Return the current account key-encryption key without formatting it.
     pub(crate) fn account_kek(&self) -> Option<&[u8; 32]> {
@@ -899,14 +953,16 @@ pub struct Config {
     pub relay_operator_pubkeys: Vec<String>,
 
     /// Deployment-level email addresses allowed to begin an emailed operator
-    /// session. The email route remains disabled when this list is empty, and
-    /// a matching verified account must still resolve to a pubkey in
-    /// [`Self::relay_operator_pubkeys`] before a cookie is minted.
+    /// session. Plain entries require a matching verified Colony account;
+    /// aliases name the delivery address and target public key explicitly.
+    /// Every resulting key must still appear in [`Self::relay_operator_pubkeys`]
+    /// before a cookie is minted.
     ///
-    /// Set via `RELAY_OPERATOR_EMAILS` as a comma-separated list. Entries are
-    /// trimmed and lowercased at startup; invalid entries fail startup rather
-    /// than silently weakening or disabling the allowlist.
-    pub relay_operator_emails: Vec<String>,
+    /// Set via `RELAY_OPERATOR_EMAILS` as a comma-separated list of either
+    /// `email` or `email=64-char-hex-pubkey`. Entries are trimmed and
+    /// normalized at startup; invalid entries fail startup rather than silently
+    /// weakening or disabling the allowlist.
+    pub relay_operator_emails: Vec<RelayOperatorEmail>,
 
     /// Allow NIP-OA owner attestation for relay membership.
     ///
@@ -1053,7 +1109,20 @@ fn normalize_operator_email(raw: &str) -> Option<String> {
     Some(email)
 }
 
-fn parse_operator_email_allowlist() -> Result<Vec<String>, ConfigError> {
+fn normalize_operator_pubkey(raw: &str) -> Option<String> {
+    let pubkey = raw.trim().to_ascii_lowercase();
+    (pubkey.len() == 64
+        && pubkey
+            .chars()
+            .all(|character| character.is_ascii_hexdigit()))
+    .then_some(pubkey)
+}
+
+fn operator_email_entry_error(index: usize) -> ConfigError {
+    ConfigError::InvalidValue(format!("RELAY_OPERATOR_EMAILS entry {index} is invalid"))
+}
+
+fn parse_operator_email_allowlist() -> Result<Vec<RelayOperatorEmail>, ConfigError> {
     let raw = match std::env::var("RELAY_OPERATOR_EMAILS") {
         Ok(raw) => raw,
         Err(std::env::VarError::NotPresent) => return Ok(Vec::new()),
@@ -1064,17 +1133,31 @@ fn parse_operator_email_allowlist() -> Result<Vec<String>, ConfigError> {
         }
     };
     let mut emails = Vec::new();
-    for entry in raw.split(',') {
+    for (offset, entry) in raw.split(',').enumerate() {
         if entry.trim().is_empty() {
             continue;
         }
-        let email = normalize_operator_email(entry).ok_or_else(|| {
-            ConfigError::InvalidValue(
-                "RELAY_OPERATOR_EMAILS contains an invalid email entry".to_owned(),
-            )
-        })?;
-        if !emails.contains(&email) {
-            emails.push(email);
+        let index = offset + 1;
+        let parsed = if let Some((raw_email, raw_pubkey)) = entry.split_once('=') {
+            let email = normalize_operator_email(raw_email)
+                .ok_or_else(|| operator_email_entry_error(index))?;
+            let pubkey = normalize_operator_pubkey(raw_pubkey)
+                .ok_or_else(|| operator_email_entry_error(index))?;
+            RelayOperatorEmail::Alias { email, pubkey }
+        } else {
+            let email =
+                normalize_operator_email(entry).ok_or_else(|| operator_email_entry_error(index))?;
+            RelayOperatorEmail::Account(email)
+        };
+        if let Some(existing) = emails
+            .iter()
+            .find(|configured: &&RelayOperatorEmail| configured.email() == parsed.email())
+        {
+            if existing != &parsed {
+                return Err(operator_email_entry_error(index));
+            }
+        } else {
+            emails.push(parsed);
         }
     }
     Ok(emails)
@@ -1325,6 +1408,11 @@ fn inert_env_vars<'a>(names: &[&'a str], lookup: impl Fn(&str) -> Option<String>
 }
 
 impl Config {
+    /// Explain whether the operator email-code flow can issue sessions.
+    pub fn operator_email_login_status(&self) -> OperatorEmailLoginStatus {
+        operator_email_login_status(&self.relay_operator_emails, &self.accounts)
+    }
+
     /// Loads configuration from environment variables, falling back to development defaults.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind_addr_raw =
@@ -1567,16 +1655,15 @@ impl Config {
             Ok(raw) => {
                 let mut pubkeys = Vec::new();
                 for entry in raw.split(',') {
-                    let entry = entry.trim().to_lowercase();
+                    let entry = entry.trim().to_ascii_lowercase();
                     if entry.is_empty() {
                         continue;
                     }
-                    let valid = entry.len() == 64 && entry.chars().all(|c| c.is_ascii_hexdigit());
-                    if !valid {
+                    let Some(entry) = normalize_operator_pubkey(&entry) else {
                         return Err(ConfigError::InvalidValue(format!(
                             "RELAY_OPERATOR_PUBKEYS entry is not a valid 64-char hex pubkey: {entry:?}"
                         )));
-                    }
+                    };
                     if !pubkeys.contains(&entry) {
                         pubkeys.push(entry);
                     }
@@ -2386,6 +2473,54 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains(&encoded_key));
+    }
+
+    #[test]
+    fn operator_email_login_startup_status_names_the_disabled_condition() {
+        let email = RelayOperatorEmail::Account("operator@example.test".to_owned());
+        assert_eq!(
+            operator_email_login_status(
+                &[],
+                &AccountConfig::test_config(
+                    Some([0x11; 32]),
+                    Some(AccountMailMode::Resend),
+                    vec![],
+                    None
+                ),
+            ),
+            OperatorEmailLoginStatus::NoEmailsConfigured
+        );
+        assert_eq!(
+            operator_email_login_status(
+                std::slice::from_ref(&email),
+                &AccountConfig::test_config(
+                    Some([0x11; 32]),
+                    Some(AccountMailMode::Log),
+                    vec![],
+                    None
+                ),
+            ),
+            OperatorEmailLoginStatus::MailModeNotResend
+        );
+        assert_eq!(
+            operator_email_login_status(
+                std::slice::from_ref(&email),
+                &AccountConfig::test_config(None, Some(AccountMailMode::Resend), vec![], None),
+            ),
+            OperatorEmailLoginStatus::NoKek
+        );
+        assert_eq!(
+            operator_email_login_status(
+                std::slice::from_ref(&email),
+                &AccountConfig::test_config(
+                    Some([0x11; 32]),
+                    Some(AccountMailMode::Resend),
+                    vec![],
+                    None
+                ),
+            ),
+            OperatorEmailLoginStatus::Enabled
+        );
     }
 
     #[test]
@@ -3317,8 +3452,31 @@ mod tests {
         assert_eq!(
             config.relay_operator_emails,
             vec![
-                "admin@example.test".to_owned(),
-                "second@example.test".to_owned(),
+                RelayOperatorEmail::Account("admin@example.test".to_owned()),
+                RelayOperatorEmail::Account("second@example.test".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn relay_operator_emails_parse_normalized_alias_entries() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let pubkey = "A".repeat(64);
+        std::env::set_var(
+            "RELAY_OPERATOR_EMAILS",
+            format!("alias@Example.Test = {pubkey}, plain@example.test"),
+        );
+        let config = Config::from_env().expect("config");
+        std::env::remove_var("RELAY_OPERATOR_EMAILS");
+
+        assert_eq!(
+            config.relay_operator_emails,
+            vec![
+                RelayOperatorEmail::Alias {
+                    email: "alias@example.test".to_owned(),
+                    pubkey: "a".repeat(64),
+                },
+                RelayOperatorEmail::Account("plain@example.test".to_owned()),
             ]
         );
     }
@@ -3326,14 +3484,16 @@ mod tests {
     #[test]
     fn relay_operator_emails_reject_invalid_entries() {
         let _guard = ENV_MUTEX.lock().unwrap();
-        std::env::set_var("RELAY_OPERATOR_EMAILS", "not-an-email");
+        let invalid = "not-an-email=must-not-appear-in-startup-error";
+        std::env::set_var("RELAY_OPERATOR_EMAILS", invalid);
         let result = Config::from_env();
         std::env::remove_var("RELAY_OPERATOR_EMAILS");
 
         assert!(matches!(
             result,
             Err(ConfigError::InvalidValue(ref message))
-                if message.contains("RELAY_OPERATOR_EMAILS")
+                if message.contains("RELAY_OPERATOR_EMAILS entry 1")
+                    && !message.contains("must-not-appear-in-startup-error")
         ));
     }
 

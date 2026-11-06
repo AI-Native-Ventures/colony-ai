@@ -39,6 +39,44 @@ function decodeNostrHeader(header: string): { tags: string[][] } {
   return JSON.parse(atob(header.replace(/^Nostr /, "")));
 }
 
+function unauthorizedResponse() {
+  return {
+    status: 401,
+    headers: { "www-authenticate": "Nostr" },
+    contentType: "application/json",
+    body: JSON.stringify({
+      error: { code: "unauthorized", message: "nip98 required" },
+    }),
+  };
+}
+
+function operatorProbeResponse() {
+  return {
+    contentType: "application/json",
+    body: JSON.stringify({ role: "operator", source: "config" }),
+  };
+}
+
+async function routeCookieOperatorProbe(page: Page) {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill(operatorProbeResponse()),
+  );
+}
+
+async function routeNip98OperatorProbe(page: Page) {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill(
+      route.request().headers().authorization
+        ? operatorProbeResponse()
+        : unauthorizedResponse(),
+    ),
+  );
+}
+
+async function startNip98SignIn(page: Page) {
+  await page.getByRole("button", { name: "Use NIP-98 instead" }).click();
+}
+
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -55,7 +93,7 @@ function summary(overrides: Record<string, unknown>) {
   return {
     id: FEEDBACK_ONE,
     communityId: "6d474feb-c50a-44e4-a0b5-f30532df49bc",
-    communityHost: "design.buzz.xyz",
+    communityHost: "design.colony.global",
     submitterPubkey: "21".repeat(32),
     category: "bug",
     bodySummary: "Composer froze on paste.",
@@ -69,28 +107,17 @@ test("nip98 mode: changing status PATCHes the relay with a payload-bound credent
   page,
 }) => {
   await seedNip98(page);
+  await routeNip98OperatorProbe(page);
 
   const patches: { method: string; body: string; authorization?: string }[] =
     [];
+  let listAuthorization: string | undefined;
   await page.route("**/api/admin/v1/feedback", async (route) => {
-    // The list load is authenticated (probe already resolved nip98 mode).
+    listAuthorization = route.request().headers().authorization;
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify([summary({ status: "new" })]),
     });
-  });
-  await page.route("**/api/admin/v1/reports**", (route) => {
-    // Probe: reject unauthenticated so the SPA resolves nip98 mode.
-    if (!route.request().headers().authorization) {
-      route.fulfill({
-        status: 401,
-        headers: { "www-authenticate": "Nostr" },
-        contentType: "application/json",
-        body: JSON.stringify({ error: { code: "unauthorized", message: "x" } }),
-      });
-      return;
-    }
-    route.fulfill({ contentType: "application/json", body: "[]" });
   });
   await page.route(
     `**/api/admin/v1/feedback/${FEEDBACK_ONE}`,
@@ -109,7 +136,9 @@ test("nip98 mode: changing status PATCHes the relay with a payload-bound credent
   );
 
   await page.goto("/feedback");
+  await startNip98SignIn(page);
   await expect(page.getByRole("heading", { name: "Feedback" })).toBeVisible();
+  await expect.poll(() => listAuthorization).toMatch(/^Nostr /);
 
   await page.getByRole("combobox").last().selectOption("reviewed");
 
@@ -131,6 +160,7 @@ test("nip98 mode: a failed PATCH surfaces an error and does not lie about the st
   page,
 }) => {
   await seedNip98(page);
+  await routeNip98OperatorProbe(page);
 
   await page.route("**/api/admin/v1/feedback", (route) =>
     route.fulfill({
@@ -138,18 +168,6 @@ test("nip98 mode: a failed PATCH surfaces an error and does not lie about the st
       body: JSON.stringify([summary({ status: "new" })]),
     }),
   );
-  await page.route("**/api/admin/v1/reports**", (route) => {
-    if (!route.request().headers().authorization) {
-      route.fulfill({
-        status: 401,
-        headers: { "www-authenticate": "Nostr" },
-        contentType: "application/json",
-        body: JSON.stringify({ error: { code: "unauthorized", message: "x" } }),
-      });
-      return;
-    }
-    route.fulfill({ contentType: "application/json", body: "[]" });
-  });
   // Gate the failing PATCH so the test can observe the in-flight (pending)
   // state before the 500 lands.
   let releasePatch: () => void = () => {};
@@ -169,6 +187,7 @@ test("nip98 mode: a failed PATCH surfaces an error and does not lie about the st
   );
 
   await page.goto("/feedback");
+  await startNip98SignIn(page);
   const control = page.getByRole("combobox").last();
   await control.selectOption("archived");
 
@@ -188,13 +207,10 @@ test("nip98 mode: a failed PATCH surfaces an error and does not lie about the st
   await expect(control).toBeEnabled();
 });
 
-test("disabled mode: the status control is a read-only badge with no write affordance", async ({
+test("cookie mode: the status control is a read-only badge with no write affordance", async ({
   page,
 }) => {
-  // Probe returns 200 → disabled mode. No mutation must be offered.
-  await page.route("**/api/admin/v1/reports**", (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" }),
-  );
+  await routeCookieOperatorProbe(page);
   await page.route("**/api/admin/v1/feedback", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -221,10 +237,7 @@ test("disabled mode: the status control is a read-only badge with no write affor
 test("a purged feedback row (null provenance) renders without crashing search or attachments", async ({
   page,
 }) => {
-  // Disabled mode keeps the test focused on nullable-host handling.
-  await page.route("**/api/admin/v1/reports**", (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" }),
-  );
+  await routeCookieOperatorProbe(page);
   await page.route("**/api/admin/v1/feedback", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -248,9 +261,7 @@ test("a purged feedback detail derives no attachments from an absent host", asyn
   page,
 }) => {
   const imageHash = "a".repeat(64);
-  await page.route("**/api/admin/v1/reports**", (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" }),
-  );
+  await routeCookieOperatorProbe(page);
   await page.route("**/api/admin/v1/feedback", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" }),
   );
@@ -272,11 +283,11 @@ test("a purged feedback detail derives no attachments from an absent host", asyn
         eventId: "31".repeat(32),
         submitterPubkey: "21".repeat(32),
         category: "bug",
-        body: "Broken.\n\n![shot](https://design.buzz.xyz/media/x.png)",
+        body: "Broken.\n\n![shot](https://design.colony.global/media/x.png)",
         tags: [
           [
             "imeta",
-            "url https://design.buzz.xyz/media/x.png",
+            "url https://design.colony.global/media/x.png",
             "m image/png",
             `x ${imageHash}`,
             "filename shot.png",
@@ -307,9 +318,7 @@ test("a hostile attachment served as octet-stream is download-only, never a navi
   // <img>, no target="_blank" navigation to a typed document on the admin
   // origin.
   const hash = "a".repeat(64);
-  await page.route("**/api/admin/v1/reports**", (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" }),
-  );
+  await routeCookieOperatorProbe(page);
   await page.route("**/api/admin/v1/feedback", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" }),
   );
@@ -327,15 +336,15 @@ test("a hostile attachment served as octet-stream is download-only, never a navi
       body: JSON.stringify({
         id: FEEDBACK_ONE,
         communityId: "6d474feb-c50a-44e4-a0b5-f30532df49bc",
-        communityHost: "design.buzz.xyz",
+        communityHost: "design.colony.global",
         eventId: "31".repeat(32),
         submitterPubkey: "21".repeat(32),
         category: "bug",
-        body: "Broken.\n\n![shot](https://design.buzz.xyz/media/x.png)",
+        body: "Broken.\n\n![shot](https://design.colony.global/media/x.png)",
         tags: [
           [
             "imeta",
-            "url https://design.buzz.xyz/media/x.png",
+            "url https://design.colony.global/media/x.png",
             "m image/png",
             `x ${hash}`,
             "filename shot.png",

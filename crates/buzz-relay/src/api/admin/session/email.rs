@@ -19,11 +19,15 @@ use redis::Script;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use subtle::ConstantTimeEq;
+use tracing::Instrument as _;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::api::accounts::{mail::CodeMailKind, normalize_email, SecretString};
-use crate::config::AccountMailMode;
+use crate::api::accounts::{
+    mail::{CodeMailKind, MailDeliveryError},
+    normalize_email, SecretString,
+};
+use crate::config::{OperatorEmailLoginStatus, RelayOperatorEmail};
 use crate::state::AppState;
 
 use super::{
@@ -122,6 +126,36 @@ enum CodeVerification {
     Locked,
     Missing,
     Changed,
+}
+
+/// Privacy-safe class for one email-code start outcome.
+///
+/// These values are intentionally the entire server-side diagnostic surface:
+/// they identify a deployment/configuration condition without retaining or
+/// logging the requested address, code, or client address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartReason {
+    Sent,
+    NotAllowlisted,
+    NoAccount,
+    AccountUnverified,
+    NotOperatorKey,
+    MailUnconfigured,
+    MailProviderError,
+}
+
+impl StartReason {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sent => "sent",
+            Self::NotAllowlisted => "not_allowlisted",
+            Self::NoAccount => "no_account",
+            Self::AccountUnverified => "account_unverified",
+            Self::NotOperatorKey => "not_operator_key",
+            Self::MailUnconfigured => "mail_unconfigured",
+            Self::MailProviderError => "mail_provider_error",
+        }
+    }
 }
 
 fn requested_response() -> Response {
@@ -251,33 +285,41 @@ fn email_lockout_key(email_hash: &[u8; 32]) -> String {
     format!("colony:admin-email-lockout:{}", hex::encode(email_hash))
 }
 
-fn email_login_enabled(state: &AppState) -> bool {
-    !state.config.relay_operator_emails.is_empty()
-        && matches!(
-            state.config.accounts.mail_mode(),
-            Some(AccountMailMode::Resend)
-        )
-        && state.config.accounts.account_kek().is_some()
-}
-
-fn eligible_operator_pubkey(
+fn operator_email_pubkey(
     state: &AppState,
     email: &str,
     account: Option<&buzz_db::accounts::AccountRecord>,
-) -> Option<String> {
-    if !email_login_enabled(state)
-        || !state
-            .config
-            .relay_operator_emails
-            .iter()
-            .any(|configured| configured == email)
-    {
-        return None;
+) -> Result<String, StartReason> {
+    if state.config.operator_email_login_status() != OperatorEmailLoginStatus::Enabled {
+        return Err(StartReason::MailUnconfigured);
     }
-    account
-        .filter(|account| account.email_verified_at.is_some())
-        .filter(|account| is_listed_operator(state, &account.pubkey))
-        .map(|account| account.pubkey.to_lowercase())
+    let Some(configured) = state
+        .config
+        .relay_operator_emails
+        .iter()
+        .find(|configured| configured.email() == email)
+    else {
+        return Err(StartReason::NotAllowlisted);
+    };
+    match configured {
+        RelayOperatorEmail::Alias { pubkey, .. } => {
+            if is_listed_operator(state, pubkey) {
+                Ok(pubkey.clone())
+            } else {
+                Err(StartReason::NotOperatorKey)
+            }
+        }
+        RelayOperatorEmail::Account(_) => {
+            let account = account.ok_or(StartReason::NoAccount)?;
+            if account.email_verified_at.is_none() {
+                return Err(StartReason::AccountUnverified);
+            }
+            if !is_listed_operator(state, &account.pubkey) {
+                return Err(StartReason::NotOperatorKey);
+            }
+            Ok(account.pubkey.to_lowercase())
+        }
+    }
 }
 
 async fn audit(
@@ -294,6 +336,24 @@ async fn audit(
         .is_ok()
 }
 
+fn log_start_reason(reason: StartReason) {
+    if reason == StartReason::Sent {
+        tracing::info!(reason = reason.as_str(), "admin email login start");
+    } else {
+        tracing::warn!(reason = reason.as_str(), "admin email login start");
+    }
+}
+
+async fn record_start_result(
+    state: &AppState,
+    reason: StartReason,
+    email_hash: &[u8; 32],
+    ip_bucket_hash: &[u8; 32],
+) {
+    let _ = audit(state, "start", reason.as_str(), email_hash, ip_bucket_hash).await;
+    log_start_reason(reason);
+}
+
 async fn audit_without_email(
     state: &AppState,
     operation: &'static str,
@@ -308,6 +368,21 @@ async fn audit_without_email(
         .and_then(|kek| ip_bucket_hash(kek, headers, peer).ok())
         .unwrap_or(ZERO_HASH);
     let _ = audit(state, operation, outcome, &ZERO_HASH, &ip_bucket_hash).await;
+}
+
+async fn record_start_result_without_email(
+    state: &AppState,
+    reason: StartReason,
+    headers: &HeaderMap,
+    peer: &ConnectInfo<SocketAddr>,
+) {
+    let ip_bucket_hash = state
+        .config
+        .accounts
+        .account_kek()
+        .and_then(|kek| ip_bucket_hash(kek, headers, peer).ok())
+        .unwrap_or(ZERO_HASH);
+    record_start_result(state, reason, &ZERO_HASH, &ip_bucket_hash).await;
 }
 
 async fn rate_allowed(
@@ -426,39 +501,30 @@ fn spawn_delivery(
     challenge_id: Uuid,
     code: Zeroizing<String>,
 ) {
-    tokio::spawn(async move {
-        let delivered = state
-            .account_services
-            .code_mailer
-            .send_code(
-                &state.config.accounts,
-                &email,
-                CodeMailKind::AdminEmailLogin,
-                &code,
-            )
-            .await
-            .is_ok();
-        if delivered {
-            let _ = audit(
-                &state,
-                "start",
-                "mail_delivered",
-                &email_hash,
-                &ip_bucket_hash,
-            )
-            .await;
-        } else {
-            delete_current_code(&state, &email_hash, challenge_id).await;
-            let _ = audit(
-                &state,
-                "start",
-                "mail_delivery_failed",
-                &email_hash,
-                &ip_bucket_hash,
-            )
-            .await;
+    tokio::spawn(
+        async move {
+            let reason = match state
+                .account_services
+                .code_mailer
+                .send_code(
+                    &state.config.accounts,
+                    &email,
+                    CodeMailKind::AdminEmailLogin,
+                    &code,
+                )
+                .await
+            {
+                Ok(()) => StartReason::Sent,
+                Err(MailDeliveryError::Unconfigured) => StartReason::MailUnconfigured,
+                Err(MailDeliveryError::Provider) => StartReason::MailProviderError,
+            };
+            if reason != StartReason::Sent {
+                delete_current_code(&state, &email_hash, challenge_id).await;
+            }
+            record_start_result(&state, reason, &email_hash, &ip_bucket_hash).await;
         }
-    });
+        .instrument(tracing::info_span!("admin_email_delivery")),
+    );
 }
 
 /// `POST /session/email/start`: request an emailed code without exposing the
@@ -476,29 +542,64 @@ pub(super) async fn start(
     let request = match serde_json::from_slice::<EmailStartRequest>(&body) {
         Ok(request) => request,
         Err(_) => {
-            audit_without_email(&state, "start", "invalid_request", &headers, &peer).await;
+            record_start_result_without_email(&state, StartReason::NotAllowlisted, &headers, &peer)
+                .await;
             return Ok(requested_response());
         }
     };
     let Some(email) = normalize_email(&request.email) else {
-        audit_without_email(&state, "start", "invalid_request", &headers, &peer).await;
+        record_start_result_without_email(&state, StartReason::NotAllowlisted, &headers, &peer)
+            .await;
         return Ok(requested_response());
     };
+    if state.config.operator_email_login_status() != OperatorEmailLoginStatus::Enabled {
+        record_start_result_without_email(&state, StartReason::MailUnconfigured, &headers, &peer)
+            .await;
+        return Ok(requested_response());
+    }
     let Some(kek) = state.config.accounts.account_kek() else {
-        audit_without_email(&state, "start", "method_unavailable", &headers, &peer).await;
+        record_start_result_without_email(&state, StartReason::MailUnconfigured, &headers, &peer)
+            .await;
         return Ok(requested_response());
     };
     let email_hash = match email_identity_hash(kek, &email) {
         Ok(hash) => hash,
-        Err(_) => return Ok(requested_response()),
+        Err(_) => {
+            record_start_result_without_email(
+                &state,
+                StartReason::MailProviderError,
+                &headers,
+                &peer,
+            )
+            .await;
+            return Ok(requested_response());
+        }
     };
     let ip_rate_hash = match ip_rate_hash(kek, &headers, &peer) {
         Ok(hash) => hash,
-        Err(_) => return Ok(requested_response()),
+        Err(_) => {
+            record_start_result(
+                &state,
+                StartReason::MailProviderError,
+                &email_hash,
+                &ZERO_HASH,
+            )
+            .await;
+            return Ok(requested_response());
+        }
     };
     let ip_audit_hash = match ip_bucket_hash(kek, &headers, &peer) {
         Ok(hash) => hash,
-        Err(_) => return Ok(requested_response()),
+        Err(_) => {
+            record_start_result(
+                &state,
+                StartReason::MailProviderError,
+                &email_hash,
+                &ZERO_HASH,
+            )
+            .await;
+            return Ok(requested_response());
+        }
     };
     match rate_allowed(
         &state,
@@ -513,14 +614,19 @@ pub(super) async fn start(
     {
         Ok(true) => {}
         Ok(false) => {
-            let _ = audit(&state, "start", "rate_limited", &email_hash, &ip_audit_hash).await;
+            record_start_result(
+                &state,
+                StartReason::MailProviderError,
+                &email_hash,
+                &ip_audit_hash,
+            )
+            .await;
             return Ok(requested_response());
         }
         Err(()) => {
-            let _ = audit(
+            record_start_result(
                 &state,
-                "start",
-                "rate_limiter_unavailable",
+                StartReason::MailProviderError,
                 &email_hash,
                 &ip_audit_hash,
             )
@@ -534,10 +640,9 @@ pub(super) async fn start(
     let account = match state.db.account_by_email(&email).await {
         Ok(account) => account,
         Err(_) => {
-            let _ = audit(
+            record_start_result(
                 &state,
-                "start",
-                "account_lookup_failed",
+                StartReason::MailProviderError,
                 &email_hash,
                 &ip_audit_hash,
             )
@@ -545,12 +650,22 @@ pub(super) async fn start(
             return Ok(requested_response());
         }
     };
-    let eligible = eligible_operator_pubkey(&state, &email, account.as_ref()).is_some();
+    let eligibility = operator_email_pubkey(&state, &email, account.as_ref());
+    let eligible = eligibility.is_ok();
     let code = generate_code();
     let salt = rand::random::<[u8; 32]>();
     let code_hash = match code_hash(kek, &email, &salt, code.as_str()) {
         Ok(hash) => hash,
-        Err(_) => return Ok(requested_response()),
+        Err(_) => {
+            record_start_result(
+                &state,
+                StartReason::MailProviderError,
+                &email_hash,
+                &ip_audit_hash,
+            )
+            .await;
+            return Ok(requested_response());
+        }
     };
     let stored = StoredEmailCode {
         challenge_id: Uuid::new_v4(),
@@ -561,10 +676,9 @@ pub(super) async fn start(
     let reservation = match reserve_code(&state, &email_hash, &stored, eligible).await {
         Ok(reservation) => reservation,
         Err(()) => {
-            let _ = audit(
+            record_start_result(
                 &state,
-                "start",
-                "redis_unavailable",
+                StartReason::MailProviderError,
                 &email_hash,
                 &ip_audit_hash,
             )
@@ -572,30 +686,30 @@ pub(super) async fn start(
             return Ok(requested_response());
         }
     };
-    let outcome = match reservation {
-        CodeReservation::Issued => "code_issued",
-        CodeReservation::Cooldown => "resend_cooldown",
-        CodeReservation::Locked => "locked_out",
-        CodeReservation::Ineligible => "not_eligible",
-    };
-    if !audit(&state, "start", outcome, &email_hash, &ip_audit_hash).await {
-        if matches!(
-            reservation,
-            CodeReservation::Issued | CodeReservation::Ineligible
-        ) {
-            delete_current_code(&state, &email_hash, stored.challenge_id).await;
-        }
-        return Ok(requested_response());
-    }
-    if matches!(reservation, CodeReservation::Issued) {
-        spawn_delivery(
+    match (eligibility, reservation) {
+        (Ok(_), CodeReservation::Issued) => spawn_delivery(
             state,
             email,
             email_hash,
             ip_audit_hash,
             stored.challenge_id,
             code,
-        );
+        ),
+        (Err(reason), _) => {
+            record_start_result(&state, reason, &email_hash, &ip_audit_hash).await;
+        }
+        (
+            Ok(_),
+            CodeReservation::Cooldown | CodeReservation::Locked | CodeReservation::Ineligible,
+        ) => {
+            record_start_result(
+                &state,
+                StartReason::MailProviderError,
+                &email_hash,
+                &ip_audit_hash,
+            )
+            .await;
+        }
     }
     Ok(requested_response())
 }
@@ -688,7 +802,7 @@ pub(super) async fn verify(
             return Ok(generic_failure_response());
         }
     };
-    let Some(pubkey) = eligible_operator_pubkey(&state, &email, account.as_ref()) else {
+    let Some(pubkey) = operator_email_pubkey(&state, &email, account.as_ref()).ok() else {
         let _ = audit(
             &state,
             "verify",

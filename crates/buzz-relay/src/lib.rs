@@ -2,6 +2,8 @@
 #![warn(missing_docs)]
 //! NIP-01 WebSocket relay for Buzz private team communication.
 
+#[cfg(test)]
+mod admin_brand_guard_tests;
 mod admission;
 mod build_info;
 mod rejection;

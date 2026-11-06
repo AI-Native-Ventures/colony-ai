@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ApiFailure,
   createGoogleAdminSession,
+  probeAuthMode,
   request,
   requestOperatorProbe,
   startEmailAdminSession,
@@ -21,6 +22,7 @@ import type {
   OverviewMetrics,
 } from "./admin-metrics";
 import { useResource } from "./useResource";
+import { ColonyAdminMark } from "./colony-admin-mark";
 import "./admin-dashboard.css";
 
 const googleClientId =
@@ -33,7 +35,7 @@ type OperatorSession =
   | { status: "signed-out"; message?: string }
   | { status: "denied" }
   | { status: "error"; message: string }
-  | { status: "signed-in"; authMode: "cookie" | "nip98" };
+  | { status: "signed-in"; authMode: AuthMode };
 
 export function isOperatorAdminPath(path: string): boolean {
   return (
@@ -43,11 +45,26 @@ export function isOperatorAdminPath(path: string): boolean {
     /^\/businesses\/[^/]+$/.test(path) ||
     path === "/ai-usage" ||
     path === "/system" ||
-    path === "/sign-in"
+    path === "/sign-in" ||
+    path === "/reports" ||
+    /^\/reports\/[^/]+$/.test(path) ||
+    path === "/feedback" ||
+    /^\/feedback\/[^/]+$/.test(path)
   );
 }
 
-export function OperatorAdminApp({ path }: { path: string }) {
+export type OperatorPageRenderer = (
+  path: string,
+  authMode: AuthMode,
+) => ReactNode | null;
+
+export function OperatorAdminApp({
+  path,
+  renderPage,
+}: {
+  path: string;
+  renderPage?: OperatorPageRenderer;
+}) {
   const [session, setSession] = useState<OperatorSession>({
     status: "checking",
   });
@@ -66,6 +83,10 @@ export function OperatorAdminApp({ path }: { path: string }) {
         if (probe.role === "operator") {
           sessionStorage.removeItem(authModeStorageKey);
           return { status: "signed-in", authMode: "cookie" };
+        }
+        const fallbackMode = await probeAuthMode();
+        if (fallbackMode === "disabled") {
+          return { status: "signed-in", authMode: "disabled" };
         }
         sessionStorage.removeItem(authModeStorageKey);
         return { status: "denied" };
@@ -252,9 +273,7 @@ export function OperatorAdminApp({ path }: { path: string }) {
       ? `overview-badge-${authMode}`
       : `overview-badge-none-${session.status}-${route}`,
   );
-  const remoteHealthBadge = badgeResource.data?.needsAttention.filter(
-    (item) => item.severity === "red" && item.link.board === "health",
-  ).length;
+  const remoteHealthBadge = redHealthCount(badgeResource.data?.needsAttention);
   const healthBadge = needsRemoteBadge ? remoteHealthBadge : localHealthBadge;
 
   if (session.status === "checking") {
@@ -281,9 +300,7 @@ export function OperatorAdminApp({ path }: { path: string }) {
     return (
       <div className="ad-auth-page">
         <section className="ad-auth-card" aria-labelledby="ad-access-denied">
-          <span className="ad-brand-mark" aria-hidden="true">
-            C
-          </span>
+          <ColonyAdminMark />
           <p className="ad-eyebrow">Colony admin</p>
           <h1 id="ad-access-denied">Access denied</h1>
           <p>This page is available to configured Colony operators only.</p>
@@ -308,36 +325,53 @@ export function OperatorAdminApp({ path }: { path: string }) {
     );
   }
 
+  const additionalContent = renderPage?.(route, authMode);
   const selectedBusiness = route.match(/^\/businesses\/([^/]+)$/);
-  const content = selectedBusiness ? (
-    <BusinessDetailPage
-      communityId={decodeURIComponent(selectedBusiness[1])}
-      authMode={authMode}
-      days={days}
-      onDaysChange={setDays}
-    />
-  ) : route === "/businesses" ? (
-    <BusinessesPage authMode={authMode} days={days} onDaysChange={setDays} />
-  ) : route === "/ai-usage" ? (
-    <AiUsagePage authMode={authMode} days={days} onDaysChange={setDays} />
-  ) : route === "/system" ? (
-    <HealthPage authMode={authMode} onHealthBadge={setLocalHealthBadge} />
-  ) : (
-    <OverviewPage
-      authMode={authMode}
-      days={days}
-      onDaysChange={setDays}
-      onHealthBadge={setLocalHealthBadge}
-    />
-  );
+  const content =
+    additionalContent ??
+    (selectedBusiness ? (
+      <BusinessDetailPage
+        communityId={decodeURIComponent(selectedBusiness[1])}
+        authMode={authMode}
+        days={days}
+        onDaysChange={setDays}
+      />
+    ) : route === "/businesses" ? (
+      <BusinessesPage authMode={authMode} days={days} onDaysChange={setDays} />
+    ) : route === "/ai-usage" ? (
+      <AiUsagePage authMode={authMode} days={days} onDaysChange={setDays} />
+    ) : route === "/system" ? (
+      <HealthPage authMode={authMode} onHealthBadge={setLocalHealthBadge} />
+    ) : (
+      <OverviewPage
+        authMode={authMode}
+        days={days}
+        onDaysChange={setDays}
+        onHealthBadge={setLocalHealthBadge}
+      />
+    ));
 
+  return (
+    <AdminShell route={route} healthBadge={healthBadge}>
+      {content}
+    </AdminShell>
+  );
+}
+
+export function AdminShell({
+  route,
+  healthBadge,
+  children,
+}: {
+  route: string;
+  healthBadge?: number;
+  children: ReactNode;
+}) {
   return (
     <div className="ad-app">
       <aside className="ad-sidebar">
         <a className="ad-brand" href="/overview">
-          <span className="ad-brand-mark" aria-hidden="true">
-            C
-          </span>
+          <ColonyAdminMark />
           <span>
             <strong>Colony admin</strong>
             <small>Operator only</small>
@@ -350,20 +384,8 @@ export function OperatorAdminApp({ path }: { path: string }) {
           <NavLink href="/businesses" path={route} icon="businesses">
             Businesses
           </NavLink>
-          <NavLink href="/overview#people" path={route} icon="people">
-            People
-          </NavLink>
-          <NavLink href="/overview#agents" path={route} icon="agents">
-            Agents
-          </NavLink>
           <NavLink href="/ai-usage" path={route} icon="ai">
             AI usage
-          </NavLink>
-          <NavLink href="/overview#discovery" path={route} icon="discovery">
-            Discovery
-          </NavLink>
-          <NavLink href="/overview#whatsapp" path={route} icon="whatsapp">
-            WhatsApp
           </NavLink>
           <NavLink
             href="/system"
@@ -384,7 +406,7 @@ export function OperatorAdminApp({ path }: { path: string }) {
           Counts and health only. No message content is ever shown here.
         </p>
       </aside>
-      <main className="ad-main">{content}</main>
+      <main className="ad-main">{children}</main>
     </div>
   );
 }
@@ -470,9 +492,7 @@ function SignInScreen({
   return (
     <div className="ad-auth-page">
       <section className="ad-auth-card" aria-labelledby="ad-sign-in-title">
-        <span className="ad-brand-mark" aria-hidden="true">
-          C
-        </span>
+        <ColonyAdminMark />
         <p className="ad-eyebrow">Colony admin · Operator only</p>
         <h1 id="ad-sign-in-title">Sign in with your Colony account</h1>
         <p>
@@ -494,7 +514,10 @@ function SignInScreen({
         >
           {step === "request" ? (
             <>
-              <label className="ad-email-code-label" htmlFor="ad-operator-email">
+              <label
+                className="ad-email-code-label"
+                htmlFor="ad-operator-email"
+              >
                 Operator email address
               </label>
               <input
@@ -506,6 +529,10 @@ function SignInScreen({
                 onChange={(event) => setEmail(event.target.value)}
                 disabled={emailBusy}
               />
+              <p className="ad-email-code-help">
+                The code goes to the operator email on the allowlist. If nothing
+                arrives, check spam or ask the coordinator.
+              </p>
               <button
                 className="ad-email-code-button"
                 type="submit"
@@ -528,7 +555,9 @@ function SignInScreen({
                 pattern="[0-9]*"
                 maxLength={8}
                 value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) =>
+                  setCode(event.target.value.replace(/\D/g, ""))
+                }
                 disabled={emailBusy}
               />
               <button
@@ -658,15 +687,7 @@ function NavIcon({ kind }: { kind: string }) {
   const paths: Record<string, string> = {
     overview: "M3 10.5 12 3l9 7.5M5.5 9.5v10h13v-10M9 19.5v-6h6v6",
     businesses: "M4 20h16M6 20V5h8v15M14 9h4v11M8.5 8h3M8.5 11.5h3M8.5 15h3",
-    people:
-      "M16 20v-1.5a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20M9.5 10.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM17 4a3.5 3.5 0 0 1 0 6.8M17 14.5a4 4 0 0 1 4 4V20",
-    agents:
-      "M12 3v3M8 6h8l2 3v8l-2 3H8l-2-3V9l2-3ZM9 12h.01M15 12h.01M9.5 15.5h5",
     ai: "M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
-    discovery:
-      "m12 3 2.4 5.6L20 11l-5.6 2.4L12 19l-2.4-5.6L4 11l5.6-2.4L12 3ZM19 16v5M16.5 18.5h5",
-    whatsapp:
-      "M20 11.5a8 8 0 0 1-12.2 6.8L4 19l.8-3.6A8 8 0 1 1 20 11.5ZM8.5 9.3c.5 2 2.1 3.7 4.1 4.2l1.2-1 2 1c-.2 1.1-1.1 1.8-2.2 1.8-3.8-.2-7-3.4-7.2-7.2 0-1.1.7-2 1.8-2.2l1 2-1 1.4Z",
     health:
       "M12 3 4.5 6v5.2c0 4.7 3.2 8.8 7.5 9.8 4.3-1 7.5-5.1 7.5-9.8V6L12 3ZM12 7v5M12 16h.01",
     reports:
@@ -989,7 +1010,7 @@ function OverviewPage({
                 </div>
               </section>
             </div>
-            <AttentionPanel items={data.needsAttention} />
+            <AttentionPanel items={attentionItems(data.needsAttention)} />
           </>
         )}
       </MetricState>
@@ -1689,7 +1710,7 @@ function HealthPage({
                   </div>
                 </section>
               </div>
-              <AttentionPanel items={data.needsAttention} />
+              <AttentionPanel items={attentionItems(data.needsAttention)} />
             </>
           );
         }}
@@ -2049,8 +2070,29 @@ function consumeGoogleCallback(): {
   return { idToken, nonce, error };
 }
 
-function redHealthCount(items: AttentionItem[]): number {
-  return items.filter(
+function attentionItems(value: unknown): AttentionItem[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is AttentionItem => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Record<string, unknown>;
+        const link = candidate.link;
+        return (
+          typeof candidate.key === "string" &&
+          typeof candidate.severity === "string" &&
+          typeof candidate.title === "string" &&
+          typeof candidate.detail === "string" &&
+          typeof candidate.count === "number" &&
+          Boolean(link) &&
+          typeof link === "object" &&
+          typeof (link as Record<string, unknown>).board === "string" &&
+          typeof (link as Record<string, unknown>).params === "object"
+        );
+      })
+    : [];
+}
+
+function redHealthCount(items: unknown): number {
+  return attentionItems(items).filter(
     (item) => item.severity === "red" && item.link.board === "health",
   ).length;
 }

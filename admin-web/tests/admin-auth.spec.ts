@@ -1,5 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
-import { overviewFixture } from "./helpers/admin-fixtures";
+import {
+  aiUsageFixture,
+  businessesFixture,
+  healthFixture,
+  overviewFixture,
+} from "./helpers/admin-fixtures";
 
 type SignedEvent = {
   kind: number;
@@ -15,6 +20,109 @@ declare global {
   interface Window {
     signedAdminEvents: SignedEvent[];
   }
+}
+
+const emptyOverviewResponse = {
+  generatedAt: "2026-11-06T05:45:11Z",
+  dataThrough: null,
+  range: { days: 30, from: "2026-10-08", to: "2026-11-06" },
+  kpis: {
+    people: { value: null, previous: null },
+    dau: { value: null, previous: null },
+    wau: { value: null, previous: null },
+    mau: { value: null, previous: null },
+    stickinessPct: { value: null, previous: null },
+    newAccounts: { value: 0, previous: 0 },
+  },
+  series: [],
+  businesses: {
+    total: 0,
+    archived: 0,
+    activeThisWeek: 0,
+    createdThisWeek: 0,
+    cofounderOn: 0,
+  },
+  agents: {
+    total: 0,
+    scout: 0,
+    activeThisWeek: 0,
+    answerWithin5MinPct: null,
+    neverStarted: 0,
+  },
+  ai: {
+    month: "2026-11",
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    chargedUsd: "0.000000",
+    byModel: [],
+  },
+  discovery: {
+    resultsThisMonth: 0,
+    capPerBusiness: 2000,
+    repeatsSkipped: null,
+  },
+  whatsapp: { sentThisMonth: 0, repliedThisMonth: 0 },
+  needsAttention: [],
+  unavailable: ["discovery.repeatsSkipped"],
+};
+
+async function stubEmailSession(page: Page) {
+  let probeCount = 0;
+  let signedOut = false;
+  await page.route("**/api/admin/v1/probe", (route) => {
+    probeCount += 1;
+    return route.fulfill(
+      probeCount === 1 || signedOut
+        ? {
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: { code: "unauthorized", message: "sign in" },
+            }),
+          }
+        : {
+            contentType: "application/json",
+            body: JSON.stringify({ role: "operator", source: "config" }),
+          },
+    );
+  });
+  await page.route("**/api/admin/v1/session/email/start", (route) =>
+    route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "email_code_requested",
+        retryAfterSeconds: 0,
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/email/verify", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      headers: { "set-cookie": "__Host-colony_admin=test; Path=/; Secure" },
+      body: JSON.stringify({
+        status: "ok",
+        pubkeyShort: "ab12cd34",
+        expiresInSeconds: 28800,
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/logout", (route) => {
+    signedOut = true;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ status: "signed_out" }),
+    });
+  });
+}
+
+async function signInWithEmailCode(page: Page) {
+  await page.goto("/");
+  await page.getByLabel("Operator email address").fill("operator@example.test");
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await page.getByLabel("Eight-digit code").fill("12345678");
+  await page.getByRole("button", { name: "Verify code" }).click();
 }
 
 async function seedNip07(page: Page) {
@@ -60,6 +168,34 @@ test("anonymous visitors see the Colony sign-in choices", async ({ page }) => {
     page.getByRole("button", { name: "Use NIP-98 instead" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(0);
+});
+
+test("the Colony sign-in document carries the Colony title, icon, and email guidance", async ({
+  page,
+}) => {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "unauthorized", message: "sign in" },
+      }),
+    }),
+  );
+
+  await page.goto("/sign-in");
+
+  await expect(page).toHaveTitle("Colony admin");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    "/favicon.svg",
+  );
+  await expect(page.locator('img[src="/favicon.svg"]')).toBeVisible();
+  await expect(
+    page.getByText(
+      "The code goes to the operator email on the allowlist. If nothing arrives, check spam or ask the coordinator.",
+    ),
+  ).toBeVisible();
 });
 
 test("an operator can request, enter, and verify an emailed code without a NIP credential", async ({
@@ -140,6 +276,150 @@ test("an operator can request, enter, and verify an emailed code without a NIP c
   expect(verifyHeaders?.["x-colony-admin"]).toBeUndefined();
 });
 
+test("an email session renders the overview when the metrics tables are empty", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await stubEmailSession(page);
+  await page.route("**/api/admin/v1/metrics/overview?**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(emptyOverviewResponse),
+    }),
+  );
+
+  await signInWithEmailCode(page);
+
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByText("No current alerts.")).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
+test("an email session keeps every sidebar destination in the Colony shell", async ({
+  page,
+}) => {
+  await stubEmailSession(page);
+  await page.route("**/api/admin/v1/metrics/**", (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const body = pathname.endsWith("/overview")
+      ? overviewFixture
+      : pathname.endsWith("/businesses")
+        ? businessesFixture
+        : pathname.endsWith("/ai-usage")
+          ? aiUsageFixture
+          : pathname.endsWith("/health")
+            ? healthFixture
+            : overviewFixture;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  });
+  await page.route("**/api/admin/v1/reports?**", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" }),
+  );
+  await page.route("**/api/admin/v1/feedback", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" }),
+  );
+
+  await signInWithEmailCode(page);
+
+  const sidebar = page.locator(".ad-sidebar");
+  for (const [name, href] of [
+    ["Overview", "/overview"],
+    ["Businesses", "/businesses"],
+    ["AI usage", "/ai-usage"],
+    ["Health", "/system"],
+    ["Reports", "/reports"],
+    ["Feedback", "/feedback"],
+  ]) {
+    await expect(sidebar.getByRole("link", { name })).toHaveAttribute(
+      "href",
+      href,
+    );
+  }
+  for (const removedShortcut of ["People", "Agents", "Discovery", "WhatsApp"]) {
+    await expect(
+      sidebar.getByRole("link", { name: removedShortcut }),
+    ).toHaveCount(0);
+  }
+
+  await sidebar.getByRole("link", { name: "Reports" }).click();
+  await expect(page).toHaveURL(/\/reports$/);
+  await expect(
+    page.getByRole("heading", { name: "Open reports" }),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByText("Colony admin", { exact: true }),
+  ).toBeVisible();
+
+  await sidebar.getByRole("link", { name: "Feedback" }).click();
+  await expect(page).toHaveURL(/\/feedback$/);
+  await expect(page.getByRole("heading", { name: "Feedback" })).toBeVisible();
+  await expect(
+    sidebar.getByText("Colony admin", { exact: true }),
+  ).toBeVisible();
+});
+
+test("a partial overview response keeps an email session usable", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await stubEmailSession(page);
+  await page.route("**/api/admin/v1/metrics/overview?**", (route) => {
+    const { needsAttention: _needsAttention, ...partialOverview } =
+      emptyOverviewResponse;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(partialOverview),
+    });
+  });
+
+  await signInWithEmailCode(page);
+
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByText("No current alerts.")).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
+
+test("a malformed overview response shows recovery instead of a blank page", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => undefined },
+    });
+  });
+  await stubEmailSession(page);
+  await page.route("**/api/admin/v1/metrics/overview?**", (route) => {
+    const { kpis: _kpis, ...malformedOverview } = emptyOverviewResponse;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(malformedOverview),
+    });
+  });
+
+  await signInWithEmailCode(page);
+
+  await expect(
+    page.getByRole("heading", { name: "Something went wrong" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy details" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy details" }).click();
+  await expect(page.getByText("Details copied.")).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(
+    page.getByRole("heading", { name: "Sign in with your Colony account" }),
+  ).toBeVisible();
+});
+
 test("email-code failures stay clear and generic, with an available resend path", async ({
   page,
 }) => {
@@ -181,7 +461,9 @@ test("email-code failures stay clear and generic, with an available resend path"
   await page.getByLabel("Eight-digit code").fill("00000000");
   await page.getByRole("button", { name: "Verify code" }).click();
   await expect(
-    page.getByText("That code did not work. Enter the latest code or send another one."),
+    page.getByText(
+      "That code did not work. Enter the latest code or send another one.",
+    ),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });

@@ -10,7 +10,6 @@ import {
   type AuthMode,
   ApiFailure,
   mutate,
-  probeAuthMode,
   request,
   requestObjectUrl,
 } from "./api";
@@ -103,7 +102,7 @@ function Reports({ authMode }: { authMode: AuthMode }) {
     <Page
       eyebrow="Moderation"
       title="Open reports"
-      description="Review reports across every Buzz community."
+      description="Review reports across every Colony community."
     >
       <StateView resource={resource}>
         {(reports) =>
@@ -247,7 +246,7 @@ function FeedbackList({ authMode }: { authMode: AuthMode }) {
     <Page
       eyebrow="Product"
       title="Feedback"
-      description="Recent product feedback from across Buzz."
+      description="Recent product feedback from across Colony."
     >
       <StateView resource={resource}>
         {(items) => {
@@ -830,19 +829,6 @@ function date(value: string) {
     : parsed.toLocaleString();
 }
 
-function BuzzMark() {
-  return (
-    <svg viewBox="0 0 466 309" aria-hidden="true">
-      <path d="M91.7 62.8a91.7 91.7 0 0 0 0 183.4H128V62.8H91.7Zm282.6 0H338v183.4h36.3a91.7 91.7 0 1 0 0-183.4Z" />
-      <path
-        fillRule="evenodd"
-        d="M162 0h142a34 34 0 0 1 34 34v241a34 34 0 0 1-34 34H162a34 34 0 0 1-34-34V34a34 34 0 0 1 34-34Zm31.3 57.4a27 27 0 1 0 0 54 27 27 0 0 0 0-54Zm82.7 0a27 27 0 1 0 0 54 27 27 0 0 0 0-54Zm-109.7 99.8h136.9v38.3H166.3v-38.3Zm.6 77.9h136.2v37.6H166.9v-37.6Z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-}
-
 function ReportIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -935,101 +921,32 @@ function ArrowIcon() {
   );
 }
 
-/// Shown in nip98 mode when no NIP-07 extension is available. Instructs the
-/// operator to install nos2x or Alby before continuing.
-function Nip07Screen() {
-  return (
-    <div className="app">
-      <div className="state auth-prompt">
-        <h2>Nostr extension required</h2>
-        <p>
-          This relay uses NIP-98 HTTP Auth. Install a NIP-07 browser extension
-          such as{" "}
-          <a
-            href="https://github.com/fiatjaf/nos2x"
-            target="_blank"
-            rel="noreferrer"
-          >
-            nos2x
-          </a>{" "}
-          or{" "}
-          <a href="https://getalby.com" target="_blank" rel="noreferrer">
-            Alby
-          </a>
-          , then reload this page. Your Nostr key will be used to sign each
-          request.
-        </p>
-        <button type="button" onClick={() => location.reload()}>
-          Reload
-        </button>
-      </div>
-    </div>
-  );
+function renderOperatorPage(
+  path: string,
+  authMode: AuthMode,
+): ReactNode | null {
+  const report = path.match(/^\/reports\/([^/]+)$/);
+  const feedback = path.match(/^\/feedback\/([^/]+)$/);
+  if (report) {
+    return <ReportDetail id={report[1]} authMode={authMode} />;
+  }
+  if (feedback) {
+    return <FeedbackDetailView id={feedback[1]} authMode={authMode} />;
+  }
+  if (path === "/feedback") {
+    return <FeedbackList authMode={authMode} />;
+  }
+  if (path === "/reports") {
+    return <Reports authMode={authMode} />;
+  }
+  return null;
 }
 
 export function App() {
   const { path } = usePath();
   return isOperatorAdminPath(path) ? (
-    <OperatorAdminApp path={path} />
+    <OperatorAdminApp path={path} renderPage={renderOperatorPage} />
   ) : (
-    <LegacyAdminApp path={path} />
-  );
-}
-
-function LegacyAdminApp({ path }: { path: string }) {
-  // Probe the relay once to discover the auth mode. `null` means the probe is
-  // still in flight. Once resolved, the mode is stable for the session.
-  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
-  useEffect(() => {
-    let active = true;
-    probeAuthMode().then((mode) => {
-      if (active) setAuthMode(mode);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const report = path.match(/^\/reports\/([^/]+)$/);
-  const feedback = path.match(/^\/feedback\/([^/]+)$/);
-
-  // Probe still in flight — render nothing to avoid a visible flash.
-  if (authMode === null) return null;
-
-  // NIP-98 mode: require a NIP-07 extension.
-  if (authMode === "nip98" && !(window as Window & { nostr?: unknown }).nostr)
-    return <Nip07Screen />;
-
-  const content = report ? (
-    <ReportDetail id={report[1]} authMode={authMode} />
-  ) : feedback ? (
-    <FeedbackDetailView id={feedback[1]} authMode={authMode} />
-  ) : path === "/feedback" ? (
-    <FeedbackList authMode={authMode} />
-  ) : (
-    <Reports authMode={authMode} />
-  );
-  return (
-    <div className="app">
-      <header className="app-header">
-        <Link href="/reports" className="brand">
-          <span className="brand-mark">
-            <BuzzMark />
-          </span>
-          <span>
-            Buzz <b>Admin</b>
-          </span>
-        </Link>
-        <nav>
-          <Link href="/reports" className="nav-link" activeWhenNested>
-            <ReportIcon /> Reports
-          </Link>
-          <Link href="/feedback" className="nav-link" activeWhenNested>
-            <FeedbackIcon /> Feedback
-          </Link>
-        </nav>
-      </header>
-      <main>{content}</main>
-    </div>
+    <OperatorAdminApp path="/overview" renderPage={renderOperatorPage} />
   );
 }

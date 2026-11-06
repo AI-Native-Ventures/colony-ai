@@ -53,23 +53,57 @@ function decodeNostrHeader(header: string): { id: string; tags: string[][] } {
   return JSON.parse(atob(header.replace(/^Nostr /, "")));
 }
 
+function unauthorizedResponse() {
+  return {
+    status: 401,
+    headers: { "www-authenticate": "Nostr" },
+    contentType: "application/json",
+    body: JSON.stringify({
+      error: { code: "unauthorized", message: "nip98 required" },
+    }),
+  };
+}
+
+function operatorProbeResponse() {
+  return {
+    contentType: "application/json",
+    body: JSON.stringify({ role: "operator", source: "config" }),
+  };
+}
+
+async function startNip98SignIn(page: Page) {
+  await page.getByRole("button", { name: "Use NIP-98 instead" }).click();
+}
+
 test("nip98 mode: attachments are fetched with a signed credential and rendered from blob urls", async ({
   page,
 }) => {
   const id = "feedback-with-attachments";
   const imageHash = "a".repeat(64);
   const fileHash = "b".repeat(64);
-  const imageUrl = `https://design.buzz.xyz/media/${imageHash}.png`;
-  const fileUrl = `https://design.buzz.xyz/media/${fileHash}.txt`;
+  const imageUrl = `https://design.colony.global/media/${imageHash}.png`;
+  const fileUrl = `https://design.colony.global/media/${fileHash}.txt`;
   await seedNip98(page);
 
   const attachmentRequests: { path: string; authorization?: string }[] = [];
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill(
+      route.request().headers().authorization
+        ? operatorProbeResponse()
+        : unauthorizedResponse(),
+    ),
+  );
   await page.route(`**/api/admin/v1/feedback/${id}/attachments/**`, (route) => {
     attachmentRequests.push({
       path: new URL(route.request().url()).pathname,
       authorization: route.request().headers().authorization,
     });
-    route.fulfill({ contentType: "application/octet-stream", body: "bytes" });
+    route.fulfill({
+      contentType: route.request().url().includes(imageHash)
+        ? "image/png"
+        : "application/octet-stream",
+      body: "bytes",
+    });
   });
   await page.route(`**/api/admin/v1/feedback/${id}`, (route) =>
     route.fulfill({
@@ -77,7 +111,7 @@ test("nip98 mode: attachments are fetched with a signed credential and rendered 
       body: JSON.stringify({
         id,
         communityId: "one",
-        communityHost: "design.buzz.xyz",
+        communityHost: "design.colony.global",
         eventId: "31".repeat(32),
         submitterPubkey: "21".repeat(32),
         category: "bug",
@@ -105,6 +139,7 @@ test("nip98 mode: attachments are fetched with a signed credential and rendered 
   );
 
   await page.goto(`/feedback/${id}`);
+  await startNip98SignIn(page);
   await expect(
     page.getByRole("img", { name: "screenshot.png" }),
   ).toHaveAttribute("src", /^blob:/);
@@ -148,12 +183,12 @@ const IMAGE_HASH = "a".repeat(64);
 const FILE_HASH = "b".repeat(64);
 
 /// A feedback detail carrying one image and one non-image attachment. The
-/// probe to `/reports` returns 200 so the SPA runs in disabled mode: these
-/// tests exercise object-URL lifecycle, not authentication.
+/// operator probe accepts the cookie mode so these tests exercise object-URL
+/// lifecycle, not an authentication method.
 async function routeFeedbackDetail(page: Page) {
-  const host = "design.buzz.xyz";
-  await page.route(`**/api/admin/v1/reports**`, (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" }),
+  const host = "design.colony.global";
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill(operatorProbeResponse()),
   );
   await page.route(`**/api/admin/v1/feedback?**`, (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" }),
@@ -200,7 +235,12 @@ test("attachment object urls are revoked when the view is left", async ({
   await page.route(
     `**/api/admin/v1/feedback/${FEEDBACK_ID}/attachments/**`,
     (route) =>
-      route.fulfill({ contentType: "application/octet-stream", body: "bytes" }),
+      route.fulfill({
+        contentType: route.request().url().includes(IMAGE_HASH)
+          ? "image/png"
+          : "application/octet-stream",
+        body: "bytes",
+      }),
   );
 
   await page.goto(`/feedback/${FEEDBACK_ID}`);
@@ -236,7 +276,9 @@ test("an attachment that arrives after the view is left is revoked immediately",
     async (route) => {
       await held;
       await route.fulfill({
-        contentType: "application/octet-stream",
+        contentType: route.request().url().includes(IMAGE_HASH)
+          ? "image/png"
+          : "application/octet-stream",
         body: "bytes",
       });
     },
@@ -263,11 +305,12 @@ test("an attachment that arrives after the view is left is revoked immediately",
   );
 });
 
-test("probe: disabled mode renders directly when the probe returns 200", async ({
+test("an operator probe renders a direct reports link in the Colony shell", async ({
   page,
 }) => {
-  // The probe to /api/admin/v1/reports returns 200, indicating the relay runs
-  // in disabled mode. The dashboard must render directly with no credential.
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill(operatorProbeResponse()),
+  );
   await page.route("**/api/admin/v1/reports**", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" }),
   );
@@ -278,37 +321,31 @@ test("probe: disabled mode renders directly when the probe returns 200", async (
     page.getByRole("heading", { name: "Open reports" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Nostr extension required" }),
+    page.getByRole("heading", { name: "Sign in with your Colony account" }),
   ).toHaveCount(0);
 });
 
-test("probe: nip98 mode without a NIP-07 extension shows the installation screen", async ({
+test("an unauthenticated direct reports link shows Colony sign-in choices", async ({
   page,
 }) => {
-  // The probe returns 401 and window.nostr is NOT injected, so the dashboard
-  // must show the extension installation screen instead of the dashboard.
-  await page.route("**/api/admin/v1/**", (route) =>
-    route.fulfill({
-      status: 401,
-      headers: { "www-authenticate": "Nostr" },
-      contentType: "application/json",
-      body: JSON.stringify({
-        error: { code: "unauthorized", message: "nip98 required" },
-      }),
-    }),
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill(unauthorizedResponse()),
   );
 
   await page.goto("/reports");
 
   await expect(
-    page.getByRole("heading", { name: "Nostr extension required" }),
+    page.getByRole("heading", { name: "Sign in with your Colony account" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Use NIP-98 instead" }),
+  ).toBeDisabled();
   await expect(page.getByRole("heading", { name: "Open reports" })).toHaveCount(
     0,
   );
 });
 
-test("probe: nip98 mode with a mocked NIP-07 extension signs requests and renders the dashboard", async ({
+test("a NIP-98 operator can sign in from a direct reports link", async ({
   page,
 }) => {
   await seedNip98(page);
@@ -317,32 +354,37 @@ test("probe: nip98 mode with a mocked NIP-07 extension signs requests and render
   await page.route("**/api/admin/v1/**", async (route) => {
     const headers = route.request().headers();
     authorizationHeaders.push(headers.authorization);
-    // Probe: return 401 to trigger nip98 mode detection.
-    if (!headers.authorization) {
-      await route.fulfill({
-        status: 401,
-        headers: { "www-authenticate": "Nostr" },
-        contentType: "application/json",
-        body: JSON.stringify({
-          error: { code: "unauthorized", message: "nip98 required" },
-        }),
-      });
-    } else {
-      // Any Authorization: Nostr header → accept.
-      await route.fulfill({ contentType: "application/json", body: "[]" });
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname.endsWith("/probe")) {
+      await route.fulfill(
+        headers.authorization
+          ? operatorProbeResponse()
+          : unauthorizedResponse(),
+      );
+      return;
     }
+    await route.fulfill(
+      headers.authorization
+        ? { contentType: "application/json", body: "[]" }
+        : unauthorizedResponse(),
+    );
   });
 
   await page.goto("/reports");
+  await startNip98SignIn(page);
 
   await expect(
     page.getByRole("heading", { name: "Open reports" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Nostr extension required" }),
+    page.getByRole("heading", { name: "Sign in with your Colony account" }),
   ).toHaveCount(0);
-  // The authenticated request used Authorization: Nostr.
-  const authenticatedHeaders = authorizationHeaders.filter(Boolean);
+  await expect
+    .poll(() => authorizationHeaders.filter(Boolean).length)
+    .toBeGreaterThanOrEqual(2);
+  const authenticatedHeaders = authorizationHeaders.filter(
+    (header): header is string => Boolean(header),
+  );
   expect(authenticatedHeaders.length).toBeGreaterThan(0);
   for (const h of authenticatedHeaders) {
     expect(h).toMatch(/^Nostr /);
@@ -374,25 +416,30 @@ test("nip98 mode: same-second retry re-signs with a distinct event id", async ({
   await seedNip98(page);
 
   const authCalls: string[] = [];
-  let signCount = 0;
+  let reportSignCount = 0;
   await page.route("**/api/admin/v1/**", async (route) => {
     const headers = route.request().headers();
+    const pathname = new URL(route.request().url()).pathname;
     if (!headers.authorization) {
+      await route.fulfill(unauthorizedResponse());
+      return;
+    }
+    if (pathname.endsWith("/probe")) {
+      await route.fulfill(operatorProbeResponse());
+      return;
+    }
+    if (!pathname.endsWith("/reports")) {
       await route.fulfill({
-        status: 401,
-        headers: { "www-authenticate": "Nostr" },
         contentType: "application/json",
-        body: JSON.stringify({
-          error: { code: "unauthorized", message: "nip98 required" },
-        }),
+        body: JSON.stringify({ needsAttention: [] }),
       });
       return;
     }
     authCalls.push(headers.authorization);
-    signCount++;
-    // First authenticated attempt → reject, forcing the re-sign + retry.
+    reportSignCount++;
+    // First report request rejects, forcing the re-sign + retry.
     await route.fulfill(
-      signCount === 1
+      reportSignCount === 1
         ? {
             status: 401,
             headers: { "www-authenticate": "Nostr" },
@@ -406,10 +453,11 @@ test("nip98 mode: same-second retry re-signs with a distinct event id", async ({
   });
 
   await page.goto("/reports");
+  await startNip98SignIn(page);
   await expect(
     page.getByRole("heading", { name: "Open reports" }),
   ).toBeVisible();
-  await page.waitForLoadState("networkidle");
+  await expect.poll(() => authCalls.length).toBe(2);
 
   expect(authCalls).toHaveLength(2);
   const [first, second] = authCalls.map(decodeNostrHeader);
@@ -426,27 +474,31 @@ test("nip98 mode: first-401-then-200 retries once and renders the dashboard", as
 }) => {
   // Models a credential that is momentarily rejected (clock skew, key
   // rotation) then accepted on the second attempt.
-  let signCount = 0;
+  let reportSignCount = 0;
   await seedNip98(page);
 
   const authCalls: string[] = [];
   await page.route("**/api/admin/v1/**", async (route) => {
     const headers = route.request().headers();
+    const pathname = new URL(route.request().url()).pathname;
     if (!headers.authorization) {
-      // Probe — announce nip98 mode.
+      await route.fulfill(unauthorizedResponse());
+      return;
+    }
+    if (pathname.endsWith("/probe")) {
+      await route.fulfill(operatorProbeResponse());
+      return;
+    }
+    if (!pathname.endsWith("/reports")) {
       await route.fulfill({
-        status: 401,
-        headers: { "www-authenticate": "Nostr" },
         contentType: "application/json",
-        body: JSON.stringify({
-          error: { code: "unauthorized", message: "nip98 required" },
-        }),
+        body: JSON.stringify({ needsAttention: [] }),
       });
       return;
     }
     authCalls.push(headers.authorization);
-    signCount++;
-    if (signCount === 1) {
+    reportSignCount++;
+    if (reportSignCount === 1) {
       // First authenticated attempt → reject.
       await route.fulfill({
         status: 401,
@@ -463,10 +515,10 @@ test("nip98 mode: first-401-then-200 retries once and renders the dashboard", as
   });
 
   await page.goto("/reports");
+  await startNip98SignIn(page);
 
-  // The retry should succeed. Wait for network to settle (both attempts
-  // complete) before asserting the authCalls count.
-  await page.waitForLoadState("networkidle");
+  // The retry should succeed before asserting the report request count.
+  await expect.poll(() => authCalls.length).toBe(2);
   // Exactly two distinct Nostr credentials were sent (one per attempt).
   expect(authCalls).toHaveLength(2);
   for (const h of authCalls) {
@@ -485,14 +537,19 @@ test("nip98 mode: persistent 401 surfaces error after exactly one retry", async 
   const authCalls: string[] = [];
   await page.route("**/api/admin/v1/**", async (route) => {
     const headers = route.request().headers();
+    const pathname = new URL(route.request().url()).pathname;
     if (!headers.authorization) {
+      await route.fulfill(unauthorizedResponse());
+      return;
+    }
+    if (pathname.endsWith("/probe")) {
+      await route.fulfill(operatorProbeResponse());
+      return;
+    }
+    if (!pathname.endsWith("/reports")) {
       await route.fulfill({
-        status: 401,
-        headers: { "www-authenticate": "Nostr" },
         contentType: "application/json",
-        body: JSON.stringify({
-          error: { code: "unauthorized", message: "nip98 required" },
-        }),
+        body: JSON.stringify({ needsAttention: [] }),
       });
       return;
     }
@@ -508,6 +565,7 @@ test("nip98 mode: persistent 401 surfaces error after exactly one retry", async 
   });
 
   await page.goto("/reports");
+  await startNip98SignIn(page);
 
   // After the retry fails, the error state renders. The StateView shows
   // "Could not load data" inside a role=alert region.
@@ -516,6 +574,6 @@ test("nip98 mode: persistent 401 surfaces error after exactly one retry", async 
     page.getByRole("heading", { name: "Could not load data" }),
   ).toBeVisible();
   // Exactly two Nostr credentials sent — no third attempt.
-  await page.waitForLoadState("networkidle");
+  await expect.poll(() => authCalls.length).toBe(2);
   expect(authCalls).toHaveLength(2);
 });

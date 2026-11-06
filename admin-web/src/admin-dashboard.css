@@ -75,17 +75,12 @@
 }
 
 .ad-brand-mark {
-  display: inline-grid;
+  display: block;
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
-  place-items: center;
   border-radius: 8px;
-  color: #fff;
-  background: var(--ad-text);
-  font-size: 0.82rem;
-  font-weight: 750;
-  letter-spacing: -0.05em;
+  object-fit: cover;
 }
 
 .ad-brand > span:last-child {
@@ -1131,6 +1126,116 @@
   background: var(--ad-canvas);
 }
 
+.ad-recovery-page {
+  --ad-canvas: #fbfaf9;
+  --ad-surface: #fff;
+  --ad-line: #e8e4e2;
+  --ad-text: #241e2c;
+  --ad-muted: #746c79;
+  --ad-purple: #6f51c8;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  color: var(--ad-text);
+  background: var(--ad-canvas);
+}
+
+.ad-recovery-page *,
+.ad-recovery-page *::before,
+.ad-recovery-page *::after {
+  box-sizing: border-box;
+}
+
+.ad-recovery-card {
+  display: flex;
+  width: min(100%, 400px);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 28px;
+  border: 1px solid var(--ad-line);
+  border-radius: 15px;
+  background: var(--ad-surface);
+  box-shadow: 0 14px 50px rgb(30 25 40 / 7%);
+}
+
+.ad-recovery-card .ad-brand-mark {
+  width: 38px;
+  height: 38px;
+  flex-basis: 38px;
+}
+
+.ad-recovery-card .ad-eyebrow {
+  margin: 17px 0 7px;
+  color: var(--ad-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ad-recovery-card h1 {
+  margin: 0;
+  color: var(--ad-text);
+  font-size: 1.65rem;
+  font-weight: 680;
+  letter-spacing: -0.04em;
+}
+
+.ad-recovery-card > p:not(.ad-eyebrow):not(.ad-recovery-status) {
+  margin: 10px 0 0;
+  color: var(--ad-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.ad-recovery-actions {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.ad-recovery-actions button {
+  min-height: 41px;
+  border: 1px solid var(--ad-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ad-recovery-copy {
+  color: var(--ad-text);
+  background: var(--ad-surface);
+}
+
+.ad-recovery-sign-out {
+  color: var(--ad-text);
+  background: transparent;
+}
+
+.ad-recovery-sign-out:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ad-recovery-status {
+  min-height: 19px;
+  margin: 9px 0 0;
+  color: var(--ad-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.ad-recovery-page button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ad-purple) 72%, white);
+  outline-offset: 2px;
+}
+
 .ad-auth-card {
   display: flex;
   width: min(100%, 400px);
@@ -1148,7 +1253,6 @@
   height: 38px;
   flex-basis: 38px;
   margin-bottom: 20px;
-  font-size: 1rem;
 }
 
 .ad-auth-card .ad-eyebrow {
@@ -1214,6 +1318,13 @@
 
 .ad-email-code-input-code {
   letter-spacing: 0.14em;
+}
+
+.ad-email-code-help {
+  margin: 0;
+  color: var(--ad-muted);
+  font-size: 0.65rem;
+  line-height: 1.45;
 }
 
 .ad-email-code-button {
@@ -1371,7 +1482,6 @@
     width: 36px;
     height: 36px;
     flex-basis: 36px;
-    font-size: 1rem;
   }
 
   .ad-brand strong {
