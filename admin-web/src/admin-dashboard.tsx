@@ -252,9 +252,7 @@ export function OperatorAdminApp({ path }: { path: string }) {
       ? `overview-badge-${authMode}`
       : `overview-badge-none-${session.status}-${route}`,
   );
-  const remoteHealthBadge = badgeResource.data?.needsAttention.filter(
-    (item) => item.severity === "red" && item.link.board === "health",
-  ).length;
+  const remoteHealthBadge = redHealthCount(badgeResource.data?.needsAttention);
   const healthBadge = needsRemoteBadge ? remoteHealthBadge : localHealthBadge;
 
   if (session.status === "checking") {
@@ -494,7 +492,10 @@ function SignInScreen({
         >
           {step === "request" ? (
             <>
-              <label className="ad-email-code-label" htmlFor="ad-operator-email">
+              <label
+                className="ad-email-code-label"
+                htmlFor="ad-operator-email"
+              >
                 Operator email address
               </label>
               <input
@@ -528,7 +529,9 @@ function SignInScreen({
                 pattern="[0-9]*"
                 maxLength={8}
                 value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) =>
+                  setCode(event.target.value.replace(/\D/g, ""))
+                }
                 disabled={emailBusy}
               />
               <button
@@ -989,7 +992,7 @@ function OverviewPage({
                 </div>
               </section>
             </div>
-            <AttentionPanel items={data.needsAttention} />
+            <AttentionPanel items={attentionItems(data.needsAttention)} />
           </>
         )}
       </MetricState>
@@ -1689,7 +1692,7 @@ function HealthPage({
                   </div>
                 </section>
               </div>
-              <AttentionPanel items={data.needsAttention} />
+              <AttentionPanel items={attentionItems(data.needsAttention)} />
             </>
           );
         }}
@@ -2049,8 +2052,29 @@ function consumeGoogleCallback(): {
   return { idToken, nonce, error };
 }
 
-function redHealthCount(items: AttentionItem[]): number {
-  return items.filter(
+function attentionItems(value: unknown): AttentionItem[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is AttentionItem => {
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as Record<string, unknown>;
+        const link = candidate.link;
+        return (
+          typeof candidate.key === "string" &&
+          typeof candidate.severity === "string" &&
+          typeof candidate.title === "string" &&
+          typeof candidate.detail === "string" &&
+          typeof candidate.count === "number" &&
+          Boolean(link) &&
+          typeof link === "object" &&
+          typeof (link as Record<string, unknown>).board === "string" &&
+          typeof (link as Record<string, unknown>).params === "object"
+        );
+      })
+    : [];
+}
+
+function redHealthCount(items: unknown): number {
+  return attentionItems(items).filter(
     (item) => item.severity === "red" && item.link.board === "health",
   ).length;
 }

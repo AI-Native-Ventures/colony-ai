@@ -219,6 +219,13 @@ export function verifyEmailAdminSession(
   });
 }
 
+/// Clear the current HttpOnly operator session before returning to sign-in.
+export async function signOutAdminSession(): Promise<void> {
+  await send("/session/logout", "application/json", "cookie", {
+    method: "POST",
+  });
+}
+
 /// Send a body-bearing mutation (PATCH/PUT/POST) and parse the JSON response.
 /// The body is serialized once and signed over those exact bytes so the NIP-98
 /// `payload` tag matches what the relay verifies.

@@ -241,28 +241,29 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             let web_files = web_files.clone();
             let state = fallback_state.clone();
             async move {
-                let path = req.uri().path();
+                let path = req.uri().path().to_owned();
                 let admin_host = api::admin::is_admin_host(&state, req.headers());
                 if admin_host {
                     if let (Some(index), Some(files)) = (admin_index, admin_files) {
-                        if is_admin_static_path(path) {
-                            return files
-                                .oneshot(req)
-                                .await
-                                .map(|response| with_admin_csp(response.into_response()));
+                        if is_admin_static_path(&path) {
+                            return files.oneshot(req).await.map(|response| {
+                                with_admin_static_headers(&path, response.into_response())
+                            });
                         }
-                        if is_admin_spa_path(path) {
-                            return Ok(with_admin_csp(read_spa_index(&index).await));
+                        if is_admin_spa_path(&path) {
+                            return Ok(with_admin_document_headers(read_spa_index(&index).await));
                         }
                     }
-                    return Ok(with_admin_csp(StatusCode::NOT_FOUND.into_response()));
+                    return Ok(with_admin_no_store_headers(
+                        StatusCode::NOT_FOUND.into_response(),
+                    ));
                 }
 
                 if let (Some(index), Some(files)) = (web_index, web_files) {
                     if path.starts_with("/assets/") {
                         return files.oneshot(req).await.map(IntoResponse::into_response);
                     }
-                    if should_serve_spa(path, serve_git_web_gui) {
+                    if should_serve_spa(&path, serve_git_web_gui) {
                         return Ok(read_spa_index(&index).await);
                     }
                 }
@@ -307,11 +308,15 @@ fn is_admin_spa_path(path: &str) -> bool {
 }
 
 /// Files served from the admin bundle directory verbatim. `/assets/*` is the
-/// hashed Vite output; `/favicon.svg` is the one root-level file the bundle
-/// emits and the document links. Everything else on the admin host is a 404 —
-/// the directory is not browsable.
+/// hashed Vite output. The root favicon and startup recovery assets have stable
+/// names, so they remain revalidated. Everything else on the admin host is a
+/// 404: the directory is not browsable.
 fn is_admin_static_path(path: &str) -> bool {
-    path.starts_with("/assets/") || path == "/favicon.svg"
+    path.starts_with("/assets/")
+        || matches!(
+            path,
+            "/favicon.svg" | "/startup-watchdog.js" | "/startup-watchdog.css"
+        )
 }
 
 fn is_invite_landing_path(path: &str) -> bool {
@@ -348,6 +353,36 @@ fn with_admin_csp(mut response: axum::response::Response) -> axum::response::Res
         HeaderValue::from_static(ADMIN_CSP),
     );
     response
+}
+
+/// The document, favicon, and recovery assets use stable URLs. A stale admin
+/// document can point at a bundle that no longer exists after a relay deploy,
+/// so all stable admin responses must be fetched again.
+fn with_admin_no_store_headers(mut response: axum::response::Response) -> axum::response::Response {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    with_admin_csp(response)
+}
+
+fn with_admin_document_headers(response: axum::response::Response) -> axum::response::Response {
+    with_admin_no_store_headers(response)
+}
+
+fn with_admin_static_headers(
+    path: &str,
+    mut response: axum::response::Response,
+) -> axum::response::Response {
+    let cache_control = if path.starts_with("/assets/") && response.status().is_success() {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-store"
+    };
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(cache_control),
+    );
+    with_admin_csp(response)
 }
 
 /// Serve the admin bundle's `index.html` for a browser request to `/`. Any
@@ -405,7 +440,7 @@ async fn nip11_or_ws_handler(
     // Short-circuit the exact admin authority here and never let it serve the
     // public web bundle, NIP-11 document, or WebSocket endpoint.
     if api::admin::is_admin_host(&state, &headers) {
-        return with_admin_csp(admin_spa_document(&state, accept).await);
+        return with_admin_document_headers(admin_spa_document(&state, accept).await);
     }
 
     if accept.contains("application/nostr+json") {
@@ -1233,6 +1268,8 @@ mod tests {
         std::fs::write(dir.join("index.html"), "<!doctype html>").expect("index.html");
         std::fs::write(dir.join("assets/app.js"), "export {};").expect("bundle asset");
         std::fs::write(dir.join("favicon.svg"), "<svg/>").expect("favicon");
+        std::fs::write(dir.join("startup-watchdog.js"), "export {};").expect("startup watchdog");
+        std::fs::write(dir.join("startup-watchdog.css"), "").expect("startup watchdog stylesheet");
     }
 
     async fn spa_response(
@@ -1266,6 +1303,8 @@ mod tests {
             "/feedback/abc",
             "/assets/app.js",
             "/favicon.svg",
+            "/startup-watchdog.js",
+            "/startup-watchdog.css",
         ] {
             let response = spa_response(state.clone(), "admin.example", path).await;
             assert_eq!(
@@ -1277,6 +1316,54 @@ mod tests {
                 "{path} must carry the admin CSP"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn admin_spa_cache_policy_keeps_documents_fresh_and_hashed_assets_immutable() {
+        let admin_dir = tempfile::tempdir().expect("admin bundle dir");
+        let web_dir = tempfile::tempdir().expect("public bundle dir");
+        write_bundle(admin_dir.path());
+        write_bundle(web_dir.path());
+        let state = spa_state(admin_dir.path(), web_dir.path()).await;
+
+        for path in [
+            "/",
+            "/overview",
+            "/reports",
+            "/favicon.svg",
+            "/startup-watchdog.js",
+            "/startup-watchdog.css",
+        ] {
+            let response = spa_response(state.clone(), "admin.example", path).await;
+            assert_eq!(
+                response
+                    .headers()
+                    .get(header::CACHE_CONTROL)
+                    .and_then(|value| value.to_str().ok()),
+                Some("no-store"),
+                "{path} must not be cached"
+            );
+        }
+
+        let asset = spa_response(state.clone(), "admin.example", "/assets/app.js").await;
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert_eq!(
+            asset
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("public, max-age=31536000, immutable")
+        );
+
+        let missing = spa_response(state, "admin.example", "/assets/missing.js").await;
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            missing
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
+        );
     }
 
     #[tokio::test]
