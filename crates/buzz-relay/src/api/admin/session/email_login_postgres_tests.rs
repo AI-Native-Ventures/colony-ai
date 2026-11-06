@@ -568,7 +568,7 @@ async fn assert_start_reason(
     );
     let line = &lines[0];
     assert!(
-        line.contains(&format!("reason={reason}")),
+        line.contains(&format!("reason=\"{reason}\"")),
         "log must carry its reason class: {line}"
     );
     if reason == "sent" {
