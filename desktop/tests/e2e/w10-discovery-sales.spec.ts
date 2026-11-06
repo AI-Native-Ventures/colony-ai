@@ -45,6 +45,60 @@ test.describe("W10 discovery and sales", () => {
     await installDiscoveryImageMocks(page);
   });
 
+  test("Discovery reports a safe signing diagnosis with copyable details", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      ...REFERENCE_WORKSPACE,
+      referenceWorkspaceDiscoveryStandIn: false,
+    });
+    await page.addInitScript(() => {
+      window.__BUZZ_E2E_DISCOVERY_SEARCH__ = async () => {
+        throw new Error(
+          "identity is in recovery mode; event signing is disabled",
+        );
+      };
+    });
+    await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+
+    const dialog = await openHomeDecorCampaignForm(page);
+    const locationInput = dialog.getByRole("combobox", { name: "Location" });
+    await locationInput.fill("South Africa");
+    await dialog.getByRole("option").first().click();
+    await dialog.getByLabel("Prospect target").fill("100");
+    await dialog
+      .getByRole("checkbox", {
+        name: "I approve this campaign’s maximum budget.",
+      })
+      .check();
+    await dialog.getByRole("button", { name: "Approve & start" }).click();
+
+    const error = dialog.getByRole("alert");
+    await expect(error).toContainText("Signing failed");
+    await expect(error).toContainText("could not sign the prospect search");
+    const copyDetails = page.getByTestId("discovery-failure-copy-details");
+    await copyDetails.click();
+    await expect(copyDetails).toHaveText("Copied");
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          return (
+            window as Window & {
+              __BUZZ_E2E_COMMAND_LOG__?: Array<{
+                command: string;
+                payload: { text?: string };
+              }>;
+            }
+          ).__BUZZ_E2E_COMMAND_LOG__?.findLast(
+            ({ command }) => command === "copy_text_to_clipboard",
+          )?.payload.text;
+        }),
+      )
+      .toBe(
+        "action=prospect-search\nstage=campaign-start\nclass=signing\nstatus=none\ncode=identity_recovery",
+      );
+  });
+
   test("discovery search setup validates budget and supports pause, resume, cancel, and empty results", async ({
     page,
   }) => {

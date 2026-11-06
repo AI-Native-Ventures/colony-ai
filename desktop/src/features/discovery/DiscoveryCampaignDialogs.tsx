@@ -4,6 +4,12 @@ import {
   loadActiveCommunityId,
   loadCommunities,
 } from "@/features/communities/communityStorage";
+import { copyTextToSystemClipboard } from "@/shared/api/tauriMedia";
+import {
+  actionFailureFromError,
+  logActionFailure,
+  type ActionFailure,
+} from "@/shared/lib/actionFailure";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +26,7 @@ import {
   type DiscoveryLocation,
 } from "./discoveryLocation";
 import { searchDiscoveryLocations } from "./discoveryLocationClient";
+import { SALES_NOT_ALLOWED_MESSAGE } from "./salesChannel";
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
@@ -50,9 +57,22 @@ export type CampaignFormInput = {
 const BUDGET_PER_PROSPECT_USD = 0.003;
 const LOCATION_DEBOUNCE_MS = 250;
 
+function discoveryActionFailure(error: unknown): ActionFailure {
+  const failure = actionFailureFromError({
+    action: "prospect-search",
+    stage: "campaign-start",
+    error,
+    code:
+      error instanceof Error && error.message === SALES_NOT_ALLOWED_MESSAGE
+        ? "sales_channel_not_allowed"
+        : null,
+  });
+  logActionFailure(failure);
+  return failure;
+}
+
 function startFailureMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return "The campaign could not be started. Retry when the connection is available.";
+  return discoveryActionFailure(error).message;
 }
 
 function activeRelayUrl(): string | null {
@@ -291,6 +311,8 @@ export function DiscoveryCampaignDialog({
   const [criteria, setCriteria] = React.useState("");
   const [approved, setApproved] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [failure, setFailure] = React.useState<ActionFailure | null>(null);
+  const [detailsCopied, setDetailsCopied] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const budget = Math.max(0, Number(target) || 0) * BUDGET_PER_PROSPECT_USD;
 
@@ -307,10 +329,24 @@ export function DiscoveryCampaignDialog({
     setCriteria("");
     setApproved(false);
     setError("");
+    setFailure(null);
+    setDetailsCopied(false);
   }, [continuationSourceCampaign, initialLocation, open, pending]);
+
+  async function copyFailureDetails() {
+    if (!failure) return;
+    try {
+      await copyTextToSystemClipboard(failure.details);
+      setDetailsCopied(true);
+    } catch {
+      setDetailsCopied(false);
+    }
+  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFailure(null);
+    setDetailsCopied(false);
     const requested = Number(target);
     if (
       !locationSelection ||
@@ -344,7 +380,9 @@ export function DiscoveryCampaignDialog({
         criteria,
       });
     } catch (startError) {
-      setError(startFailureMessage(startError));
+      const nextFailure = discoveryActionFailure(startError);
+      setFailure(nextFailure);
+      setError(nextFailure.message);
     } finally {
       setSubmitting(false);
     }
@@ -451,9 +489,24 @@ export function DiscoveryCampaignDialog({
             I approve this campaign’s maximum budget.
           </label>
           {error ? (
-            <p className="c3d-error" role="alert">
-              {error}
-            </p>
+            <div className="c3d-error" role="alert">
+              {failure ? (
+                <>
+                  <strong>{failure.title}</strong>
+                  <span>{error}</span>
+                  <button
+                    className="c3d-error-copy"
+                    data-testid="discovery-failure-copy-details"
+                    onClick={() => void copyFailureDetails()}
+                    type="button"
+                  >
+                    {detailsCopied ? "Copied" : "Copy details"}
+                  </button>
+                </>
+              ) : (
+                error
+              )}
+            </div>
           ) : null}
           <div className="c3d-dialog-actions c3d-form-actions">
             <button
