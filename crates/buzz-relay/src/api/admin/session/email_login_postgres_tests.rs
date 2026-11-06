@@ -399,7 +399,7 @@ async fn wait_for_audit_outcome_count(
         }
     })
     .await
-    .expect("email-login audit outcome was not recorded");
+    .unwrap_or_else(|_| panic!("email-login audit outcome {operation}/{outcome} was not recorded"));
 }
 
 async fn wait_for_audit_outcome_count_for_hash(
@@ -419,7 +419,7 @@ async fn wait_for_audit_outcome_count_for_hash(
         }
     })
     .await
-    .expect("email-login audit outcome was not recorded");
+    .unwrap_or_else(|_| panic!("email-login audit outcome {operation}/{outcome} was not recorded"));
 }
 
 #[derive(Clone, Default)]
@@ -741,7 +741,13 @@ async fn start_records_and_logs_each_email_delivery_reason_class() {
     assert_eq!(sent_delivery.recipient, sent_email);
 
     let not_allowlisted_email = unique_email("reason-not-allowlisted");
-    let mut not_allowlisted = fixture(vec![not_allowlisted_email.clone()], Vec::new()).await;
+    let configured_but_different_email = unique_email("reason-not-allowlisted-configured");
+    let mut not_allowlisted = fixture_with_allowlist(
+        vec![not_allowlisted_email.clone()],
+        vec![RelayOperatorEmail::Account(configured_but_different_email)],
+        Vec::new(),
+    )
+    .await;
     assert_start_reason(
         &mut not_allowlisted,
         &not_allowlisted_email,
