@@ -309,6 +309,14 @@ fn node_is_pinned(path: &Path) -> bool {
 }
 
 fn install_node(app_root: &Path, artifact: NodeArtifact) -> Result<(), CliError> {
+    install_node_with_curl(app_root, artifact, Path::new("curl"))
+}
+
+fn install_node_with_curl(
+    app_root: &Path,
+    artifact: NodeArtifact,
+    curl_command: &Path,
+) -> Result<(), CliError> {
     let runtime_root = app_root.join("runtimes").join("node");
     std::fs::create_dir_all(&runtime_root).map_err(|error| {
         CliError::Other(format!("could not create managed Node folder: {error}"))
@@ -327,7 +335,7 @@ fn install_node(app_root: &Path, artifact: NodeArtifact) -> Result<(), CliError>
         "https://nodejs.org/dist/{NODE_VERSION}/{}",
         artifact.filename
     );
-    let mut curl = Command::new("curl");
+    let mut curl = Command::new(curl_command);
     curl.args([
         "--fail",
         "--location",
@@ -353,6 +361,7 @@ fn install_node(app_root: &Path, artifact: NodeArtifact) -> Result<(), CliError>
     let actual = sha256_file(&archive)?;
     if actual != artifact.sha256 {
         let _ = std::fs::remove_file(&archive);
+        let _ = std::fs::remove_dir_all(&staging);
         return Err(CliError::Other(
             "Colony Node.js archive checksum did not match".into(),
         ));
@@ -537,6 +546,8 @@ fn tail(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::DesignRuntime;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn open_design_version_and_source_checksum_are_pinned() {
@@ -576,5 +587,34 @@ mod tests {
             ),
             Some("Approve the design first.".into()),
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn checksum_mismatch_cleans_unactivated_node_staging() {
+        let temp = tempfile::tempdir().unwrap();
+        let curl = temp.path().join("corrupt-curl");
+        std::fs::write(
+            &curl,
+            "#!/bin/sh\noutput=\"\"\nwhile [ \"$#\" -gt 0 ]; do\n  if [ \"$1\" = \"--output\" ]; then output=\"$2\"; break; fi\n  shift\ndone\nprintf corrupt > \"$output\"\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&curl).unwrap().permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&curl, permissions).unwrap();
+        let artifact = NodeArtifact {
+            platform: "test",
+            filename: "node-test.tar.gz",
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000",
+        };
+
+        let error = install_node_with_curl(temp.path(), artifact, &curl).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("Node.js archive checksum did not match"));
+        let runtime_root = temp.path().join("runtimes").join("node");
+        assert!(!runtime_root.join("v24.18.0-test-install").exists());
+        assert!(!runtime_root.join("node-test.tar.gz").exists());
     }
 }

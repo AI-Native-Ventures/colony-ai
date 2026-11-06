@@ -90,10 +90,12 @@ test("the managed sandbox fences home scans, private folders, and sibling projec
     "b9517e2d-46d3-493d-9e46-aed2c6320505",
   );
   const sourceRoot = path.join(designRoot, "runtime", "open-design-0.25.1");
+  const nodeRuntimeRoot = path.join(designRoot, "node");
+  const nodeBin = path.join(nodeRuntimeRoot, "bin");
   const profile = colonySandboxProfile(
     home,
     sourceRoot,
-    path.join(designRoot, "node", "bin"),
+    nodeBin,
     project,
     "codex",
     [43127],
@@ -110,6 +112,20 @@ test("the managed sandbox fences home scans, private folders, and sibling projec
   assert.doesNotMatch(profile, /require-not/u);
   assert.match(profile, /\.agent-sandbox\.sb/u);
   assert.ok(profile.includes(`(subpath "${sourceRoot}")`));
+  // Corepack is a symlink from bin/ into lib/node_modules. The sandbox must
+  // permit the managed runtime root, not only its executable directory.
+  assert.ok(profile.includes(`(subpath "${nodeRuntimeRoot}")`));
+  for (const ancestor of [
+    home,
+    path.join(home, "Library"),
+    path.join(home, "Library", "Application Support"),
+    path.join(home, "Library", "Application Support", "Colony"),
+    nodeRuntimeRoot,
+  ]) {
+    assert.ok(
+      profile.includes(`(allow file-read-metadata (literal "${ancestor}"))`),
+    );
+  }
   assert.ok(profile.includes(`(deny file-read* (subpath "${home}")`));
   assert.ok(profile.includes('(deny file-read* (subpath "/Users")'));
   assert.ok(profile.includes('(deny network-outbound (remote ip "*:*"))'));
