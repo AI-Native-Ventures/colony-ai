@@ -17,6 +17,8 @@ export type QualificationNumericRange = {
 export type QualificationFilter = {
   mustHave: readonly QualifySignal[];
   mustNotHave: readonly QualifySignal[];
+  /** Signals with no complete observation yet, including a missing head. */
+  notChecked?: readonly QualifySignal[];
   rating?: QualificationNumericRange;
   reviewCount?: QualificationNumericRange;
   categories?: readonly string[];
@@ -74,7 +76,11 @@ function matchesChoices(
 }
 
 function signalSelectionIsValid(filter: QualificationFilter): boolean {
-  const all = [...filter.mustHave, ...filter.mustNotHave];
+  const all = [
+    ...filter.mustHave,
+    ...filter.mustNotHave,
+    ...(filter.notChecked ?? []),
+  ];
   return new Set(all).size === all.length;
 }
 
@@ -111,11 +117,22 @@ export function matchesQualificationFilter(
   if (!matchesRange(lead.reviewCount, filter.reviewCount)) return false;
   if (!matchesChoices(lead.category, filter.categories)) return false;
   if (!matchesChoices(lead.city, filter.cities)) return false;
-  if (filter.mustHave.length === 0 && filter.mustNotHave.length === 0) {
+  const notChecked = filter.notChecked ?? [];
+  if (
+    filter.mustHave.length === 0 &&
+    filter.mustNotHave.length === 0 &&
+    notChecked.length === 0
+  ) {
     return true;
   }
   const head = lead.qualification;
-  if (!head) return false;
+  if (!head) {
+    return (
+      filter.mustHave.length === 0 &&
+      filter.mustNotHave.length === 0 &&
+      notChecked.length > 0
+    );
+  }
   const checked = new Set(head.checkedSignals);
   const observed = new Set(
     head.observations
@@ -132,7 +149,8 @@ export function matchesQualificationFilter(
     filter.mustNotHave.every(
       (signal) =>
         checked.has(signal) && !observed.has(signal) && !incomplete.has(signal),
-    )
+    ) &&
+    notChecked.every((signal) => !checked.has(signal) || incomplete.has(signal))
   );
 }
 

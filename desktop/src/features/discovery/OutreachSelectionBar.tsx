@@ -1,5 +1,6 @@
 import {
   ListPlus,
+  Globe2,
   MessageCircle,
   MoreHorizontal,
   Sparkles,
@@ -11,6 +12,7 @@ import { STAGES } from "./leadShared";
 export function OutreachSelectionBar({
   count,
   onAddToList,
+  onCheckWebsites,
   onWhatsAppBatch,
   onAskScout,
   onChangeStage,
@@ -20,6 +22,7 @@ export function OutreachSelectionBar({
 }: {
   count: number;
   onAddToList: () => void;
+  onCheckWebsites: () => void;
   onWhatsAppBatch: () => void;
   onAskScout: () => void;
   onChangeStage: (stage: ProspectStage) => void;
@@ -45,6 +48,14 @@ export function OutreachSelectionBar({
           Add to outreach list
         </span>
         <span className="c3l-selection-mobile-label">Add to list</span>
+      </button>
+      <button
+        className="c3l-selection-action c3l-selection-websites"
+        onClick={onCheckWebsites}
+        type="button"
+      >
+        <Globe2 aria-hidden="true" size={15} />
+        <span>Check their websites (free)</span>
       </button>
       <button
         className="c3l-selection-action c3l-selection-batch"

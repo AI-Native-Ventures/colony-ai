@@ -2526,7 +2526,9 @@ button.c3d-search-chip {
 }
 
 .c3d-dialog--form {
-  width: 35rem;
+  width: 37.5rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
 }
 
 .c3d-dialog--run {
@@ -2640,6 +2642,236 @@ button.c3d-search-chip {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   gap: 0.75rem;
+}
+
+.c3d-qualification {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.c3d-qualification > legend {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.625rem;
+  padding: 0;
+  color: var(--c3d-ink2);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3d-qualification > legend > span:last-child {
+  color: var(--c3d-muted);
+  font-weight: 500;
+}
+
+.c3d-qualification-free {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0 0.5625rem;
+  border-radius: 999px;
+  background: #e8f5ec;
+  color: #1e6b3a;
+  font-size: calc(12 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3d-qualification-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
+  border-radius: 1rem;
+  box-shadow: inset 0 0 0 1px var(--c3d-line2);
+}
+
+.c3d-qualification-enable,
+.c3d-qualification-group label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  color: var(--c3d-ink);
+}
+
+.c3d-qualification-enable {
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3d-qualification-enable input,
+.c3d-qualification-group input {
+  flex: none;
+  margin: 0.125rem 0 0;
+  accent-color: var(--c3d-accent);
+}
+
+.c3d-qualification-enable input {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.c3d-qualification-enable > span,
+.c3d-qualification-group label > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.c3d-qualification-enable small,
+.c3d-qualification-group small {
+  color: var(--c3d-muted);
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.c3d-qualification-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--c3d-line);
+}
+
+.c3d-qualification-options.is-disabled {
+  opacity: 0.6;
+}
+
+.c3d-qualification-options-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--c3d-muted);
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.c3d-qualification-options-head button {
+  min-height: 1.875rem;
+  border: 0;
+  border-radius: 0.5625rem;
+  background: #efeafb;
+  color: #4a36a6;
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3d-qualification-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.c3d-qualification-group > strong {
+  color: var(--c3d-ink);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3d-qualification-group label {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+}
+
+.c3d-qualification-group input {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.c3d-qualification-note {
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--c3d-accent-soft) 42%, var(--c3d-card));
+  color: var(--c3d-ink2);
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.c3d-qualification-note strong {
+  color: var(--c3d-ink);
+  font-weight: 800;
+}
+
+.c3d-qualification-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.125rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--c3d-accent) 24%, var(--c3d-line));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--c3d-accent-soft) 52%, var(--c3d-card));
+}
+
+.c3d-qualification-run > div:first-child {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 20rem;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.c3d-qualification-run h2 {
+  margin: 0;
+  color: var(--c3d-ink);
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.c3d-qualification-run p {
+  margin: 0;
+  color: var(--c3d-ink2);
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.c3d-qualification-run .c3d-eyebrow {
+  color: var(--c3d-accent-ink);
+  font-size: calc(11 * var(--colony-px));
+}
+
+.c3d-qualification-run-actions {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+.c3d-qualification-run-actions button {
+  min-height: 2.375rem;
+  border: 1px solid var(--c3d-accent);
+  border-radius: 0.625rem;
+  padding: 0 0.75rem;
+  background: var(--c3d-card);
+  color: var(--c3d-accent-ink);
+  font: inherit;
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.c3d-qualification-run-actions button:hover:not(:disabled) {
+  background: var(--c3d-accent);
+  color: var(--c3d-card);
+}
+
+.c3d-qualification-run-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.c3d-qualification-run > .c3d-error {
+  width: 100%;
 }
 
 .c3d-location-combobox {

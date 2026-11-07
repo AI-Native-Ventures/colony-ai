@@ -33,6 +33,13 @@ import type {
   DiscoveryContinuation,
   DiscoveryRunner,
 } from "./discoveryProvider";
+import {
+  emptyCampaignQualificationSettings,
+  QUALIFICATION_SIGNAL_DEFINITIONS,
+  RECOMMENDED_QUALIFY_SIGNALS,
+  type CampaignQualificationSettings,
+} from "./qualificationCampaign";
+import type { QualifySignal } from "./businessRecordContract";
 
 import "./colony3-discovery.css";
 
@@ -52,6 +59,7 @@ export type CampaignFormInput = {
   locationSelection: DiscoveryLocation;
   target: number;
   criteria: string;
+  qualification: CampaignQualificationSettings;
 };
 
 const BUDGET_PER_PROSPECT_USD = 0.003;
@@ -309,6 +317,10 @@ export function DiscoveryCampaignDialog({
     React.useState<DiscoveryLocation | null>(null);
   const [target, setTarget] = React.useState("100");
   const [criteria, setCriteria] = React.useState("");
+  const [qualification, setQualification] =
+    React.useState<CampaignQualificationSettings>(
+      emptyCampaignQualificationSettings,
+    );
   const [approved, setApproved] = React.useState(false);
   const [error, setError] = React.useState("");
   const [failure, setFailure] = React.useState<ActionFailure | null>(null);
@@ -327,6 +339,7 @@ export function DiscoveryCampaignDialog({
     setLocationSelection(initialLocation ?? null);
     setTarget("100");
     setCriteria("");
+    setQualification(emptyCampaignQualificationSettings());
     setApproved(false);
     setError("");
     setFailure(null);
@@ -378,6 +391,7 @@ export function DiscoveryCampaignDialog({
         locationSelection,
         target: requested,
         criteria,
+        qualification,
       });
     } catch (startError) {
       const nextFailure = discoveryActionFailure(startError);
@@ -448,6 +462,139 @@ export function DiscoveryCampaignDialog({
               />
             </div>
           </div>
+          <fieldset
+            aria-describedby="c3d-qualification-hint"
+            className="c3d-qualification"
+            data-testid="campaign-qualification-controls"
+          >
+            <legend>
+              Check their websites
+              <span className="c3d-qualification-free">Free, no AI</span>
+              <span>Optional</span>
+            </legend>
+            <div className="c3d-qualification-card">
+              <label className="c3d-qualification-enable">
+                <input
+                  checked={qualification.enabled}
+                  data-testid="campaign-qualification-enabled"
+                  onChange={(event) => {
+                    const enabled = event.currentTarget.checked;
+                    setQualification((current) => ({
+                      ...current,
+                      enabled,
+                      failureReason: null,
+                      phase:
+                        current.phase === "failed" ? "idle" : current.phase,
+                    }));
+                  }}
+                  type="checkbox"
+                />
+                <span>
+                  After the search, look at each business's own website
+                  <small id="c3d-qualification-hint">
+                    Off by default. Switch it on to choose what to look for.
+                    Colony does this on your computer while it is open, with no
+                    AI and no cost. It notes simple facts you can filter on and
+                    Scout can mention.
+                  </small>
+                </span>
+              </label>
+              <div
+                aria-disabled={!qualification.enabled}
+                className={`c3d-qualification-options${qualification.enabled ? "" : " is-disabled"}`}
+              >
+                <div className="c3d-qualification-options-head">
+                  <span>What to look for</span>
+                  <button
+                    onClick={() =>
+                      setQualification((current) => ({
+                        ...current,
+                        enabled: true,
+                        selectedSignals: [...RECOMMENDED_QUALIFY_SIGNALS],
+                      }))
+                    }
+                    type="button"
+                  >
+                    Select the 7 recommended
+                  </button>
+                </div>
+                {[
+                  "Website health",
+                  "Customer reach",
+                  "Marketing",
+                  "Contact",
+                ].map((group) => {
+                  const definitions = QUALIFICATION_SIGNAL_DEFINITIONS.filter(
+                    (entry) => entry.group === group,
+                  );
+                  return (
+                    <div className="c3d-qualification-group" key={group}>
+                      <strong>{group}</strong>
+                      {definitions.map((definition) => {
+                        if (definition.signal === "INCUMBENT_BUILDER") {
+                          return null;
+                        }
+                        const signals: readonly QualifySignal[] =
+                          definition.signal === "SITE_BUILDER"
+                            ? ["SITE_BUILDER", "INCUMBENT_BUILDER"]
+                            : [definition.signal];
+                        const checked = signals.every((signal) =>
+                          qualification.selectedSignals.includes(signal),
+                        );
+                        const label =
+                          definition.signal === "SITE_BUILDER"
+                            ? "Built with, and built by"
+                            : definition.label;
+                        const description =
+                          definition.signal === "SITE_BUILDER"
+                            ? "The website tool (Wix, WordPress) and any agency credit in the footer."
+                            : definition.description;
+                        return (
+                          <label key={definition.signal}>
+                            <input
+                              checked={checked}
+                              data-testid={`campaign-qualification-${definition.signal}`}
+                              disabled={!qualification.enabled}
+                              onChange={(event) => {
+                                const checked = event.currentTarget.checked;
+                                setQualification((current) => ({
+                                  ...current,
+                                  selectedSignals: checked
+                                    ? [
+                                        ...current.selectedSignals,
+                                        ...signals.filter(
+                                          (signal) =>
+                                            !current.selectedSignals.includes(
+                                              signal,
+                                            ),
+                                        ),
+                                      ]
+                                    : current.selectedSignals.filter(
+                                        (signal) => !signals.includes(signal),
+                                      ),
+                                }));
+                              }}
+                              type="checkbox"
+                            />
+                            <span>
+                              {label}
+                              <small>{description}</small>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+                <p className="c3d-qualification-note">
+                  Colony reads only each business&apos;s own public website, a
+                  few pages at most, and respects sites that ask not to be read.
+                  Anything it cannot check shows as <strong>Not checked</strong>
+                  {", never as a problem."}
+                </p>
+              </div>
+            </div>
+          </fieldset>
           <div className="c3d-field">
             <label htmlFor="w10-campaign-criteria">
               What makes a good fit? <span>Optional</span>
@@ -466,7 +613,7 @@ export function DiscoveryCampaignDialog({
               <small>
                 {simulatedCosts
                   ? "Example pricing · Actual results and costs are simulated."
-                  : "About US$0.06 per 20 results. This is the maximum you approve."}
+                  : "Website check adds no cost."}
               </small>
             </span>
             <span className="c3d-budget-amount">${budget.toFixed(2)}</span>

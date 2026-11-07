@@ -125,6 +125,35 @@ test("must-not-have requires a completed check with no observation", () => {
   );
 });
 
+test("not-checked matches a missing or incomplete check, never a completed one", () => {
+  assert.deepEqual(
+    filterQualificationLeads(rows, {
+      mustHave: [],
+      mustNotHave: [],
+      notChecked: ["NO_WEBSITE"],
+    }).map((row) => row.leadId),
+    [C, "dab2d4a7-fb2c-413e-a99b-4bd5bf247a86"],
+  );
+  assert.equal(
+    matchesQualificationFilter(rows[0], {
+      mustHave: ["NO_WEBSITE"],
+      mustNotHave: [],
+      notChecked: ["NO_WEBSITE"],
+    }),
+    false,
+  );
+});
+
+test("duplicate signal selections are rejected before a lead can match", () => {
+  assert.equal(
+    matchesQualificationFilter(rows[0], {
+      mustHave: ["NO_WEBSITE", "NO_WEBSITE"],
+      mustNotHave: [],
+    }),
+    false,
+  );
+});
+
 test("ranges, category, and city combine with signal filters", () => {
   assert.deepEqual(
     filterQualificationLeads(rows, {

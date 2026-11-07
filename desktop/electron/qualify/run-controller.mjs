@@ -111,6 +111,9 @@ function runProgress(run) {
       (item) => item.phase === "pending" || item.phase === "ready_to_publish",
     ).length,
     failed: run.items.filter((item) => item.lastError).length,
+    failureReason:
+      run.items.find((item) => typeof item.lastError === "string")?.lastError ??
+      null,
   };
 }
 

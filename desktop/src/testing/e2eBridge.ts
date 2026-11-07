@@ -101,6 +101,7 @@ import {
   KIND_OUTREACH_LIST_HEAD,
   KIND_DISCOVERY_CAMPAIGN_ACTION,
   KIND_DISCOVERY_CAMPAIGN_HEAD,
+  KIND_QUALIFY_OBSERVATION_HEAD,
 } from "@/features/discovery/businessRecordContract";
 import {
   COLONY3_BUSINESS_PEOPLE,
@@ -22032,6 +22033,48 @@ export function maybeInstallE2eTauriMocks() {
   };
   let mockImportedVoices: VoiceRegistryEntry[] =
     getConfig()?.mock?.importedPocketVoices ?? [];
+  type MockQualificationRun = {
+    scope: { channelId: string; communityId: string };
+    progress: {
+      runId: string;
+      status: "running" | "paused" | "completed" | "cancelled";
+      total: number;
+      complete: number;
+      checked: number;
+      skippedFresh: number;
+      pending: number;
+      failed: number;
+      failureReason: string | null;
+    };
+  };
+  const mockQualificationRuns = new Map<string, MockQualificationRun>();
+
+  function mockQualificationInput(payload: unknown) {
+    if (typeof payload !== "object" || payload === null) {
+      throw new Error("Mock qualification input is required.");
+    }
+    const input = payload as Record<string, unknown>;
+    if (
+      typeof input.channelId !== "string" ||
+      typeof input.communityId !== "string" ||
+      typeof input.runId !== "string"
+    ) {
+      throw new Error("Mock qualification scope is invalid.");
+    }
+    return input as Record<string, unknown> & {
+      channelId: string;
+      communityId: string;
+      runId: string;
+    };
+  }
+
+  async function emitMockQualificationProgress(run: MockQualificationRun) {
+    await emit("qualify:progress", {
+      ...run.scope,
+      progress: structuredClone(run.progress),
+    });
+  }
+
   const handleMockCommand = async (
     command: string,
     payload: unknown,
@@ -22098,6 +22141,100 @@ export function maybeInstallE2eTauriMocks() {
     if (commandError) throw new Error(commandError);
 
     switch (command) {
+      case "qualify_start": {
+        const input = mockQualificationInput(payload);
+        const leads = Array.isArray(input.leads) ? input.leads : [];
+        const progress = {
+          runId: input.runId,
+          status: "running" as const,
+          total: leads.length,
+          complete: 0,
+          checked: 0,
+          skippedFresh: 0,
+          pending: leads.length,
+          failed: 0,
+          failureReason: null,
+        };
+        mockQualificationRuns.set(input.runId, {
+          scope: {
+            channelId: input.channelId,
+            communityId: input.communityId,
+          },
+          progress,
+        });
+        return structuredClone(progress);
+      }
+      case "qualify_cancel": {
+        const input = mockQualificationInput(payload);
+        const run = mockQualificationRuns.get(input.runId);
+        if (
+          !run ||
+          run.scope.channelId !== input.channelId ||
+          run.scope.communityId !== input.communityId
+        ) {
+          return { cancelled: false };
+        }
+        run.progress = { ...run.progress, status: "cancelled" };
+        await emitMockQualificationProgress(run);
+        return { cancelled: true };
+      }
+      case "qualify_resume": {
+        const input = mockQualificationInput(payload);
+        const run = mockQualificationRuns.get(input.runId);
+        if (
+          !run ||
+          run.scope.channelId !== input.channelId ||
+          run.scope.communityId !== input.communityId
+        ) {
+          throw new Error("Qualification run was not found.");
+        }
+        run.progress = {
+          ...run.progress,
+          status: "running",
+          failureReason: null,
+        };
+        await emitMockQualificationProgress(run);
+        return structuredClone(run.progress);
+      }
+      case "qualify_snapshot": {
+        const input = mockQualificationInput(payload);
+        const run = mockQualificationRuns.get(input.runId);
+        return run &&
+          run.scope.channelId === input.channelId &&
+          run.scope.communityId === input.communityId
+          ? structuredClone(run.progress)
+          : null;
+      }
+      case "qualify_renderer_response":
+        return { accepted: true };
+      case "e2e_seed_qualification_head": {
+        if (typeof payload !== "object" || payload === null) {
+          throw new Error("Qualification head fixture is required.");
+        }
+        const fixture = payload as {
+          channelId?: unknown;
+          dTag?: unknown;
+          record?: unknown;
+        };
+        if (
+          typeof fixture.channelId !== "string" ||
+          typeof fixture.dTag !== "string" ||
+          !fixture.record
+        ) {
+          throw new Error("Qualification head fixture is invalid.");
+        }
+        const event = createMockEvent(
+          KIND_QUALIFY_OBSERVATION_HEAD,
+          JSON.stringify(fixture.record),
+          [
+            ["h", fixture.channelId],
+            ["d", fixture.dTag],
+          ],
+          referenceRelaySelfPubkey() ?? DEFAULT_MOCK_IDENTITY.pubkey,
+        );
+        storeReferenceBusinessEvent(fixture.channelId, event, true);
+        return { eventId: event.id };
+      }
       case "get_huddle_state": {
         const snapshot = mockHuddle ? structuredClone(mockHuddle.state) : null;
         const delayMs = activeConfig?.mock?.huddleStateReadDelayMs ?? 0;

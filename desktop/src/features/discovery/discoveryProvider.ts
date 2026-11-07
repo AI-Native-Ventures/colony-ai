@@ -2,6 +2,7 @@ import * as React from "react";
 
 import type { DiscoveryLocation } from "./discoveryLocation";
 import { getRealDiscoveryProvider } from "./discoveryRuntime";
+import type { CampaignQualificationSettings } from "./qualificationCampaign";
 
 export type DiscoveryAudience = "businesses" | "people";
 export type DiscoveryRunStatus =
@@ -132,6 +133,8 @@ export type DiscoveryCampaign = {
   runLog?: DiscoveryPageLog[];
   /** Pages saved so far, including pages from any in-place continuation. */
   pagesFetched?: number;
+  /** Device-local optional website-check settings. Legacy campaigns omit it. */
+  qualification?: CampaignQualificationSettings;
 };
 
 export type DiscoveryCampaignInput = Omit<
@@ -147,6 +150,11 @@ export type DiscoveryCampaignProvider = {
     listener: (campaign: DiscoveryCampaign | null) => void,
   ) => () => void;
   start: (input: DiscoveryCampaignInput) => Promise<DiscoveryCampaign>;
+  /** Persists local qualification selection and the bounded run's state. */
+  updateQualification?: (
+    campaignId: string,
+    settings: CampaignQualificationSettings,
+  ) => Promise<DiscoveryCampaign>;
   /** Describes whether the current short campaign can safely continue in place. */
   getContinuation: () => DiscoveryContinuation | null;
   /** Continues the current campaign, optionally after a newly approved amount. */

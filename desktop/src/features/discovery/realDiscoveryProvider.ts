@@ -43,6 +43,11 @@ import {
   type PreparedSearchPage,
 } from "./discoverySearchPage";
 import { matchDiscoveryTags } from "./discoveryTags";
+import {
+  cloneCampaignQualificationSettings,
+  parseCampaignQualificationSettings,
+  type CampaignQualificationSettings,
+} from "./qualificationCampaign";
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
@@ -1101,11 +1106,24 @@ export function createDiscoveryController(
         stopNotePosted: false,
         topFits: [],
         pendingPage: first?.response ?? null,
+        qualification: parseCampaignQualificationSettings(input.qualification),
       };
       commit(setCurrent(upsertCampaign(state, campaign), campaign.id));
       beginRun(campaign.id, context, first);
       const created = findCampaign(state, campaign.id);
       return toPublicCampaign(created ?? campaign);
+    },
+
+    async updateQualification(
+      campaignId: string,
+      settings: CampaignQualificationSettings,
+    ) {
+      const updated = patch(campaignId, (campaign) => ({
+        ...campaign,
+        qualification: cloneCampaignQualificationSettings(settings),
+      }));
+      if (!updated) throw new Error("This discovery campaign is unavailable.");
+      return toPublicCampaign(updated);
     },
 
     async pause() {

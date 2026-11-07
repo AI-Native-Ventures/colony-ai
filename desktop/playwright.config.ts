@@ -378,6 +378,7 @@ export default defineConfig({
         "**/colony3-agents-simple.spec.ts",
         "**/colony3-discovery-v4.spec.ts",
         "**/colony3-discovery-tags.spec.ts",
+        "**/colony3-qualify-ui.spec.ts",
         "**/day-divider-overlap.spec.ts",
         "**/colony3-lead-reference.spec.ts",
         "**/link-preview-bare-domain.spec.ts",

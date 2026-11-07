@@ -15,6 +15,8 @@ import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
 import { OutreachBatchDialog } from "./OutreachBatchDialog";
 import { OutreachFilterControls } from "./OutreachFilterControls";
 import { OutreachSelectionBar } from "./OutreachSelectionBar";
+import { QualificationFilterControls } from "./QualificationFilterControls";
+import { QualificationRunDialog } from "./QualificationRunDialog";
 import {
   filterOutreachRows,
   selectAllMatching,
@@ -44,9 +46,24 @@ import {
   useWhatsAppLeadData,
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
 import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
-import type { ProspectStage } from "./businessRecordContract";
+import type { ProspectStage, QualifySignal } from "./businessRecordContract";
 import { buildLeadLink } from "@/shared/lib/entityLink";
 import type { OutreachBatchLead } from "./outreachBatch";
+import {
+  filterQualificationLeads,
+  qualificationFilterLeadFromRecords,
+  type QualificationFilter,
+} from "./qualifyFilter";
+import { qualificationObserved } from "./qualificationPresentation";
+import { cloneCampaignQualificationSettings } from "./qualificationCampaign";
+import {
+  cancelQualificationRun,
+  qualificationRunSnapshot,
+  resumeQualificationRun,
+  startQualificationRun,
+  useQualificationProgress,
+  type QualificationRunProgress,
+} from "./qualificationRuntime";
 
 import "./colony3-leads.css";
 
@@ -63,6 +80,7 @@ export function LeadsScreen(context: LeadContext) {
     | {
         query?: string;
         filters?: OutreachFilters;
+        qualificationFilter?: QualificationFilter;
         selected?: string[];
         page?: number;
       }
@@ -82,6 +100,15 @@ export function LeadsScreen(context: LeadContext) {
         stages: new Set(["new"]),
       },
   );
+  const [qualificationFilter, setQualificationFilter] =
+    React.useState<QualificationFilter>(
+      () =>
+        restored?.qualificationFilter ?? {
+          mustHave: [],
+          mustNotHave: [],
+          notChecked: [],
+        },
+    );
   const [selected, setSelected] = React.useState<Set<string>>(
     () => new Set(restored?.selected ?? []),
   );
@@ -90,13 +117,26 @@ export function LeadsScreen(context: LeadContext) {
   );
   const [page, setPage] = React.useState(restored?.page ?? 0);
   const [listDialogOpen, setListDialogOpen] = React.useState(false);
+  const [qualificationListDialogOpen, setQualificationListDialogOpen] =
+    React.useState(false);
+  const [qualificationListIds, setQualificationListIds] = React.useState<
+    string[]
+  >([]);
   const [batchDialogOpen, setBatchDialogOpen] = React.useState(false);
+  const [qualificationDialogOpen, setQualificationDialogOpen] =
+    React.useState(false);
+  const [qualificationRun, setQualificationRun] =
+    React.useState<QualificationRunProgress | null>(null);
   const [selectionError, setSelectionError] = React.useState("");
   const [selectionBusy, setSelectionBusy] = React.useState(false);
   const [pendingBulkUpdate, setPendingBulkUpdate] =
     React.useState<PendingBulkProspectUpdate | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const canWrite = canEdit(context.role);
+  const qualificationProgress = useQualificationProgress({
+    channelId: context.channelId,
+    communityId: context.communityId,
+  });
   React.useEffect(() => {
     try {
       setPendingBulkUpdate(
@@ -174,7 +214,38 @@ export function LeadsScreen(context: LeadContext) {
     customerRecordByPartyId,
     inBatchLeadIds,
   ]);
-  const filteredRows = filterOutreachRows(outreachRows, filters, query);
+  const qualificationRows = React.useMemo(
+    () =>
+      activeProspects.map((row) =>
+        qualificationFilterLeadFromRecords(
+          row,
+          context.records.qualificationObservations,
+        ),
+      ),
+    [activeProspects, context.records.qualificationObservations],
+  );
+  const qualifiedLeadIds = React.useMemo(
+    () =>
+      new Set(
+        filterQualificationLeads(qualificationRows, qualificationFilter).map(
+          (row) => row.leadId,
+        ),
+      ),
+    [qualificationFilter, qualificationRows],
+  );
+  const qualificationHeadsByLeadId = React.useMemo(
+    () =>
+      new Map(
+        context.records.qualificationObservations.map((head) => [
+          head.record.leadId,
+          head.record,
+        ]),
+      ),
+    [context.records.qualificationObservations],
+  );
+  const filteredRows = filterOutreachRows(outreachRows, filters, query).filter(
+    ({ id }) => qualifiedLeadIds.has(id),
+  );
   const pageSize = 8;
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const pageRows = filteredRows.slice(page * pageSize, (page + 1) * pageSize);
@@ -205,6 +276,12 @@ export function LeadsScreen(context: LeadContext) {
     phone: record.prospect.phone,
     whatsappPhone: record.prospect.whatsappPhone,
   }));
+  const manualQualificationProgress = qualificationRun
+    ? (qualificationProgress.get(qualificationRun.runId) ?? qualificationRun)
+    : null;
+  const qualificationInitialSignals = cloneCampaignQualificationSettings(
+    campaign?.qualification,
+  ).selectedSignals;
 
   React.useEffect(() => {
     const scrollTarget = document.querySelector<HTMLElement>(".c3l-page");
@@ -212,7 +289,13 @@ export function LeadsScreen(context: LeadContext) {
       routeOrigin.savePageSnapshot({
         backLabel: "All leads",
         breadcrumbs: ["Business", "Sales", "Leads"],
-        viewState: { query, filters, selected: [...selected], page },
+        viewState: {
+          query,
+          filters,
+          qualificationFilter,
+          selected: [...selected],
+          page,
+        },
         scrollY: scrollTarget?.scrollTop ?? window.scrollY,
         scrollTarget: scrollTarget ? ".c3l-page" : undefined,
       });
@@ -220,7 +303,14 @@ export function LeadsScreen(context: LeadContext) {
     const scrollHost: Window | HTMLElement = scrollTarget ?? window;
     scrollHost.addEventListener("scroll", save, { passive: true });
     return () => scrollHost.removeEventListener("scroll", save);
-  }, [filters, page, query, routeOrigin.savePageSnapshot, selected]);
+  }, [
+    filters,
+    page,
+    qualificationFilter,
+    query,
+    routeOrigin.savePageSnapshot,
+    selected,
+  ]);
 
   React.useEffect(() => {
     const scrollY = routeOrigin.pageSnapshot?.scrollY;
@@ -246,6 +336,81 @@ export function LeadsScreen(context: LeadContext) {
     setSelected(new Set());
     selectionAnchor.current = null;
     setPage(0);
+  }
+
+  function setQualificationFilterState(next: QualificationFilter) {
+    setQualificationFilter(next);
+    setSelected(new Set());
+    selectionAnchor.current = null;
+    setPage(0);
+  }
+
+  function saveQualificationList() {
+    setQualificationListIds(filteredRows.map(({ id }) => id));
+    setQualificationListDialogOpen(true);
+  }
+
+  async function checkSelectedWebsites(input: {
+    refresh: boolean;
+    selectedSignals: QualifySignal[];
+  }) {
+    if (!canWrite || selectedRows.length === 0) return;
+    const initial = await startQualificationRun({
+      channelId: context.channelId,
+      communityId: context.communityId,
+      leads: selectedRows.map(({ record }) => ({
+        leadId: record.prospectId,
+        website: record.prospect.website,
+      })),
+      refresh: input.refresh,
+      runId: crypto.randomUUID(),
+      selectedSignals: input.selectedSignals,
+    });
+    setQualificationRun(initial);
+    setSelectionError(
+      `Website checks started for ${selectedRows.length} ${selectedRows.length === 1 ? "lead" : "leads"}.`,
+    );
+  }
+
+  async function cancelSelectedWebsiteChecks() {
+    if (!qualificationRun || selectionBusy) return;
+    setSelectionBusy(true);
+    setSelectionError("");
+    try {
+      await cancelQualificationRun({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        runId: qualificationRun.runId,
+      });
+      const snapshot = await qualificationRunSnapshot({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        runId: qualificationRun.runId,
+      });
+      if (snapshot) setQualificationRun(snapshot);
+    } catch (cancelError) {
+      setSelectionError(errorMessage(cancelError));
+    } finally {
+      setSelectionBusy(false);
+    }
+  }
+
+  async function resumeSelectedWebsiteChecks() {
+    if (!qualificationRun || selectionBusy) return;
+    setSelectionBusy(true);
+    setSelectionError("");
+    try {
+      const progress = await resumeQualificationRun({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        runId: qualificationRun.runId,
+      });
+      setQualificationRun(progress);
+    } catch (resumeError) {
+      setSelectionError(errorMessage(resumeError));
+    } finally {
+      setSelectionBusy(false);
+    }
   }
 
   function toggleOne(id: string, checked: boolean, shiftKey: boolean) {
@@ -516,6 +681,50 @@ export function LeadsScreen(context: LeadContext) {
           rows={outreachRows}
           showSelectAll
         />
+        <QualificationFilterControls
+          filter={qualificationFilter}
+          matching={filteredRows.length}
+          onChange={setQualificationFilterState}
+          onSaveList={saveQualificationList}
+          rows={qualificationRows}
+        />
+        {manualQualificationProgress ? (
+          <div
+            className="c3q-run-notice"
+            data-testid="manual-qualification-progress"
+            role="status"
+          >
+            <p>
+              Website checks: {manualQualificationProgress.checked} of{" "}
+              {manualQualificationProgress.total} checked
+              {manualQualificationProgress.skippedFresh
+                ? `, ${manualQualificationProgress.skippedFresh} already checked in the last 30 days`
+                : ""}
+              {manualQualificationProgress.failureReason
+                ? `. ${manualQualificationProgress.failureReason}`
+                : "."}
+            </p>
+            {manualQualificationProgress.status === "running" ? (
+              <button
+                disabled={selectionBusy}
+                onClick={() => void cancelSelectedWebsiteChecks()}
+                type="button"
+              >
+                Cancel checks
+              </button>
+            ) : null}
+            {manualQualificationProgress.status === "paused" ||
+            manualQualificationProgress.status === "cancelled" ? (
+              <button
+                disabled={selectionBusy}
+                onClick={() => void resumeSelectedWebsiteChecks()}
+                type="button"
+              >
+                Resume checks
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {selectedPageCount > 0 ? (
           <div className="c3l-page-selection-note">
@@ -578,6 +787,9 @@ export function LeadsScreen(context: LeadContext) {
                       id,
                     }) => {
                       const prospect = record.prospect;
+                      const qualificationFacts = qualificationObserved(
+                        qualificationHeadsByLeadId.get(id),
+                      ).slice(0, 3);
                       return (
                         <tr
                           aria-selected={selected.has(id)}
@@ -634,6 +846,19 @@ export function LeadsScreen(context: LeadContext) {
                                   <span aria-hidden="true"> · </span>
                                   {whatsappStatusLabel(whatsappStatus)}
                                 </span>
+                                {qualificationFacts.length ? (
+                                  <span className="c3q-row-chips">
+                                    {qualificationFacts.map((fact) => (
+                                      <span
+                                        className={`c3q-row-chip is-${fact.certainty.toLocaleLowerCase()}`}
+                                        key={fact.observation.signal}
+                                        title={fact.label}
+                                      >
+                                        {fact.label}
+                                      </span>
+                                    ))}
+                                  </span>
+                                ) : null}
                               </span>
                             </div>
                           </td>
@@ -763,6 +988,7 @@ export function LeadsScreen(context: LeadContext) {
             count={selected.size}
             onAddToList={() => setListDialogOpen(true)}
             onAskScout={() => void askScout()}
+            onCheckWebsites={() => setQualificationDialogOpen(true)}
             onChangeStage={(stage) => void updateSelectedStage(stage)}
             onClear={() => {
               setSelected(new Set());
@@ -788,11 +1014,29 @@ export function LeadsScreen(context: LeadContext) {
         onOpenChange={setListDialogOpen}
         open={listDialogOpen}
       />
+      <AddToOutreachListDialog
+        context={context}
+        defaultName={`Website checks, ${new Intl.DateTimeFormat("en", {
+          day: "numeric",
+          month: "short",
+        }).format(new Date())}`}
+        description={`${qualificationListIds.length} leads matching this exact website-check filter will be saved as a static list.`}
+        leadIds={qualificationListIds}
+        onOpenChange={setQualificationListDialogOpen}
+        open={qualificationListDialogOpen}
+      />
       <OutreachBatchDialog
         leads={batchLeads}
         listName="selected leads"
         onOpenChange={setBatchDialogOpen}
         open={batchDialogOpen}
+      />
+      <QualificationRunDialog
+        initialSignals={qualificationInitialSignals}
+        leadCount={selectedRows.length}
+        onOpenChange={setQualificationDialogOpen}
+        onRun={checkSelectedWebsites}
+        open={qualificationDialogOpen}
       />
 
       <AddLeadDialog

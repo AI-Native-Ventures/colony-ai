@@ -9,6 +9,7 @@ import { W10Error, W10Loading } from "./BusinessCommon";
 import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
 import { CampaignRelaySync } from "./CampaignRelaySync";
+import { QualificationRendererBridge } from "./qualificationRuntime";
 import { getDiscoveryCampaignProvider } from "./discoveryProvider";
 import {
   SALES_NOT_ALLOWED_MESSAGE,
@@ -150,7 +151,12 @@ function BusinessRecordsRoute({
       />
     );
   }
-  return screen;
+  return (
+    <>
+      <QualificationRendererBridge context={context} />
+      {screen}
+    </>
+  );
 }
 
 function CampaignRelaySyncHost({
