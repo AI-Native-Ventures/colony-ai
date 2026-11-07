@@ -4246,7 +4246,11 @@ mod tests {
             },
         )
         .join("\n\n");
-        assert!(prompt.contains("engineering (#"));
+        assert!(
+            prompt.contains("Channel: <untrusted-customer-text source=\"Nostr channel metadata\"")
+        );
+        assert!(prompt.contains("  engineering"));
+        assert!(prompt.contains(&format!("(#{ch})")));
         assert!(prompt.contains("Scope: channel"));
     }
 
