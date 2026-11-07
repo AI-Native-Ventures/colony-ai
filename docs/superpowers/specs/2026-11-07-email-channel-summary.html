@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <link rel="icon" href="data:,">
+    <title>Colony email: owner decisions</title>
+    <style>
+      :root {
+        --ink: #142116;
+        --muted: #5d695f;
+        --paper: #f8f6ee;
+        --panel: #fffef9;
+        --line: #d9ddd1;
+        --green: #1f6f4a;
+        --green-soft: #e4f1e8;
+        --amber: #a66312;
+        --amber-soft: #fff0d8;
+        --red: #a83f31;
+        --red-soft: #fbe6e2;
+        --blue: #24647d;
+        --blue-soft: #e2f0f5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 0% 0%, #e3f0e3 0, transparent 32rem),
+          radial-gradient(circle at 100% 100%, #f5e5c8 0, transparent 30rem),
+          var(--paper);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(1420px, calc(100% - 48px));
+        min-height: 100vh;
+        margin: 0 auto;
+        padding: 18px 0 14px;
+      }
+
+      .eyebrow {
+        margin: 0 0 5px;
+        color: var(--green);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 900px;
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2rem, 3.2vw, 3.25rem);
+        letter-spacing: -0.045em;
+        line-height: 0.94;
+      }
+
+      .lede {
+        max-width: 780px;
+        margin: 10px 0 14px;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.35;
+      }
+
+      .topline {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .recommendation,
+      .risk,
+      .decision,
+      .sequence,
+      .note {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+      }
+
+      .recommendation {
+        padding: 13px 16px;
+        border-color: #a9cdb1;
+        background: var(--green-soft);
+      }
+
+      .recommendation h2,
+      .risk h2,
+      .sequence h2 {
+        margin: 0 0 5px;
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .recommendation h2 {
+        color: var(--green);
+      }
+
+      .recommendation p,
+      .risk p {
+        margin: 0;
+        font-size: 0.86rem;
+        line-height: 1.3;
+      }
+
+      .risk {
+        padding: 13px 16px;
+        border-color: #e2c391;
+        background: var(--amber-soft);
+      }
+
+      .risk h2 {
+        color: var(--amber);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .decision {
+        min-height: 0;
+        padding: 13px;
+      }
+
+      .number {
+        display: inline-flex;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: var(--ink);
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 800;
+      }
+
+      .decision h3 {
+        margin: 8px 0 5px;
+        font-size: 0.86rem;
+        line-height: 1.15;
+      }
+
+      .decision p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.72rem;
+        line-height: 1.28;
+      }
+
+      .tag {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 3px 6px;
+        border-radius: 6px;
+        background: var(--blue-soft);
+        color: var(--blue);
+        font-size: 0.62rem;
+        font-weight: 800;
+      }
+
+      .bottom {
+        display: grid;
+        grid-template-columns: 1.35fr 0.65fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .sequence,
+      .note {
+        padding: 12px 14px;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .step {
+        position: relative;
+        padding: 7px 7px 6px 9px;
+        border-left: 3px solid var(--green);
+        background: #f4f7ef;
+        font-size: 0.68rem;
+        line-height: 1.23;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--green);
+        font-size: 0.58rem;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+
+      .note {
+        border-color: #e0bbb5;
+        background: var(--red-soft);
+      }
+
+      .note strong {
+        color: var(--red);
+      }
+
+      .note p {
+        margin: 5px 0 0;
+        color: #6d3a33;
+        font-size: 0.75rem;
+        line-height: 1.3;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        margin-top: 9px;
+        color: var(--muted);
+        font-size: 0.67rem;
+      }
+
+      a {
+        color: var(--green);
+        font-weight: 700;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 2px;
+      }
+
+      @media (max-width: 900px) {
+        main {
+          width: min(100% - 28px, 700px);
+          padding-top: 25px;
+        }
+
+        .topline,
+        .bottom {
+          grid-template-columns: 1fr;
+        }
+
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .steps {
+          grid-template-columns: 1fr;
+        }
+
+        .decision {
+          min-height: 0;
+        }
+
+        footer {
+          display: block;
+          line-height: 1.6;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Colony email channel · owner brief · 7 November 2026</p>
+      <h1>Email can be useful. It must not become a spam machine.</h1>
+      <p class="lede">
+        The proposal adds email to Colony's existing Outreach desk while keeping control in
+        your hands. Nothing sends without your approval by default.
+      </p>
+
+      <section class="topline" aria-label="Recommendation and risk">
+        <article class="recommendation">
+          <h2>Recommended start</h2>
+          <p>
+            Connect a Google Workspace mailbox through Gmail, from a separate sending domain.
+            Keep its login on the owner's desktop. Start with small, approved, consent-led
+            messages. Add Microsoft 365 next. Leave generic SMTP and IMAP for later.
+          </p>
+        </article>
+        <article class="risk">
+          <h2>Biggest risk</h2>
+          <p>
+            A public email address is not automatic permission to market. South African legal
+            advice is needed before broad cold B2B email or WhatsApp outreach.
+          </p>
+        </article>
+      </section>
+
+      <section class="grid" aria-label="Owner decisions">
+        <article class="decision">
+          <span class="number">1</span>
+          <h3>Make the legal check specific</h3>
+          <p>
+            Every address gets a South African pass, hold, or block from its source, recipient,
+            message type, consent or customer facts, and registry evidence. An unanswered check
+            is a legal hold, not an owner override.
+          </p>
+          <span class="tag">Cautious by default</span>
+        </article>
+        <article class="decision">
+          <span class="number">2</span>
+          <h3>Name every mailbox</h3>
+          <p>
+            Each sender has its own name, pause, daily cap, and desktop-local sign-in. The relay
+            never holds a mailbox credential. Shared do-not-contact rules still apply everywhere.
+          </p>
+          <span class="tag">Gmail first</span>
+        </article>
+        <article class="decision">
+          <span class="number">3</span>
+          <h3>Use a real READY verdict</h3>
+          <p>
+            Show READY only after passing SPF, DKIM, DMARC, domain-age, blocklist, bounce,
+            unsubscribe, and sync checks. Otherwise show NOT READY with a concrete fix.
+          </p>
+          <span class="tag">No soft pass</span>
+        </article>
+        <article class="decision">
+          <span class="number">4</span>
+          <h3>Warm slowly, then ramp</h3>
+          <p>
+            Colony does not build warm-up traffic. Hold cold mail for 21 days, then start at 3
+            per mailbox each day and add 2 only after a clean day, up to 25. Replies skip that
+            cold cap, not safety stops.
+          </p>
+          <span class="tag">No artificial warm-up</span>
+        </article>
+        <article class="decision">
+          <span class="number">5</span>
+          <h3>Stop hard on bounces</h3>
+          <p>
+            Pause all sends from a mailbox above 2 percent hard bounces in 100 campaign messages,
+            or after 3 hard bounces in 24 hours. The owner fixes and resumes it explicitly.
+          </p>
+          <span class="tag">Kill switch</span>
+        </article>
+        <article class="decision">
+          <span class="number">6</span>
+          <h3>Keep sequences short and local</h3>
+          <p>
+            Send at most three campaign messages: first contact, then 4 and 10 recipient-local
+            business days later. Any reply, opt-out, bounce, complaint, or hold stops the whole
+            business sequence.
+          </p>
+          <span class="tag">Respect local time</span>
+        </article>
+        <article class="decision">
+          <span class="number">7</span>
+          <h3>Honor do-not-contact everywhere</h3>
+          <p>
+            Keep address and business-domain records with reasons and audited undo. Enforce them
+            during Discovery and at send time. Every cold email includes a postal address and a
+            plain STOP or unsubscribe line.
+          </p>
+          <span class="tag">Company-wide</span>
+        </article>
+        <article class="decision">
+          <span class="number">8</span>
+          <h3>Detect stop requests without AI</h3>
+          <p>
+            Scan complete replies with reviewed English, Afrikaans, isiZulu, isiXhosa, and
+            additional language packs. A bare STOP wins. A complaint or legal threat still opts
+            out and also goes to the owner.
+          </p>
+          <span class="tag">Permanent until undo</span>
+        </article>
+        <article class="decision">
+          <span class="number">9</span>
+          <h3>Find people carefully, skip weak fits</h3>
+          <p>
+            Use only current owners or managers on business-owned pages. Fall back to a printed
+            general inbox only when no person is found. Require a 60-point fit score and record
+            why every skipped business was not contacted.
+          </p>
+          <span class="tag">No social outreach</span>
+        </article>
+        <article class="decision">
+          <span class="number">10</span>
+          <h3>Keep a complete, safe conversation</h3>
+          <p>
+            Sync to a known mailbox state before sending. Keep sent and received mail in Chats
+            with an Awaiting reply filter. A provider 5xx keeps the draft and is never sent
+            twice.
+          </p>
+          <span class="tag">No duplicate send</span>
+        </article>
+        <article class="decision">
+          <span class="number">11</span>
+          <h3>Autopilot stays off</h3>
+          <p>
+            If enabled later, hold every external-domain link, Scout instruction echo, and first
+            reply after re-consent. A Google Calendar link is allowed only in a human-reviewed
+            reply. Scout answers honestly if asked whether it is AI.
+          </p>
+          <span class="tag">Manual review wins</span>
+        </article>
+        <article class="decision">
+          <span class="number">12</span>
+          <h3>Protect attention and message quality</h3>
+          <p>
+            Use text-first mail with a matching minimal HTML alternative and no launch logo.
+            Reserve 25 percent of the owner's AI plan. Treat website and reply text as data, run
+            AI with no tools, and keep LinkedIn-style channels out of scope.
+          </p>
+          <span class="tag">Low-risk launch</span>
+        </article>
+      </section>
+
+      <section class="bottom" aria-label="Build sequence and limits">
+        <article class="sequence">
+          <h2>Small PR sequence</h2>
+          <div class="steps">
+            <div class="step"><strong>1. Foundation</strong>Fit, legal, domain suppression, compatibility.</div>
+            <div class="step"><strong>2. Connect</strong>Desktop-only mailboxes and known sync state.</div>
+            <div class="step"><strong>3. Review</strong>READY gate, format, evidence, approval cards.</div>
+            <div class="step"><strong>4. Send</strong>Cold ramp, kill switch, unsubscribe, no duplicates.</div>
+            <div class="step"><strong>5. Replies</strong>Chats, language packs, sequences, then Microsoft 365.</div>
+          </div>
+        </article>
+        <aside class="note">
+          <strong>What remains unproven</strong>
+          <p>
+            No provider account, email, DNS record, registry check, consent, delivery, or legal
+            opinion has been obtained. Green CI can prove code checks, not inbox placement or
+            legal compliance.
+          </p>
+        </aside>
+      </section>
+
+      <footer>
+        <span>This page is a plain-language summary, not legal advice.</span>
+        <span>
+          Read the
+          <a href="2026-11-07-email-channel-design.md">design</a>
+          and
+          <a href="2026-11-07-email-channel-law-sa.md">South African legal research</a>.
+        </span>
+      </footer>
+    </main>
+  </body>
+</html>
