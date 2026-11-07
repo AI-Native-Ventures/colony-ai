@@ -16,6 +16,10 @@ import {
   cedarCafeLeadRecord,
   planeTreeCustomerRecord,
 } from "../../src/testing/cofounderCustomerFixtures";
+import type {
+  AiPlanReservePreference,
+  AiPlanUsage,
+} from "../../src/shared/api/aiPlanUsage";
 
 declare global {
   interface Window {
@@ -101,6 +105,10 @@ type WhatsAppMockActor = {
   engagementLimit?: boolean;
   /** Make the relay refuse a manual owner pause command. */
   rejectSendingPause?: boolean;
+  /** Safe normalized plan usage for AI plan reserve UI tests. */
+  aiPlanUsage?: AiPlanUsage[];
+  /** Initial local preference for AI plan reserve UI tests. */
+  aiPlanReservePreference?: AiPlanReservePreference;
   batchVariant?:
     | "decided-card-pending"
     | "decided-card-approved"
@@ -1053,6 +1061,8 @@ export async function installWhatsAppMockBridge(
     referenceWorkspaceRole: "owner",
     relayRequiresMembership: true,
     relayRole: actor.relayRole ?? "owner",
+    aiPlanUsage: actor.aiPlanUsage,
+    aiPlanReservePreference: actor.aiPlanReservePreference,
     ...(actor.deskFixture ? deskCustomerRecordMock() : {}),
     colony3Extras: {
       profiles: [
