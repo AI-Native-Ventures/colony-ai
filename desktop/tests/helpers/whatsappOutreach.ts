@@ -99,6 +99,8 @@ type WhatsAppMockActor = {
   paymentFailedCount?: number;
   /** Seed Meta's recipient engagement refusal (131049) and its delayed-retry affordance. */
   engagementLimit?: boolean;
+  /** Make the relay refuse a manual owner pause command. */
+  rejectSendingPause?: boolean;
   batchVariant?:
     | "decided-card-pending"
     | "decided-card-approved"
@@ -328,6 +330,9 @@ const fixture = {
     healthSummary: { notDeliveredByMeta: 0 },
     sendingPaused: false,
     pauseReason: null,
+    ownerPaused: false,
+    ownerPausedBy: null,
+    ownerPausedAt: null,
     issues: [],
     outreachChannelId: OUTREACH_CHANNEL_ID,
     templatesSyncedAt: "2026-10-29T08:00:00+02:00",
@@ -1126,6 +1131,7 @@ export async function installWhatsAppMockBridge(
         paymentRetryCount,
         paymentFailedCount,
         engagementLimit,
+        rejectSendingPause,
         ...baseSeed
       } = seed;
       const state = clone(baseSeed);
@@ -1872,12 +1878,33 @@ export async function installWhatsAppMockBridge(
 
         const kind = request.kind ?? 0;
         const body = request.body ?? {};
+        if (
+          kind === 47051 &&
+          typeof body.sendingPaused === "boolean" &&
+          rejectSendingPause
+        ) {
+          throw new Error("The relay refused the sending pause.");
+        }
         state.commands.push({ kind, body: clone(body) });
         if (kind === 47051) {
           if (typeof body.dailyNewChatCap === "number")
             state.status.dailyNewChatCap = body.dailyNewChatCap;
-          if (typeof body.sendingPaused === "boolean")
-            state.status.sendingPaused = body.sendingPaused;
+          if (typeof body.sendingPaused === "boolean") {
+            const ownerPaused = body.sendingPaused;
+            const automaticallyPaused =
+              state.status.sendHealth?.paused === true;
+            Object.assign(state.status, {
+              ownerPaused,
+              ownerPausedBy: ownerPaused ? selfPubkey : null,
+              ownerPausedAt: ownerPaused ? "2026-11-07T10:42:00Z" : null,
+              sendingPaused: ownerPaused || automaticallyPaused,
+              pauseReason: ownerPaused
+                ? "owner paused"
+                : automaticallyPaused
+                  ? state.status.pauseReason
+                  : null,
+            });
+          }
           if (body.resumeAndRetry === true) {
             state.status.accountRetryCount = 0;
             Object.assign(state.status, {
@@ -2105,6 +2132,7 @@ export async function installWhatsAppMockBridge(
       paymentRetryCount: actor.paymentRetryCount ?? 0,
       paymentFailedCount: actor.paymentFailedCount,
       engagementLimit: actor.engagementLimit === true,
+      rejectSendingPause: actor.rejectSendingPause === true,
     },
   );
 }

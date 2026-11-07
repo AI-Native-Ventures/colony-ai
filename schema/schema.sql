@@ -652,6 +652,20 @@ CREATE TABLE whatsapp_settings (
     outreach_channel_id UUID,
     send_paused BOOLEAN NOT NULL DEFAULT false,
     pause_reason TEXT,
+    owner_paused BOOLEAN NOT NULL DEFAULT false,
+    owner_paused_by BYTEA CHECK (
+        owner_paused_by IS NULL OR octet_length(owner_paused_by) = 32
+    ),
+    owner_paused_at TIMESTAMPTZ,
+    quality_paused BOOLEAN NOT NULL DEFAULT false,
+    system_paused BOOLEAN NOT NULL DEFAULT false,
+    system_pause_reason TEXT CHECK (
+        system_pause_reason IS NULL OR char_length(system_pause_reason) <= 500
+    ),
+    CHECK (
+        (owner_paused AND owner_paused_by IS NOT NULL AND owner_paused_at IS NOT NULL)
+        OR (NOT owner_paused AND owner_paused_by IS NULL AND owner_paused_at IS NULL)
+    ),
     account_health_code TEXT CHECK (
         account_health_code IS NULL OR char_length(account_health_code) BETWEEN 1 AND 64
     ),

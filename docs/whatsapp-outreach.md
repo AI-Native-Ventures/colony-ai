@@ -105,6 +105,9 @@ Status object:
   "newChatsSentToday": 4,
   "sendingPaused": false,
   "pauseReason": null,
+  "ownerPaused": false,
+  "ownerPausedBy": null,
+  "ownerPausedAt": null,
   "issues": [{ "code": "quality_red", "message": "...", "at": "2026-10-29T08:00:00Z" }],
   "outreachChannelId": "uuid",
   "templatesSyncedAt": "2026-10-29T08:00:00Z",
@@ -115,6 +118,8 @@ Status object:
 
 `issues[].code` is one of `token_expired`, `number_disconnected`, `quality_yellow`,
 `quality_red`, `template_paused`, `webhook_failing`. Sending stops by itself on `quality_red`.
+`ownerPaused`, `ownerPausedBy` and `ownerPausedAt` describe the active manual owner/admin pause.
+They are additive so installed desktop clients safely ignore them.
 
 Template: `{ title, name, proposedTitle, titleCustom, language, category, status, body, slots,
 buttons: [{type, text}] }`.
@@ -301,11 +306,13 @@ key: one request is at most one Graph send.
 
 ```json
 { "v": 1, "dailyNewChatCap": 30 }
+{ "v": 1, "sendingPaused": true }
 { "v": 1, "syncTemplates": true }
 { "v": 1, "templateTitle": { "template": "hl_vb", "language": "en", "title": "Voice note offer", "propose": false } }
 ```
 
 Cap range 0 to 1000. Takes effect immediately. Default 30.
+`sendingPaused` is sent on its own to pause or resume all WhatsApp sending.
 `templateTitle` with `propose: false` renames (owner/admin only, max 80 characters, kept across
 syncs). With `propose: true` any owner, admin or Outreach member can suggest a title; nothing
 changes until an owner or admin renames. A `template_title_proposed` notice is posted in Outreach.
@@ -357,6 +364,11 @@ Additive Contact fields: `stage`, `stageSetBy` (`auto` or the setter's hex pubke
   skips the window and the gap (see `47049`); the cap still holds.
 * Replies and follow-ups inside an open window are not capped and are not paced, but an agent's
   reply or follow-up waits for its own owner/admin approval (draft) before it is sent.
+* An owner or admin can set `sendingPaused` through the settings command. The relay stores that
+  manual source as `owner paused`, records who paused and when, and appends an audit entry.
+  Quality RED and automatic account incidents have independent pause sources. Recovering one of
+  those sources cannot clear an active owner pause, and clearing the owner pause cannot resume
+  sending while another source remains active.
 * One row = at most one Graph send. A row moves `ready -> sending -> sent`. A crash between
   the Graph call and the record leaves it `sending`; after the lease expires it becomes
   `unconfirmed` and is NEVER resent automatically. The owner is told in the Outreach channel.

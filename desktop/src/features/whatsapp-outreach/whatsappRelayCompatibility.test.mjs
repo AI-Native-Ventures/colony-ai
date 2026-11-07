@@ -206,8 +206,11 @@ const relayOutput = {
     newChatsSentToday: 12,
     accountRetryCount: 63,
     sendingPaused: true,
-    pauseReason:
-      "Meta says there is a payment problem on your WhatsApp Business account.",
+    pauseReason: "owner paused",
+    // Additive fields must not make strict older desktop parsers reject this response.
+    ownerPaused: true,
+    ownerPausedBy: "a".repeat(64),
+    ownerPausedAt: "2026-11-07T10:42:00Z",
     issues: [],
     outreachChannelId: "outreach-channel-id",
     templatesSyncedAt: "2026-11-05T08:00:00Z",
@@ -283,6 +286,11 @@ test("Slice 2 relay output parses on desktop-v3.0.37 and desktop-v3.0.38", () =>
   assert.equal(
     parseWhatsAppStatus(relayOutput.status).sendHealth?.code,
     "131042",
+  );
+  assert.equal(parseWhatsAppStatus(relayOutput.status).ownerPaused, true);
+  assert.equal(
+    parseWhatsAppStatus(relayOutput.status).ownerPausedBy,
+    "a".repeat(64),
   );
   assert.equal(
     parseWhatsAppContact(relayOutput.contact).deliveryFailure?.code,

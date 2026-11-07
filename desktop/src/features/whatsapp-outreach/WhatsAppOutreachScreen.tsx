@@ -175,6 +175,7 @@ export function WhatsAppOutreachScreen({
   });
   const canRetrySend = canManage;
   const status = statusQuery.data;
+  const pauseLabel = `${status?.ownerPaused ? "Resume" : "Pause"} all WhatsApp sending`;
   const accountRetries = accountRecoveryCount(status);
   const progress = status
     ? getWhatsAppDailyCapProgress(
@@ -496,18 +497,17 @@ export function WhatsAppOutreachScreen({
 
   async function togglePause() {
     if (!status || busy) return;
+    const nextOwnerPaused = !status.ownerPaused;
     setBusy(true);
     setActionError("");
     try {
       await command(KIND_WHATSAPP_SETTINGS, {
         v: 1,
-        sendingPaused: !status.sendingPaused,
+        sendingPaused: nextOwnerPaused,
       });
     } catch (error) {
       setActionError(
-        error instanceof Error
-          ? error.message
-          : "Could not change sending pause.",
+        `The relay did not ${nextOwnerPaused ? "pause all WhatsApp sending" : "resume WhatsApp sending"}. ${error instanceof Error ? error.message : "The relay rejected the requested change."}`,
       );
     } finally {
       setBusy(false);
@@ -823,15 +823,15 @@ export function WhatsAppOutreachScreen({
                   id="c3wa-thread-menu-panel"
                 >
                   <button
-                    aria-checked={status.sendingPaused}
-                    aria-label="Pause all WhatsApp sending"
+                    aria-checked={status.ownerPaused}
+                    aria-label={pauseLabel}
                     disabled={!canManage || busy}
                     onClick={() => void togglePause()}
                     onKeyDown={closeThreadMenuOnEscape}
                     role="switch"
                     type="button"
                   >
-                    {status.sendingPaused
+                    {status.ownerPaused
                       ? "Resume all WhatsApp sending"
                       : "Pause all WhatsApp sending"}
                   </button>

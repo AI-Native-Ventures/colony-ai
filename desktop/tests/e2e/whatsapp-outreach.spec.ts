@@ -337,7 +337,57 @@ test.describe("WhatsApp outreach settings", () => {
     await expect(pause).toHaveAttribute("aria-checked", "false");
     await pause.click();
     await expect(
-      page.getByRole("switch", { name: "Pause all WhatsApp sending" }),
+      page.getByRole("switch", { name: "Resume all WhatsApp sending" }),
     ).toHaveAttribute("aria-checked", "true");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+            ({ kind, body }) => kind === 47051 && body.sendingPaused === true,
+          ),
+        ),
+      )
+      .toBe(true);
+  });
+
+  test("shows the relay-confirmed owner pause with its actor and resume control", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page);
+    await gotoWhatsAppScreen(page, "/settings?section=whatsapp");
+
+    const settings = page.getByTestId("whatsapp-settings");
+    const pause = settings.getByRole("switch", {
+      name: "Pause all WhatsApp sending",
+    });
+    await pause.click();
+
+    await expect(
+      settings.getByRole("switch", { name: "Resume all WhatsApp sending" }),
+    ).toHaveAttribute("aria-checked", "true");
+    await expect(
+      settings.getByTestId("whatsapp-owner-pause-detail"),
+    ).toContainText("Paused by you at");
+  });
+
+  test("shows a clear relay refusal when an owner pause is rejected", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      rejectSendingPause: true,
+    });
+    await gotoWhatsAppScreen(page, "/settings?section=whatsapp");
+
+    const settings = page.getByTestId("whatsapp-settings");
+    await settings
+      .getByRole("switch", { name: "Pause all WhatsApp sending" })
+      .click();
+
+    await expect(settings.getByRole("alert")).toContainText(
+      "The relay did not pause all WhatsApp sending. The relay refused the sending pause.",
+    );
+    await expect(
+      settings.getByRole("switch", { name: "Pause all WhatsApp sending" }),
+    ).toHaveAttribute("aria-checked", "false");
   });
 });

@@ -112,6 +112,10 @@ export type WhatsAppStatus = Readonly<{
   healthSummary: WhatsAppHealthSummary;
   sendingPaused: boolean;
   pauseReason: string | null;
+  /** Additive owner-controlled pause state. Older relays omit these fields. */
+  ownerPaused: boolean;
+  ownerPausedBy: string | null;
+  ownerPausedAt: string | null;
   issues: readonly WhatsAppIssue[];
   outreachChannelId: string | null;
   templatesSyncedAt: string | null;
@@ -403,6 +407,12 @@ export function parseWhatsAppStatus(value: unknown): WhatsAppStatus {
     healthSummary: parseHealthSummary(status.healthSummary),
     sendingPaused: booleanValue(status.sendingPaused, "sending-paused flag"),
     pauseReason: nullableString(status.pauseReason, "pause reason"),
+    ownerPaused:
+      status.ownerPaused === undefined
+        ? false
+        : booleanValue(status.ownerPaused, "owner-paused flag"),
+    ownerPausedBy: nullableString(status.ownerPausedBy, "owner-pause actor"),
+    ownerPausedAt: nullableString(status.ownerPausedAt, "owner-pause time"),
     issues: issues.map((value) => {
       const issue = record(value, "issue");
       return {

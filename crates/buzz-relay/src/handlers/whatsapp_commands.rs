@@ -25,7 +25,7 @@ use buzz_core::whatsapp_stage::{derive_stage, WhatsappStage};
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
     BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, SendNowOutcome,
-    WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP,
+    WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP, OWNER_PAUSE_REASON,
 };
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
@@ -138,6 +138,9 @@ struct SendRequestCommand {
 #[serde(rename_all = "camelCase")]
 struct SettingsCommand {
     v: u8,
+    /// The manually controlled pause sent by current and older desktop clients.
+    #[serde(default)]
+    sending_paused: Option<bool>,
     #[serde(default)]
     daily_new_chat_cap: Option<i32>,
     #[serde(default)]
@@ -148,6 +151,16 @@ struct SettingsCommand {
     /// new message row, so the original idempotency keys continue to fence the resend.
     #[serde(default)]
     resume_and_retry: bool,
+}
+
+impl SettingsCommand {
+    fn is_empty(&self) -> bool {
+        self.sending_paused.is_none()
+            && self.daily_new_chat_cap.is_none()
+            && self.sync_templates != Some(true)
+            && self.template_title.is_none()
+            && !self.resume_and_retry
+    }
 }
 
 /// Rename a template (owner or admin) or propose a better title (any Outreach member).
@@ -1218,6 +1231,33 @@ async fn audit_contact_update(
     Ok(())
 }
 
+/// Append a tamper-evident record for an owner-controlled account-wide sending change.
+async fn audit_sending_pause(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    event: &Event,
+    paused: bool,
+) -> Result<(), IngestError> {
+    let Some(audit) = state.audit.as_ref() else {
+        return Ok(());
+    };
+    audit
+        .log(buzz_audit::NewAuditEntry {
+            community_id: tenant.community(),
+            action: buzz_audit::AuditAction::WhatsappSendingPauseChanged,
+            actor_pubkey: Some(event.pubkey.to_bytes().to_vec()),
+            object_id: Some("whatsapp-sending".to_string()),
+            detail: serde_json::json!({
+                "command_event_id": event.id.to_hex(),
+                "paused": paused,
+                "reason": if paused { Some(OWNER_PAUSE_REASON) } else { None::<&str> },
+            }),
+        })
+        .await
+        .map_err(|error| internal(format!("audit log: {error}")))?;
+    Ok(())
+}
+
 async fn handle_settings(
     tenant: &TenantContext,
     state: &Arc<AppState>,
@@ -1229,15 +1269,24 @@ async fn handle_settings(
     if command.resume_and_retry
         && (command.daily_new_chat_cap.is_some()
             || command.sync_templates.is_some()
-            || command.template_title.is_some())
+            || command.template_title.is_some()
+            || command.sending_paused.is_some())
     {
         return Err(invalid("resumeAndRetry is sent on its own"));
+    }
+    if command.sending_paused.is_some()
+        && (command.daily_new_chat_cap.is_some()
+            || command.sync_templates.is_some()
+            || command.template_title.is_some())
+    {
+        return Err(invalid("sendingPaused is sent on its own"));
     }
     let community = tenant.community();
     let proposing_only = command.daily_new_chat_cap.is_none()
         && command.sync_templates != Some(true)
         && command.template_title.as_ref().is_some_and(|t| t.propose)
-        && !command.resume_and_retry;
+        && !command.resume_and_retry
+        && command.sending_paused.is_none();
     // GUARD: only the owner or an admin changes settings or renames; any member who can send
     // may only PROPOSE a template title.
     if proposing_only {
@@ -1251,16 +1300,25 @@ async fn handle_settings(
             "only the owner or an admin can change WhatsApp settings",
         ));
     }
-    if command.daily_new_chat_cap.is_none()
-        && command.sync_templates != Some(true)
-        && command.template_title.is_none()
-        && !command.resume_and_retry
-    {
+    if command.is_empty() {
         return Err(invalid(
-            "nothing to change: set dailyNewChatCap, syncTemplates, templateTitle or resumeAndRetry",
+            "nothing to change: set sendingPaused, dailyNewChatCap, syncTemplates, templateTitle or resumeAndRetry",
         ));
     }
     let mut changes = Vec::new();
+    if let Some(paused) = command.sending_paused {
+        state
+            .db
+            .whatsapp_set_owner_send_paused(community, paused, &event.pubkey.to_bytes(), Utc::now())
+            .await
+            .map_err(internal)?;
+        audit_sending_pause(state, tenant, event, paused).await?;
+        changes.push(if paused {
+            "sending paused by owner".to_string()
+        } else {
+            "owner sending pause cleared".to_string()
+        });
+    }
     if let Some(cap) = command.daily_new_chat_cap {
         if !(0..=MAX_DAILY_NEW_CHAT_CAP).contains(&cap) {
             return Err(invalid(format!(
@@ -1468,5 +1526,15 @@ mod tests {
             serde_json::from_str(r#"{"v":1,"dailyNewChatCap":45}"#).expect("settings");
         assert_eq!(settings.daily_new_chat_cap, Some(45));
         assert_eq!(e164("27821234567"), "+27821234567");
+    }
+
+    #[test]
+    fn settings_command_accepts_the_desktop_owner_pause_field() {
+        // GUARD: `handle_settings` uses this typed field to reach the durable owner-pause
+        // write. Removing the field makes serde ignore the old desktop payload and this fails.
+        let settings: SettingsCommand =
+            serde_json::from_str(r#"{"v":1,"sendingPaused":true}"#).expect("settings");
+        assert_eq!(settings.sending_paused, Some(true));
+        assert!(!settings.is_empty());
     }
 }

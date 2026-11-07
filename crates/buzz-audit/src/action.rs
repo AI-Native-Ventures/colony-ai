@@ -30,6 +30,8 @@ pub enum AuditAction {
     MediaUploaded,
     /// A WhatsApp contact's pipeline stage or label was changed by hand.
     WhatsappContactUpdated,
+    /// An owner or admin changed the manual WhatsApp sending pause.
+    WhatsappSendingPauseChanged,
 }
 
 impl AuditAction {
@@ -48,6 +50,7 @@ impl AuditAction {
             Self::RateLimitExceeded => "rate_limit_exceeded",
             Self::MediaUploaded => "media_uploaded",
             Self::WhatsappContactUpdated => "whatsapp_contact_updated",
+            Self::WhatsappSendingPauseChanged => "whatsapp_sending_pause_changed",
         }
     }
 
@@ -64,6 +67,7 @@ impl AuditAction {
         Self::RateLimitExceeded,
         Self::MediaUploaded,
         Self::WhatsappContactUpdated,
+        Self::WhatsappSendingPauseChanged,
     ];
 }
 
