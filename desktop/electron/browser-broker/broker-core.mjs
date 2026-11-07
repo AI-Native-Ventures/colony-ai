@@ -938,11 +938,18 @@ export function createBroker({
         maxChars: args.maxChars,
       });
       const origin = originOf(raw.url ?? info.url) ?? "";
+      const observedAt = new Date(now()).toISOString();
       return {
         tab: args.tab,
         origin,
         generation: built.generation,
-        snapshot: wrapUntrusted(built.text, { origin, tab: args.tab }),
+        snapshot: wrapUntrusted(built.text, {
+          origin,
+          tab: args.tab,
+          source: "website text",
+          observedAt,
+          truncated: built.stats.truncated,
+        }),
         stats: built.stats,
       };
     },
@@ -984,10 +991,17 @@ export function createBroker({
       await pageFinal(ctx, args.tab);
       const clean = sanitizeBlock(raw?.text ?? "", maxChars);
       const origin = originOf(info.url) ?? "";
+      const observedAt = new Date(now()).toISOString();
       return {
         tab: args.tab,
         origin,
-        text: wrapUntrusted(clean.text, { origin, tab: args.tab }),
+        text: wrapUntrusted(clean.text, {
+          origin,
+          tab: args.tab,
+          source: "website text",
+          observedAt,
+          truncated: clean.truncated,
+        }),
         truncated: clean.truncated,
       };
     },
