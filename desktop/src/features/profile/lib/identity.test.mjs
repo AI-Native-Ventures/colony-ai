@@ -158,6 +158,30 @@ test("same-owner duplicate agents get a short ordinal only then", () => {
   assert.equal(labels.get(SCOUT_B)?.text, "Scout 2");
 });
 
+test("a preferred local duplicate keeps the bare agent name", () => {
+  const labels = resolveIdentityLabels([
+    {
+      pubkey: SCOUT_A,
+      currentPubkey: OWNER_PUBKEY,
+      isAgent: true,
+      ownerPubkey: OWNER_PUBKEY,
+      fallbackName: "Scout",
+    },
+    {
+      pubkey: SCOUT_B,
+      currentPubkey: OWNER_PUBKEY,
+      isAgent: true,
+      ownerPubkey: OWNER_PUBKEY,
+      fallbackName: "Scout",
+      preferUnqualifiedDuplicate: true,
+    },
+  ]);
+
+  assert.equal(labels.get(SCOUT_A)?.text, "Scout 2");
+  assert.equal(labels.get(SCOUT_B)?.text, "Scout");
+  assert.equal(labels.get(SCOUT_B)?.duplicateOrdinal, null);
+});
+
 test("missing and departed owners stay neutral, and a rename updates the label", () => {
   const missingOwner = resolveIdentityLabels([
     {

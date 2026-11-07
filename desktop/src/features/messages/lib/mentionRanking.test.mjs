@@ -284,6 +284,31 @@ test("rankMentionCandidates: the Scout this Mac runs comes first even when it is
   ]);
 });
 
+test("rankMentionCandidates: duplicate labels use their bare-name alias", () => {
+  const earlierInstall = scout(OLD_SCOUT_PUBKEYS[0], {
+    baseDisplayName: "Scout",
+    displayName: "Scout 2",
+    isActiveAgent: true,
+  });
+  const thisMac = scout(THIS_MAC_SCOUT_PUBKEY, {
+    baseDisplayName: "Scout",
+    displayName: "Scout",
+    isManagedAgent: true,
+    isMember: false,
+  });
+
+  assert.deepEqual(rankedPubkeys([earlierInstall, thisMac], "scout"), [
+    THIS_MAC_SCOUT_PUBKEY,
+    OLD_SCOUT_PUBKEYS[0],
+  ]);
+  assert.equal(
+    pickDefaultAgentCandidate([earlierInstall, thisMac], new Set(), [
+      OLD_SCOUT_PUBKEYS[0],
+    ])?.pubkey,
+    THIS_MAC_SCOUT_PUBKEY,
+  );
+});
+
 test("rankMentionCandidates: an agent this Mac runs does not jump ahead of channel members with other names", () => {
   const scotty = candidate({
     displayName: "Scotty",

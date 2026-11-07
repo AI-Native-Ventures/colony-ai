@@ -1,6 +1,8 @@
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 export type MentionCandidateForRanking = {
+  /** Original name before duplicate-agent labels add an ordinal. */
+  baseDisplayName?: string | null;
   displayName: string | null;
   isAgent: boolean;
   isActiveAgent?: boolean;
@@ -42,8 +44,10 @@ function getMentionCandidateGroupRank(
 }
 
 function sameNameKey(candidate: MentionCandidateForRanking) {
+  const name =
+    candidate.baseDisplayName?.trim() || candidate.displayName?.trim();
   return candidate.kind === "identity" && candidate.isAgent
-    ? (candidate.displayName?.trim().toLowerCase() ?? "")
+    ? (name?.toLowerCase() ?? "")
     : "";
 }
 

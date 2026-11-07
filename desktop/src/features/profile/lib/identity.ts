@@ -34,6 +34,8 @@ export type IdentityLabelInput = {
   /** Directory/roster provenance wins when a cold kind:0 is still absent. */
   ownerPubkey?: string | null;
   preferResolvedSelfLabel?: boolean;
+  /** Prefer this agent's bare name when same-owner duplicates need labels. */
+  preferUnqualifiedDuplicate?: boolean;
 };
 
 /**
@@ -243,11 +245,17 @@ export function resolveIdentityLabels(
     const ownerKey = ownerPubkey ? normalizePubkey(ownerPubkey) : null;
     const groupKey = `${entry.base.primary.toLocaleLowerCase()}:${ownerKey}`;
     const group = ownerKey ? (sameOwnerNames.get(groupKey) ?? []) : [];
-    const ordered = [...group].sort((left, right) =>
-      left.pubkey.localeCompare(right.pubkey),
+    const ordered = [...group].sort(
+      (left, right) =>
+        Number(right.input.preferUnqualifiedDuplicate === true) -
+          Number(left.input.preferUnqualifiedDuplicate === true) ||
+        left.pubkey.localeCompare(right.pubkey),
     );
+    const preferredEntry = ordered[0]?.input.preferUnqualifiedDuplicate
+      ? ordered[0]
+      : null;
     const duplicateOrdinal =
-      ordered.length > 1
+      ordered.length > 1 && preferredEntry?.pubkey !== entry.pubkey
         ? ordered.findIndex((candidate) => candidate.pubkey === entry.pubkey) +
           1
         : null;
