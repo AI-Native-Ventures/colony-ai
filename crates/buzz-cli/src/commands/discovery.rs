@@ -10,8 +10,8 @@
 use std::collections::HashSet;
 
 use buzz_core::business_records::{
-    PartyRecord, ProspectAction, ProspectEvidence, ProspectQualification, ProspectRecordInput,
-    ProspectStage, RecordAction, BUSINESS_RECORD_SCHEMA_VERSION,
+    PartyRecord, ProspectAction, ProspectEvidence, ProspectMapsMetadata, ProspectQualification,
+    ProspectRecordInput, ProspectStage, RecordAction, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -377,6 +377,30 @@ fn location_summary(place: &Place) -> Option<String> {
     Some(clamp_bytes(&summary, MAX_LOCATION_BYTES)).filter(|summary| !summary.is_empty())
 }
 
+/// The bounded Maps fields the desktop qualification filter needs after reload.
+fn maps_metadata(place: &Place) -> ProspectMapsMetadata {
+    let rating_hundredths = place.rating.and_then(|rating| {
+        (rating.is_finite() && (0.0..=5.0).contains(&rating))
+            .then(|| (rating * 100.0).round() as u16)
+    });
+    let review_count = place.reviews.and_then(|reviews| {
+        (reviews.is_finite() && (0.0..=u32::MAX as f64).contains(&reviews))
+            .then(|| reviews.round() as u32)
+    });
+    let category = present(&place.category)
+        .map(|value| clamp_bytes(value, MAX_TAXONOMY_BYTES))
+        .filter(|value| !value.is_empty());
+    let city = present(&place.city)
+        .map(|value| clamp_bytes(value, MAX_LOCATION_BYTES))
+        .filter(|value| !value.is_empty());
+    ProspectMapsMetadata {
+        rating_hundredths,
+        review_count,
+        category,
+        city,
+    }
+}
+
 fn evidence_excerpt(place: &Place) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(category) = present(&place.category).or_else(|| present(&place.subtypes)) {
@@ -459,6 +483,7 @@ fn map_place_to_prospect(
             fit_score: Some(fit_score(place)),
             origin: Some(buzz_core::business_records::ProspectOrigin::Discovery),
             discovery_tags: Vec::new(),
+            maps: Some(maps_metadata(place)),
             potential_monthly_value_minor: None,
             website,
             contact_name: None,
@@ -1073,6 +1098,15 @@ mod tests {
             ]
         );
         assert_eq!(prospect.fit_score, Some(100));
+        assert_eq!(
+            prospect.maps,
+            Some(ProspectMapsMetadata {
+                rating_hundredths: Some(480),
+                review_count: Some(103),
+                category: Some("Home goods store".into()),
+                city: Some("Cape Town".into()),
+            })
+        );
         assert_eq!(
             prospect.website.as_deref(),
             Some("https://form-field.example/")

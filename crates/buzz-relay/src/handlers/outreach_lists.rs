@@ -90,7 +90,7 @@ fn d_tag_value(event: &Event) -> Option<String> {
 }
 
 /// Fail unless every id is a lead (prospect head) in `channel_id`.
-async fn verify_leads(
+pub(super) async fn verify_leads(
     state: &Arc<AppState>,
     tenant: &TenantContext,
     channel_id: Uuid,

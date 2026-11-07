@@ -85,6 +85,8 @@ pub mod outreach_lists;
 pub mod product_feedback;
 #[allow(dead_code, missing_docs)]
 pub mod push_lease;
+/// Website qualification observation planner for the business broker.
+pub mod qualify;
 /// NIP-43 relay membership admin command handler (kinds 9030–9032).
 pub mod relay_admin;
 /// NIP-56 report (kind:1984) validation + moderation queue persistence.

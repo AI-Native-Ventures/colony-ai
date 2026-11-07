@@ -66,6 +66,7 @@ fn lead_action(prospect_id: Uuid, name: &str) -> ProspectAction {
             fit_score: Some(80),
             origin: Some(buzz_core::business_records::ProspectOrigin::Discovery),
             discovery_tags: Vec::new(),
+            maps: None,
             potential_monthly_value_minor: None,
             website: Some("https://example.test".into()),
             contact_name: None,

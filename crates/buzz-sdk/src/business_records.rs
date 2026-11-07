@@ -19,8 +19,8 @@ pub use buzz_core::business_records::{
     PartyAction, PartyRecord, PaymentEvidence, ProposalAcceptance, ProposalConversionReceipt,
     ProposalHead, ProposalLine, ProposalVersion, ProspectAction, ProspectActivity,
     ProspectActivityInput, ProspectActivityKind, ProspectEvidence, ProspectHead,
-    ProspectQualification, ProspectRecordInput, ProspectStage, RecordAction, WorkItemAction,
-    WorkItemHead, WorkItemHeadInput,
+    ProspectMapsMetadata, ProspectQualification, ProspectRecordInput, ProspectStage, RecordAction,
+    WorkItemAction, WorkItemHead, WorkItemHeadInput,
 };
 use buzz_core::kind::*;
 use buzz_core::outreach_lists::{discovery_campaign_d_tag, outreach_list_d_tag};
@@ -28,6 +28,11 @@ pub use buzz_core::outreach_lists::{
     CampaignAudience, CampaignOp, CampaignRunBy, CampaignStatus, DiscoveryCampaignAction,
     DiscoveryCampaignHead, ListMember, ListOp, ListSource, ListSourceKind, ListStatus,
     OutreachListAction, OutreachListHead, RunnerKind, TemplateRef,
+};
+use buzz_core::qualify::qualify_observation_d_tag;
+pub use buzz_core::qualify::{
+    QualifyObservation, QualifyObservationAction, QualifyObservationHead, QualifyObservationState,
+    QualifySignal,
 };
 use nostr::{EventBuilder, Kind, Tag};
 use serde::Serialize;
@@ -225,6 +230,20 @@ pub fn build_discovery_campaign_action(
     )
 }
 
+/// Build a member- or agent-signed qualification observation action in the business channel.
+pub fn build_qualify_observation_action(
+    community_id: Uuid,
+    business_channel_id: Uuid,
+    action: &QualifyObservationAction,
+) -> Result<EventBuilder, SdkError> {
+    build(
+        KIND_QUALIFY_OBSERVATION_ACTION,
+        business_channel_id,
+        qualify_observation_d_tag(community_id, action.lead_id),
+        action,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,6 +309,7 @@ mod tests {
                 fit_score: Some(91),
                 origin: Some(buzz_core::business_records::ProspectOrigin::Discovery),
                 discovery_tags: Vec::new(),
+                maps: None,
                 potential_monthly_value_minor: None,
                 website: None,
                 contact_name: None,
@@ -328,6 +348,61 @@ mod tests {
         let command = parse_business_command(KIND_PROSPECT_ACTION, &event.content)
             .expect("parse built prospect command");
         assert!(matches!(command, BusinessCommand::ProspectAction(_)));
+        assert_eq!(
+            validate_business_command_scope(community_id, channel_id, &expected_d_tag, &command),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn qualification_builder_binds_the_lead_coordinate_and_command_kind() {
+        use buzz_core::business_records::{
+            parse_business_command, validate_business_command_scope, BusinessCommand,
+        };
+        use serde_json::Value;
+
+        let community_id = Uuid::from_u128(1);
+        let channel_id = Uuid::from_u128(2);
+        let lead_id = Uuid::from_u128(3);
+        let run_id = Uuid::from_u128(4);
+        let action = QualifyObservationAction {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            lead_id,
+            run_id,
+            expected_head_event_id: None,
+            checked_signals: vec![QualifySignal::HasWhatsappLink],
+            observations: vec![QualifyObservation {
+                signal: QualifySignal::HasWhatsappLink,
+                state: QualifyObservationState::Observed,
+                value: Some(Value::String("https://wa.me/27115550100".into())),
+                confidence: 0.95,
+                evidence_urls: vec!["https://example.test/contact".into()],
+                observed_at: 1_762_000_000,
+                run_id,
+                not_checked_reason: None,
+                personal_data: false,
+            }],
+        };
+        let event = build_qualify_observation_action(community_id, channel_id, &action)
+            .expect("builder")
+            .sign_with_keys(&nostr::Keys::generate())
+            .expect("signed event");
+        let expected_d_tag = qualify_observation_d_tag(community_id, lead_id);
+        let tags = event.tags.iter().collect::<Vec<_>>();
+
+        assert_eq!(
+            event.kind,
+            Kind::Custom(KIND_QUALIFY_OBSERVATION_ACTION as u16)
+        );
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].content(), Some(channel_id.to_string().as_str()));
+        assert_eq!(tags[1].content(), Some(expected_d_tag.as_str()));
+        let command = parse_business_command(KIND_QUALIFY_OBSERVATION_ACTION, &event.content)
+            .expect("parse built qualification command");
+        assert!(matches!(
+            command,
+            BusinessCommand::QualifyObservationAction(_)
+        ));
         assert_eq!(
             validate_business_command_scope(community_id, channel_id, &expected_d_tag, &command),
             Ok(())

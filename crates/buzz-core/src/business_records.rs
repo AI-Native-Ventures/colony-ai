@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::outreach_lists::{
     discovery_campaign_d_tag, outreach_list_d_tag, DiscoveryCampaignAction, OutreachListAction,
 };
+use crate::qualify::{qualify_observation_d_tag, QualifyObservationAction};
 
 /// Current business-record JSON schema version.
 pub const BUSINESS_RECORD_SCHEMA_VERSION: u8 = 1;
@@ -88,6 +89,8 @@ pub enum BusinessCommand {
     OutreachListAction(Box<OutreachListAction>),
     /// Shared Discovery campaign change (create, progress, finish, rename, archive).
     DiscoveryCampaignAction(Box<DiscoveryCampaignAction>),
+    /// Complete qualification observation snapshot for one prospect.
+    QualifyObservationAction(Box<QualifyObservationAction>),
 }
 
 /// A business or client record action.
@@ -278,6 +281,20 @@ pub struct ProspectDiscoveryTagInput {
     pub picked: bool,
 }
 
+/// Google Maps fields retained for deterministic lead targeting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProspectMapsMetadata {
+    /// Google Maps rating multiplied by one hundred, for example 460 for 4.6.
+    pub rating_hundredths: Option<u16>,
+    /// Google Maps review count.
+    pub review_count: Option<u32>,
+    /// Google Maps primary business category.
+    pub category: Option<String>,
+    /// Google Maps city.
+    pub city: Option<String>,
+}
+
 /// Activity kind for a qualification or contact note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -331,6 +348,9 @@ pub struct ProspectRecordInput {
     /// Generated tag evidence matched from the provider listing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub discovery_tags: Vec<ProspectDiscoveryTagInput>,
+    /// Google Maps metadata used by qualification filters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maps: Option<ProspectMapsMetadata>,
     /// Potential monthly service value in minor currency units, when known.
     #[serde(default)]
     pub potential_monthly_value_minor: Option<i64>,
@@ -1492,6 +1512,13 @@ pub fn validate_business_command_scope(
                 Err(BusinessRecordError::DTagMismatch)
             }
         }
+        BusinessCommand::QualifyObservationAction(value) => {
+            if d_tag == qualify_observation_d_tag(community_id, value.lead_id) {
+                Ok(())
+            } else {
+                Err(BusinessRecordError::DTagMismatch)
+            }
+        }
     }
 }
 
@@ -1819,6 +1846,9 @@ pub fn parse_business_command(
         crate::kind::KIND_DISCOVERY_CAMPAIGN_ACTION => {
             parse_boxed!(DiscoveryCampaignAction, DiscoveryCampaignAction)?
         }
+        crate::kind::KIND_QUALIFY_OBSERVATION_ACTION => {
+            parse_boxed!(QualifyObservationAction, QualifyObservationAction)?
+        }
         _ => return Err(BusinessRecordError::UnsupportedKind),
     };
 
@@ -1839,6 +1869,7 @@ pub fn parse_business_command(
         BusinessCommand::MoneyFollowUp(value) => value.schema_version,
         BusinessCommand::OutreachListAction(value) => value.schema_version,
         BusinessCommand::DiscoveryCampaignAction(value) => value.schema_version,
+        BusinessCommand::QualifyObservationAction(value) => value.schema_version,
     };
     if schema_version != BUSINESS_RECORD_SCHEMA_VERSION {
         return Err(BusinessRecordError::UnsupportedSchemaVersion);
@@ -1885,6 +1916,7 @@ mod tests {
                 fit_score: None,
                 origin: None,
                 discovery_tags: Vec::new(),
+                maps: None,
                 potential_monthly_value_minor: None,
                 website: Some("https://example.test".into()),
                 contact_name: None,

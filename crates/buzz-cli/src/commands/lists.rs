@@ -902,6 +902,7 @@ mod tests {
                     fit_score: None,
                     origin: None,
                     discovery_tags: Vec::new(),
+                    maps: None,
                     potential_monthly_value_minor: None,
                     website: Some("https://example.test".into()),
                     contact_name: None,

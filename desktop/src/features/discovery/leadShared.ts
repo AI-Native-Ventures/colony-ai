@@ -111,6 +111,7 @@ export function createChanges(
     vertical: industry,
     fitScore: null,
     origin: "manual",
+    maps: null,
     potentialMonthlyValueMinor: null,
     website: null,
     contactName: null,

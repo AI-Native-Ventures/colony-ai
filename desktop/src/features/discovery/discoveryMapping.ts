@@ -5,7 +5,10 @@
  */
 
 import type { ProspectChanges } from "./businessRecordMutations";
-import { stableRecordId } from "./businessRecordContract";
+import {
+  stableRecordId,
+  type ProspectMapsMetadata,
+} from "./businessRecordContract";
 import type { DiscoveryTagMatch } from "./discoveryTags";
 import type { DiscoveryPlace } from "./discoverySearch";
 
@@ -111,6 +114,34 @@ export function locationSummary(place: DiscoveryPlace): string | null {
   return summary ? clampBytes(summary, MAX_LOCATION_BYTES) || null : null;
 }
 
+/** Preserve only the bounded Maps fields used by qualification targeting. */
+export function mapsMetadata(place: DiscoveryPlace): ProspectMapsMetadata {
+  const rating =
+    typeof place.rating === "number" &&
+    Number.isFinite(place.rating) &&
+    place.rating >= 0 &&
+    place.rating <= 5
+      ? Math.round(place.rating * 100)
+      : null;
+  const reviews =
+    typeof place.reviews === "number" &&
+    Number.isFinite(place.reviews) &&
+    place.reviews >= 0 &&
+    place.reviews <= 4_294_967_295
+      ? Math.round(place.reviews)
+      : null;
+  const category = present(place.category);
+  const city = present(place.city);
+  return {
+    ratingHundredths: rating,
+    reviewCount: reviews,
+    category: category
+      ? clampBytes(category, MAX_TAXONOMY_BYTES) || null
+      : null,
+    city: city ? clampBytes(city, MAX_LOCATION_BYTES) || null : null,
+  };
+}
+
 function evidenceExcerpt(place: DiscoveryPlace): string {
   const parts: string[] = [];
   const category = present(place.category) ?? present(place.subtypes);
@@ -184,6 +215,7 @@ export function mapPlaceToProspect(
     fitScore: fitScore(place),
     origin: "discovery",
     discoveryTags: context.discoveryTags ?? [],
+    maps: mapsMetadata(place),
     potentialMonthlyValueMinor: null,
     website,
     contactName: null,

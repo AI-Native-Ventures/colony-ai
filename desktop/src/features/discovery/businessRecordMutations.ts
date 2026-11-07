@@ -5,6 +5,7 @@ import {
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_VERSION,
   KIND_PROSPECT_ACTION,
+  KIND_QUALIFY_OBSERVATION_ACTION,
   KIND_OUTREACH_LIST_ACTION,
   KIND_DISCOVERY_CAMPAIGN_ACTION,
   KIND_SERVICE_ACTION,
@@ -18,6 +19,7 @@ import {
   type ProposalVersion,
   type ServiceHead,
   type ServiceRecord,
+  type QualifyObservationAction,
 } from "./businessRecordContract";
 import { publishBusinessCommand } from "./businessRecordRelay";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
@@ -28,6 +30,10 @@ import {
   type DiscoveryCampaignAction,
   type OutreachListMutation,
 } from "./outreachRecords";
+import {
+  buildQualifyObservationAction,
+  qualifyObservationDTag,
+} from "./qualifyRecords";
 
 export type ProspectChanges = Omit<ProspectRecord, "party"> & {
   displayName: string;
@@ -67,6 +73,21 @@ export function publishDiscoveryCampaignAction(input: {
     channelId: input.channelId,
     dTag: discoveryCampaignDTag(input.communityId, input.action.campaignId),
     content: input.action,
+  });
+}
+
+/** Persist one complete evidence-backed qualification snapshot for a lead. */
+export function publishQualifyObservationAction(input: {
+  channelId: string;
+  communityId: TenantCommunityId;
+  action: QualifyObservationAction;
+}): Promise<string> {
+  const action = buildQualifyObservationAction(input.action);
+  return publishBusinessCommand({
+    kind: KIND_QUALIFY_OBSERVATION_ACTION,
+    channelId: input.channelId,
+    dTag: qualifyObservationDTag(input.communityId, action.leadId),
+    content: action,
   });
 }
 
@@ -166,6 +187,7 @@ export async function publishProspectAction(input: {
     origin:
       input.changes.origin ?? input.current?.record.prospect.origin ?? null,
     ...discoveryTagsField(discoveryTags),
+    maps: input.changes.maps ?? input.current?.record.prospect.maps ?? null,
     potentialMonthlyValueMinor:
       input.changes.potentialMonthlyValueMinor ?? null,
     website: normalizeOptional(input.changes.website),

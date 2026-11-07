@@ -78,6 +78,8 @@ pub mod pairing;
 pub mod presence;
 /// NIP-PMA owner-encrypted private managed-agent wire codec.
 pub mod private_managed_agent;
+/// Additive, evidence-backed website qualification observation records.
+pub mod qualify;
 /// Canonical relay runtime identities.
 pub mod relay;
 /// Tenant identity — the server-resolved community key carried on scoped paths.

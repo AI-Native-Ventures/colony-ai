@@ -167,6 +167,7 @@ pub async fn handle(
             | BusinessCommand::ProspectAction(_)
             | BusinessCommand::ProposalVersion(_)
             | BusinessCommand::ProposalAcceptance(_)
+            | BusinessCommand::QualifyObservationAction(_)
             | BusinessCommand::OutreachListAction(_)
             | BusinessCommand::DiscoveryCampaignAction(_)
     ) {
@@ -215,12 +216,14 @@ pub async fn handle(
             | BusinessCommand::PaymentEvidence(_)
             | BusinessCommand::MoneyAdjustment(_)
             | BusinessCommand::MoneyFollowUp(_)
+            | BusinessCommand::QualifyObservationAction(_)
             | BusinessCommand::OutreachListAction(_)
             | BusinessCommand::DiscoveryCampaignAction(_)
     ) {
         match &command {
             BusinessCommand::OutreachListAction(_)
-            | BusinessCommand::DiscoveryCampaignAction(_) => {
+            | BusinessCommand::DiscoveryCampaignAction(_)
+            | BusinessCommand::QualifyObservationAction(_) => {
                 super::outreach_lists::require_outreach_actor(&role)?;
             }
             BusinessCommand::PartyAction(_) | BusinessCommand::ProposalVersion(_) => {
@@ -1358,6 +1361,18 @@ pub async fn handle(
         }
         BusinessCommand::DiscoveryCampaignAction(action) => {
             let planned = super::outreach_lists::plan_campaign_action(
+                state, tenant, &event, &role, channel_id, d_tag, *action,
+            )
+            .await?;
+            heads.push(HeadWrite {
+                event: planned.event,
+                channel_id,
+                d_tag: planned.d_tag,
+                expected_event_id: planned.expected_event_id,
+            });
+        }
+        BusinessCommand::QualifyObservationAction(action) => {
+            let planned = super::qualify::plan_qualify_observation_action(
                 state, tenant, &event, &role, channel_id, d_tag, *action,
             )
             .await?;
@@ -2852,6 +2867,13 @@ fn validate_prospect_action(action: &ProspectAction) -> Result<(), IngestError> 
     }
     validate_optional_text(prospect.contact_name.as_deref(), 160, "contact name")?;
     validate_optional_text(prospect.location.as_deref(), 200, "location")?;
+    if let Some(maps) = prospect.maps.as_ref() {
+        if maps.rating_hundredths.is_some_and(|rating| rating > 500) {
+            return Err(invalid("prospect Maps rating is invalid"));
+        }
+        validate_optional_text(maps.category.as_deref(), 200, "Maps category")?;
+        validate_optional_text(maps.city.as_deref(), 200, "Maps city")?;
+    }
     validate_optional_text(prospect.email.as_deref(), 254, "email")?;
     if prospect
         .email
@@ -4491,6 +4513,7 @@ mod tests {
                 fit_score: Some(87),
                 origin: Some(buzz_core::business_records::ProspectOrigin::Discovery),
                 discovery_tags: Vec::new(),
+                maps: None,
                 potential_monthly_value_minor: Some(450_000),
                 website: Some("https://example.test".into()),
                 contact_name: Some("Rene Example".into()),
@@ -4644,6 +4667,34 @@ mod tests {
         assert!(validate_prospect_action(&action).is_err());
         action.prospect.lost_reason = Some("Timing".into());
         assert!(validate_prospect_action(&action).is_ok());
+    }
+
+    #[test]
+    fn prospect_validation_bounds_maps_targeting_metadata() {
+        let mut action = prospect_action();
+        action.prospect.maps = Some(buzz_core::business_records::ProspectMapsMetadata {
+            rating_hundredths: Some(460),
+            review_count: Some(120),
+            category: Some("Home goods store".into()),
+            city: Some("Cape Town".into()),
+        });
+        assert!(validate_prospect_action(&action).is_ok());
+
+        action
+            .prospect
+            .maps
+            .as_mut()
+            .expect("maps")
+            .rating_hundredths = Some(501);
+        assert!(validate_prospect_action(&action).is_err());
+        action
+            .prospect
+            .maps
+            .as_mut()
+            .expect("maps")
+            .rating_hundredths = Some(460);
+        action.prospect.maps.as_mut().expect("maps").city = Some(" ".into());
+        assert!(validate_prospect_action(&action).is_err());
     }
 
     #[test]
@@ -7435,3 +7486,5 @@ mod postgres_tests {
 
 #[cfg(test)]
 mod outreach_lists_postgres_tests;
+#[cfg(test)]
+mod qualify_postgres_tests;

@@ -836,9 +836,13 @@ pub const KIND_CUSTOMER_HEAD: u32 = 30679;
 pub const KIND_CUSTOMER_ACTION: u32 = 47069;
 /// Relay-authored record of whether Scout can be reached while co-founder mode is on (community-wide, one per business). Relay only: no member action writes it. The 30670 to 30679 co-founder block is full, so this is the first kind after it.
 pub const KIND_COFOUNDER_LEAD_HEAD: u32 = 30680;
+/// Relay-authored qualification observation snapshot (business channel, one per lead).
+pub const KIND_QUALIFY_OBSERVATION_HEAD: u32 = 30681;
+/// Member or agent qualification observation write, brokered by the business relay.
+pub const KIND_QUALIFY_OBSERVATION_ACTION: u32 = 47070;
 
-// Money rails payment kinds. 30680 is the co-founder lead head and 30684, 30685, 47075 and
-// 47076 belong to the outreach lists design, so these four sit after them. Only the payment
+// Money rails payment kinds. 30680 is the co-founder lead head, 30681 and 47070 belong to
+// qualification, and 30684, 30685, 47075 and 47076 belong to outreach lists, so these four sit after them. Only the payment
 // kinds are defined; signing and booking get their own numbers in their own PRs.
 // Contract: docs/money-rails-pay-contract.md.
 /// Relay-authored payment link card head (money rails, community-wide, one per card).
@@ -851,7 +855,7 @@ pub const KIND_MONEY_CONNECTION_HEAD: u32 = 30687;
 pub const KIND_MONEY_CONNECTION_ACTION: u32 = 47078;
 
 // Outreach lists and shared Discovery campaigns (Sales channel scope, business broker).
-// Contract: docs/outreach-lists-contract.md. 30681 to 30683 and 47070 to 47074 stay free;
+// Contract: docs/outreach-lists-contract.md. 30682 to 30683 and 47071 to 47074 stay free;
 // money rails owns 30686, 30687, 47077 and 47078.
 /// Relay-authored outreach list head (business channel, one per list; `d` = the list's coordinate).
 pub const KIND_OUTREACH_LIST_HEAD: u32 = 30684;
@@ -1058,6 +1062,7 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_PROSPECT_HEAD,
     KIND_MONEY_FOLLOW_UP_HEAD,
     KIND_COMPANY_WORK_TRACKING_HEAD,
+    KIND_QUALIFY_OBSERVATION_HEAD,
     KIND_OUTREACH_LIST_HEAD,
     KIND_DISCOVERY_CAMPAIGN_HEAD,
     KIND_PARTY_ACTION,
@@ -1093,6 +1098,7 @@ pub const BUSINESS_RECORD_KINDS: &[u32] = &[
     KIND_RECONCILIATION,
     KIND_MONEY_FOLLOW_UP,
     KIND_COMPANY_WORK_TRACKING_ACTION,
+    KIND_QUALIFY_OBSERVATION_ACTION,
     KIND_OUTREACH_LIST_ACTION,
     KIND_DISCOVERY_CAMPAIGN_ACTION,
 ];
@@ -1121,6 +1127,7 @@ pub const fn is_business_relay_only_kind(kind: u32) -> bool {
             | KIND_PROSPECT_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
             | KIND_COMPANY_WORK_TRACKING_HEAD
+            | KIND_QUALIFY_OBSERVATION_HEAD
             | KIND_OUTREACH_LIST_HEAD
             | KIND_DISCOVERY_CAMPAIGN_HEAD
             | KIND_PROPOSAL_CONVERSION_RECEIPT
@@ -1145,6 +1152,7 @@ pub const fn is_business_command_kind(kind: u32) -> bool {
             | KIND_MONEY_ADJUSTMENT
             | KIND_MONEY_FOLLOW_UP
             | KIND_COMPANY_WORK_TRACKING_ACTION
+            | KIND_QUALIFY_OBSERVATION_ACTION
             | KIND_OUTREACH_LIST_ACTION
             | KIND_DISCOVERY_CAMPAIGN_ACTION
     )
@@ -1381,6 +1389,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_MONEY_CONNECTION_HEAD,
     KIND_MONEY_CONNECTION_ACTION,
     KIND_COFOUNDER_LEAD_HEAD,
+    KIND_QUALIFY_OBSERVATION_HEAD,
+    KIND_QUALIFY_OBSERVATION_ACTION,
     KIND_OUTREACH_LIST_HEAD,
     KIND_OUTREACH_LIST_ACTION,
     KIND_DISCOVERY_CAMPAIGN_HEAD,
@@ -1465,6 +1475,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_MONEY_ADJUSTMENT
             | KIND_MONEY_FOLLOW_UP
             | KIND_COMPANY_WORK_TRACKING_ACTION
+            | KIND_QUALIFY_OBSERVATION_ACTION
             | KIND_OUTREACH_LIST_ACTION
             | KIND_DISCOVERY_CAMPAIGN_ACTION
             | KIND_GOAL_ACTION
@@ -1523,6 +1534,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_SITE_HEAD
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
+            | KIND_QUALIFY_OBSERVATION_HEAD
             | KIND_OUTREACH_LIST_HEAD
             | KIND_DISCOVERY_CAMPAIGN_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
@@ -1611,6 +1623,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_CUSTOMER_HEAD)); // 3067
 const _: () = assert!(is_parameterized_replaceable(KIND_PAYMENT_LINK_HEAD)); // 30686 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_CONNECTION_HEAD)); // 30687 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_LEAD_HEAD)); // 30680 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_QUALIFY_OBSERVATION_HEAD)); // 30681 in 30000..=39999
 const _: () = assert!(is_parameterized_replaceable(KIND_OUTREACH_LIST_HEAD)); // 30684 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_DISCOVERY_CAMPAIGN_HEAD)); // 30685 ∈ 30000–39999
 
@@ -1711,6 +1724,20 @@ mod tests {
             assert!(is_command_kind(action));
             assert!(!is_relay_only_kind(action));
         }
+    }
+
+    #[test]
+    fn qualification_kinds_have_expected_write_authority() {
+        assert_eq!(KIND_QUALIFY_OBSERVATION_HEAD, 30681);
+        assert_eq!(KIND_QUALIFY_OBSERVATION_ACTION, 47070);
+        assert!(is_business_record_kind(KIND_QUALIFY_OBSERVATION_HEAD));
+        assert!(is_business_relay_only_kind(KIND_QUALIFY_OBSERVATION_HEAD));
+        assert!(is_relay_only_kind(KIND_QUALIFY_OBSERVATION_HEAD));
+        assert!(!is_command_kind(KIND_QUALIFY_OBSERVATION_HEAD));
+        assert!(is_business_record_kind(KIND_QUALIFY_OBSERVATION_ACTION));
+        assert!(is_business_command_kind(KIND_QUALIFY_OBSERVATION_ACTION));
+        assert!(is_command_kind(KIND_QUALIFY_OBSERVATION_ACTION));
+        assert!(!is_relay_only_kind(KIND_QUALIFY_OBSERVATION_ACTION));
     }
 
     #[test]

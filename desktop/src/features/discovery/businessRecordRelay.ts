@@ -15,6 +15,7 @@ import {
   KIND_SERVICE_HEAD,
   KIND_OUTREACH_LIST_HEAD,
   KIND_DISCOVERY_CAMPAIGN_HEAD,
+  KIND_QUALIFY_OBSERVATION_HEAD,
   latestByDTag,
   tryParseContent,
   type ProposalAcceptance,
@@ -25,6 +26,7 @@ import {
   type ServiceHead,
   type OutreachListHead,
   type DiscoveryCampaignHead,
+  type QualifyObservationHead,
 } from "./businessRecordContract";
 import {
   parseDiscoveryCampaignHead,
@@ -32,6 +34,11 @@ import {
   type DiscoveryCampaignHeadView,
   type OutreachListHeadView,
 } from "./outreachRecords";
+import {
+  parseQualifyObservationHead,
+  qualifyObservationDTag,
+  type QualifyObservationHeadView,
+} from "./qualifyRecords";
 import { pickSalesStream } from "./salesChannel";
 
 export type BusinessRole = "owner" | "admin" | "member" | "guest" | "bot";
@@ -53,6 +60,7 @@ export type BusinessRecords = {
   }>;
   outreachLists: OutreachListHeadView[];
   discoveryCampaigns: DiscoveryCampaignHeadView[];
+  qualificationObservations: QualifyObservationHeadView[];
 };
 
 const QUERY_LIMIT = 500;
@@ -150,20 +158,27 @@ export async function loadBusinessRecords(
   if (!relaySelf) {
     throw new Error("This relay does not advertise a signing identity.");
   }
-  const [outreachListEvents, discoveryCampaignEvents] = await Promise.all([
-    relayClient.fetchEvents({
-      kinds: [KIND_OUTREACH_LIST_HEAD],
-      authors: [relaySelf],
-      limit: QUERY_LIMIT,
-      "#h": [channelId],
-    }),
-    relayClient.fetchEvents({
-      kinds: [KIND_DISCOVERY_CAMPAIGN_HEAD],
-      authors: [relaySelf],
-      limit: QUERY_LIMIT,
-      "#h": [channelId],
-    }),
-  ]);
+  const [outreachListEvents, discoveryCampaignEvents, qualificationEvents] =
+    await Promise.all([
+      relayClient.fetchEvents({
+        kinds: [KIND_OUTREACH_LIST_HEAD],
+        authors: [relaySelf],
+        limit: QUERY_LIMIT,
+        "#h": [channelId],
+      }),
+      relayClient.fetchEvents({
+        kinds: [KIND_DISCOVERY_CAMPAIGN_HEAD],
+        authors: [relaySelf],
+        limit: QUERY_LIMIT,
+        "#h": [channelId],
+      }),
+      relayClient.fetchEvents({
+        kinds: [KIND_QUALIFY_OBSERVATION_HEAD],
+        authors: [relaySelf],
+        limit: QUERY_LIMIT,
+        "#h": [channelId],
+      }),
+    ]);
   const role = members.find(
     (member) =>
       member.pubkey.toLocaleLowerCase() === currentPubkey.toLocaleLowerCase(),
@@ -253,6 +268,16 @@ export async function loadBusinessRecords(
     dTag,
     record,
   }));
+  const qualificationObservations = latestByDTag<QualifyObservationHead>(
+    qualificationEvents,
+    (event) =>
+      parseQualifyObservationHead(event, communityId, channelId)?.record ??
+      null,
+  ).map(({ event, record, dTag }) => ({
+    eventId: event.id,
+    dTag,
+    record,
+  }));
   return {
     channelId,
     role: role ?? null,
@@ -261,6 +286,7 @@ export async function loadBusinessRecords(
     proposals,
     outreachLists,
     discoveryCampaigns,
+    qualificationObservations,
   };
 }
 
@@ -311,6 +337,35 @@ export async function loadProspectHead(
       : null;
   }).find((candidate) => candidate.dTag === dTag);
   return current ? { eventId: current.event.id, record: current.record } : null;
+}
+
+/** Reads one current qualification head before an idempotent retry or replacement. */
+export async function loadQualifyObservationHead(
+  channelId: string,
+  communityId: TenantCommunityId,
+  leadId: string,
+): Promise<QualifyObservationHeadView | null> {
+  const relaySelf = await getRelaySelf();
+  if (!relaySelf) {
+    throw new Error("This relay does not advertise a signing identity.");
+  }
+  const dTag = qualifyObservationDTag(communityId, leadId);
+  const events = await relayClient.fetchEvents({
+    kinds: [KIND_QUALIFY_OBSERVATION_HEAD],
+    authors: [relaySelf],
+    limit: QUERY_LIMIT,
+    "#h": [channelId],
+    "#d": [dTag],
+  });
+  const current = latestByDTag<QualifyObservationHead>(
+    events,
+    (event) =>
+      parseQualifyObservationHead(event, communityId, channelId)?.record ??
+      null,
+  ).find((candidate) => candidate.dTag === dTag);
+  return current
+    ? { eventId: current.event.id, dTag: current.dTag, record: current.record }
+    : null;
 }
 
 export async function publishBusinessCommand(input: {
