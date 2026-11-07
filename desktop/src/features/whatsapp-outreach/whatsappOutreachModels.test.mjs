@@ -267,12 +267,30 @@ test("status parser strips unknown secret fields and clamps invalid cap ranges",
   assert.equal(status.templates[0].name, "hl_vb");
   assert.equal(status.quality, "green");
   assert.equal(status.accountRetryCount, 0);
+  assert.equal(status.ownerPaused, false);
+  assert.equal(status.ownerPausedBy, null);
+  assert.equal(status.ownerPausedAt, null);
   assert.equal(
     parseWhatsAppStatus(baseStatus({ accountRetryCount: 63 }))
       .accountRetryCount,
     63,
   );
   assert.equal(whatsappQualityLabel(status.quality), "Green");
+});
+
+test("status parser preserves an additive owner pause identity and time", () => {
+  const status = parseWhatsAppStatus(
+    baseStatus({
+      sendingPaused: true,
+      pauseReason: "owner paused",
+      ownerPaused: true,
+      ownerPausedBy: "a".repeat(64),
+      ownerPausedAt: "2026-11-07T10:42:00Z",
+    }),
+  );
+  assert.equal(status.ownerPaused, true);
+  assert.equal(status.ownerPausedBy, "a".repeat(64));
+  assert.equal(status.ownerPausedAt, "2026-11-07T10:42:00Z");
 });
 
 test("status precedence keeps an opted-out contact locked", () => {

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useMyRelayMembershipLookupQuery } from "@/features/community-members/hooks";
 import { SettingsOptionGroup } from "@/features/settings/ui/SettingsOptionGroup";
+import { useIdentityQuery } from "@/shared/api/hooks";
 import { Button } from "@/shared/ui/button";
 import { cn } from "@/shared/lib/cn";
 import {
@@ -102,6 +103,31 @@ function templateBodyPreview(template: WhatsAppTemplate) {
     const label = slotLabels[Number(slot[1]) - 1] ?? "detail";
     return <em key={key}>{label}</em>;
   });
+}
+
+function ownerPauseDetail({
+  pausedAt,
+  pausedBy,
+  currentPubkey,
+}: {
+  pausedAt: string | null;
+  pausedBy: string | null;
+  currentPubkey: string | undefined;
+}) {
+  const owner =
+    pausedBy && currentPubkey && pausedBy === currentPubkey
+      ? "you"
+      : pausedBy
+        ? `owner ${pausedBy.slice(0, 8)}`
+        : "an owner";
+  const timestamp = pausedAt ? Date.parse(pausedAt) : Number.NaN;
+  if (!Number.isFinite(timestamp)) return `Paused by ${owner}.`;
+  const when = new Intl.DateTimeFormat("en-ZA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Johannesburg",
+  }).format(new Date(timestamp));
+  return `Paused by ${owner} at ${when}.`;
 }
 
 function TemplateRow({
@@ -250,6 +276,8 @@ function TemplateRow({
 export function WhatsAppSettingsPanel() {
   const relayUrl = useWhatsAppRelayUrl();
   const membership = useMyRelayMembershipLookupQuery();
+  const identity = useIdentityQuery();
+  const currentPubkey = identity.data?.pubkey;
   const role = membership.data?.membership?.role;
   const canManage =
     membership.data?.membershipRequired === false ||
@@ -371,10 +399,12 @@ export function WhatsAppSettingsPanel() {
           : "WhatsApp sending resumed.",
       );
     } catch (pauseError) {
-      setError(
+      const detail =
         pauseError instanceof Error
           ? pauseError.message
-          : "Could not update sending pause.",
+          : "The relay rejected the requested change.";
+      setError(
+        `The relay did not ${paused ? "pause all WhatsApp sending" : "resume WhatsApp sending"}. ${detail}`,
       );
     } finally {
       setBusy(false);
@@ -747,26 +777,46 @@ export function WhatsAppSettingsPanel() {
               </header>
               <div className="c3wa-pause-row">
                 <div>
-                  <strong>Pause all sending</strong>
+                  <strong>
+                    {status.ownerPaused
+                      ? "Resume all sending"
+                      : "Pause all sending"}
+                  </strong>
                   <span>
-                    Stops new chats and agent replies at once. Nothing waiting
-                    is lost.
+                    {status.ownerPaused
+                      ? "Your owner pause is active. Resume only clears your pause."
+                      : "Stops new chats and agent replies at once. Nothing waiting is lost."}
                   </span>
                 </div>
                 <button
-                  aria-checked={status.sendingPaused}
-                  aria-label="Pause all WhatsApp sending"
+                  aria-checked={status.ownerPaused}
+                  aria-label={
+                    status.ownerPaused
+                      ? "Resume all WhatsApp sending"
+                      : "Pause all WhatsApp sending"
+                  }
                   className="c3wa-switch"
                   data-testid="whatsapp-pause-switch"
                   disabled={!canManage || busy}
-                  onClick={() => void setPaused(!status.sendingPaused)}
+                  onClick={() => void setPaused(!status.ownerPaused)}
                   role="switch"
                   type="button"
                 >
                   <span aria-hidden="true" />
                 </button>
               </div>
-              {status.pauseReason ? (
+              {status.ownerPaused ? (
+                <p
+                  className="c3wa-pause-reason"
+                  data-testid="whatsapp-owner-pause-detail"
+                >
+                  {ownerPauseDetail({
+                    pausedAt: status.ownerPausedAt,
+                    pausedBy: status.ownerPausedBy,
+                    currentPubkey,
+                  })}
+                </p>
+              ) : status.pauseReason ? (
                 <p className="c3wa-pause-reason">{status.pauseReason}</p>
               ) : null}
               <div className="c3wa-send-approval">

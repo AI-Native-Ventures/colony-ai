@@ -18,6 +18,10 @@ use crate::Db;
 pub const MAX_DAILY_NEW_CHAT_CAP: i32 = 1000;
 /// Default daily cap on NEW chats.
 pub const DEFAULT_DAILY_NEW_CHAT_CAP: i32 = 30;
+/// Durable reason shown when an owner deliberately stops all sending.
+pub const OWNER_PAUSE_REASON: &str = "owner paused";
+/// Durable reason shown when Meta reports RED quality.
+pub const QUALITY_PAUSE_REASON: &str = "Quality rating is RED. Sending stopped.";
 /// Failed Colony posts of one message before the repair loop gives up on it.
 pub const POST_MAX_ATTEMPTS: i32 = 24;
 /// Failed downloads of one inbound media file before the owner has to press Retry.
@@ -55,7 +59,7 @@ async fn mark_account_unhealthy_in(
     .await?;
 
     let previous: (Option<String>, bool) = sqlx::query_as(
-        "SELECT account_health_code, send_paused FROM whatsapp_settings \
+        "SELECT account_health_code, system_paused FROM whatsapp_settings \
          WHERE community_id = $1 FOR UPDATE",
     )
     .bind(community.as_uuid())
@@ -67,7 +71,13 @@ async fn mark_account_unhealthy_in(
     let became_unhealthy = !previous.1 || previous.0.as_deref() != Some(error_code);
 
     sqlx::query(
-        "UPDATE whatsapp_settings SET send_paused = TRUE, pause_reason = $2, \
+        "UPDATE whatsapp_settings SET system_paused = TRUE, system_pause_reason = $2, \
+             send_paused = TRUE, \
+             pause_reason = CASE \
+                 WHEN owner_paused THEN $6 \
+                 WHEN quality_paused THEN $7 \
+                 ELSE $2 \
+             END, \
              account_health_code = $3, account_health_text = $4, account_health_at = $5, \
              account_health_resume_requested_at = NULL, updated_at = now() \
          WHERE community_id = $1",
@@ -77,6 +87,8 @@ async fn mark_account_unhealthy_in(
     .bind(error_code.chars().take(64).collect::<String>())
     .bind(error_text.chars().take(500).collect::<String>())
     .bind(now)
+    .bind(OWNER_PAUSE_REASON)
+    .bind(QUALITY_PAUSE_REASON)
     .execute(&mut **tx)
     .await?;
     Ok(became_unhealthy)
@@ -93,6 +105,18 @@ pub struct WhatsappSettings {
     pub send_paused: bool,
     /// Plain reason for the pause.
     pub pause_reason: Option<String>,
+    /// Whether an owner or admin has manually paused sending.
+    pub owner_paused: bool,
+    /// Public key of the owner or admin who made the active manual pause.
+    pub owner_paused_by: Option<Vec<u8>>,
+    /// When the active manual pause was made.
+    pub owner_paused_at: Option<DateTime<Utc>>,
+    /// Whether Meta RED quality has independently paused sending.
+    pub quality_paused: bool,
+    /// Whether a non-quality automatic incident has independently paused sending.
+    pub system_paused: bool,
+    /// Reason for the non-quality automatic pause.
+    pub system_pause_reason: Option<String>,
     /// Meta account failure that caused the automatic sender pause, if any.
     pub account_health_code: Option<String>,
     /// Meta's stored error text for the automatic account pause.
@@ -685,6 +709,8 @@ impl Db {
         .await?;
         let row = sqlx::query(
             "SELECT daily_new_chat_cap, outreach_channel_id, send_paused, pause_reason, \
+                    owner_paused, owner_paused_by, owner_paused_at, quality_paused, \
+                    system_paused, system_pause_reason, \
                     account_health_code, account_health_text, account_health_at, \
                     account_health_resume_requested_at, issues, templates_synced_at \
              FROM whatsapp_settings WHERE community_id = $1",
@@ -697,6 +723,12 @@ impl Db {
             outreach_channel_id: row.try_get("outreach_channel_id")?,
             send_paused: row.try_get("send_paused")?,
             pause_reason: row.try_get("pause_reason")?,
+            owner_paused: row.try_get("owner_paused")?,
+            owner_paused_by: row.try_get("owner_paused_by")?,
+            owner_paused_at: row.try_get("owner_paused_at")?,
+            quality_paused: row.try_get("quality_paused")?,
+            system_paused: row.try_get("system_paused")?,
+            system_pause_reason: row.try_get("system_pause_reason")?,
             account_health_code: row.try_get("account_health_code")?,
             account_health_text: row.try_get("account_health_text")?,
             account_health_at: row.try_get("account_health_at")?,
@@ -744,8 +776,77 @@ impl Db {
         Ok(())
     }
 
-    /// Stop or resume all sending for the company.
-    pub async fn whatsapp_set_send_paused(
+    /// Set or clear the manual owner pause without disturbing quality or automatic stops.
+    pub async fn whatsapp_set_owner_send_paused(
+        &self,
+        community: CommunityId,
+        paused: bool,
+        actor: &[u8],
+        at: DateTime<Utc>,
+    ) -> Result<()> {
+        if actor.len() != 32 {
+            return Err(DbError::InvalidData(
+                "owner pause actor must be a 32-byte public key".to_string(),
+            ));
+        }
+        self.whatsapp_ensure_settings(community).await?;
+        sqlx::query(
+            "UPDATE whatsapp_settings SET \
+                 owner_paused = $2, \
+                 owner_paused_by = CASE WHEN $2 THEN $3 ELSE NULL END, \
+                 owner_paused_at = CASE WHEN $2 THEN $4 ELSE NULL END, \
+                 send_paused = $2 OR quality_paused OR system_paused, \
+                 pause_reason = CASE \
+                     WHEN $2 THEN $5 \
+                     WHEN quality_paused THEN $6 \
+                     WHEN system_paused THEN system_pause_reason \
+                     ELSE NULL \
+                 END, \
+                 updated_at = now() \
+             WHERE community_id = $1",
+        )
+        .bind(community.as_uuid())
+        .bind(paused)
+        .bind(actor)
+        .bind(at)
+        .bind(OWNER_PAUSE_REASON)
+        .bind(QUALITY_PAUSE_REASON)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set or clear the RED-quality pause without disturbing owner or automatic stops.
+    pub async fn whatsapp_set_quality_send_paused(
+        &self,
+        community: CommunityId,
+        paused: bool,
+    ) -> Result<()> {
+        self.whatsapp_ensure_settings(community).await?;
+        sqlx::query(
+            "UPDATE whatsapp_settings SET \
+                 quality_paused = $2, \
+                 send_paused = owner_paused OR $2 OR system_paused, \
+                 pause_reason = CASE \
+                     WHEN owner_paused THEN $3 \
+                     WHEN $2 THEN $4 \
+                     WHEN system_paused THEN system_pause_reason \
+                     ELSE NULL \
+                 END, \
+                 updated_at = now() \
+             WHERE community_id = $1",
+        )
+        .bind(community.as_uuid())
+        .bind(paused)
+        .bind(OWNER_PAUSE_REASON)
+        .bind(QUALITY_PAUSE_REASON)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set or clear a non-quality automatic pause without disturbing an owner or quality pause.
+    pub async fn whatsapp_set_system_send_paused(
         &self,
         community: CommunityId,
         paused: bool,
@@ -753,15 +854,38 @@ impl Db {
     ) -> Result<()> {
         self.whatsapp_ensure_settings(community).await?;
         sqlx::query(
-            "UPDATE whatsapp_settings SET send_paused = $2, pause_reason = $3, updated_at = now() \
+            "UPDATE whatsapp_settings SET \
+                 system_paused = $2, \
+                 system_pause_reason = CASE WHEN $2 THEN $3 ELSE NULL END, \
+                 send_paused = owner_paused OR quality_paused OR $2, \
+                 pause_reason = CASE \
+                     WHEN owner_paused THEN $4 \
+                     WHEN quality_paused THEN $5 \
+                     WHEN $2 THEN $3 \
+                     ELSE NULL \
+                 END, \
+                 updated_at = now() \
              WHERE community_id = $1",
         )
         .bind(community.as_uuid())
         .bind(paused)
         .bind(reason.map(|r| r.chars().take(500).collect::<String>()))
+        .bind(OWNER_PAUSE_REASON)
+        .bind(QUALITY_PAUSE_REASON)
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Compatibility wrapper for existing internal callers that represent an automatic pause.
+    pub async fn whatsapp_set_send_paused(
+        &self,
+        community: CommunityId,
+        paused: bool,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        self.whatsapp_set_system_send_paused(community, paused, reason)
+            .await
     }
 
     /// Show an issue to the owner. One entry per code; a repeat replaces the old entry.
@@ -2148,7 +2272,7 @@ impl Db {
             "UPDATE whatsapp_settings SET account_health_code = NULL, account_health_text = NULL, \
                  account_health_at = NULL, account_health_resume_requested_at = NULL, \
                  updated_at = now() \
-             WHERE community_id = $1 AND NOT send_paused \
+             WHERE community_id = $1 AND NOT system_paused \
                AND account_health_resume_requested_at IS NOT NULL",
         )
         .bind(community.as_uuid())
@@ -2350,15 +2474,24 @@ impl Db {
         .execute(&mut *tx)
         .await?;
 
-        // Do not silently undo a separate manual pause. Only an automatic account-health
-        // pause is resumed here, and it remains visible until Meta accepts a subsequent send.
+        // Clear only the automatic account-health source. An owner or quality pause stays
+        // active, and the health record remains visible until Meta accepts a subsequent send.
         sqlx::query(
-            "UPDATE whatsapp_settings SET send_paused = FALSE, pause_reason = NULL, \
+            "UPDATE whatsapp_settings SET \
+                 system_paused = FALSE, system_pause_reason = NULL, \
+                 send_paused = owner_paused OR quality_paused, \
+                 pause_reason = CASE \
+                     WHEN owner_paused THEN $3 \
+                     WHEN quality_paused THEN $4 \
+                     ELSE NULL \
+                 END, \
                  account_health_resume_requested_at = $2, updated_at = now() \
              WHERE community_id = $1 AND account_health_code IS NOT NULL",
         )
         .bind(community.as_uuid())
         .bind(now)
+        .bind(OWNER_PAUSE_REASON)
+        .bind(QUALITY_PAUSE_REASON)
         .execute(&mut *tx)
         .await?;
 

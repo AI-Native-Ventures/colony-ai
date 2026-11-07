@@ -3,7 +3,7 @@
 //!
 //! Each test names the guard it depends on; removing that guard makes the test fail.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -2846,6 +2846,179 @@ async fn send_now_is_refused_for_a_batch_that_is_not_approved() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn owner_pause_command_stops_ready_rows_and_never_replays_an_expired_lease() {
+    // GUARD: this sends the exact desktop `sendingPaused` settings payload through the signed
+    // command handler, then exercises the production lease-expiry and sender paths. Removing
+    // the handler field, the durable pause fence, or the sender pause check makes this fail.
+    let fx = fixture().await;
+    let batch_id = approved_batch(&fx, &["+27820000071", "+27820000072"]).await;
+    let rows = batch_rows(&fx, batch_id).await;
+    let lease = Uuid::new_v4();
+    assert!(fx
+        .state
+        .db
+        .whatsapp_claim_message(
+            fx.community(),
+            rows[0].id,
+            lease,
+            base() + Duration::minutes(1),
+            base(),
+        )
+        .await
+        .expect("claim the in-flight row"));
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        json!({"v": 1, "sendingPaused": true}),
+    )
+    .await
+    .expect("the owner pause command is accepted");
+
+    let settings = fx
+        .state
+        .db
+        .whatsapp_ensure_settings(fx.community())
+        .await
+        .expect("settings after owner pause");
+    assert!(settings.send_paused, "the account is durably paused");
+    assert_eq!(settings.pause_reason.as_deref(), Some("owner paused"));
+    assert!(settings.owner_paused, "the owner pause has its own source");
+    let owner_pubkey = fx.owner.public_key().to_bytes();
+    assert_eq!(
+        settings.owner_paused_by.as_deref(),
+        Some(owner_pubkey.as_slice()),
+        "the status identifies who paused sending"
+    );
+    assert!(
+        settings.owner_paused_at.is_some(),
+        "the status identifies when the owner pause started"
+    );
+    let status = connect::status_view(&fx.state, &fx.tenant)
+        .await
+        .expect("owner pause status projection");
+    assert_eq!(status["sendingPaused"], json!(true));
+    assert_eq!(status["pauseReason"], json!("owner paused"));
+    assert_eq!(status["ownerPaused"], json!(true));
+    assert_eq!(status["ownerPausedBy"], json!(hex::encode(owner_pubkey)));
+    assert!(status["ownerPausedAt"].as_str().is_some());
+    let (action, actor, detail): (String, Vec<u8>, Value) = sqlx::query_as(
+        "SELECT action, actor_pubkey, detail FROM audit_log \
+         WHERE community_id = $1 AND object_id = 'whatsapp-sending' \
+         ORDER BY seq DESC LIMIT 1",
+    )
+    .bind(fx.community().as_uuid())
+    .fetch_one(&fx.pool)
+    .await
+    .expect("owner pause audit entry");
+    assert_eq!(action, "whatsapp_sending_pause_changed");
+    assert_eq!(actor, owner_pubkey);
+    assert_eq!(detail["paused"], json!(true));
+    assert_eq!(detail["reason"], json!("owner paused"));
+
+    // The sender can have listed this row before the owner command committed. The production
+    // claim is the final durable fence before Graph, so it must still refuse that race.
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                rows[1].id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(3),
+                base() + Duration::minutes(2),
+            )
+            .await
+            .expect("paused rows cannot be claimed"),
+        "the final claim fence rejects a row queued before the owner pause"
+    );
+
+    let mut last_phone_refresh = HashMap::new();
+    let mut last_template_sync = HashMap::new();
+    sender::tick(
+        &fx.state,
+        base() + Duration::minutes(2),
+        &mut last_phone_refresh,
+        &mut last_template_sync,
+    )
+    .await
+    .expect("sender tick while paused");
+
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "a paused account reaches no Graph send"
+    );
+    let rows = batch_rows(&fx, batch_id).await;
+    assert_eq!(
+        rows[0].state, "unconfirmed",
+        "an expired in-flight lease is never returned to the send queue"
+    );
+    assert_eq!(rows[1].state, "ready", "the untouched row stays queued");
+
+    // The quality reader owns only its own source. Recovery must not erase the owner pause.
+    connect::apply_phone_info(
+        &fx.state,
+        &fx.tenant,
+        &PhoneInfo {
+            display_phone_number: Some("+27 82 000 0000".into()),
+            verified_name: Some("Horizon Labs".into()),
+            quality_rating: Some("RED".into()),
+            status: Some("CONNECTED".into()),
+        },
+    )
+    .await;
+    let quality_red = fx
+        .state
+        .db
+        .whatsapp_ensure_settings(fx.community())
+        .await
+        .expect("settings after quality red");
+    assert!(quality_red.owner_paused);
+    assert!(quality_red.quality_paused);
+    assert_eq!(quality_red.pause_reason.as_deref(), Some("owner paused"));
+
+    connect::apply_phone_info(
+        &fx.state,
+        &fx.tenant,
+        &PhoneInfo {
+            display_phone_number: Some("+27 82 000 0000".into()),
+            verified_name: Some("Horizon Labs".into()),
+            quality_rating: Some("GREEN".into()),
+            status: Some("CONNECTED".into()),
+        },
+    )
+    .await;
+    let quality_recovered = fx
+        .state
+        .db
+        .whatsapp_ensure_settings(fx.community())
+        .await
+        .expect("settings after quality recovery");
+    assert!(quality_recovered.owner_paused);
+    assert!(!quality_recovered.quality_paused);
+    assert!(quality_recovered.send_paused);
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        json!({"v": 1, "sendingPaused": false}),
+    )
+    .await
+    .expect("the owner resume command is accepted");
+    let resumed = fx
+        .state
+        .db
+        .whatsapp_ensure_settings(fx.community())
+        .await
+        .expect("settings after owner resume");
+    assert!(!resumed.owner_paused);
+    assert!(!resumed.quality_paused);
+    assert!(!resumed.send_paused);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn send_now_still_refuses_opted_out_contacts_and_a_stopped_number() {
     // GUARD: the opted_out check in `sender::process_community` runs before the new-chat
     // branch, and `send_paused` (quality RED) stops the whole pass. send_now skips only the
@@ -2864,11 +3037,7 @@ async fn send_now_still_refuses_opted_out_contacts_and_a_stopped_number() {
     // Quality RED stops sending: nothing goes, not even the released rows.
     fx.state
         .db
-        .whatsapp_set_send_paused(
-            fx.community(),
-            true,
-            Some("Quality rating is RED. Sending stopped."),
-        )
+        .whatsapp_set_quality_send_paused(fx.community(), true)
         .await
         .expect("quality stop");
     fx.run_sender(night()).await;
@@ -2876,7 +3045,7 @@ async fn send_now_still_refuses_opted_out_contacts_and_a_stopped_number() {
 
     fx.state
         .db
-        .whatsapp_set_send_paused(fx.community(), false, None)
+        .whatsapp_set_quality_send_paused(fx.community(), false)
         .await
         .expect("quality recovers");
     fx.run_sender(night()).await;

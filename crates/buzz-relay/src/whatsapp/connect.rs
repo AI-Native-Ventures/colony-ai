@@ -9,6 +9,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use buzz_core::TenantContext;
+pub use buzz_db::whatsapp::QUALITY_PAUSE_REASON;
 use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTemplate};
 
 use super::channel;
@@ -19,9 +20,6 @@ use super::policy::{
 };
 use super::secrets::{self, SecretField};
 use crate::state::AppState;
-
-/// Reason stored when sending was stopped by a RED quality rating.
-pub const QUALITY_PAUSE_REASON: &str = "Quality rating is RED. Sending stopped.";
 
 /// What the owner submits to connect a number. Never formatted.
 pub struct ConnectInput {
@@ -296,20 +294,16 @@ pub async fn connect(
         tracing::error!("whatsapp outreach channel setup failed: {error}");
         return Err(ConnectError::Internal(error));
     }
-    for code in [
-        "token_expired",
-        "number_disconnected",
-        "quality_red",
-        "quality_yellow",
-    ] {
+    for code in ["token_expired", "number_disconnected"] {
         if let Err(error) = state.db.whatsapp_clear_issue(community, code).await {
             tracing::warn!("whatsapp issue clear failed: {error}");
         }
     }
-    // A fresh connection starts unpaused; the quality reading below can stop it again.
+    // A fresh connection clears only automatic connection failures. The quality reading below
+    // decides its own pause source, and an owner pause is never cleared here.
     if let Err(error) = state
         .db
-        .whatsapp_set_send_paused(community, false, None)
+        .whatsapp_set_system_send_paused(community, false, None)
         .await
     {
         tracing::warn!("whatsapp unpause after connect failed: {error}");
@@ -484,7 +478,7 @@ pub async fn note_token_expired(state: &Arc<AppState>, tenant: &TenantContext) {
         .await;
     let _ = state
         .db
-        .whatsapp_set_send_paused(community, true, Some(message))
+        .whatsapp_set_system_send_paused(community, true, Some(message))
         .await;
     if !already {
         channel::post_notice(state, tenant, "token_expired", message).await;
@@ -518,12 +512,12 @@ pub struct QualityActions {
 pub fn plan_quality(
     quality: &str,
     phone_status: Option<&str>,
-    pause_reason: Option<&str>,
+    quality_paused: bool,
     current_issue_codes: &[&str],
 ) -> QualityActions {
     let mut actions = QualityActions::default();
     let new = |code: &str| !current_issue_codes.contains(&code);
-    let paused_by_quality = pause_reason == Some(QUALITY_PAUSE_REASON);
+    let paused_by_quality = quality_paused;
     match quality.to_ascii_uppercase().as_str() {
         "RED" => {
             let message = QUALITY_PAUSE_REASON.to_string();
@@ -609,7 +603,7 @@ pub async fn apply_phone_info(state: &Arc<AppState>, tenant: &TenantContext, inf
     let plan = plan_quality(
         &quality,
         info.status.as_deref(),
-        settings.pause_reason.as_deref(),
+        settings.quality_paused,
         &code_refs,
     );
     for (code, message) in &plan.set_issues {
@@ -625,13 +619,13 @@ pub async fn apply_phone_info(state: &Arc<AppState>, tenant: &TenantContext, inf
         Some(true) => {
             let _ = state
                 .db
-                .whatsapp_set_send_paused(community, true, Some(QUALITY_PAUSE_REASON))
+                .whatsapp_set_quality_send_paused(community, true)
                 .await;
         }
         Some(false) => {
             let _ = state
                 .db
-                .whatsapp_set_send_paused(community, false, None)
+                .whatsapp_set_quality_send_paused(community, false)
                 .await;
         }
         None => {}
@@ -729,6 +723,11 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         "healthSummary": { "notDeliveredByMeta": not_delivered_by_meta },
         "sendingPaused": settings.send_paused,
         "pauseReason": settings.pause_reason,
+        // Additive owner-pause data. Older desktop parsers ignore these fields, while newer
+        // ones distinguish the manual control from an automatic quality or system stop.
+        "ownerPaused": settings.owner_paused,
+        "ownerPausedBy": settings.owner_paused_by.map(hex::encode),
+        "ownerPausedAt": settings.owner_paused_at.map(|at| at.to_rfc3339()),
         "issues": settings.issues,
         "outreachChannelId": settings.outreach_channel_id.map(|id| id.to_string()),
         "templatesSyncedAt": settings.templates_synced_at.map(|at| at.to_rfc3339()),
@@ -757,41 +756,26 @@ mod tests {
 
     #[test]
     fn red_quality_stops_sending_and_tells_the_owner_once() {
-        let first = plan_quality("RED", Some("CONNECTED"), None, &[]);
+        let first = plan_quality("RED", Some("CONNECTED"), false, &[]);
         assert_eq!(first.pause, Some(true));
         assert!(first
             .set_issues
             .iter()
             .any(|(code, _)| *code == "quality_red"));
         assert_eq!(first.notify.len(), 1);
-        let repeat = plan_quality(
-            "RED",
-            Some("CONNECTED"),
-            Some(QUALITY_PAUSE_REASON),
-            &["quality_red"],
-        );
+        let repeat = plan_quality("RED", Some("CONNECTED"), true, &["quality_red"]);
         assert_eq!(repeat.pause, Some(true));
         assert!(repeat.notify.is_empty());
     }
 
     #[test]
     fn better_quality_resumes_only_a_pause_quality_caused() {
-        let resumed = plan_quality(
-            "GREEN",
-            Some("CONNECTED"),
-            Some(QUALITY_PAUSE_REASON),
-            &["quality_red"],
-        );
+        let resumed = plan_quality("GREEN", Some("CONNECTED"), true, &["quality_red"]);
         assert_eq!(resumed.pause, Some(false));
         assert!(resumed.clear_issues.contains(&"quality_red"));
-        let manual = plan_quality(
-            "GREEN",
-            Some("CONNECTED"),
-            Some("The WhatsApp access token expired"),
-            &[],
-        );
+        let manual = plan_quality("GREEN", Some("CONNECTED"), false, &[]);
         assert_eq!(manual.pause, None);
-        let yellow = plan_quality("YELLOW", None, None, &[]);
+        let yellow = plan_quality("YELLOW", None, false, &[]);
         assert_eq!(yellow.pause, None);
         assert!(yellow
             .set_issues
@@ -801,13 +785,13 @@ mod tests {
 
     #[test]
     fn a_disconnected_number_is_an_issue() {
-        let plan = plan_quality("GREEN", Some("DISCONNECTED"), None, &[]);
+        let plan = plan_quality("GREEN", Some("DISCONNECTED"), false, &[]);
         assert!(plan
             .set_issues
             .iter()
             .any(|(code, _)| *code == "number_disconnected"));
         assert_eq!(plan.notify.len(), 1);
-        let ok = plan_quality("GREEN", Some("connected"), None, &["number_disconnected"]);
+        let ok = plan_quality("GREEN", Some("connected"), false, &["number_disconnected"]);
         assert!(ok.clear_issues.contains(&"number_disconnected"));
     }
 
