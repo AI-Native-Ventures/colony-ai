@@ -21,7 +21,7 @@ const REAL_RUNNER = {
   referenceWorkspaceDiscoveryStandIn: false,
 } as const;
 
-type StubMode = "pages" | "not-configured" | "gated";
+type StubMode = "pages" | "not-configured" | "monthly-limit" | "gated";
 
 type DiscoveryWindow = Window & {
   __discoveryCalls?: Array<Record<string, unknown>>;
@@ -88,6 +88,17 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
           "Prospect search is not set up on this server yet. The server owner needs to add the Outscraper key.",
         ) as Error & { code?: string };
         error.code = "discovery_not_configured";
+        throw error;
+      }
+      if (stubMode === "monthly-limit") {
+        const error = new Error("untrusted relay text") as Error & {
+          code?: string;
+          resets_at?: string;
+          status?: number;
+        };
+        error.code = "monthly_limit";
+        error.status = 429;
+        error.resets_at = "2026-12-01T00:00:00Z";
         throw error;
       }
       if (request.skip === 0) {
@@ -283,6 +294,23 @@ test.describe("Real discovery run", () => {
       page.getByRole("heading", { name: "Pick up where you left off" }),
     ).toHaveCount(0);
     expect(await searchCalls(page)).toHaveLength(1);
+  });
+
+  test("a monthly prospect limit uses the safe dialog copy and keeps Copy details", async ({
+    page,
+  }) => {
+    await openDiscovery(page, "monthly-limit");
+    const dialog = await approveAndStart(page);
+
+    await expect(dialog.getByRole("alert")).toContainText(
+      "You have used this month’s prospect searches. They reset on 2026-12-01.",
+    );
+    await expect(
+      dialog.getByTestId("discovery-failure-copy-details"),
+    ).toHaveText("Copy details");
+    await expect(dialog.getByRole("alert")).not.toContainText(
+      "The relay returned HTTP 429",
+    );
   });
 
   test("pause stops at the saved results and resume carries on from the same place", async ({

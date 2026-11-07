@@ -7,7 +7,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { RUN_LABELS, formatBudget } from "./CampaignHelpers";
+import { RUN_LABELS } from "./CampaignHelpers";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -15,6 +15,7 @@ import {
   NoticeGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import type { DiscoveryCampaign, DiscoveryPageLog } from "./discoveryProvider";
 
 import "./colony3-discovery.css";
@@ -111,7 +112,7 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
               <span>
                 {entry.placesReturned}{" "}
                 {entry.placesReturned === 1 ? "place" : "places"} returned ·{" "}
-                {formatBudget(entry.costUsd)}
+                {formatCustomerPrice(entry.costUsd)}
               </span>
             </div>
             <dl>
@@ -264,7 +265,7 @@ export function CampaignDialog({
               </dd>
               <dt>Budget</dt>
               <dd>
-                Up to {formatBudget(campaign.budgetUsd)}
+                Up to {formatCustomerPrice(campaign.budgetUsd)}
                 {campaign.simulated ? <span> · Example</span> : null}
               </dd>
             </dl>

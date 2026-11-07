@@ -84,10 +84,6 @@ export function fitLabel(
   return score === null || score === undefined ? "Not scored" : String(score);
 }
 
-export function formatBudget(budgetUsd: number): string {
-  return `$${budgetUsd.toFixed(2)}`;
-}
-
 function csvCell(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }

@@ -1,6 +1,6 @@
 import { Pause, Play, RotateCcw } from "lucide-react";
 
-import { RUN_LABELS, formatBudget, runDescription } from "./CampaignHelpers";
+import { RUN_LABELS, runDescription } from "./CampaignHelpers";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -11,6 +11,7 @@ import {
   SearchGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import type { DiscoveryLocation } from "./discoveryLocation";
 import type { DiscoveryCampaign } from "./discoveryProvider";
 
@@ -189,8 +190,8 @@ export function CampaignRunPanel({
           </span>
           <span>{campaign.count} prospects</span>
           <span>
-            Search cost · {formatBudget(campaign.spentUsd ?? 0)} of{" "}
-            {formatBudget(campaign.budgetUsd)} approved
+            Search cost · {formatCustomerPrice(campaign.spentUsd ?? 0)} of{" "}
+            {formatCustomerPrice(campaign.budgetUsd)} approved
           </span>
           <button
             className="c3d-text-link"

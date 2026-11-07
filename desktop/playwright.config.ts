@@ -375,6 +375,7 @@ export default defineConfig({
       testMatch: [
         "**/colony3-discovery-logo-prospect-proof.spec.ts",
         "**/colony3-campaigns-page.spec.ts",
+        "**/colony3-discovery-continue.spec.ts",
         "**/colony3-agents-simple.spec.ts",
         "**/colony3-discovery-v4.spec.ts",
         "**/colony3-discovery-tags.spec.ts",
