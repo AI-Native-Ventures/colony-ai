@@ -12,6 +12,8 @@ export const KIND_PROPOSAL_VERSION = 47003;
 export const KIND_PROPOSAL_ACCEPTANCE = 47004;
 export const KIND_PROPOSAL_CONVERSION_RECEIPT = 47005;
 export const KIND_PROSPECT_ACTION = 47034;
+export const KIND_QUALIFY_OBSERVATION_HEAD = 30681;
+export const KIND_QUALIFY_OBSERVATION_ACTION = 47070;
 export const KIND_OUTREACH_LIST_HEAD = 30684;
 export const KIND_OUTREACH_LIST_ACTION = 47075;
 export const KIND_DISCOVERY_CAMPAIGN_HEAD = 30685;
@@ -22,6 +24,7 @@ export const BUSINESS_SCOPE_KINDS = [
   KIND_SERVICE_HEAD,
   KIND_PROPOSAL_HEAD,
   KIND_PROSPECT_HEAD,
+  KIND_QUALIFY_OBSERVATION_HEAD,
   KIND_OUTREACH_LIST_HEAD,
   KIND_DISCOVERY_CAMPAIGN_HEAD,
 ] as const;
@@ -34,6 +37,8 @@ export const BUSINESS_RECORD_QUERY_KINDS = [
   KIND_PROPOSAL_VERSION,
   KIND_PROPOSAL_ACCEPTANCE,
   KIND_PROPOSAL_CONVERSION_RECEIPT,
+  KIND_QUALIFY_OBSERVATION_HEAD,
+  KIND_QUALIFY_OBSERVATION_ACTION,
   KIND_OUTREACH_LIST_HEAD,
   KIND_OUTREACH_LIST_ACTION,
   KIND_DISCOVERY_CAMPAIGN_HEAD,
@@ -50,6 +55,56 @@ export type ProspectStage =
 export type ProspectQualification = "unreviewed" | "qualified" | "not_fit";
 export type ProspectActivityKind = "note" | "contact";
 export type ProspectOrigin = "manual" | "discovery";
+
+export const QUALIFY_SIGNAL_CODES = [
+  "NO_WEBSITE",
+  "SITE_DOWN",
+  "NO_HTTPS",
+  "NOT_MOBILE_FRIENDLY",
+  "NO_ONLINE_BOOKING",
+  "NO_WHATSAPP_LINK",
+  "HAS_WHATSAPP_LINK",
+  "RUNNING_ADS",
+  "STALE_SITE",
+  "SITE_BUILDER",
+  "INCUMBENT_BUILDER",
+  "SOCIAL_LINKS",
+  "PUBLIC_EMAIL",
+] as const;
+
+export type QualifySignal = (typeof QUALIFY_SIGNAL_CODES)[number];
+export type QualifyObservationState = "observed" | "not_checked";
+
+export type QualifyObservation = {
+  signal: QualifySignal;
+  state: QualifyObservationState;
+  value: string | number | null;
+  confidence: number;
+  evidenceUrls: string[];
+  observedAt: number;
+  runId: string;
+  notCheckedReason: string | null;
+  personalData: boolean;
+};
+
+export type QualifyObservationHead = {
+  schemaVersion: 1;
+  leadId: string;
+  runId: string;
+  checkedSignals: QualifySignal[];
+  observations: QualifyObservation[];
+  checkedAt: number;
+  sourceActionEventId: string;
+};
+
+export type QualifyObservationAction = {
+  schemaVersion: 1;
+  leadId: string;
+  runId: string;
+  expectedHeadEventId?: string;
+  checkedSignals: QualifySignal[];
+  observations: QualifyObservation[];
+};
 
 export type OutreachListSourceKind = "manual" | "campaign" | "agent";
 
@@ -154,6 +209,14 @@ export type ProspectDiscoveryTag = {
   picked: boolean;
 };
 
+/** Maps fields kept with the prospect for deterministic qualification filters. */
+export type ProspectMapsMetadata = {
+  ratingHundredths: number | null;
+  reviewCount: number | null;
+  category: string | null;
+  city: string | null;
+};
+
 export type ProspectActivity = {
   activityId: string;
   activityKind: ProspectActivityKind;
@@ -174,6 +237,8 @@ export type ProspectRecord = {
   origin?: ProspectOrigin | null;
   /** Tag evidence matched from the provider's returned listing fields. */
   discoveryTags?: ProspectDiscoveryTag[];
+  /** Optional Maps snapshot. Older prospect heads do not include this field. */
+  maps?: ProspectMapsMetadata | null;
   potentialMonthlyValueMinor?: number | null;
   website: string | null;
   /** Optional media carried by newer discovery providers or imported records. */

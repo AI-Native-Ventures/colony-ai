@@ -1241,6 +1241,7 @@ mod tests {
                     fit_score: None,
                     origin: None,
                     discovery_tags: Vec::new(),
+                    maps: None,
                     potential_monthly_value_minor: None,
                     website: None,
                     contact_name: None,

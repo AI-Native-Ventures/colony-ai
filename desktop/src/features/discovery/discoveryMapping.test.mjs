@@ -8,6 +8,7 @@ import {
   httpsUrl,
   leadNameKey,
   locationSummary,
+  mapsMetadata,
   mapPlaceToProspect,
   placeKey,
   placeProspectId,
@@ -118,6 +119,24 @@ test("location prefers city and state, then the address", () => {
   assert.equal(locationSummary(place({ city: null, address: null })), null);
 });
 
+test("Maps metadata retains bounded targeting values", () => {
+  assert.deepEqual(mapsMetadata(place()), {
+    ratingHundredths: 460,
+    reviewCount: 120,
+    category: "Home goods store",
+    city: "Johannesburg",
+  });
+  assert.deepEqual(
+    mapsMetadata(place({ rating: 7, reviews: -1, category: " ", city: null })),
+    {
+      ratingHundredths: null,
+      reviewCount: null,
+      category: null,
+      city: null,
+    },
+  );
+});
+
 test("external ids tie a record to its place and campaign within 128 bytes", () => {
   assert.deepEqual(externalIdsFor(place(), "camp-1"), [
     "outscraper:ChIJabc",
@@ -142,6 +161,12 @@ test("a complete place maps to a valid unreviewed prospect", () => {
     fitScore: 100,
     origin: "discovery",
     discoveryTags: [],
+    maps: {
+      ratingHundredths: 460,
+      reviewCount: 120,
+      category: "Home goods store",
+      city: "Johannesburg",
+    },
     potentialMonthlyValueMinor: null,
     website: "https://olive.example/",
     contactName: null,

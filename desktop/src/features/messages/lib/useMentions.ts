@@ -385,6 +385,7 @@ export function useMentions(
             ownerProfiles: ownerProfilesQuery.data?.profiles,
             isAgent: candidate.isAgent,
             ownerPubkey: candidate.ownerPubkey,
+            preferUnqualifiedDuplicate: candidate.isManagedAgent === true,
           })),
       ),
     [
