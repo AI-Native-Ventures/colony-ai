@@ -8,11 +8,11 @@ Audience: Signal Story owner, Colony product team, South African legal counsel
 
 This memo records primary and official-source research for a proposed Colony email outreach channel. It is not legal advice, a legal opinion, or permission to send a campaign. It does not replace a South African lawyer reviewing the sender, recipients, copy, source of addresses, provider contracts, National Opt-Out Registry process, and operating policy.
 
-The safe product position is stricter than the minimum argument a marketer might make: do not assume that a publicly published address, a generic role inbox, a business recipient, a lack of an opt-out, or a low daily volume permits a cold sales email or WhatsApp message. Treat both channels as electronic direct marketing until counsel approves a narrower conclusion.
+The cautious interpretation below is research, not product logic. Do not assume that a publicly published address, a generic role inbox, a business recipient, a lack of an opt-out, or a low daily volume permits a cold sales email or WhatsApp message. Legal advice is still recommended before broad cold B2B email or WhatsApp. Colony does not run a per-recipient legal pass, hold, or block.
 
 ## Short answer for the owner
 
-1. **Do not launch cold sales email to South African prospects as a default.** POPIA section 69 prohibits direct marketing through electronic communication unless there is consent or the customer route applies. It permits one approach to request consent where consent has not previously been withheld. [L1]
+1. **Seek legal advice before broad cold sales email to South African prospects.** POPIA section 69 prohibits direct marketing through electronic communication unless there is consent or the customer route applies. It permits one approach to request consent where consent has not previously been withheld. Colony does not turn this research into a per-recipient legal pass, hold, or block. [L1]
 2. **Public does not mean freely marketable.** A publicly displayed address can support collection from another source under the Information Regulator's discussion of POPIA section 12, but it does not remove the section 69 direct-marketing requirement. [L2]
 3. **Treat B2B conservatively.** POPIA covers identifiable juristic persons where applicable, and section 69 refers to a data subject with "his, her or its" consent. No official exclusion for generic business email was found. A lawyer must decide the exact application to a role inbox and to Signal Story's chosen B2B model. [L1]
 4. **Every marketing message needs a real stop route.** POPIA requires sender identity and a way to ask that messages cease. ECTA requires an unsubscribe option and, on request, details of the source of the consumer's personal information; sending after someone says it is unwelcome is an offence under ECTA section 45. [L1] [L3]
@@ -33,19 +33,13 @@ Section 69 says that processing personal information for direct marketing throug
 
 The Information Regulator's direct-marketing guidance repeats this structure. It says the consent request should use Form 4 or a substantially similar form, be specific about what will be marketed and the communication method, and be available free of charge. It also says the responsible party bears the burden of proving consent. [L2]
 
-**Product consequence:** version 1 should support only:
+**Product boundary:** version 1 preserves address provenance, sender identity, source evidence, owner approval, and durable suppression controls. It does not select a permitted legal route, store a legal-assessment result, or block a particular proposal because a per-recipient legal conclusion is unavailable. Counsel can advise on the one-time consent-request route, existing-customer facts, and any other proposed South African direct-marketing route outside the product.
 
-- A one-time consent-request route reviewed against Form 4 or a lawyer-approved substantially similar version.
-- The existing-customer route with stored proof of sale-context collection, similar-service scope, and objection opportunity.
-- No other South African outbound direct-marketing route until counsel approves it.
+### Research advisory, not a product gate
 
-### Per-recipient legal question policy
+This memo is counsel-facing research, not a Colony feature that asks whether a specific message may legally be sent to a specific address. Colony does not run a per-recipient legal pass, hold, or block and does not store a legal-assessment result. It also does not let a model make a legal conclusion.
 
-For each proposed South African marketing email, the product should ask a deliberately narrow operational question: "Does the evidence on this record support sending this exact message to this exact address now under the conservative policy?" This is a policy gate, not legal advice and not a substitute for counsel's decision.
-
-The record must separately show the address source, whether it is named or generic, the recipient and jurisdiction evidence, the message type, recorded consent if any, existing-customer sale-context facts if any, prior refusal or suppression, registry result if applicable, and the policy version. It may return a conservative allowed route only for documented consent, a supported existing-customer route, or the one-time consent-request route. A public address, a low sending volume, and a missing opt-out record are never a route by themselves.
-
-If any required fact is unavailable, contradictory, stale, or outside the policy, the result is `legal_hold`: no approval, schedule, or send. The item goes to the owner with the missing fact and, where appropriate, the lawyer question to resolve. Neither an agent nor an owner-click may convert `legal_hold` into a send without a new documented counsel-approved policy or the missing evidence. The model must not make this determination.
+For an otherwise eligible proposal, Colony may show a plain advisory note when the address source or recipient type is high risk. The note says that legal advice is still recommended before broad cold B2B email or WhatsApp. It is not a legal opinion, never states that a send is lawful or unlawful, and cannot block approval, scheduling, or sending. Actual operational controls such as do-not-contact, opt-out, hard-bounce, sender-readiness, mailbox-state, and deterministic content checks remain independent of this advisory.
 
 ### POPIA reaches natural and, where applicable, juristic persons
 
@@ -53,7 +47,7 @@ POPIA defines a person as a natural or juristic person. Its definition of person
 
 Section 69 uses "data subject" rather than a natural-person-only phrase and speaks of "his, her or its" consent. The official Information Regulator guidance uses the same data-subject framing for electronic direct marketing. [L1] [L2]
 
-**Product consequence:** do not make "B2B" or "role address" an automatic exemption. A named mailbox such as name@business.co.za is plainly high-risk personal information. A generic inbox such as info@business.co.za may raise a harder factual question, but the product should retain the same provenance, suppression, consent, source-disclosure, and owner-approval controls until counsel says otherwise.
+**Product consequence:** do not make "B2B" or "role address" an automatic exemption. A named mailbox such as name@business.co.za is plainly high-risk personal information. A generic inbox such as info@business.co.za may raise a harder factual question. The product should retain the same provenance, suppression, source-disclosure, and owner-approval controls, and may show an advisory note for the high-risk recipient type without making a legal determination.
 
 ### A public website can support collection, not a free pass to market
 
@@ -91,13 +85,13 @@ The National Consumer Commission's official April 2026 statement says amended Re
 
 The same release is official government material, but the available detailed "Guidelines for Compliance with Opt-Out Registry Regulations" Gazette document is explicitly labelled **DRAFT**. [L4] [L5]
 
-**Product consequence:** do not claim that Colony has registry compliance until the owner and counsel confirm the current rules, access method, scope, fee, cleanse artifact, and effective dates. The product should still model registry_check as a hard pre-send prerequisite for any consumer-directed campaign as soon as the owner can lawfully obtain the result.
+**Product consequence:** do not claim that Colony has registry compliance until the owner and counsel confirm the current rules, access method, scope, fee, cleanse artifact, and effective dates. No registry-based legal pass, hold, or block is designed here. A later consumer-campaign proposal can define its operational requirements after the owner and counsel confirm the then-current rules.
 
 ### WhatsApp should be treated as electronic direct marketing
 
 POPIA's electronic-communication definition is broad. The Information Regulator's guidance gives email, SMS, telephone, push notifications, and direct messaging in Instagram or LinkedIn as examples. It does not name WhatsApp in the source reviewed here. Treating a WhatsApp business outreach message as electronic direct marketing is therefore a cautious inference from the statute and guidance, not a quoted WhatsApp-specific ruling. [L1] [L2]
 
-**Product consequence:** use the same legal basis, source, suppression, identity, and stop-route requirements for WhatsApp outreach. Do not treat a WhatsApp template approval as recipient consent.
+**Product consequence:** use the same conservative source, suppression, identity, and stop-route controls for WhatsApp outreach. Do not treat a WhatsApp template approval as recipient consent, and seek legal advice before broad cold B2B WhatsApp outreach.
 
 ## Existing Colony WhatsApp posture, compared
 
@@ -121,7 +115,7 @@ The recommended email design reuses those safety patterns and strengthens them w
 
 The official text and guidance support a conservative conclusion: POPIA can cover juristic-person information and section 69 is not written as a natural-person-only rule. No official source reviewed here creates a broad "B2B cold-email exception." [L1] [L2]
 
-There may be fact-specific arguments about whether a particular generic inbox identifies a data subject, whether a recipient is a consumer for CPA or ECTA purposes, whether the communication is actually direct marketing, and how the rules apply to a juristic recipient. This memo does not resolve those arguments. A lawyer should provide a written answer before Signal Story uses any direct sales route to a role inbox without recorded consent.
+There may be fact-specific arguments about whether a particular generic inbox identifies a data subject, whether a recipient is a consumer for CPA or ECTA purposes, whether the communication is actually direct marketing, and how the rules apply to a juristic recipient. This memo does not resolve those arguments. The owner should seek legal advice before Signal Story uses broad cold direct-sales outreach to a role inbox without recorded consent.
 
 ### The exact form and content of a one-time consent request
 
@@ -144,16 +138,16 @@ Google and Microsoft can process email content and account data outside South Af
 - Whether Signal Story's exact corporate structure, client arrangements, and chosen domains make it the responsible party, an operator, or both for a planned campaign.
 - Whether a provider's complaint, bounce, or read signal is complete enough to make a legal or deliverability claim.
 
-## Controls the product should enforce before any legal conclusion is stretched
+## Operational controls retained separately from legal advice
 
 1. Restrict address intake to an evidence-backed PUBLIC_EMAIL observation or an owner-entered address with source.
-2. Store source, legal basis, consent evidence, customer-sale context, sender identity, message revision, approval, and suppression history with each proposed send.
+2. Store source, sender identity, message revision, approval, and suppression history with each proposed send. Do not store a per-recipient legal-assessment result.
 3. Use company-wide address and domain do-not-contact records that no agent can override.
-4. Enforce one consent request only unless counsel says a different route is lawful.
+4. Bound any consent-request campaign to one message and stop it after a refusal, opt-out, complaint, or other deterministic campaign stop.
 5. Require a clear, visible unsubscribe and a mechanism to identify the source on request.
 6. Treat a direct reply, List-Unsubscribe action, provider complaint, known hard bounce, registry result, or human stop request as a reason to stop future campaign mail.
-7. Keep a customer route distinct from a prospect route. Do not label a prospect as a customer to pass a check.
-8. Do not automate legal-basis decisions or consent interpretation with an AI model.
+7. Keep customer and prospect evidence distinct. Do not label a prospect as a customer to justify a send.
+8. Do not ask an AI model for legal advice or a legal conclusion. Any AI drafting call remains no-tools and treats external text as data.
 
 ## Questions for the owner to take to a South African lawyer
 
@@ -169,7 +163,7 @@ Google and Microsoft can process email content and account data outside South Af
 10. Does the existing WhatsApp consent, source, stop, and approval posture meet the lawyer's recommendation, or must it change before more outreach?
 11. What retention period is justified for source evidence, opt-out evidence, bounced addresses, message bodies, and audit records?
 12. What response and escalation time is required after a recipient asks to stop, requests the source of their data, requests access or deletion, or lodges a complaint?
-13. Is the proposed per-recipient `legal_hold` fallback sufficiently cautious for each intended audience, and what evidence or review can move a record from hold to a permitted route?
+13. What plain-language advisory should the owner see for a high-risk address source or recipient type without presenting legal advice or blocking a proposal?
 
 ## Sources checked 7 November 2026
 

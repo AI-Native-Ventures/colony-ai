@@ -6,7 +6,7 @@ Scope: research and design only. This document does not authorize provider acces
 
 ## Decision in one paragraph
 
-Add email as a second source in the existing Outreach desk, but keep the connected mailbox and every provider credential on the owner's desktop. Start with a Gmail API connector for a Google Workspace mailbox on a separate sending domain. Design the connector interface so Microsoft 365 Graph can be added next. Do not ship generic SMTP plus IMAP in the first release. Every prospective email begins as a proposed draft, passes a deterministic pre-send check, and needs owner approval. A company-wide do-not-contact list, direct unsubscribe endpoint, address provenance, sender-readiness verdict, and evidence-backed copy are mandatory before any send path exists. Cold sending starts only after a multi-week no-cold-send period, follows an automatic bounded ramp, and stops on a bounce kill switch. Autopilot is off by default and is not part of the first sending release.
+Add email as a second source in the existing Outreach desk, but keep the connected mailbox and every provider credential on the owner's desktop. Start with a Gmail API connector for a Google Workspace mailbox on a separate sending domain. Design the connector interface so Microsoft 365 Graph can be added next. Do not ship generic SMTP plus IMAP in the first release. Every prospective email begins as a proposed draft, passes a deterministic pre-send check, and needs owner approval. A company-wide do-not-contact list, direct unsubscribe endpoint, address provenance, sender-readiness verdict, and evidence-backed copy are mandatory before any send path exists. High-risk address sources and recipient types show a non-blocking South African outreach advisory, not a legal pass, hold, or block. Cold sending starts only after a multi-week no-cold-send period, follows an automatic bounded ramp, and stops on a bounce kill switch. Autopilot is off by default and is not part of the first sending release.
 
 This design follows Colony's channel-first model and its rule that a message is work visible to humans, not a hidden agent action. The existing [WhatsApp outreach contract](../../whatsapp-outreach.md) supplies the interaction pattern: a proposal becomes a pending item in Needs you, the owner may edit, approve, or reject it, and a durable outcome appears in Chats. The email design deliberately does not copy WhatsApp's relay-held provider-secret model because OAuth credentials for an owner's mailbox should remain on that owner's desktop.
 
@@ -22,7 +22,7 @@ This design follows Colony's channel-first model and its rule that a message is 
 - A bounded first-contact ramp, short per-recipient follow-up sequence, recipient-local send window, and sender-wide bounce kill switch.
 - An Email source in the existing Outreach desk's Needs you, Pipeline, and Chats views.
 - Deterministic pre-send checks with no model call.
-- A legal-safe product posture for South African outreach while the owner obtains counsel.
+- A non-blocking South African outreach advisory for high-risk address sources or recipient types, alongside counsel-facing research.
 
 ### Not in the first release
 
@@ -30,7 +30,9 @@ This design follows Colony's channel-first model and its rule that a message is 
 - Buying lists, scraping directories, or importing third-party enrichment data.
 - Automated mailbox rules, automatic replies, automatic consent decisions, or a high-volume campaign tool.
 - A Colony-built warm-up service, open-tracking pixels, click tracking, or deliverability guarantees.
-- A LinkedIn-style channel, social-network direct messages, browser automation, or collection of outreach data from social networks.
+- A plugin system or control surface for coding agents.
+- A LinkedIn-style channel. It is last, off by default, and out of this design, along with social-network direct messages, browser automation, and collection of outreach data from social networks.
+- A per-recipient legal pass, hold, block, legal-assessment record, or automatic legal conclusion.
 - SMTP recipient probes, VRFY probes, RCPT TO probes, or any attempt to infer mailbox existence by contacting a recipient server.
 - Attachments, images, tracking redirects, mass campaigns, and list imports.
 - A claim that delivery, inbox placement, or a provider complaint feed has been verified merely because an API accepted a message.
@@ -43,7 +45,7 @@ This design follows Colony's channel-first model and its rule that a message is 
 4. **Approval is the default.** A Scout or another agent may create a proposal, never approve it, send it, turn on autopilot, or reconnect a mailbox.
 5. **Opt-out wins everywhere.** Once a suppression commits, no new email send claim for that address may be granted in the company. A message already in the tiny desktop-to-provider race window is recorded as such and is never silently retried.
 6. **New protocol data is additive.** A relay and desktop one or two versions apart must continue to parse existing Outreach and Chat data. An old desktop ignores unknown email kinds and optional email fields rather than treating them as an error.
-7. **No invented results.** Provider acceptance is not delivery. A reply classification is not a legal conclusion. A published address is not consent. A guessed address is not verified.
+7. **No invented results.** Provider acceptance is not delivery. A reply classification is not a legal conclusion. A published address is not consent. A guessed address is not verified. An outreach advisory is not legal advice or permission to send.
 8. **Readiness is an explicit gate.** A sender is either READY or NOT READY. The product never turns an unknown, stale, or failed readiness input into a pass.
 9. **Cold outreach is not a reply.** Cold first contacts and follow-ups obey the warm-up and ramp policy. A genuine reply gets priority over that cold quota, but never over suppression, a confirmed hard bounce, a disconnected sender, or the all-sending bounce kill switch.
 
@@ -160,7 +162,7 @@ The readiness panel shows only **READY** or **NOT READY**. READY means that ever
 | Suppression endpoint | Health result and opaque-token fixture result | Restore endpoint health before cold sending |
 | Mailbox state | Completed inbound baseline, durable cursor, and no unresolved sync gap | Finish sync or resolve the gap before any provider call |
 
-The DNS, age, blocklist, and seed checks are configuration evidence, not proof that a recipient will receive mail. The owner may choose a later read-only blocklist or warm-up-status provider, but it supplies only a dated status signal. It never receives Colony write access, never sends mail through Colony, and never overrides a failed DNS, legal, suppression, or bounce check. Gmail's published guidance requires authentication and TLS for all senders to personal Gmail, with additional DMARC, alignment, and one-click unsubscribe requirements at bulk scale. [S1]
+The DNS, age, blocklist, and seed checks are configuration evidence, not proof that a recipient will receive mail. The owner may choose a later read-only blocklist or warm-up-status provider, but it supplies only a dated status signal. It never receives Colony write access, never sends mail through Colony, and never overrides a failed DNS, suppression, or bounce check. Gmail's published guidance requires authentication and TLS for all senders to personal Gmail, with additional DMARC, alignment, and one-click unsubscribe requirements at bulk scale. [S1]
 
 ### Warm-up and automatic cold-email ramp
 
@@ -210,13 +212,13 @@ Discovery first checks the company do-not-contact list against the business's kn
 
 For an eligible business, the only named people who may become a candidate are an owner or manager explicitly presented as current on the business's own site. The evidence must bind the name, present role, and business to the same first-party page or clearly linked official page. The system rejects a person found only in a testimonial, review, past-team page, news item about a former employee, social profile, directory, or a look-alike job title. It never turns a guessed role or a historical mention into a current decision-maker.
 
-The general-inbox fallback is deliberately narrow: `info@`, `owner@`, or another generic address is eligible only when the business itself prints it on an official page and Discovery found no supported current owner or manager. It remains subject to the same legal, readiness, fit, suppression, and approval gates. A bot challenge is recorded as `challenged`, not as a down website or a failed business. The job stops at that state and is not retried automatically.
+The general-inbox fallback is deliberately narrow: `info@`, `owner@`, or another generic address is eligible only when the business itself prints it on an official page and Discovery found no supported current owner or manager. It remains subject to the same readiness, fit, suppression, and approval gates. Its recipient type may show the non-blocking South African outreach advisory on the approval card. A bot challenge is recorded as `challenged`, not as a down website or a failed business. The job stops at that state and is not retried automatically.
 
 ### Fit gate and contact register
 
 Before a proposal exists, a deterministic fit assessment produces an evidence-backed score from 0 to 100. The recommended initial minimum is 60. The owner may choose a higher threshold by company or campaign, but an agent cannot lower it for an individual prospect. A score below the threshold creates no draft and no queued send.
 
-The Outreach register must show both contacted and not-contacted businesses. Each not-contacted row has a durable, plain-language reason such as `below_fit_threshold`, `skipped_do_not_contact`, `no_supported_current_contact`, `challenged`, `address_not_eligible`, `legal_hold`, `sender_not_ready`, or `owner_rejected`. It also preserves the score, score-policy version, available evidence identifiers, and the time of the decision. This makes a skipped prospect explainable without pretending that a weak fit is a technical failure.
+The Outreach register must show both contacted and not-contacted businesses. Each not-contacted row has a durable, plain-language reason such as `below_fit_threshold`, `skipped_do_not_contact`, `no_supported_current_contact`, `challenged`, `address_not_eligible`, `sender_not_ready`, or `owner_rejected`. It also preserves the score, score-policy version, available evidence identifiers, and the time of the decision. This makes a skipped prospect explainable without pretending that a weak fit is a technical failure.
 
 ### Company do-not-contact list
 
@@ -240,9 +242,9 @@ Each address has one status:
 
 | Status | Meaning | Send eligibility |
 | --- | --- | --- |
-| published_role | A role inbox visibly published by the business | Eligible only after legal-basis, readiness, preflight, and approval checks |
-| published_personal | A named or person-identifying address visibly published by the business | Requires the conservative consent path and owner approval |
-| owner_added | Owner supplied it with source note | Requires the conservative consent path and owner approval |
+| published_role | A role inbox visibly published by the business | Eligible only after readiness, preflight, and approval checks; the recipient type may show the advisory note |
+| published_personal | A named or person-identifying address visibly published by the business | Eligible only after readiness, preflight, and owner approval; the recipient type shows the advisory note |
+| owner_added | Owner supplied it with source note | Eligible only after readiness, preflight, and owner approval; the source shows the advisory note |
 | guessed | Constructed from a name or pattern, not published | Not eligible by default |
 | syntax_invalid | Fails deterministic syntax or domain checks | Never eligible |
 | domain_unresolved | Domain has no usable mail route at last check | Not eligible until rechecked |
@@ -281,7 +283,7 @@ Only a fresh observation within 30 days and at the confidence threshold set by t
 
 ### External text is data, never authority
 
-Website text, bot-challenge pages, contact forms, inbound email, and attachments are untrusted data. They can supply an evidence capture after deterministic validation, but cannot alter a policy, request a send, grant a legal basis, change a cap, choose a recipient, or invoke a tool. A model-assisted extraction or drafting call receives this material as clearly delimited data and has an empty tool list. It cannot browse, send mail, change files, call a provider, or take any side effect.
+Website text, bot-challenge pages, contact forms, inbound email, and attachments are untrusted data. They can supply an evidence capture after deterministic validation, but cannot alter a policy, request a send, grant permission, change a cap, choose a recipient, or invoke a tool. A model-assisted extraction or drafting call receives this material as clearly delimited data and has an empty tool list. It cannot browse, send mail, change files, call a provider, or take any side effect.
 
 The product records an untrusted-content flag whenever external text contains a directive, credential request, instruction-disclosure request, or policy-changing request. The flag sends the item to Needs you. A bot challenge is one such flag: it is visible as `challenged` and stops the discovery attempt rather than being treated as a broken site or retried.
 
@@ -302,9 +304,9 @@ A no-AI checker cannot truthfully infer whether arbitrary free prose contains an
 
 An agent may propose the blocks. The owner may edit them, but an edit that introduces a fact must become a ClaimBlock with evidence. If the UI cannot represent the edit as typed blocks, it becomes a blocked raw_text_edit rather than silently passing.
 
-### Required checks
+### Required checks and advisory
 
-| Check | Blocking rule |
+| Check | Rule |
 | --- | --- |
 | Merge fields | No unresolved, unknown, empty, or stale merge field |
 | Claims | Every ClaimBlock has at least one fresh evidence snapshot and the displayed text matches its allowed wording |
@@ -313,7 +315,7 @@ An agent may propose the blocks. The owner may edit them, but an edit that intro
 | Length | Maximum 180 words and 1,200 characters for a first contact |
 | Links | A cold-mail link must be HTTPS and on an owner-verified sender domain. No tracking redirects, URL shorteners, or recipient-site links. A non-owner domain is an autopilot hold; a human may approve an explicitly labelled external-link reply after review |
 | Address | Status is eligible, source and timestamp exist, syntax and domain route are current, and a guessed address has an individual owner acknowledgement if that future feature exists |
-| Legal basis | A per-recipient legal assessment is present and has a sending-permitted result for this route |
+| South African outreach advisory | When an otherwise eligible address source or recipient type is marked high risk, show a plain note that legal advice is recommended before broad cold B2B email or WhatsApp. This note never changes approval, scheduling, or send eligibility |
 | Suppression | No address or business-domain do-not-contact record, no campaign stop, and no relevant registry block record |
 | Readiness | Sender identity is READY, its connection is connected, mailbox baseline is complete, and no sender-wide pause or kill switch applies |
 | Cap and window | A durable per-mailbox quota slot, sequence-step allowance, and valid recipient-time-zone window exist |
@@ -321,17 +323,13 @@ An agent may propose the blocks. The owner may edit them, but an edit that intro
 | Unsubscribe | Visible footer link, List-Unsubscribe, and List-Unsubscribe-Post headers are generated for campaign mail |
 | AI transparency | A message that answers whether Scout is AI uses the approved truthful disclosure block and never claims to be human |
 
-The legal-basis check answers the per-recipient South African question "may this specific message be sent to this address now?" It creates an immutable assessment with recipient, address provenance, jurisdiction evidence, purpose, proposed message type, consent or customer evidence, registry evidence, policy version, result, and reviewer where relevant. Conservative outcomes are:
+### South African outreach advisory
 
-| Result | Meaning | Product action |
-| --- | --- | --- |
-| `permitted_recorded_consent` | Specific recorded consent supports this sender, purpose, and channel | May continue to the other gates |
-| `permitted_existing_customer` | Similar-service route and sale-context evidence are present | May continue to the other gates |
-| `permitted_one_time_consent_request` | No prior refusal is recorded and the reviewed consent-request route applies | One attempt only, then no follow-up unless consent is recorded |
-| `legal_hold` | Jurisdiction, recipient type, address source, consent facts, registry state, or policy mapping cannot be established | Do not approve, schedule, or send; create a Needs you legal item |
-| `legal_blocked` | A refusal, incompatible purpose, missing required evidence, or explicit policy prohibition exists | Cancel any queued campaign row and retain the reason |
+Colony does not build or run a per-recipient South African legal pass, hold, or block. It does not persist a legal-assessment record, infer or certify a legal basis, or turn an unanswered legal question into a preflight failure. The accompanying law memo remains research for the owner and counsel. Legal advice is still recommended before broad cold B2B email or WhatsApp.
 
-Any direct sales email outside those conservative routes stays `legal_hold` until the owner attaches a lawyer-approved policy. The check may say "unable to verify" but may never convert that state into a pass, and a manual approval cannot turn an unresolved legal hold into an outbound send.
+For an otherwise eligible proposal, the approval card shows a plain advisory note when either the address source is owner-entered or lacks a current official-page observation, or the recipient is a named or person-identifying address or a generic B2B role inbox. The note states that the source or recipient type is high risk and that legal advice is recommended before broad cold B2B email or WhatsApp. It does not state that a send is lawful or unlawful, block a button, alter a proposal state, or prevent an owner from approving, scheduling, or sending the proposal.
+
+This advisory is distinct from the actual operational controls. Suppression, an opt-out, a hard bounce, a sender NOT READY verdict, an incomplete mailbox baseline, a kill switch, or another deterministic preflight failure still prevents sending. Owner approval is a workflow decision, not legal clearance.
 
 ### AI subscription headroom
 
@@ -363,12 +361,12 @@ Terminal exceptions are rejected, cancelled, failed_pre_acceptance, outcome_unkn
 
 The existing Needs you tab gains an Email section with:
 
-- Draft subject, plain-text preview, recipient business, address status, legal-basis label, and exact evidence chips.
+- Draft subject, plain-text preview, recipient business, address status, any applicable South African outreach advisory, and exact evidence chips.
 - A preflight summary with every block and warning in plain language, including READY or NOT READY sender evidence and the repair.
 - Buttons: Approve, Edit, Reject, and Open evidence.
 - A distinct outcome-unknown item requiring a human decision rather than a resend button.
 - A reply needing attention item unless it is a deterministic opt-out, bounce, or auto-reply.
-- A legal hold, prompt-injection hold, or first-reply-after-re-consent hold that cannot be cleared by the draft author.
+- A prompt-injection hold or first-reply-after-re-consent hold that cannot be cleared by the draft author. A South African outreach advisory is displayed as a note, not a hold.
 
 Approve records the exact message revision, evidence snapshot, sender-profile revision, policy revision, reviewer, and time. Edit creates a new immutable draft revision and re-runs preflight. Reject creates an audit record and cannot be converted back into approved without a new proposal.
 
@@ -378,9 +376,9 @@ An approved batch is a convenience for review, not a blanket authorization to ch
 
 An initial contact may have at most two follow-ups, for a maximum of three campaign messages per recipient and per business sequence. The recommended cadence is the initial message, a first follow-up after four recipient-local business days, and a final follow-up after ten recipient-local business days. A scheduled follow-up is a new immutable proposal, not a repeat of an old send, and is shown in Needs you for approval while autopilot is off.
 
-The sequence stops immediately and cancels every remaining step when any of these occurs: a reply from the recipient or anyone mapped to the same business, an address or domain suppression, an opt-out, a bounce, a complaint, an out-of-office response, a legal hold, sender NOT READY state, mailbox sync gap, kill switch, owner pause, or expiry. A reply from any known participant at the business creates a business-level `replied` stop, so Colony never keeps cold-emailing colleagues after a business has answered.
+The sequence stops immediately and cancels every remaining step when any of these occurs: a reply from the recipient or anyone mapped to the same business, an address or domain suppression, an opt-out, a bounce, a complaint, an out-of-office response, sender NOT READY state, mailbox sync gap, kill switch, owner pause, or expiry. A reply from any known participant at the business creates a business-level `replied` stop, so Colony never keeps cold-emailing colleagues after a business has answered.
 
-No new cold sequence starts for the same business until the owner explicitly chooses a new, legally permitted outreach reason. Switching mailboxes, aliases, or contacts does not reset the business-level sequence stop.
+No new cold sequence starts for the same business until the owner explicitly creates a new approved outreach proposal after reviewing the prior business-level stop. Switching mailboxes, aliases, or contacts does not reset the business-level sequence stop.
 
 ### Pipeline
 
@@ -408,12 +406,11 @@ Conversation context is available to the owner and, if an owner explicitly asks 
 
 Autopilot is OFF by default. It is unavailable in the initial sending release.
 
-After a separate owner decision and legal review, an owner may enable a narrow rule set only for recorded-consent or existing-customer messages. A rule has:
+After a separate owner decision, an owner may enable a narrow rule set only for pre-approved campaign types. Before broad cold B2B email or WhatsApp, the owner should obtain legal advice separately; Colony does not encode that advice as a per-recipient gate. A rule has:
 
     rule_id
     sender_identity
     campaign
-    legal_basis_types
     approved_template_revision
     allowed_evidence_signals
     daily_cap
@@ -428,15 +425,15 @@ Autopilot must stop immediately when any of these occurs:
 - a recipient reply, opt-out, hard bounce, complaint, or provider throttle;
 - a sender readiness regression or missing authentication;
 - a provider token error or desktop disconnect;
-- a preflight warning or expired evidence;
+- a blocking preflight failure or expired evidence;
 - a non-owner-domain link, an instruction-echo match, or the first reply after a documented re-consent;
 - a rule expiry, campaign pause, or owner revocation.
 
-Autopilot never sends to a guessed address, a new personal address, a recipient with an ambiguous legal basis, or an address with a public-source mismatch. It never sends a message containing a link outside the sender's owner-domain allowlist. This deliberately holds a Google Calendar booking URL, because it is a third-party domain, for explicit human approval.
+Autopilot never sends to a guessed address or an address with a public-source mismatch. A high-risk South African outreach advisory is not an autopilot stop. It never sends a message containing a link outside the sender's owner-domain allowlist. This deliberately holds a Google Calendar booking URL, because it is a third-party domain, for explicit human approval.
 
 The instruction-echo guard compares normalized outgoing text against a local, non-exported fingerprint set of Scout policy and instruction phrases. A match is `prompt_injection_hold`; it does not reveal the matched instruction, ask the model to explain it, or let the message send. Inbound content that asks Scout to ignore policy, disclose instructions, or change an action is untrusted data and creates the same human-review hold.
 
-After a recipient opt-out has been explicitly reversed through documented later re-consent, the first reply to that recipient always requires owner approval. Autopilot cannot send it. It never infers a consent, legal basis, calendar intent, or interest from a reply. Every automatic decision posts a visible audit item. The owner can switch it off at any time; the switch cancels unsent claims before a new provider call starts.
+After a recipient opt-out has been explicitly reversed through documented later re-consent, the first reply to that recipient always requires owner approval. Autopilot cannot send it. It never infers consent, makes a legal conclusion, or infers calendar intent or interest from a reply. Every automatic decision posts a visible audit item. The owner can switch it off at any time; the switch cancels unsent claims before a new provider call starts.
 
 ## Replies and opt-outs
 
@@ -533,8 +530,7 @@ The company-wide do-not-contact service holds both address and normalized-domain
 | EmailSenderReadiness | Exact READY or NOT READY evidence, repair, age, blocklist, bounce, sync state | Sender business data and diagnostics |
 | EmailAddressProvenance | Published address, source URL, observation, status | Address and source capture |
 | EmailFitAssessment | Evidence-backed fit score, threshold, and skip reason | Business observations |
-| EmailLegalAssessment | Per-recipient legal-basis result and evidence | Recipient address and legal records |
-| EmailProposal and EmailRevision | Draft blocks, evidence snapshot, legal basis, review decision | Recipient address, content |
+| EmailProposal and EmailRevision | Draft blocks, evidence snapshot, and review decision | Recipient address, content |
 | EmailSequence | At most three campaign steps and business-level stop state | Recipient and business references |
 | EmailSendLease and EmailAttempt | Idempotency, quota, outcome, error category | Provider identifiers only, no tokens |
 | EmailConversation and EmailMessage | Chats-tab representation of outbound and inbound text | Message content and participant address |
@@ -557,7 +553,6 @@ These are proposed symbolic kinds, not registered integers and not an authorizat
 | KIND_EMAIL_SUPPRESSION | Relay or owner to relay | Create or undo an address or domain do-not-contact record with reason |
 | KIND_EMAIL_SENDER_READINESS | Connected desktop to relay | Publish non-secret READY or NOT READY evidence and repair |
 | KIND_EMAIL_SEQUENCE_STATE | Relay or owner to relay | Create, stop, or cancel a bounded business sequence |
-| KIND_EMAIL_LEGAL_ASSESSMENT | Owner or policy service to relay | Persist the per-recipient legal result and supporting references |
 | KIND_EMAIL_AUTOPILOT_RULE | Owner to relay | Create, enable, disable, or expire a narrow rule |
 | KIND_EMAIL_ACCOUNT_STATE | Connected desktop to relay | Announce connected, requires_reconnect, or disconnected without secrets |
 
@@ -602,20 +597,22 @@ Estimates are implementation effort after legal and owner decisions, not a promi
 | PR | Concrete scope | Estimate | Acceptance gate |
 | --- | --- | --- | --- |
 | 0 | This design, legal memo, and owner summary | 0.5 developer-day | Document review confirms no provider account, secret, or send action occurred |
-| 1 | Data contracts, symbolic kind allocation, address and domain do-not-contact primitive, fit and legal records, compatibility fixtures | 2 developer-days plus 1 QA day | Exact-head CI green; transaction tests prove one address or domain suppression cancels queued rows, stops a business sequence, skips Discovery, and old schemas ignore email output |
+| 1 | Data contracts, symbolic kind allocation, address and domain do-not-contact primitive, fit records, high-risk advisory inputs, compatibility fixtures | 2 developer-days plus 1 QA day | Exact-head CI green; transaction tests prove one address or domain suppression cancels queued rows, stops a business sequence, skips Discovery, and old schemas ignore email output |
 | 2 | Gmail connect screen, multiple desktop-local mailbox records, baseline sync state, no sending | 3 developer-days plus 2 QA days | Exact-head CI green; disposable-profile test proves token redaction, per-mailbox pause state, reconnect state, baseline gating, and no relay credential field; owner conducts a separate real OAuth review |
-| 3 | Sender readiness, 21-day warm-up hold, automatic capped ramp, kill switch, MIME builder, deterministic preflight, Needs you approval cards, no provider call | 4 developer-days plus 2 QA days | Exact-head CI green; mutation tests show removing every preflight guard fails a production-path test; reviewed desktop screenshots at supported sizes |
+| 3 | Sender readiness, 21-day warm-up hold, automatic capped ramp, kill switch, MIME builder, deterministic preflight, Needs you approval cards, no provider call | 4 developer-days plus 2 QA days | Exact-head CI green; mutation tests show removing every blocking preflight guard fails a production-path test and the South African advisory remains a visible non-blocking note; reviewed desktop screenshots at supported sizes |
 | 4 | Gmail local sender, per-mailbox quota claim, visible unsubscribe endpoint, bounded outcome states | 4 developer-days plus 3 QA days | Exact-head CI green; local fake-provider fault tests cover accepted, rejected, 5xx outcome unknown, duplicate, suppression race, kill switch, and no-auto-resend; a separately authorized owner seed-mail test proves only the chosen sender identity |
 | 5 | Gmail reply sync, thread mapping, deterministic multilingual opt-out, bounded follow-up sequences, Chats integration | 4 developer-days plus 3 QA days | Exact-head CI green; fixture mailbox proves an opt-out commits before future claims, any business reply stops the sequence, auto-reply is not treated as interest, and unsafe messages route to human review |
 | 6 | Microsoft Graph connector and delta sync | 4 developer-days plus 3 QA days | Exact-head CI green; mocked Graph token, delta, and send failures pass; separately authorized owner tenant proof remains distinct |
 | 7 | Generic SMTP plus IMAP capability-gated connector | 5 developer-days plus 4 QA days | Exact-head CI green; TLS and OAuth or app-password requirements are enforced; no SMTP probing test exists because the product must not probe recipients |
-| 8 | Optional narrow autopilot rules | 3 developer-days plus 3 QA days | Written owner authorization and lawyer review, exact-head CI green, and fault tests show every stop condition cancels future sends |
+| 8 | Optional narrow autopilot rules | 3 developer-days plus 3 QA days | Written owner authorization, exact-head CI green, and fault tests show every stop condition cancels future sends; counsel advice before broad cold B2B email or WhatsApp remains outside the product gate |
 
-No PR may merge or enable sending merely because the preceding PR is green. Provider setup, domain authentication, legal review, and a narrowly scoped owner seed-mail test remain separate gates.
+No PR may merge or enable sending merely because the preceding PR is green. Provider setup, domain authentication, and a narrowly scoped owner seed-mail test remain separate evidence gates. Legal advice is still recommended before broad cold B2B email or WhatsApp, but Colony itself does not run a legal pass, hold, or block.
 
-## Owner decisions required
+## Owner decisions and confirmed picks
 
-1. **Legal release posture:** approve the conservative consent-request and existing-customer paths only, or obtain written South African counsel for any broader B2B role-address policy.
+The owner has selected YES for items 2 through 14 as written, subject to the concrete sender and retention values named below. Item 1 records the advisory-only legal decision. Item 15 records the explicit exclusions.
+
+1. **South African legal advisory:** do not build a per-recipient legal pass, hold, or block. Show a plain, non-blocking advisory on an approval card when an otherwise eligible address source or recipient type is high risk. Legal advice is still recommended before broad cold B2B email or WhatsApp.
 2. **Sending identities:** choose each named mailbox, its desktop owner, separate domain or subdomain, visible sender name, daily cold cap, pause authority, and whether Signal Story or a customer company is the responsible sender.
 3. **Readiness sources:** approve the registrar or setup evidence, read-only blocklist-status source, 21-day no-cold-send rule, 2 percent or three-in-24-hours kill switch, and owner-only resume process.
 4. **Provider order:** approve Gmail API first, then Graph, with SMTP plus IMAP deferred.
@@ -629,7 +626,7 @@ No PR may merge or enable sending merely because the preceding PR is green. Prov
 12. **Autopilot:** keep it off for launch. Any later exception requires a separate signed decision and retains the external-link, instruction-echo, and first-reply-after-re-consent holds.
 13. **Retention:** decide how long the company keeps inbound email content, evidence captures, opt-out evidence, and audit records.
 14. **National Opt-Out Registry:** confirm registration, cleansing, and interface obligations with South African counsel and the current NCC process before a consumer-directed campaign.
-15. **Channel boundary:** confirm that a LinkedIn-style channel remains out of scope for this design and rollout.
+15. **Channel and extension boundary:** skip a plugin system and coding-agent control. Keep a LinkedIn-style channel last, off by default, and out of this design and rollout.
 
 ## Sources checked 7 November 2026
 
