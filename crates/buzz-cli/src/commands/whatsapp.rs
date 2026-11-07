@@ -17,7 +17,8 @@ use std::path::Path;
 
 use buzz_core::kind::{
     KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
-    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
 use buzz_core::whatsapp_stage::WhatsappStage;
 use nostr::{EventBuilder, Kind};
@@ -112,6 +113,8 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
             };
             publish(client, KIND_WHATSAPP_BATCH_DECISION, content).await
         }
+        WhatsappCmd::Safety(sub) => dispatch_safety(sub, client).await,
+        WhatsappCmd::UnknownSend(sub) => dispatch_unknown_send(sub, client).await,
         WhatsappCmd::Contacts { limit } => {
             query(client, json!({ "what": "contacts", "limit": limit })).await
         }
@@ -162,6 +165,78 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
     }
 }
 
+async fn dispatch_safety(
+    cmd: crate::WhatsappSafetyCmd,
+    client: &BuzzClient,
+) -> Result<(), CliError> {
+    use crate::WhatsappSafetyCmd;
+    match cmd {
+        WhatsappSafetyCmd::List { limit } => {
+            query(client, json!({ "what": "suppressions", "limit": limit })).await
+        }
+        WhatsappSafetyCmd::NeverContact { wa_id, reason } => {
+            publish(
+                client,
+                KIND_WHATSAPP_SAFETY_ACTION,
+                safety_action_content("never_contact_add", &wa_id, Some(&reason))?,
+            )
+            .await
+        }
+        WhatsappSafetyCmd::UndoNeverContact { wa_id } => {
+            publish(
+                client,
+                KIND_WHATSAPP_SAFETY_ACTION,
+                safety_action_content("never_contact_undo", &wa_id, None)?,
+            )
+            .await
+        }
+        WhatsappSafetyCmd::UndoOptOut { wa_id } => {
+            publish(
+                client,
+                KIND_WHATSAPP_SAFETY_ACTION,
+                safety_action_content("opt_out_undo", &wa_id, None)?,
+            )
+            .await
+        }
+    }
+}
+
+async fn dispatch_unknown_send(
+    cmd: crate::WhatsappUnknownSendCmd,
+    client: &BuzzClient,
+) -> Result<(), CliError> {
+    use crate::WhatsappUnknownSendCmd;
+    match cmd {
+        WhatsappUnknownSendCmd::List { limit } => {
+            query(client, json!({ "what": "unknown_sends", "limit": limit })).await
+        }
+        WhatsappUnknownSendCmd::Check { message } => {
+            publish(
+                client,
+                KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+                unknown_send_recovery_content("check_status", &message, false)?,
+            )
+            .await
+        }
+        WhatsappUnknownSendCmd::MarkDelivered { message, confirm } => {
+            publish(
+                client,
+                KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+                unknown_send_recovery_content("mark_delivered", &message, confirm)?,
+            )
+            .await
+        }
+        WhatsappUnknownSendCmd::Resend { message, confirm } => {
+            publish(
+                client,
+                KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+                unknown_send_recovery_content("resend", &message, confirm)?,
+            )
+            .await
+        }
+    }
+}
+
 async fn dispatch_batch(cmd: crate::WhatsappBatchCmd, client: &BuzzClient) -> Result<(), CliError> {
     use crate::WhatsappBatchCmd;
     match cmd {
@@ -181,7 +256,25 @@ async fn dispatch_batch(cmd: crate::WhatsappBatchCmd, client: &BuzzClient) -> Re
             let stored = find_list(&lists, list_id)?;
             let leads = load_leads(client).await?;
             let contacts = load_whatsapp_by_lead(client).await;
-            let plan = plan_list_rows(&stored.head, &leads, &contacts, &param);
+            let identities = leads
+                .iter()
+                .filter(|lead| lead.head.status == "active")
+                .filter_map(|lead| {
+                    lead.head
+                        .prospect
+                        .phone
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|phone| !phone.is_empty())
+                        .map(|phone| ("phone".to_owned(), phone.to_owned()))
+                })
+                .collect::<Vec<_>>();
+            let suppressed = safety_check_matches(client, &identities).await?;
+            let suppressed_phones = suppressed
+                .into_iter()
+                .filter_map(|(kind, value)| (kind == "phone").then_some(value))
+                .collect::<HashSet<_>>();
+            let plan = plan_list_rows(&stored.head, &leads, &contacts, &suppressed_phones, &param);
             if plan.rows.is_empty() {
                 return Err(CliError::Usage(format!(
                     "no one in list \"{}\" can be messaged: {}",
@@ -283,6 +376,92 @@ async fn query(client: &BuzzClient, body: Value) -> Result<(), CliError> {
     let response = client.post_json_authed(QUERY_PATH, &body).await?;
     println!("{response}");
     Ok(())
+}
+
+/// Ask the relay whether caller-supplied candidates are blocked by an active suppression. The
+/// response intentionally echoes only matched inputs, not reasons or the rest of the ledger, so
+/// Discovery can skip a candidate without gaining private Outreach history.
+pub(crate) async fn safety_check_matches(
+    client: &BuzzClient,
+    identities: &[(String, String)],
+) -> Result<HashSet<(String, String)>, CliError> {
+    let mut matches = HashSet::new();
+    for chunk in identities.chunks(500) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let body = json!({
+            "what": "safety_check",
+            "identities": chunk.iter().map(|(kind, value)| json!({
+                "kind": kind,
+                "value": value,
+            })).collect::<Vec<_>>(),
+        });
+        let raw = client.post_json_authed(QUERY_PATH, &body).await?;
+        let value: Value = serde_json::from_str(&raw).map_err(|error| {
+            CliError::Other(format!("safety check response was not JSON: {error}"))
+        })?;
+        let rows = value
+            .get("matches")
+            .and_then(Value::as_array)
+            .ok_or_else(|| CliError::Other("safety check response has no matches list".into()))?;
+        for row in rows {
+            let Some(kind) = row.get("kind").and_then(Value::as_str) else {
+                return Err(CliError::Other(
+                    "safety check response has a match without kind".into(),
+                ));
+            };
+            let Some(value) = row.get("value").and_then(Value::as_str) else {
+                return Err(CliError::Other(
+                    "safety check response has a match without value".into(),
+                ));
+            };
+            matches.insert((kind.to_owned(), value.to_owned()));
+        }
+    }
+    Ok(matches)
+}
+
+/// `47053` content for one durable outreach-safety action.
+pub(crate) fn safety_action_content(
+    action: &str,
+    wa_id: &str,
+    reason: Option<&str>,
+) -> Result<Value, CliError> {
+    let wa_id = wa_id.trim();
+    if wa_id.is_empty() {
+        return Err(CliError::Usage("give the contact's phone number".into()));
+    }
+    let mut content = json!({ "v": 1, "action": action, "waId": wa_id });
+    if let Some(reason) = reason {
+        let reason = reason.trim();
+        if reason.is_empty() {
+            return Err(CliError::Usage("--reason is empty".into()));
+        }
+        content["reason"] = json!(reason);
+    }
+    Ok(content)
+}
+
+/// `47054` content for an owner decision on an unknown provider result.
+pub(crate) fn unknown_send_recovery_content(
+    action: &str,
+    message_id: &str,
+    confirm: bool,
+) -> Result<Value, CliError> {
+    let message_id = Uuid::parse_str(message_id.trim())
+        .map_err(|_| CliError::Usage("--message must be a UUID".into()))?;
+    if matches!(action, "mark_delivered" | "resend") && !confirm {
+        return Err(CliError::Usage(
+            "--confirm is required before changing an unknown send".into(),
+        ));
+    }
+    Ok(json!({
+        "v": 1,
+        "action": action,
+        "messageId": message_id.to_string(),
+        "confirm": confirm,
+    }))
 }
 
 /// `47052` content that sets a contact's stage.
@@ -777,11 +956,13 @@ pub(crate) struct ListRows {
 }
 
 /// Turn a list's members into batch rows. A member is skipped, with a reason, when its lead no
-/// longer exists, is archived, has no phone number, or is known to have opted out.
+/// longer exists, is archived, has no phone number, is in the never-contact ledger, or is known
+/// to have opted out.
 pub(crate) fn plan_list_rows(
     list: &buzz_core::outreach_lists::OutreachListHead,
     leads: &[crate::commands::leads::CurrentLead],
     contacts: &std::collections::HashMap<Uuid, WhatsappInfo>,
+    suppressed_phones: &HashSet<String>,
     shared_params: &[String],
 ) -> ListRows {
     let by_id: std::collections::HashMap<Uuid, &crate::commands::leads::CurrentLead> = leads
@@ -827,6 +1008,11 @@ pub(crate) fn plan_list_rows(
             .map(str::trim)
             .filter(|phone| !phone.is_empty())
         {
+            Some(phone) if suppressed_phones.contains(phone) => skipped.push(SkippedMember {
+                lead_id: member.lead_id,
+                name,
+                reason: "on the never-contact list",
+            }),
             Some(phone) => rows.push(Row {
                 to: phone.to_owned(),
                 lead_id: Some(member.lead_id.to_string()),
@@ -996,6 +1182,28 @@ mod tests {
         assert!(clear.as_object().expect("object").contains_key("label"));
         assert!(contact_rename_content("+27821234567", None, false).is_err());
         assert!(contact_rename_content("+27821234567", Some("  "), false).is_err());
+    }
+
+    #[test]
+    fn safety_and_unknown_send_commands_require_explicit_owner_intent() {
+        let safety = safety_action_content(
+            "never_contact_add",
+            " +27821234567 ",
+            Some(" owner requested no contact "),
+        )
+        .expect("safety action");
+        assert_eq!(safety["action"], "never_contact_add");
+        assert_eq!(safety["waId"], "+27821234567");
+        assert_eq!(safety["reason"], "owner requested no contact");
+        assert!(safety_action_content("never_contact_add", " ", Some("reason")).is_err());
+        assert!(safety_action_content("never_contact_add", "+27", Some(" ")).is_err());
+
+        let id = Uuid::new_v4().to_string();
+        assert!(unknown_send_recovery_content("resend", &id, false).is_err());
+        let recovery = unknown_send_recovery_content("resend", &id, true).expect("recovery");
+        assert_eq!(recovery["messageId"], id);
+        assert_eq!(recovery["confirm"], true);
+        assert!(unknown_send_recovery_content("check_status", "not-a-uuid", false).is_err());
     }
 
     #[test]
@@ -1316,7 +1524,13 @@ mod tests {
                 opted_out: true,
             },
         );
-        let plan = plan_list_rows(&list, &leads, &contacts, &["Thabo".to_owned()]);
+        let plan = plan_list_rows(
+            &list,
+            &leads,
+            &contacts,
+            &std::collections::HashSet::new(),
+            &["Thabo".to_owned()],
+        );
         assert_eq!(plan.rows.len(), 1);
         assert_eq!(plan.rows[0].to, "+27 82 000 0000");
         assert_eq!(
@@ -1346,7 +1560,13 @@ mod tests {
     fn a_list_batch_answer_names_the_list_the_rows_and_the_skipped_members() {
         let list = list_with(&[1, 2]);
         let leads = vec![list_lead(1, "Rosebank", Some("+27 82 000 0000"), "active")];
-        let plan = plan_list_rows(&list, &leads, &std::collections::HashMap::new(), &[]);
+        let plan = plan_list_rows(
+            &list,
+            &leads,
+            &std::collections::HashMap::new(),
+            &std::collections::HashSet::new(),
+            &[],
+        );
         let out: Value = serde_json::from_str(&list_batch_output(
             r#"{"event_id":"ab","accepted":true,"message":""}"#,
             Uuid::from_u128(900),
@@ -1368,8 +1588,34 @@ mod tests {
     fn an_empty_or_unreachable_list_explains_itself() {
         assert_eq!(skipped_summary(&[]), "the list is empty");
         let list = list_with(&[1]);
-        let plan = plan_list_rows(&list, &[], &std::collections::HashMap::new(), &[]);
+        let plan = plan_list_rows(
+            &list,
+            &[],
+            &std::collections::HashMap::new(),
+            &std::collections::HashSet::new(),
+            &[],
+        );
         assert!(plan.rows.is_empty());
         assert!(skipped_summary(&plan.skipped).contains("no longer exists"));
+    }
+
+    #[test]
+    fn a_never_contact_number_is_skipped_before_a_list_batch_is_created() {
+        let list = list_with(&[1, 2]);
+        let leads = vec![
+            list_lead(1, "Allowed", Some("+27 82 000 0000"), "active"),
+            list_lead(2, "Never Contact", Some("+27 83 000 0000"), "active"),
+        ];
+        let suppressed = std::collections::HashSet::from(["+27 83 000 0000".to_owned()]);
+        let plan = plan_list_rows(
+            &list,
+            &leads,
+            &std::collections::HashMap::new(),
+            &suppressed,
+            &[],
+        );
+        assert_eq!(plan.rows.len(), 1);
+        assert_eq!(plan.rows[0].to, "+27 82 000 0000");
+        assert_eq!(plan.skipped[0].reason, "on the never-contact list");
     }
 }

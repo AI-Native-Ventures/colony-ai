@@ -5,6 +5,7 @@
 //! admins and the Outreach channel, so reads are filtered by role instead of fanned out.
 //! Contract: `docs/whatsapp-outreach.md`.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::{
@@ -18,7 +19,8 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use buzz_db::whatsapp::{
-    OutreachFlags, WhatsappBatch, WhatsappContact, WhatsappMedia, WhatsappMessage, WhatsappTemplate,
+    OutreachFlags, WhatsappBatch, WhatsappBusinessStop, WhatsappContact, WhatsappMedia,
+    WhatsappMessage, WhatsappSuppression, WhatsappTemplate,
 };
 
 use super::{api_error, api_error_with_code, gifs, internal_error};
@@ -41,6 +43,7 @@ pub(crate) const DISCONNECT_PATH: &str = "/api/whatsapp/disconnect";
 pub(crate) const QUERY_PATH: &str = "/api/whatsapp/query";
 
 const DEFAULT_LIST_LIMIT: i64 = 50;
+const MAX_SAFETY_CHECK_IDENTITIES: usize = 500;
 const SIGNATURE_HEADER: &str = "x-hub-signature-256";
 /// A desktop that knows the `queued` contact-stage enum sends this marker on every query.
 /// Its absence means the relay must project the legacy-safe `none` stage.
@@ -150,6 +153,19 @@ struct QueryRequest {
     /// older clients simply omit it and receive the legacy-safe projection.
     #[serde(default)]
     capabilities: Vec<String>,
+    /// Caller-provided candidate identities for a privacy-preserving safety preflight. The
+    /// response only echoes candidates that are currently suppressed, never the whole ledger.
+    #[serde(default)]
+    identities: Vec<SafetyCheckIdentity>,
+}
+
+/// One prospective identity submitted by Discovery or a list builder. The persistent ledger is
+/// broader than WhatsApp, so these names intentionally remain channel-neutral.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SafetyCheckIdentity {
+    kind: String,
+    value: String,
 }
 
 fn supports_queued_stage(request: &QueryRequest) -> bool {
@@ -157,6 +173,65 @@ fn supports_queued_stage(request: &QueryRequest) -> bool {
         .capabilities
         .iter()
         .any(|capability| capability == QUEUED_STAGE_CAPABILITY)
+}
+
+fn normalize_suppression_identity(
+    kind: &str,
+    value: &str,
+) -> Result<(String, String), &'static str> {
+    match kind.trim().to_ascii_lowercase().as_str() {
+        "phone" => normalize_wa_id(value)
+            .map(|value| ("phone".to_string(), value))
+            .ok_or("phone value must be a phone number"),
+        "email" => {
+            let value = value.trim().to_ascii_lowercase();
+            if value.is_empty()
+                || value.len() > 320
+                || value.contains(char::is_whitespace)
+                || value.matches('@').count() != 1
+            {
+                return Err("email value must be a valid email address");
+            }
+            Ok(("email".to_string(), value))
+        }
+        "domain" => {
+            let value = value.trim().trim_end_matches('.').to_ascii_lowercase();
+            if value.is_empty()
+                || value.len() > 320
+                || value.contains(char::is_whitespace)
+                || value.contains('/')
+                || !value.contains('.')
+            {
+                return Err("domain value must be a hostname");
+            }
+            Ok(("domain".to_string(), value))
+        }
+        _ => Err("identity kind must be phone, email or domain"),
+    }
+}
+
+fn suppression_view(suppression: &WhatsappSuppression) -> Value {
+    json!({
+        "id": suppression.id.to_string(),
+        "identityKind": suppression.identity_kind,
+        "identityValue": suppression.identity_value,
+        "scope": suppression.scope,
+        "reason": suppression.reason,
+        "matchedRule": suppression.matched_rule,
+        "source": suppression.source,
+        "createdAt": suppression.created_at.to_rfc3339(),
+        "undoneAt": suppression.undone_at.map(|at| at.to_rfc3339()),
+    })
+}
+
+fn business_stop_view(stop: &WhatsappBusinessStop) -> Value {
+    json!({
+        "businessId": stop.business_id,
+        "sourceWaId": stop.source_wa_id,
+        "reason": stop.reason,
+        "matchedRule": stop.matched_rule,
+        "createdAt": stop.created_at.to_rfc3339(),
+    })
 }
 
 fn template_view(template: &WhatsappTemplate) -> Value {
@@ -210,6 +285,24 @@ fn contact_view(
                 && contact.last_outbound_at.is_none_or(|outbound| outbound < inbound)
         }),
     })
+}
+
+/// Additive safety fields for a linked business hold. Older desktops ignore the fields while
+/// the desktop safety slice can make the whole-business stop visible in the existing chat row.
+fn with_business_stop(mut view: Value, business_stop: Option<&WhatsappBusinessStop>) -> Value {
+    if let Some(object) = view.as_object_mut() {
+        object.insert(
+            "businessOutreachStopped".to_string(),
+            json!(business_stop.is_some()),
+        );
+        object.insert(
+            "businessStopReason".to_string(),
+            business_stop
+                .map(|stop| json!(stop.reason))
+                .unwrap_or(Value::Null),
+        );
+    }
+    view
 }
 
 /// Add the Outreach desk fields (stage, label, business ...) to a contact view. Additive:
@@ -374,6 +467,11 @@ async fn contacts_view_for_capability(
         .whatsapp_outreach_flags(community, &ids)
         .await
         .map_err(|error| internal_error(&format!("whatsapp query: {error}")))?;
+    let business_stops = state
+        .db
+        .whatsapp_business_stops_for_contacts(community, &ids)
+        .await
+        .map_err(|error| internal_error(&format!("whatsapp query: {error}")))?;
     let desk = desk::load(state, community, contacts)
         .await
         .map_err(|reason| internal_error(&reason))?;
@@ -383,7 +481,7 @@ async fn contacts_view_for_capability(
             .map(|c| {
                 let flags = flags.get(&c.wa_id).copied().unwrap_or_default();
                 with_desk(
-                    contact_view(c, now, &flags),
+                    with_business_stop(contact_view(c, now, &flags), business_stops.get(&c.wa_id)),
                     c,
                     &desk,
                     supports_queued_stage,
@@ -440,6 +538,11 @@ pub(crate) async fn thread_view_for_capability(
         .await
         .map_err(db_error)?;
     let flags = flags.get(&contact.wa_id).copied().unwrap_or_default();
+    let business_stops = state
+        .db
+        .whatsapp_business_stops_for_contacts(community, std::slice::from_ref(&contact.wa_id))
+        .await
+        .map_err(db_error)?;
     let desk = desk::load(state, community, std::slice::from_ref(&contact))
         .await
         .map_err(|reason| internal_error(&reason))?;
@@ -462,7 +565,10 @@ pub(crate) async fn thread_view_for_capability(
     };
     Ok(json!({
         "contact": with_desk(
-            contact_view(&contact, now, &flags),
+            with_business_stop(
+                contact_view(&contact, now, &flags),
+                business_stops.get(&contact.wa_id),
+            ),
             &contact,
             &desk,
             supports_queued_stage,
@@ -662,7 +768,81 @@ pub async fn query(
                         view["params"] = draft.params.clone();
                         view
                     })
-                    .collect::<Vec<_>>(),
+                .collect::<Vec<_>>(),
+            })))
+        }
+        "safety_check" => {
+            // Discovery agents may use this while saving candidates, even when they are not
+            // Outreach members. The projection below only returns values the caller supplied,
+            // with no reason or source, so it cannot disclose the wider suppression ledger.
+            if request.identities.len() > MAX_SAFETY_CHECK_IDENTITIES {
+                return Err(api_error(
+                    StatusCode::BAD_REQUEST,
+                    "identities has at most 500 entries",
+                ));
+            }
+            let mut requested = Vec::with_capacity(request.identities.len());
+            for identity in &request.identities {
+                let (kind, value) = normalize_suppression_identity(&identity.kind, &identity.value)
+                    .map_err(|reason| api_error(StatusCode::BAD_REQUEST, reason))?;
+                requested.push((identity.kind.trim().to_ascii_lowercase(), identity.value.trim().to_owned(), kind, value));
+            }
+            let canonical: Vec<(String, String)> = requested
+                .iter()
+                .map(|(_, _, kind, value)| (kind.clone(), value.clone()))
+                .collect();
+            let active = state
+                .db
+                .whatsapp_match_active_suppressions(community, &canonical)
+                .await
+                .map_err(db_error)?;
+            let active: HashSet<(String, String)> = active
+                .into_iter()
+                .map(|row| (row.identity_kind, row.identity_value))
+                .collect();
+            let matches = requested
+                .into_iter()
+                .filter(|(_, _, kind, value)| active.contains(&(kind.clone(), value.clone())))
+                .map(|(kind, value, _, _)| json!({ "kind": kind, "value": value }))
+                .collect::<Vec<_>>();
+            Ok(Json(json!({ "matches": matches })))
+        }
+        "suppressions" => {
+            if !access.is_owner_admin() {
+                return Err(api_error(
+                    StatusCode::FORBIDDEN,
+                    "only the owner or an admin can read WhatsApp safety entries",
+                ));
+            }
+            let suppressions = state
+                .db
+                .whatsapp_list_active_suppressions(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            let business_stops = state
+                .db
+                .whatsapp_list_business_stops(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            Ok(Json(json!({
+                "suppressions": suppressions.iter().map(suppression_view).collect::<Vec<_>>(),
+                "businessStops": business_stops.iter().map(business_stop_view).collect::<Vec<_>>(),
+            })))
+        }
+        "unknown_sends" => {
+            if !access.is_owner_admin() {
+                return Err(api_error(
+                    StatusCode::FORBIDDEN,
+                    "only the owner or an admin can read unknown WhatsApp sends",
+                ));
+            }
+            let messages = state
+                .db
+                .whatsapp_list_unknown_sends(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            Ok(Json(json!({
+                "unknownSends": messages.iter().map(|message| message_view(message, now)).collect::<Vec<_>>(),
             })))
         }
         "contacts" => {
@@ -723,7 +903,7 @@ pub async fn query(
         }
         _ => Err(api_error(
             StatusCode::BAD_REQUEST,
-            "unknown query: use status, templates, batches, batch, drafts, contacts, inbox or thread",
+            "unknown query: use status, templates, batches, batch, drafts, safety_check, suppressions, unknown_sends, contacts, inbox or thread",
         )),
     }
 }
@@ -1078,6 +1258,74 @@ mod tests {
         assert_eq!(view["windowOpen"], true);
         assert_eq!(view["unanswered"], true);
         assert_eq!(view["optedOut"], false);
+    }
+
+    #[test]
+    fn a_business_stop_is_an_additive_contact_field() {
+        let contact = WhatsappContact {
+            wa_id: "27821234567".into(),
+            display_name: "Thabo".into(),
+            lead_id: Some("business-1".into()),
+            owner_pubkey: None,
+            thread_root_event_id: None,
+            last_inbound_at: None,
+            last_outbound_at: None,
+            outbound_since_inbound: 0,
+            opted_out_at: None,
+            opt_out_reason: None,
+            paused_at: None,
+            pause_reason: None,
+            retry_after: None,
+            created_at: Utc::now(),
+        };
+        let stop = WhatsappBusinessStop {
+            business_id: "business-1".into(),
+            source_wa_id: "27821230000".into(),
+            reason: "inbound reply received".into(),
+            matched_rule: None,
+            created_at: Utc::now(),
+        };
+        let stopped = with_business_stop(
+            contact_view(&contact, Utc::now(), &OutreachFlags::default()),
+            Some(&stop),
+        );
+        assert_eq!(stopped["businessOutreachStopped"], true);
+        assert_eq!(stopped["businessStopReason"], "inbound reply received");
+
+        let clear = with_business_stop(
+            contact_view(&contact, Utc::now(), &OutreachFlags::default()),
+            None,
+        );
+        assert_eq!(clear["businessOutreachStopped"], false);
+        assert!(clear["businessStopReason"].is_null());
+    }
+
+    #[test]
+    fn safety_check_identities_are_canonical_and_strict() {
+        assert_eq!(
+            normalize_suppression_identity(" phone ", "+27 82 123 4567"),
+            Ok(("phone".into(), "27821234567".into()))
+        );
+        assert_eq!(
+            normalize_suppression_identity("email", "  OWNER@Example.COM "),
+            Ok(("email".into(), "owner@example.com".into()))
+        );
+        assert_eq!(
+            normalize_suppression_identity("domain", "Example.COM."),
+            Ok(("domain".into(), "example.com".into()))
+        );
+        for (kind, value) in [
+            ("phone", "not-a-phone"),
+            ("email", "no-at-sign"),
+            ("domain", "localhost"),
+            ("domain", "bad host.example"),
+            ("address", "x"),
+        ] {
+            assert!(
+                normalize_suppression_identity(kind, value).is_err(),
+                "{kind}:{value}"
+            );
+        }
     }
 
     #[test]

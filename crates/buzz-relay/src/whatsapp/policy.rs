@@ -80,61 +80,343 @@ pub fn contact_label(display_name: &str, wa_id: &str) -> String {
     }
 }
 
-/// `true` when `text` is an opt-out word. Whole message only, so "stop by at 5" is not one.
+/// How a conservative phrase rule may match a reply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OptOutMatchMode {
+    /// The complete reply must be the phrase. This protects an ambiguous bare word such as
+    /// `stop` from matching a lead who says "don't stop now, call me".
+    WholeReply,
+    /// The phrase may appear as complete words inside a longer reply.
+    Phrase,
+}
+
+/// One deterministic opt-out phrase. These are data, not an AI classification prompt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OptOutRule {
+    /// Stable audit id stored with an inbound opt-out.
+    pub id: &'static str,
+    /// ISO language code used for review and operator visibility.
+    pub language: &'static str,
+    /// The reviewed phrase, before Unicode-aware normalisation.
+    pub phrase: &'static str,
+    /// Existing semantic reason that older desktop stage parsing already understands.
+    pub kind: OptOutKind,
+    /// Whether the phrase must be the complete reply.
+    pub mode: OptOutMatchMode,
+}
+
+/// A deterministic match, including the exact rule saved with the consent record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OptOutMatch {
+    /// Existing semantic reason used by the stage projection.
+    pub kind: OptOutKind,
+    /// Stable data-table rule id.
+    pub rule_id: &'static str,
+    /// Language code of the matched phrase.
+    pub language: &'static str,
+}
+
+const WHOLE: OptOutMatchMode = OptOutMatchMode::WholeReply;
+const PHRASE: OptOutMatchMode = OptOutMatchMode::Phrase;
+
+/// Conservative, reviewable opt-out phrase data. Afrikaans, Zulu and Xhosa entries are held to
+/// clearly unambiguous phrases and require native-speaker review before a wider language rollout.
+pub const OPT_OUT_RULES: &[OptOutRule] = &[
+    OptOutRule {
+        id: "en_stop",
+        language: "en",
+        phrase: "stop",
+        kind: OptOutKind::Stop,
+        mode: WHOLE,
+    },
+    OptOutRule {
+        id: "en_stop_all",
+        language: "en",
+        phrase: "stop all",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_stop_messages",
+        language: "en",
+        phrase: "stop messages",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_stop_sending",
+        language: "en",
+        phrase: "stop sending",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_stop_contacting",
+        language: "en",
+        phrase: "stop contacting",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_stop_promotions",
+        language: "en",
+        phrase: "stop promotions",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_unsubscribe",
+        language: "en",
+        phrase: "unsubscribe",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_opt_out",
+        language: "en",
+        phrase: "opt out",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_optout",
+        language: "en",
+        phrase: "optout",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_remove_me",
+        language: "en",
+        phrase: "remove me",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_do_not_contact_me",
+        language: "en",
+        phrase: "do not contact me",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_dont_contact_me",
+        language: "en",
+        phrase: "don't contact me",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_no_thanks",
+        language: "en",
+        phrase: "no thanks",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_no_thank_you",
+        language: "en",
+        phrase: "no thank you",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "en_not_interested",
+        language: "en",
+        phrase: "not interested",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "af_stop_boodskappe",
+        language: "af",
+        phrase: "stop boodskappe",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "af_moenie_my_kontak_nie",
+        language: "af",
+        phrase: "moenie my kontak nie",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "af_moenie_vir_my_boodskappe_stuur_nie",
+        language: "af",
+        phrase: "moenie vir my boodskappe stuur nie",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "af_geen_dankie",
+        language: "af",
+        phrase: "geen dankie",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "af_nie_geinteresseerd_nie",
+        language: "af",
+        phrase: "nie geïnteresseerd nie",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "zu_yeka_imilayezo",
+        language: "zu",
+        phrase: "yeka imilayezo",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "zu_ungangithumeli_imilayezo",
+        language: "zu",
+        phrase: "ungangithumeli imilayezo",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "zu_ungangithinti",
+        language: "zu",
+        phrase: "ungangithinti",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "zu_cha_ngiyabonga",
+        language: "zu",
+        phrase: "cha ngiyabonga",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "zu_anginantshisekelo",
+        language: "zu",
+        phrase: "anginantshisekelo",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "xh_yeka_imiyalezo",
+        language: "xh",
+        phrase: "yeka imiyalezo",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "xh_ungandithumeli_imiyalezo",
+        language: "xh",
+        phrase: "ungandithumeli imiyalezo",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "xh_ungandiqhagamsheli",
+        language: "xh",
+        phrase: "ungandiqhagamsheli",
+        kind: OptOutKind::Stop,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "xh_hayi_enkosi",
+        language: "xh",
+        phrase: "hayi enkosi",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+    OptOutRule {
+        id: "xh_andinamdla",
+        language: "xh",
+        phrase: "andinamdla",
+        kind: OptOutKind::NoThanks,
+        mode: PHRASE,
+    },
+];
+
+fn normalise_opt_out_text(text: &str) -> String {
+    let mut normalised = String::with_capacity(text.len());
+    let mut previous_space = true;
+    for lowered in text.chars().flat_map(char::to_lowercase) {
+        if lowered.is_alphanumeric() {
+            normalised.push(lowered);
+            previous_space = false;
+        } else if !previous_space {
+            normalised.push(' ');
+            previous_space = true;
+        }
+    }
+    normalised.trim().to_string()
+}
+
+fn matches_opt_out_rule(normalised: &str, rule: &OptOutRule) -> bool {
+    let phrase = normalise_opt_out_text(rule.phrase);
+    match rule.mode {
+        OptOutMatchMode::WholeReply => normalised == phrase,
+        OptOutMatchMode::Phrase => {
+            let haystack = format!(" {normalised} ");
+            let needle = format!(" {phrase} ");
+            haystack.contains(&needle)
+        }
+    }
+}
+
+/// Find the first deterministic opt-out rule for text or a quick-reply button. Rules are
+/// ordered from precise stop requests through softer no-thanks answers, so the saved reason is
+/// stable across relay restarts.
+pub fn match_opt_out(text: &str) -> Option<OptOutMatch> {
+    let normalised = normalise_opt_out_text(text);
+    if normalised.is_empty() {
+        return None;
+    }
+    OPT_OUT_RULES.iter().find_map(|rule| {
+        matches_opt_out_rule(&normalised, rule).then_some(OptOutMatch {
+            kind: rule.kind,
+            rule_id: rule.id,
+            language: rule.language,
+        })
+    })
+}
+
+/// `true` when `text` has a deterministic opt-out phrase.
 pub fn is_stop_message(text: &str) -> bool {
-    let cleaned: String = text
-        .trim()
-        .trim_end_matches(['.', '!', '?', ',', ' '])
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    matches!(
-        cleaned.as_str(),
-        "stop"
-            | "stop all"
-            | "stop messages"
-            | "unsubscribe"
-            | "no thanks"
-            | "no thank you"
-            | "not interested"
-            | "opt out"
-            | "optout"
-            | "remove me"
-    )
+    match_opt_out(text).is_some()
 }
 
 /// `true` when a button reply (for example a template's opt-out button) means opt out.
 pub fn is_opt_out_button(title: &str) -> bool {
-    let lowered = title.trim().to_lowercase();
-    [
-        "stop",
-        "unsubscribe",
-        "opt out",
-        "opt-out",
-        "optout",
-        "not interested",
-        "no thanks",
-    ]
-    .iter()
-    .any(|word| lowered.contains(word))
+    match_opt_out(title).is_some()
 }
 
-/// Why an inbound message opts the contact out, or `None` when it does not. A "No thanks" /
-/// "Not interested" answer (typed or tapped) is [`OptOutKind::NoThanks`]; every other opt-out
-/// (STOP, "Stop messages", unsubscribe ...) is [`OptOutKind::Stop`]. Both block sending.
-pub fn classify_opt_out(text: &str, is_button: bool) -> Option<OptOutKind> {
-    if !(is_stop_message(text) || (is_button && is_opt_out_button(text))) {
-        return None;
-    }
-    let lowered = text.trim().to_lowercase();
-    let soft = ["no thanks", "no thank you", "not interested"]
-        .iter()
-        .any(|phrase| lowered.contains(phrase));
-    Some(if soft && !lowered.contains("stop") {
-        OptOutKind::NoThanks
-    } else {
-        OptOutKind::Stop
+/// Why an inbound message opts the contact out, or `None` when it does not. This compatibility
+/// wrapper preserves the existing stage seam; callers that need the exact rule use
+/// [`match_opt_out`].
+pub fn classify_opt_out(text: &str, _is_button: bool) -> Option<OptOutKind> {
+    match_opt_out(text).map(|matched| matched.kind)
+}
+
+/// `true` when an opt-out reply also contains a conservative complaint or legal-escalation
+/// signal. This only raises owner attention; it never weakens the opt-out fence.
+pub fn has_complaint_or_legal_signal(text: &str) -> bool {
+    let normalised = normalise_opt_out_text(text);
+    [
+        "complaint",
+        "lawyer",
+        "attorney",
+        "legal action",
+        "sue",
+        "court",
+        "popia",
+        "klagte",
+        "prokureur",
+        "regstappe",
+        "ummeli",
+    ]
+    .iter()
+    .any(|phrase| {
+        let haystack = format!(" {normalised} ");
+        let needle = format!(" {} ", normalise_opt_out_text(phrase));
+        haystack.contains(&needle)
     })
 }
 
@@ -831,8 +1113,51 @@ mod tests {
         assert_eq!(classify_opt_out("Stop promotions", true), Some(Stop));
         assert_eq!(classify_opt_out("Yes, call me", true), None);
         assert_eq!(classify_opt_out("stop by at 5", false), None);
-        // A typed phrase that is not a whole stop message is not an opt-out, even with "no".
-        assert_eq!(classify_opt_out("no thanks, maybe later", false), None);
+        assert_eq!(
+            classify_opt_out("No thanks, maybe later", false),
+            Some(NoThanks)
+        );
+    }
+
+    #[test]
+    fn every_opt_out_rule_matches_and_records_its_exact_id() {
+        // GUARD: the data table is the production classifier. Deleting or changing any rule
+        // makes this test name the missing rule instead of passing through a test-only helper.
+        for rule in OPT_OUT_RULES {
+            let reply = match rule.mode {
+                OptOutMatchMode::WholeReply => rule.phrase.to_string(),
+                OptOutMatchMode::Phrase => format!("Hello, {}, please.", rule.phrase),
+            };
+            let matched = match_opt_out(&reply).unwrap_or_else(|| {
+                panic!("rule {} did not match {reply:?}", rule.id);
+            });
+            assert_eq!(matched.rule_id, rule.id, "{reply:?}");
+            assert_eq!(matched.language, rule.language, "{reply:?}");
+            assert_eq!(matched.kind, rule.kind, "{reply:?}");
+        }
+    }
+
+    #[test]
+    fn opt_out_false_positives_do_not_match() {
+        for reply in [
+            "don't stop now, call me",
+            "please don't stop now",
+            "stop by at 5",
+            "thanks, that is interesting",
+            "please call me tomorrow",
+        ] {
+            assert_eq!(match_opt_out(reply), None, "{reply:?}");
+        }
+    }
+
+    #[test]
+    fn complaint_or_legal_signal_escalates_without_weakening_the_opt_out() {
+        let reply = "Stop messages. My lawyer will contact you.";
+        assert!(match_opt_out(reply).is_some());
+        assert!(has_complaint_or_legal_signal(reply));
+        assert!(!has_complaint_or_legal_signal(
+            "No thanks, please remove me."
+        ));
     }
 
     #[test]
@@ -921,7 +1246,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_words_match_whole_messages_only() {
+    fn stop_words_match_safe_phrases_inside_a_longer_reply() {
         for yes in [
             "stop",
             "STOP",
@@ -931,12 +1256,17 @@ mod tests {
             "No  thanks.",
             "not interested",
             "Opt out",
+            "Please unsubscribe me from all messages",
+            "Please stop sending me messages",
+            "Hello, moenie my kontak nie, dankie",
+            "Ungangithumeli imilayezo again",
+            "Hayi enkosi, yeka imiyalezo",
         ] {
             assert!(is_stop_message(yes), "{yes:?}");
         }
         for no in [
             "stop by tomorrow",
-            "please don't stop",
+            "please don't stop now",
             "thanks",
             "interested",
             "",

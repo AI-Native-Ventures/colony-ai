@@ -32,6 +32,10 @@ pub enum AuditAction {
     WhatsappContactUpdated,
     /// An owner or admin changed the manual WhatsApp sending pause.
     WhatsappSendingPauseChanged,
+    /// An owner or admin changed a WhatsApp opt-out or never-contact safety entry.
+    WhatsappOutreachSafetyChanged,
+    /// An owner or admin checked or resolved an unknown WhatsApp send outcome.
+    WhatsappUnknownSendRecovery,
 }
 
 impl AuditAction {
@@ -51,6 +55,8 @@ impl AuditAction {
             Self::MediaUploaded => "media_uploaded",
             Self::WhatsappContactUpdated => "whatsapp_contact_updated",
             Self::WhatsappSendingPauseChanged => "whatsapp_sending_pause_changed",
+            Self::WhatsappOutreachSafetyChanged => "whatsapp_outreach_safety_changed",
+            Self::WhatsappUnknownSendRecovery => "whatsapp_unknown_send_recovery",
         }
     }
 
@@ -68,6 +74,8 @@ impl AuditAction {
         Self::MediaUploaded,
         Self::WhatsappContactUpdated,
         Self::WhatsappSendingPauseChanged,
+        Self::WhatsappOutreachSafetyChanged,
+        Self::WhatsappUnknownSendRecovery,
     ];
 }
 

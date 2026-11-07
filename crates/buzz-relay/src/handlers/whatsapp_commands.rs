@@ -19,13 +19,14 @@ use uuid::Uuid;
 
 use buzz_core::kind::{
     KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
-    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
 use buzz_core::whatsapp_stage::{derive_stage, WhatsappStage};
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
     BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, SendNowOutcome,
-    WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP, OWNER_PAUSE_REASON,
+    UnknownSendReplacement, WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP, OWNER_PAUSE_REASON,
 };
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
@@ -37,7 +38,7 @@ use crate::whatsapp::policy::{
     FailureRetryScope, SEND_NOW_MAX_ROWS,
 };
 use crate::whatsapp::sender::{
-    check_send, enqueue_send, Enqueued, SendCommand, SendContext, TemplateRef,
+    check_send, enqueue_send, safety_refusal, Enqueued, SendCommand, SendContext, TemplateRef,
 };
 use crate::whatsapp::{access_for, channel, parse_uuid, Access};
 
@@ -209,6 +210,29 @@ struct RetryLaterCommand {
     days: i64,
 }
 
+/// Owner-maintained safety action (kind 47053). Phone is the only accepted identity today;
+/// the database identity model is intentionally ready for future email and domain channels.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SafetyActionCommand {
+    v: u8,
+    action: String,
+    wa_id: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+/// Owner recovery for a send that may have reached Meta before the relay lost its result.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnknownSendRecoveryCommand {
+    v: u8,
+    action: String,
+    message_id: String,
+    #[serde(default)]
+    confirm: bool,
+}
+
 /// Tell an absent field (`None`) from an explicit `null` (`Some(None)`).
 fn present_or_null<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
@@ -220,6 +244,7 @@ where
 
 /// Longest owner label, in characters.
 const MAX_LABEL_CHARS: usize = 120;
+const MAX_SAFETY_REASON_CHARS: usize = 500;
 
 fn restricted(reason: impl std::fmt::Display) -> IngestError {
     IngestError::Rejected(format!("restricted: {reason}"))
@@ -289,6 +314,10 @@ pub async fn handle(
         KIND_WHATSAPP_SEND_REQUEST => handle_send(tenant, state, &event, access).await,
         KIND_WHATSAPP_SETTINGS => handle_settings(tenant, state, &event, access).await,
         KIND_WHATSAPP_CONTACT_UPDATE => handle_contact_update(tenant, state, &event, access).await,
+        KIND_WHATSAPP_SAFETY_ACTION => handle_safety_action(tenant, state, &event, access).await,
+        KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY => {
+            handle_unknown_send_recovery(tenant, state, &event, access).await
+        }
         _ => Err(invalid(format!("unknown WhatsApp command kind {kind}"))),
     }
 }
@@ -419,6 +448,26 @@ async fn handle_batch(
             .whatsapp_get_contact(community, &wa_id)
             .await
             .map_err(internal)?;
+        let safety = state
+            .db
+            .whatsapp_send_safety(
+                community,
+                &wa_id,
+                contact
+                    .as_ref()
+                    .and_then(|contact| contact.lead_id.as_deref())
+                    .or_else(|| {
+                        row.lead_id
+                            .as_deref()
+                            .filter(|lead| !lead.trim().is_empty())
+                    }),
+            )
+            .await
+            .map_err(internal)?;
+        if let Some(safety) = safety.as_ref() {
+            refusals.push(format!("{label}: {}", safety_refusal(safety)));
+            continue;
+        }
         if let Some(reason) = row_refusal(contact.as_ref()) {
             refusals.push(format!("{label}: {reason}"));
             continue;
@@ -767,6 +816,17 @@ async fn handle_draft_decision(
             .await
             .map_err(internal)?
             .saturating_sub(1);
+        let safety = state
+            .db
+            .whatsapp_send_safety(
+                community,
+                &message.wa_id,
+                contact
+                    .as_ref()
+                    .and_then(|contact| contact.lead_id.as_deref()),
+            )
+            .await
+            .map_err(internal)?;
         let plan = check_send(&SendContext {
             contact: contact.as_ref(),
             send_paused: settings.send_paused,
@@ -775,6 +835,7 @@ async fn handle_draft_decision(
             now: Utc::now(),
             is_owner_admin: true,
             is_template: message.kind == "template",
+            safety: safety.as_ref(),
         })
         .map_err(restricted)?;
         if plan.new_chat {
@@ -1201,6 +1262,239 @@ async fn handle_contact_update(
     Ok(ok(event, notes.join(", ")))
 }
 
+fn clean_safety_reason(raw: &str) -> Result<String, IngestError> {
+    let reason = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if reason.is_empty() {
+        return Err(invalid("reason is required"));
+    }
+    if reason.chars().count() > MAX_SAFETY_REASON_CHARS {
+        return Err(invalid(format!(
+            "reason is longer than {MAX_SAFETY_REASON_CHARS} characters"
+        )));
+    }
+    Ok(reason)
+}
+
+/// Add or undo a durable opt-out or never-contact decision. The event is owner-only because a
+/// mistaken release is more harmful than an extra hold, and every effective change is audited.
+async fn handle_safety_action(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    access: Access,
+) -> Result<IngestResult, IngestError> {
+    if !access.is_owner_admin() {
+        return Err(restricted(
+            "only the owner or an admin can change WhatsApp safety entries",
+        ));
+    }
+    let command: SafetyActionCommand = parse(event)?;
+    check_version(command.v)?;
+    let wa_id =
+        normalize_wa_id(&command.wa_id).ok_or_else(|| invalid("waId must be a phone number"))?;
+    let community = tenant.community();
+    let actor = event.pubkey.to_bytes();
+    let (changed, object_action, message) = match command.action.as_str() {
+        "never_contact_add" => {
+            let reason = clean_safety_reason(command.reason.as_deref().unwrap_or(""))?;
+            let changed = state
+                .db
+                .whatsapp_add_never_contact(community, &wa_id, &reason, &actor)
+                .await
+                .map_err(internal)?;
+            (
+                changed,
+                "never_contact_add",
+                if changed {
+                    format!("never-contact entry added for {}", e164(&wa_id))
+                } else {
+                    "duplicate: this never-contact entry is already active".to_string()
+                },
+            )
+        }
+        "never_contact_undo" => {
+            if command.reason.is_some() {
+                return Err(invalid("never_contact_undo takes no reason"));
+            }
+            let changed = state
+                .db
+                .whatsapp_undo_suppression(community, &wa_id, "never_contact", &actor, Utc::now())
+                .await
+                .map_err(internal)?;
+            (
+                changed,
+                "never_contact_undo",
+                if changed {
+                    format!("never-contact entry undone for {}", e164(&wa_id))
+                } else {
+                    "duplicate: no active never-contact entry for this number".to_string()
+                },
+            )
+        }
+        "opt_out_undo" => {
+            if command.reason.is_some() {
+                return Err(invalid("opt_out_undo takes no reason"));
+            }
+            let changed = state
+                .db
+                .whatsapp_undo_suppression(community, &wa_id, "opt_out", &actor, Utc::now())
+                .await
+                .map_err(internal)?;
+            (
+                changed,
+                "opt_out_undo",
+                if changed {
+                    format!(
+                        "opt-out undone for {}; the business reply hold remains",
+                        e164(&wa_id)
+                    )
+                } else {
+                    "duplicate: no active opt-out for this number".to_string()
+                },
+            )
+        }
+        _ => {
+            return Err(invalid(
+                "action must be never_contact_add, never_contact_undo or opt_out_undo",
+            ));
+        }
+    };
+    if changed {
+        audit_outreach_safety(state, tenant, event, &wa_id, object_action).await?;
+        channel::post_notice(state, tenant, "outreach_safety", &message).await;
+    }
+    Ok(ok(event, message))
+}
+
+/// Check, mark delivered, or explicitly resend an unknown outcome. No action in this handler
+/// calls Meta to guess a status; only its durable webhook-known state is shown to the owner.
+async fn handle_unknown_send_recovery(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    access: Access,
+) -> Result<IngestResult, IngestError> {
+    if !access.is_owner_admin() {
+        return Err(restricted(
+            "only the owner or an admin can resolve an unknown WhatsApp send",
+        ));
+    }
+    let command: UnknownSendRecoveryCommand = parse(event)?;
+    check_version(command.v)?;
+    let message_id = parse_uuid(&command.message_id, "messageId").map_err(invalid)?;
+    let community = tenant.community();
+    let actor = event.pubkey.to_bytes();
+    match command.action.as_str() {
+        "check_status" => {
+            if command.confirm {
+                return Err(invalid("check_status does not take confirm"));
+            }
+            let message = state
+                .db
+                .whatsapp_check_unknown_send(community, message_id, &actor, Utc::now())
+                .await
+                .map_err(internal)?
+                .ok_or_else(|| invalid("this message is not an unresolved unknown send outcome"))?;
+            audit_unknown_send_recovery(state, tenant, event, message_id, "check_status").await?;
+            Ok(ok(
+                event,
+                format!(
+                    "relay record is still unconfirmed for {}; check the provider or phone before marking delivered or resending",
+                    e164(&message.wa_id)
+                ),
+            ))
+        }
+        "mark_delivered" => {
+            if !command.confirm {
+                return Err(invalid("mark_delivered requires confirm: true"));
+            }
+            let changed = state
+                .db
+                .whatsapp_mark_unknown_send_delivered(community, message_id, &actor, Utc::now())
+                .await
+                .map_err(internal)?;
+            if !changed {
+                return Err(IngestError::Rejected(
+                    "duplicate: this unknown send was already resolved".into(),
+                ));
+            }
+            audit_unknown_send_recovery(state, tenant, event, message_id, "mark_delivered").await?;
+            channel::post_notice(
+                state,
+                tenant,
+                "unknown_send_recovery",
+                "Owner marked an unknown send as delivered after confirmation.",
+            )
+            .await;
+            Ok(ok(event, "unknown send marked delivered"))
+        }
+        "resend" => {
+            if !command.confirm {
+                return Err(invalid("resend requires confirm: true"));
+            }
+            let message = state
+                .db
+                .whatsapp_get_message(community, message_id)
+                .await
+                .map_err(internal)?
+                .filter(|message| message.direction == "out" && message.state == "unconfirmed")
+                .ok_or_else(|| invalid("this message is not an unresolved unknown send outcome"))?;
+            let contact = state
+                .db
+                .whatsapp_get_contact(community, &message.wa_id)
+                .await
+                .map_err(internal)?;
+            if let Some(safety) = state
+                .db
+                .whatsapp_send_safety(
+                    community,
+                    &message.wa_id,
+                    contact
+                        .as_ref()
+                        .and_then(|contact| contact.lead_id.as_deref()),
+                )
+                .await
+                .map_err(internal)?
+            {
+                return Err(restricted(safety_refusal(&safety)));
+            }
+            let replacement = state
+                .db
+                .whatsapp_create_unknown_send_replacement(community, message_id, &actor, Utc::now())
+                .await
+                .map_err(internal)?
+                .ok_or_else(|| {
+                    IngestError::Rejected(
+                        "duplicate: this unknown send was already resolved".into(),
+                    )
+                })?;
+            let replacement = match replacement {
+                UnknownSendReplacement::Created(replacement) => replacement,
+                UnknownSendReplacement::Existing(_) => {
+                    return Err(IngestError::Rejected(
+                        "duplicate: this unknown send already has a replacement".into(),
+                    ));
+                }
+            };
+            audit_unknown_send_recovery(state, tenant, event, message_id, "resend").await?;
+            channel::post_notice(
+                state,
+                tenant,
+                "unknown_send_recovery",
+                "Owner confirmed a new replacement for an unknown send. The original remains unconfirmed.",
+            )
+            .await;
+            Ok(ok(
+                event,
+                format!("replacement queued as new message {replacement}"),
+            ))
+        }
+        _ => Err(invalid(
+            "action must be check_status, mark_delivered or resend",
+        )),
+    }
+}
+
 /// Append the change to the tamper-evident audit log. A failure is returned, not logged away:
 /// the command is safe to retry because setting the same stage or label twice changes nothing.
 async fn audit_contact_update(
@@ -1224,6 +1518,60 @@ async fn audit_contact_update(
                 "command_event_id": event.id.to_hex(),
                 "stage": stage.map(WhatsappStage::as_str),
                 "label_set": label.map(|label| label.is_some()),
+            }),
+        })
+        .await
+        .map_err(|error| internal(format!("audit log: {error}")))?;
+    Ok(())
+}
+
+/// Append an owner-controlled suppression or undo to the tamper-evident audit log.
+async fn audit_outreach_safety(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    event: &Event,
+    wa_id: &str,
+    action: &str,
+) -> Result<(), IngestError> {
+    let Some(audit) = state.audit.as_ref() else {
+        return Ok(());
+    };
+    audit
+        .log(buzz_audit::NewAuditEntry {
+            community_id: tenant.community(),
+            action: buzz_audit::AuditAction::WhatsappOutreachSafetyChanged,
+            actor_pubkey: Some(event.pubkey.to_bytes().to_vec()),
+            object_id: Some(wa_id.to_owned()),
+            detail: serde_json::json!({
+                "command_event_id": event.id.to_hex(),
+                "action": action,
+            }),
+        })
+        .await
+        .map_err(|error| internal(format!("audit log: {error}")))?;
+    Ok(())
+}
+
+/// Append each unknown-send recovery action to the tamper-evident audit log.
+async fn audit_unknown_send_recovery(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    event: &Event,
+    message_id: Uuid,
+    action: &str,
+) -> Result<(), IngestError> {
+    let Some(audit) = state.audit.as_ref() else {
+        return Ok(());
+    };
+    audit
+        .log(buzz_audit::NewAuditEntry {
+            community_id: tenant.community(),
+            action: buzz_audit::AuditAction::WhatsappUnknownSendRecovery,
+            actor_pubkey: Some(event.pubkey.to_bytes().to_vec()),
+            object_id: Some(message_id.to_string()),
+            detail: serde_json::json!({
+                "command_event_id": event.id.to_hex(),
+                "action": action,
             }),
         })
         .await
@@ -1526,6 +1874,30 @@ mod tests {
             serde_json::from_str(r#"{"v":1,"dailyNewChatCap":45}"#).expect("settings");
         assert_eq!(settings.daily_new_chat_cap, Some(45));
         assert_eq!(e164("27821234567"), "+27821234567");
+    }
+
+    #[test]
+    fn safety_and_unknown_send_commands_require_the_documented_shape() {
+        let safety: SafetyActionCommand = serde_json::from_str(
+            r#"{"v":1,"action":"never_contact_add","waId":"27821234567","reason":"owner request"}"#,
+        )
+        .expect("safety command");
+        assert_eq!(safety.action, "never_contact_add");
+        assert_eq!(safety.reason.as_deref(), Some("owner request"));
+        assert_eq!(
+            clean_safety_reason("  keep   this  number  private ").expect("reason"),
+            "keep this number private"
+        );
+        assert!(clean_safety_reason("   ").is_err());
+        assert!(clean_safety_reason(&"x".repeat(MAX_SAFETY_REASON_CHARS + 1)).is_err());
+
+        let recovery: UnknownSendRecoveryCommand = serde_json::from_str(&format!(
+            r#"{{"v":1,"action":"resend","messageId":"{}","confirm":true}}"#,
+            Uuid::new_v4()
+        ))
+        .expect("recovery command");
+        assert_eq!(recovery.action, "resend");
+        assert!(recovery.confirm);
     }
 
     #[test]

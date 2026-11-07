@@ -18,6 +18,8 @@ Graph version lives in one constant: `GRAPH_API_VERSION` in
 | change daily cap, sync templates | yes | no | no |
 | approve, reject, edit or drop batch rows | yes | no | no |
 | `send_now` on an approved test batch (at most 3 rows) | yes | no, never | no |
+| add or undo an opt-out or never-contact entry | yes | no | no |
+| check, mark delivered, or resend an unknown send | yes | no | no |
 | create batch | yes | yes | no |
 | send a message (free text in the window, follow-up template) | yes, sent at once | yes, but only as a DRAFT | no |
 | approve, edit or reject an agent draft | yes | no | no |
@@ -75,6 +77,9 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `batches` | `state` optional | owner/admin, Outreach member | `{ "batches": [BatchSummary] }` |
 | `batch` | `batchId` | owner/admin, Outreach member | `BatchDetail` |
 | `drafts` | `limit` | owner/admin, Outreach member | `{ "drafts": [Message + to, params] }` pending agent drafts, oldest first |
+| `safety_check` | `identities: [{kind: "phone"|"email"|"domain", value}]` | any member | `{ "matches": [{kind, value}] }` for caller-provided active suppressions only |
+| `suppressions` | `limit` | owner/admin | `{ "suppressions": [Suppression], "businessStops": [BusinessStop] }` |
+| `unknown_sends` | `limit` | owner/admin | `{ "unknownSends": [Message] }` whose result needs an owner decision |
 | `contacts` | `limit`, `before` | owner/admin, Outreach member | `{ "contacts": [Contact] }` |
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
 | `thread` | `waId`, `limit`, `includeHeld` (rows still waiting for a batch approval are left out unless true, so an older app never labels them approved) | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
@@ -138,7 +143,13 @@ buttons: [{type, text}] }`.
 * `buttons` keeps each template's buttons from Meta (quick replies included) on every sync.
 
 Contact: `{ waId, e164, displayName, leadId, ownerPubkey, threadRootEventId, lastInboundAt,
-windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered }`.
+windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered, businessOutreachStopped,
+businessStopReason }`. The two business-stop fields are additive booleans/text: installed desktops
+ignore them, while the safety UI can show that a reply stopped the whole business.
+
+Suppression: `{ id, identityKind: "phone"|"email"|"domain", identityValue, scope:
+"opt_out"|"never_contact", reason, matchedRule, source, createdAt, undoneAt }`.
+`BusinessStop` is `{ businessId, sourceWaId, reason, matchedRule, createdAt }`.
 
 Message: `{ id, waId, direction: "in"|"out", kind: "text"|"template"|"media"|"button", text,
 templateName, state: "draft"|"rejected"|"queued"|"sending"|"sent"|"delivered"|"read"|"failed"|"unconfirmed",
@@ -169,6 +180,11 @@ BatchDetail adds `rows: [{ idx, to, leadId, params, preview, state, skipReason, 
 Polling the `thread` query is how the UI sees delivery state; the Colony message event
 for an outbound message is immutable.
 
+`safety_check` is deliberately narrower than the owner safety ledger. It canonicalizes at most
+500 caller-supplied candidate identities and echoes only the values that match an active
+suppression. It never reveals a suppression reason, source, or an identity the caller did not
+submit. Discovery and list preparation use it before creating outreach work.
+
 ## Webhook `GET|POST /hooks/whatsapp/{connectionId}`
 
 * `GET`: `hub.mode=subscribe`, `hub.verify_token`, `hub.challenge`. Echoes the challenge
@@ -196,7 +212,7 @@ for an outbound message is immutable.
 
 ## Events (member signed commands, handled by the relay)
 
-**Kind block.** This feature owns actions `47048` to `47055` (five used: `47048` to `47052`) and,
+**Kind block.** This feature owns actions `47048` to `47055` (seven used: `47048` to `47054`) and,
 if relay-signed heads are ever needed, `30660` to `30667` (none used today). `47046` and `47047` are
 reserved for the business profile and team computer actions. Co-founder mode owns
 `30670` to `30679` and `47060` to `47069`. A compile-time assert in `kind.rs` keeps the
@@ -227,7 +243,8 @@ accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
 
 The relay validates the template (approved, slot count matches), normalises numbers to E.164,
 re-renders every preview itself and stores the batch as `pending`. A pending batch never sends.
-Opted-out or paused numbers are refused at create time with a clear reason per row.
+Opted-out, paused, never-contact, or whole-business-stopped numbers are refused at create time
+with a clear reason per row.
 Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
 ### `47049` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
@@ -270,7 +287,8 @@ To decide one agent draft (see `47050`) send `draftId` instead of `batchId`:
 ```
 
 Approve can be one tap in the thread (no edit fields). Approval re-checks every send rule at that
-moment (opted out, paused, quality stop, 24 hour window for free text, one message in a row); a
+moment (opted out, never-contact, whole-business stop, paused, quality stop, 24 hour window for
+free text, one message in a row); a
 refused approval leaves the draft pending with the plain reason. A draft can be decided once: a
 repeat is answered `duplicate: this draft was already decided`.
 
@@ -283,7 +301,7 @@ repeat is answered `duplicate: this draft was already decided`.
 or `"threadRoot": "<hex event id>"` instead of `to`, and `"template": { "name", "language", "params" }`
 instead of `text`. Rules the relay enforces:
 
-1. Contact opted out or paused: refused with the reason.
+1. Contact opted out, never-contact, whole-business-stopped, or paused: refused with the reason.
 2. `text` only inside the 24 hour window after the contact's last inbound message.
 3. Outside the window only a template. A template to a NEW chat needs an approved batch,
    unless the sender is owner/admin (then it counts to the daily cap).
@@ -355,6 +373,34 @@ Additive Contact fields: `stage`, `stageSetBy` (`auto` or the setter's hex pubke
 (`sent`, `delivered`, `read`, `failed` or null), and, when the contact is linked to a lead,
 `businessName` and `website`. `displayName` is the label when one is set.
 
+### `47053` `KIND_WHATSAPP_SAFETY_ACTION` (owner/admin only)
+
+```json
+{ "v": 1, "action": "never_contact_add", "waId": "+27821234567", "reason": "owner privacy request" }
+{ "v": 1, "action": "never_contact_undo", "waId": "+27821234567" }
+{ "v": 1, "action": "opt_out_undo", "waId": "+27821234567" }
+```
+
+The action is written to a durable suppression ledger and every effective add or undo is appended
+to the audit log as `whatsapp_outreach_safety_changed`. A never-contact decision immediately
+skips queued rows for that number, is checked by batch/list creation and direct-send preflight,
+and is checked again by the final atomic lease claim. An opt-out undo retains history; it does not
+remove a separate whole-business stop created by the inbound reply.
+
+### `47054` `KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY` (owner/admin only)
+
+```json
+{ "v": 1, "action": "check_status", "messageId": "uuid", "confirm": false }
+{ "v": 1, "action": "mark_delivered", "messageId": "uuid", "confirm": true }
+{ "v": 1, "action": "resend", "messageId": "uuid", "confirm": true }
+```
+
+`check_status` records that the owner reviewed the relay's last known state. It does not invent a
+provider result or send anything. `mark_delivered` changes only an unresolved `unconfirmed` row.
+`resend` leaves that original row unconfirmed and creates exactly one new queued message after an
+explicit confirmation. A repeat resend is rejected rather than creating another replacement.
+Every recovery action is audited as `whatsapp_unknown_send_recovery`.
+
 ## Sending, pacing, cap
 
 * Approved batch rows send between 08:00 and 18:00 Africa/Johannesburg, one every 3 to 6
@@ -371,7 +417,8 @@ Additive Contact fields: `stage`, `stageSetBy` (`auto` or the setter's hex pubke
   sending while another source remains active.
 * One row = at most one Graph send. A row moves `ready -> sending -> sent`. A crash between
   the Graph call and the record leaves it `sending`; after the lease expires it becomes
-  `unconfirmed` and is NEVER resent automatically. The owner is told in the Outreach channel.
+  `unconfirmed` and is NEVER resent automatically. The owner is told in the Outreach channel and
+  must explicitly check, mark delivered, or confirm one new replacement through `47054`.
 
 ## Buttons and opt-out
 
@@ -379,11 +426,23 @@ A tap on a template quick-reply button arrives from Meta as a `button` (or inter
 message. The relay treats it as the contact's reply: the button text becomes the message text in
 the thread, it opens the 24 hour window and wakes the owning agent like any reply.
 
-Inbound `stop`, `unsubscribe`, `no thanks`, `not interested` (trimmed, case insensitive,
-trailing punctuation ignored) and a button whose text means the same (`Not interested`,
-`Stop promotions`, `Unsubscribe`, `Opt out`) mark the contact
-opted out. Every later send is refused: `contact opted out on <date>`. A Meta block or spam
-error code on send pauses the contact and posts a notice in the Outreach channel.
+Inbound opt-outs are deterministic phrase data, not an AI classification call. English,
+Afrikaans, Zulu and Xhosa recognize bare `STOP`, `unsubscribe`, `no thanks`, and their
+unambiguous equivalents, including a complete phrase inside a longer reply. The matching rule is
+stored with the contact-scoped opt-out. The Afrikaans, Zulu and Xhosa lists need native-speaker
+review before a wider language rollout.
+
+Every inbound reply from a contact linked to a business also creates a whole-business hold: every
+current and future number linked to that business is skipped at once and refused by the final
+atomic lease claim. This is separate from the contact-scoped opt-out, so an owner can audit or
+undo a number's opt-out without accidentally releasing the business hold. A reply that contains
+both an opt-out and a complaint or legal signal still opts out and raises an owner notice.
+
+An owner or admin can add a never-contact phone entry with a reason, then undo it later. The
+schema supports phone, email and domain identities so later channels can share the ledger without
+a migration. Discovery saves and list preparation use the privacy-limited safety preflight to skip
+matching candidates before outreach work is created. A Meta block or spam error code on send
+pauses the contact and posts a notice in the Outreach channel.
 
 ## Outreach channel
 
@@ -403,7 +462,9 @@ One private channel named `Outreach`. Each contact has ONE thread:
 ## CLI
 
 `colony whatsapp drafts | draft approve | draft reject` (owner/admin decide), `status | templates | template-title | batch create | batch list | batch show |
-batch approve | batch reject | send | contacts | inbox | thread | cap`. `templates` prints the title first
+batch approve | batch reject | send | safety list | safety never-contact | safety undo-never-contact |
+safety undo-opt-out | unknown-send list | unknown-send check | unknown-send mark-delivered |
+unknown-send resend | contacts | inbox | thread | cap`. `templates` prints the title first
 and the Meta name second; `template-title --template <title or Meta name> --title "..."` renames
 (owner/admin) or, with `--propose`, suggests a title (agents). Help text and the colony skill carry the rules:
 templates first, short human replies, never more than one message in a row without a reply,

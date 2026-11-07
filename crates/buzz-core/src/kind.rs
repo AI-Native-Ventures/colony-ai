@@ -883,6 +883,10 @@ pub const KIND_WHATSAPP_SEND_REQUEST: u32 = 47050;
 pub const KIND_WHATSAPP_SETTINGS: u32 = 47051;
 /// Owner, admin, Scout or Outreach member sets a contact's pipeline stage and/or its label.
 pub const KIND_WHATSAPP_CONTACT_UPDATE: u32 = 47052;
+/// Owner or admin changes a durable WhatsApp safety entry, including an audited undo.
+pub const KIND_WHATSAPP_SAFETY_ACTION: u32 = 47053;
+/// Owner or admin resolves an unknown WhatsApp send outcome after explicit confirmation.
+pub const KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY: u32 = 47054;
 
 /// Every WhatsApp outreach command kind.
 pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
@@ -891,6 +895,8 @@ pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
     KIND_WHATSAPP_SEND_REQUEST,
     KIND_WHATSAPP_SETTINGS,
     KIND_WHATSAPP_CONTACT_UPDATE,
+    KIND_WHATSAPP_SAFETY_ACTION,
+    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 ];
 
 /// Returns `true` for member commands handled by the WhatsApp outreach broker.
@@ -902,6 +908,8 @@ pub const fn is_whatsapp_command_kind(kind: u32) -> bool {
             | KIND_WHATSAPP_SEND_REQUEST
             | KIND_WHATSAPP_SETTINGS
             | KIND_WHATSAPP_CONTACT_UPDATE
+            | KIND_WHATSAPP_SAFETY_ACTION
+            | KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY
     )
 }
 
@@ -1400,6 +1408,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_WHATSAPP_SEND_REQUEST,
     KIND_WHATSAPP_SETTINGS,
     KIND_WHATSAPP_CONTACT_UPDATE,
+    KIND_WHATSAPP_SAFETY_ACTION,
+    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1507,6 +1517,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_WHATSAPP_SEND_REQUEST
             | KIND_WHATSAPP_SETTINGS
             | KIND_WHATSAPP_CONTACT_UPDATE
+            | KIND_WHATSAPP_SAFETY_ACTION
+            | KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY
     )
 }
 
@@ -1634,11 +1646,15 @@ const _: () = assert!(
         && KIND_WHATSAPP_SEND_REQUEST >= 47048
         && KIND_WHATSAPP_SETTINGS >= 47048
         && KIND_WHATSAPP_CONTACT_UPDATE >= 47048
+        && KIND_WHATSAPP_SAFETY_ACTION >= 47048
+        && KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY >= 47048
         && KIND_WHATSAPP_BATCH <= 47055
         && KIND_WHATSAPP_BATCH_DECISION <= 47055
         && KIND_WHATSAPP_SEND_REQUEST <= 47055
         && KIND_WHATSAPP_SETTINGS <= 47055
         && KIND_WHATSAPP_CONTACT_UPDATE <= 47055
+        && KIND_WHATSAPP_SAFETY_ACTION <= 47055
+        && KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY <= 47055
 );
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
