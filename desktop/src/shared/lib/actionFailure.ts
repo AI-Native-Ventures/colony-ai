@@ -64,6 +64,27 @@ function resetDateValue(value: unknown): string | null {
     : match[1];
 }
 
+function failureDetails(input: {
+  action: string;
+  stage: string;
+  failureClass: ActionFailure["failureClass"];
+  status: number | null;
+  code: string | null;
+  resetDate: string | null;
+}): string {
+  const details = [
+    `action=${input.action}`,
+    `stage=${input.stage}`,
+    `class=${input.failureClass}`,
+    `status=${input.status ?? "none"}`,
+    `code=${input.code ?? "none"}`,
+  ];
+  if (input.resetDate) {
+    details.push(`reset_date=${input.resetDate}`);
+  }
+  return details.join("\n");
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -103,14 +124,14 @@ function isActionFailure(value: unknown): value is ActionFailure {
     failure.resetDate === null ? null : resetDateValue(failure.resetDate);
   if (failure.resetDate !== resetDate) return false;
   const copy = description({ action, failureClass, status, code, resetDate });
-  const details = [
-    `action=${action}`,
-    `stage=${stage}`,
-    `class=${failureClass}`,
-    `status=${status ?? "none"}`,
-    `code=${code ?? "none"}`,
-    `reset_date=${resetDate ?? "none"}`,
-  ].join("\n");
+  const details = failureDetails({
+    action,
+    stage,
+    failureClass,
+    status,
+    code,
+    resetDate,
+  });
   return (
     failure.title === copy.title &&
     failure.message === copy.message &&
@@ -284,14 +305,14 @@ export function actionFailureFromError(
   const action = safeValue(input.action) ?? "unknown-action";
   const stage = safeValue(input.stage) ?? "unknown-stage";
   const copy = description({ action, failureClass, status, code, resetDate });
-  const details = [
-    `action=${action}`,
-    `stage=${stage}`,
-    `class=${failureClass}`,
-    `status=${status ?? "none"}`,
-    `code=${code ?? "none"}`,
-    `reset_date=${resetDate ?? "none"}`,
-  ].join("\n");
+  const details = failureDetails({
+    action,
+    stage,
+    failureClass,
+    status,
+    code,
+    resetDate,
+  });
   return {
     action,
     stage,

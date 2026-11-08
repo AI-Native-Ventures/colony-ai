@@ -111,12 +111,32 @@ test("a monthly Discovery limit keeps its reset date in plain customer copy", ()
     "You have used this month’s prospect searches. They reset on 2026-12-01.",
   );
   assert.equal(dated.resetDate, "2026-12-01");
-  assert.match(dated.details, /reset_date=2026-12-01/);
+  assert.equal(
+    dated.details,
+    [
+      "action=prospect-search",
+      "stage=relay-response",
+      "class=server",
+      "status=429",
+      "code=monthly_limit",
+      "reset_date=2026-12-01",
+    ].join("\n"),
+  );
   assert.equal(
     undated.message,
     "You have used this month’s prospect searches. They reset at the start of next month.",
   );
   assert.equal(undated.resetDate, null);
+  assert.equal(
+    undated.details,
+    [
+      "action=prospect-search",
+      "stage=relay-response",
+      "class=server",
+      "status=429",
+      "code=monthly_limit",
+    ].join("\n"),
+  );
   assert.doesNotMatch(dated.message, /relay returned|untrusted/i);
   assert.doesNotMatch(undated.message, /relay returned|untrusted/i);
 });
@@ -194,7 +214,7 @@ test("the desktop log writes only compact safe failure details", () => {
   }
 
   assert.deepEqual(logged, [
-    "[colony-action-failure] action=prospect-search stage=nip98-sign class=signing status=none code=identity_recovery reset_date=none",
+    "[colony-action-failure] action=prospect-search stage=nip98-sign class=signing status=none code=identity_recovery",
   ]);
 });
 
