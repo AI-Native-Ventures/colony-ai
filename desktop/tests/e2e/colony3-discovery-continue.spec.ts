@@ -51,6 +51,19 @@ async function installDiscoveryFixture(page: Page) {
       rating: 4.5,
       reviews: 20,
     });
+    const initialNames = [
+      "Aquila Counter",
+      "Bracken Foundry",
+      "Crown Sable",
+      "Dovetail Orange",
+      "Everest Cubed",
+      "Fable Rocket",
+      "Gossamer Onyx",
+      "Hearth Quasar",
+      "Iris Parchment",
+      "Jasper Nebula",
+      "Kestrel Marble",
+    ];
     w.__discoveryCalls = [];
     w.__locationCalls = [];
     w.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async ({ query }) => {
@@ -93,14 +106,31 @@ async function installDiscoveryFixture(page: Page) {
       if (skip < 100) {
         return {
           provider: "outscraper",
-          // The reference workspace already has each of these businesses.
-          // Five full pages must still advance to the approved budget cursor.
-          places: Array.from({ length: 20 }, (_, index) =>
-            place(
-              `known-${String(skip)}-${String(index)}`,
-              existingNames[index % existingNames.length],
-            ),
-          ),
+          // The first page saves 11 new businesses. The next four are all
+          // existing leads, so five paid pages use the initial approval while
+          // leaving the owner below the 100-prospect target.
+          places:
+            skip === 0
+              ? [
+                  ...Array.from({ length: 11 }, (_, index) =>
+                    place(
+                      `initial-${String(index + 1)}`,
+                      initialNames[index] ?? `Initial Fixture ${String(index)}`,
+                    ),
+                  ),
+                  ...Array.from({ length: 9 }, (_, index) =>
+                    place(
+                      `known-${String(index)}`,
+                      existingNames[index % existingNames.length],
+                    ),
+                  ),
+                ]
+              : Array.from({ length: 20 }, (_, index) =>
+                  place(
+                    `known-${String(skip)}-${String(index)}`,
+                    existingNames[index % existingNames.length],
+                  ),
+                ),
           estimatedCostUsd: 0.06,
           nextSkip: skip + 20,
         };
@@ -174,7 +204,11 @@ async function campaignStorage(page: Page) {
     return raw
       ? (JSON.parse(raw) as {
           currentId: string;
-          campaigns: Array<{ id: string }>;
+          campaigns: Array<{
+            id: string;
+            budgetUsd: number;
+            spentUsd: number;
+          }>;
         })
       : null;
   });
@@ -201,6 +235,13 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   await openDiscovery(page);
   const firstDialog = await openCampaignDialog(page);
   await chooseJohannesburg(firstDialog);
+  await expect(firstDialog.getByText("Maximum search budget")).toBeVisible();
+  await expect(firstDialog.getByText("US$3.00", { exact: true })).toBeVisible();
+  await expect(
+    firstDialog.getByText(/About US\$0\.60 per 20 results\./),
+  ).toBeVisible();
+  await expect(firstDialog.getByText(/US\$0\.03 per prospect\./)).toBeVisible();
+  await expect(firstDialog).not.toContainText("US$0.30");
   await approve(firstDialog);
 
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
@@ -214,6 +255,9 @@ test("Find more approves extra budget and resumes the same campaign in place", a
     page.getByText("Search nearby areas", { exact: true }),
   ).toBeVisible();
   await expect(
+    page.getByText(/11 prospects found · 100 requested/),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", {
       name: "Woodmead, Johannesburg, Gauteng, South Africa",
     }),
@@ -224,6 +268,8 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   const beforeFindMore = await campaignStorage(page);
   expect(beforeFindMore?.campaigns).toHaveLength(1);
   expect(beforeFindMore?.currentId).toBe(beforeFindMore?.campaigns[0]?.id);
+  expect(beforeFindMore?.campaigns[0]?.budgetUsd).toBe(0.3);
+  expect(beforeFindMore?.campaigns[0]?.spentUsd).toBe(0.3);
 
   await page.getByRole("button", { name: /Find more/ }).click();
   const moreDialog = page.getByTestId("discovery-continuation-dialog");
@@ -232,11 +278,11 @@ test("Find more approves extra budget and resumes the same campaign in place", a
     moreDialog.getByRole("heading", { name: "Approve more search budget." }),
   ).toBeVisible();
   await expect(
-    moreDialog.getByText(/\$0\.30 of \$0\.30 approved/),
+    moreDialog.getByText(/US\$3\.00 of US\$3\.00 approved/),
   ).toBeVisible();
   await expect(
     moreDialog.getByLabel("Additional budget to approve"),
-  ).toHaveValue("0.30");
+  ).toHaveValue("3.00");
   await moreDialog
     .getByRole("checkbox", {
       name: "I approve this additional search budget for the same campaign.",
@@ -247,17 +293,17 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(
-    page.getByTestId("w10-campaign-page").locator("tbody tr"),
-  ).toHaveCount(3);
+  await expect(page.getByRole("link", { name: "Prospects 14" })).toBeVisible();
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
     0, 20, 40, 60, 80, 100,
   ]);
   const afterFindMore = await campaignStorage(page);
   expect(afterFindMore?.campaigns).toHaveLength(1);
   expect(afterFindMore?.currentId).toBe(beforeFindMore?.currentId);
+  expect(afterFindMore?.campaigns[0]?.budgetUsd).toBe(0.6);
+  expect(afterFindMore?.campaigns[0]?.spentUsd).toBe(0.36);
   await expect(
-    page.getByText(/Search cost.*\$0\.36.*\$0\.60 approved/),
+    page.getByText(/Search cost.*US\$3\.60.*US\$6\.00 approved/),
   ).toBeVisible();
 });
 

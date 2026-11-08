@@ -16,6 +16,7 @@ import {
 } from "./campaignsCatalog";
 import { ChevronRightGlyph, SearchGlyph } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import {
   getDiscoveryCampaignProvider,
   useDiscoveryCampaign,
@@ -78,12 +79,7 @@ function formatDate(createdAt: number | undefined): string {
 
 function formatSpend(campaign: DiscoveryCampaign): string {
   const spend = campaign.spentUsd ?? campaign.budgetUsd;
-  return new Intl.NumberFormat(undefined, {
-    currency: "USD",
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-    style: "currency",
-  }).format(spend);
+  return formatCustomerPrice(spend);
 }
 
 function statusTone(campaign: DiscoveryCampaign): string {

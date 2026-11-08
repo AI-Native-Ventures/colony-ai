@@ -94,6 +94,8 @@ const TRANSIENT_CODES = new Set([
 export class DiscoverySearchError extends Error {
   readonly code: string | null;
   readonly status: number | null;
+  /** Relay-supplied monthly-limit reset timestamp, when available. */
+  readonly resetsAt: string | null;
   readonly actionFailure: ActionFailure | null;
 
   constructor(
@@ -101,6 +103,7 @@ export class DiscoverySearchError extends Error {
     options: {
       code?: string | null;
       status?: number | null;
+      resetsAt?: string | null;
       actionFailure?: ActionFailure | null;
     } = {},
   ) {
@@ -108,6 +111,7 @@ export class DiscoverySearchError extends Error {
     this.name = "DiscoverySearchError";
     this.code = options.code ?? null;
     this.status = options.status ?? null;
+    this.resetsAt = options.resetsAt ?? null;
     this.actionFailure = options.actionFailure ?? null;
   }
 
@@ -199,18 +203,25 @@ export function searchErrorFromHttp(
   // only a sentence (it contains a space) is shown to people.
   const serverSentence = serverText?.includes(" ") ? serverText : null;
   const code = text(json.code) ?? (serverSentence ? null : serverText);
+  const resetsAt = text(json.resets_at);
   if (code === "relay_membership_required") {
-    return new DiscoverySearchError(MEMBERSHIP_MESSAGE, { code, status });
+    return new DiscoverySearchError(MEMBERSHIP_MESSAGE, {
+      code,
+      status,
+      resetsAt,
+    });
   }
   if (status === 404 || status === 405) {
     return new DiscoverySearchError(UNSUPPORTED_SERVER_MESSAGE, {
       code: "discovery_unsupported",
       status,
+      resetsAt,
     });
   }
   return new DiscoverySearchError(serverSentence ?? SEARCH_FAILED_MESSAGE, {
     code,
     status,
+    resetsAt,
   });
 }
 
