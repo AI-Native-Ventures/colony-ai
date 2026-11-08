@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  contactWithThreadDetails,
   contactStatus,
   isWhatsAppAwaitingReply,
   sendNowBatchIdForQueuedMessage,
@@ -139,4 +140,48 @@ test("awaiting reply is conservative for old relays and excludes durable holds",
     }),
     false,
   );
+});
+
+test("thread details preserve safety holds when only the additive thread view has them", () => {
+  const listContact = {
+    waId: "27821234410",
+    displayName: null,
+    profileName: null,
+    businessName: null,
+    website: null,
+    label: null,
+    stage: "contacted",
+    stageSetBy: null,
+    stageChangedAt: null,
+    queuedFrom: null,
+    outreachStatus: null,
+    lastContactedAt: null,
+    lastOutboundState: null,
+    lastFailureSummary: null,
+    deliveryFailure: null,
+    lastReplyAt: null,
+    hasSentOutbound: false,
+    businessOutreachStopped: false,
+    businessStopReason: null,
+    leadId: null,
+  };
+  const threadContact = {
+    ...listContact,
+    displayName: "Corner Cottage",
+    hasSentOutbound: true,
+    businessOutreachStopped: true,
+    businessStopReason: "Lindiwe replied stop.",
+    leadId: "business-id",
+  };
+  const resolved = contactWithThreadDetails(
+    listContact,
+    threadContact,
+    "batch-lead-id",
+  );
+
+  assert.equal(resolved?.displayName, "Corner Cottage");
+  assert.equal(resolved?.hasSentOutbound, true);
+  assert.equal(resolved?.businessOutreachStopped, true);
+  assert.equal(resolved?.businessStopReason, "Lindiwe replied stop.");
+  assert.equal(resolved?.leadId, "business-id");
 });

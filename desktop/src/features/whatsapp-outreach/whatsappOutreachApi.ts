@@ -16,7 +16,6 @@ import {
   parseWhatsAppContact,
   parseWhatsAppDraft,
   parseWhatsAppMessage,
-  parseWhatsAppSafetyLedger,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
   parseWhatsAppThread,
@@ -25,11 +24,14 @@ import {
   type WhatsAppContact,
   type WhatsAppDraft,
   type WhatsAppMessage,
-  type WhatsAppSafetyLedger,
   type WhatsAppStatus,
   type WhatsAppTemplate,
   type WhatsAppThread,
 } from "./whatsappOutreachModels";
+import {
+  parseWhatsAppSafetyLedger,
+  type WhatsAppSafetyLedger,
+} from "./whatsappOutreachSafety";
 
 const NIP98_KIND = 27235;
 const REQUEST_TIMEOUT_MS = 20_000;

@@ -2,10 +2,8 @@ import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
 import { KIND_WHATSAPP_SAFETY_ACTION } from "@/shared/constants/kinds";
-import {
-  formatWhatsAppNumber,
-  type WhatsAppSafetyLedger,
-} from "./whatsappOutreachModels";
+import { formatWhatsAppNumber } from "./whatsappOutreachModels";
+import type { WhatsAppSafetyLedger } from "./whatsappOutreachSafety";
 import { useWhatsAppCommand } from "./whatsappOutreachQueries";
 import { WhatsAppConfirmAction } from "./WhatsAppConfirmAction";
 

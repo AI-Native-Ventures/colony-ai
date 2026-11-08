@@ -21,7 +21,6 @@ import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
   KIND_WHATSAPP_BATCH_DECISION,
   KIND_WHATSAPP_SEND_REQUEST,
-  KIND_WHATSAPP_SAFETY_ACTION,
   KIND_WHATSAPP_SETTINGS,
 } from "@/shared/constants/kinds";
 import {
@@ -35,7 +34,9 @@ import {
 } from "./whatsappOutreachModels";
 import {
   contactStatus,
+  contactWithThreadDetails,
   isWhatsAppAwaitingReply,
+  normalizeWhatsAppSafetyPhone,
   pendingBatchRowsForContact,
   uniquePendingBatchRowForContact,
 } from "./whatsappOutreachContactState";
@@ -59,18 +60,24 @@ import {
   type ContactFilter,
   WhatsAppOutreachContactFilters,
 } from "./WhatsAppOutreachContactFilters";
+import {
+  WhatsAppBusinessStopNotice,
+  WhatsAppThreadContextLimitNotice,
+} from "./WhatsAppOutreachSafetyNotices";
 import { WhatsAppTemplatePicker } from "./WhatsAppTemplatePicker";
-import { WHATSAPP_THREAD_VISIBLE_LIMIT } from "./whatsappOutreachApi";
 import {
   useWhatsAppCommand,
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
   useWhatsAppPendingBatchDetailsQuery,
   useWhatsAppStatusQuery,
-  useWhatsAppSafetyLedgerQuery,
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
+import {
+  undoWhatsAppOptOut,
+  useWhatsAppOptOutSuppressionByWaId,
+} from "./useWhatsAppOutreachSafety";
 import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
 import "./whatsappOutreach.css";
 
@@ -105,10 +112,6 @@ function windowTimeRemaining(value: string | null): string {
   );
   if (minutes >= 60) return `${Math.ceil(minutes / 60)}h left`;
   return `${Math.max(1, minutes)}m left`;
-}
-
-function normalizedSafetyPhone(value: string): string {
-  return value.replace(/\D/gu, "");
 }
 
 export function WhatsAppOutreachScreen({
@@ -170,9 +173,6 @@ export function WhatsAppOutreachScreen({
     membershipQuery.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
-  const safetyLedgerQuery = useWhatsAppSafetyLedgerQuery(
-    canManage && statusQuery.data?.connected === true,
-  );
   const canEditContact = canManageWhatsAppContact({
     role,
     isOutreachMember: channelIsMember,
@@ -184,7 +184,6 @@ export function WhatsAppOutreachScreen({
     pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
     ownerPubkey: profileQuery.data?.ownerPubkey,
   });
-  const canRetrySend = canManage;
   const status = statusQuery.data;
   const pauseLabel = `${status?.ownerPaused ? "Resume" : "Pause"} all WhatsApp sending`;
   const accountRetries = accountRecoveryCount(status);
@@ -249,21 +248,9 @@ export function WhatsAppOutreachScreen({
     thread?.messages ?? [],
   );
   const pendingBatches = pendingBatchesQuery.data ?? [];
-  const optOutSuppressionByWaId = React.useMemo(
-    () =>
-      new Map(
-        (safetyLedgerQuery.data?.suppressions ?? [])
-          .filter(
-            (suppression) =>
-              suppression.scope === "opt_out" &&
-              suppression.identityKind === "phone",
-          )
-          .map((suppression) => [
-            normalizedSafetyPhone(suppression.identityValue),
-            suppression,
-          ]),
-      ),
-    [safetyLedgerQuery.data?.suppressions],
+  const optOutSuppressionByWaId = useWhatsAppOptOutSuppressionByWaId(
+    canManage,
+    statusQuery.data?.connected === true,
   );
   const selectedPendingBatchRows = selectedContact
     ? pendingBatchRowsForContact(selectedContact, pendingBatches)
@@ -271,65 +258,11 @@ export function WhatsAppOutreachScreen({
   const selectedPendingBatchRow = selectedContact
     ? uniquePendingBatchRowForContact(selectedContact, pendingBatches)
     : null;
-  const selectedContactWithThreadIdentity = selectedContact
-    ? {
-        ...selectedContact,
-        displayName:
-          selectedContact.displayName ?? thread?.contact.displayName ?? null,
-        profileName:
-          selectedContact.profileName ?? thread?.contact.profileName ?? null,
-        businessName:
-          selectedContact.businessName ?? thread?.contact.businessName ?? null,
-        website: selectedContact.website ?? thread?.contact.website ?? null,
-        label: selectedContact.label ?? thread?.contact.label ?? null,
-        stage: selectedContact.stage ?? thread?.contact.stage ?? "none",
-        stageSetBy:
-          selectedContact.stageSetBy ?? thread?.contact.stageSetBy ?? null,
-        stageChangedAt:
-          selectedContact.stageChangedAt ??
-          thread?.contact.stageChangedAt ??
-          null,
-        queuedFrom:
-          selectedContact.queuedFrom ?? thread?.contact.queuedFrom ?? null,
-        outreachStatus:
-          selectedContact.outreachStatus ??
-          thread?.contact.outreachStatus ??
-          null,
-        lastContactedAt:
-          selectedContact.lastContactedAt ??
-          thread?.contact.lastContactedAt ??
-          null,
-        lastOutboundState:
-          selectedContact.lastOutboundState ??
-          thread?.contact.lastOutboundState ??
-          null,
-        lastFailureSummary:
-          selectedContact.lastFailureSummary ??
-          thread?.contact.lastFailureSummary ??
-          null,
-        deliveryFailure:
-          selectedContact.deliveryFailure ??
-          thread?.contact.deliveryFailure ??
-          null,
-        lastReplyAt:
-          selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
-        hasSentOutbound:
-          selectedContact.hasSentOutbound ||
-          thread?.contact.hasSentOutbound === true,
-        businessOutreachStopped:
-          selectedContact.businessOutreachStopped ||
-          thread?.contact.businessOutreachStopped === true,
-        businessStopReason:
-          selectedContact.businessStopReason ??
-          thread?.contact.businessStopReason ??
-          null,
-        leadId:
-          selectedContact.leadId ??
-          thread?.contact.leadId ??
-          selectedPendingBatchRow?.row.leadId ??
-          null,
-      }
-    : null;
+  const selectedContactWithThreadIdentity = contactWithThreadDetails(
+    selectedContact,
+    thread?.contact,
+    selectedPendingBatchRow?.row.leadId,
+  );
   const selectedIdentity = selectedContactWithThreadIdentity
     ? identityForContact(selectedContactWithThreadIdentity)
     : null;
@@ -684,9 +617,7 @@ export function WhatsAppOutreachScreen({
               <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
-            {canRetrySend &&
-            status.accountRetryCount > 0 &&
-            !status.sendHealth ? (
+            {canManage && status.accountRetryCount > 0 && !status.sendHealth ? (
               <WhatsAppResumeAndRetryAction count={status.accountRetryCount} />
             ) : null}
             <Tooltip disableHoverableContent>
@@ -739,15 +670,10 @@ export function WhatsAppOutreachScreen({
               (draft) => draft.waId === contact.waId,
             );
             const optOutSuppression = optOutSuppressionByWaId.get(
-              normalizedSafetyPhone(contact.waId),
+              normalizeWhatsAppSafetyPhone(contact.waId),
             );
             const undoOptOut = optOutSuppression
-              ? () =>
-                  command(KIND_WHATSAPP_SAFETY_ACTION, {
-                    v: 1,
-                    action: "opt_out_undo",
-                    waId: contact.waId,
-                  })
+              ? () => undoWhatsAppOptOut(command, contact.waId)
               : undefined;
             return mode === "desk" ? (
               <WhatsAppOutreachContactRow
@@ -896,16 +822,9 @@ export function WhatsAppOutreachScreen({
           </header>
 
           {selectedContactWithThreadIdentity?.businessOutreachStopped ? (
-            <div className="c3wa-business-stop-note" role="status">
-              <strong>
-                Automatic outreach is stopped for everyone at this business.
-              </strong>
-              <span>
-                {selectedContactWithThreadIdentity.businessStopReason
-                  ? `Reason: ${selectedContactWithThreadIdentity.businessStopReason}`
-                  : "A linked reply created a durable business-level hold."}
-              </span>
-            </div>
+            <WhatsAppBusinessStopNotice
+              reason={selectedContactWithThreadIdentity.businessStopReason}
+            />
           ) : null}
           {selectedContact.optedOut ? (
             <div className="c3wa-contact-lock" role="status">
@@ -960,12 +879,9 @@ export function WhatsAppOutreachScreen({
                 {threadQuery.error.message}
               </div>
             ) : null}
-            {chronologicalMessages.length >= WHATSAPP_THREAD_VISIBLE_LIMIT ? (
-              <p className="c3wa-thread-context-limit" role="status">
-                Showing the newest {WHATSAPP_THREAD_VISIBLE_LIMIT} messages.
-                Earlier conversation may be outside this review.
-              </p>
-            ) : null}
+            <WhatsAppThreadContextLimitNotice
+              messageCount={chronologicalMessages.length}
+            />
             {chronologicalMessages.map((message, index) => {
               const previousMessage = chronologicalMessages[index - 1];
               const startsDay =
@@ -997,7 +913,7 @@ export function WhatsAppOutreachScreen({
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}
-                    canRetrySend={canRetrySend}
+                    canRetrySend={canManage}
                     accountRetryCount={accountRetries}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}

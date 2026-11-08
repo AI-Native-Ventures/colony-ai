@@ -13,7 +13,6 @@ import {
   parseWhatsAppMedia,
   parseWhatsAppMessage,
   parseWhatsAppContact,
-  parseWhatsAppSafetyLedger,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
   resetWhatsAppUnknownMessageStateWarning,
@@ -26,6 +25,7 @@ import {
   whatsappTemplateDisplayTitle,
   whatsappTemplateMetaName,
 } from "./whatsappOutreachModels.ts";
+import { parseWhatsAppSafetyLedger } from "./whatsappOutreachSafety.ts";
 
 const approvedTemplate = {
   title: "Built a site for you",
