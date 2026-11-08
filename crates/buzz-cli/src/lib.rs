@@ -5467,7 +5467,8 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("whatsapp", 13),
+            // Safety and unknown-send recovery are intentional owner-facing WhatsApp groups.
+            ("whatsapp", 15),
             ("work", 16),
             ("workflows", 8),
         ];
