@@ -2673,8 +2673,8 @@ button.c3d-search-chip {
   min-height: 1.5rem;
   padding: 0 0.5625rem;
   border-radius: 999px;
-  background: #e8f5ec;
-  color: #1e6b3a;
+  background: hsl(var(--colony-success-bg));
+  color: var(--colony-success-ink);
   font-size: calc(12 * var(--colony-px));
   font-weight: 800;
 }
@@ -2757,8 +2757,8 @@ button.c3d-search-chip {
   min-height: 1.875rem;
   border: 0;
   border-radius: 0.5625rem;
-  background: #efeafb;
-  color: #4a36a6;
+  background: var(--colony-discovery-tile-violet);
+  color: hsl(var(--colony-accent-ink));
   font-size: calc(13 * var(--colony-px));
   font-weight: 800;
 }
