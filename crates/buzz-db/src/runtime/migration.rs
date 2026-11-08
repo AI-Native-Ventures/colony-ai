@@ -724,7 +724,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 66);
+        assert_eq!(migrations.len(), 67);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -756,6 +756,11 @@ mod postgres_tests {
             .contains("CREATE TABLE relay_operator_email_login_audit"));
         assert_eq!(migrations[65].version, 66);
         assert!(migrations[65].sql.as_str().contains("owner_paused"));
+        assert_eq!(migrations[66].version, 67);
+        assert!(migrations[66]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE whatsapp_suppressions"));
         assert!(migrations[54]
             .sql
             .as_str()
