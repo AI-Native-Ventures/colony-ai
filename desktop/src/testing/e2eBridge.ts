@@ -822,6 +822,10 @@ type E2eConfig = {
     feedbackPublishDelayMs?: number;
     aiSubscriptions?: import("@/shared/api/aiSubscriptions").AiSubscription[];
     claudeSubscriptionResult?: import("@/shared/api/aiSubscriptions").AiSubscription;
+    /** Safe normalized plan usage for AI plan reserve UI tests. */
+    aiPlanUsage?: import("@/shared/api/aiPlanUsage").AiPlanUsage[];
+    /** Initial local preference for AI plan reserve UI tests. */
+    aiPlanReservePreference?: import("@/shared/api/aiPlanUsage").AiPlanReservePreference;
     acpAuthMethods?: Record<string, RawAcpAuthMethodsResult>;
     acpAuthMethodsErrors?: Record<string, string>;
     acpAuthMethodsError?: string;
@@ -3790,7 +3794,7 @@ function resetMockTeams(config?: E2eConfig) {
           description: "Directory-backed research team",
           persona_ids: [],
           is_builtin: false,
-          source_dir: "/Users/dev/agents/research",
+          source_dir: "/mock/agents/research",
           is_symlink: false,
           symlink_target: null,
           version: "1.2.0",
@@ -3803,7 +3807,7 @@ function resetMockTeams(config?: E2eConfig) {
           description: "Symlinked platform team",
           persona_ids: [],
           is_builtin: false,
-          source_dir: "/Users/dev/agents/platform",
+          source_dir: "/mock/agents/platform",
           is_symlink: true,
           symlink_target: "/opt/shared-teams/platform",
           version: "2.0.1",
@@ -4632,6 +4636,121 @@ type MockSaveSubscriptionRow = {
   kinds: string; // JSON-encoded integer array, e.g. "[9,40002]"
 };
 let mockSaveSubscriptions: MockSaveSubscriptionRow[] = [];
+
+type MockAiPlanReserve = {
+  preference: import("@/shared/api/aiPlanUsage").AiPlanReservePreference;
+  usage: import("@/shared/api/aiPlanUsage").AiPlanUsage[];
+  revision: number;
+  overrides: Set<string>;
+};
+
+let mockAiPlanReserve: MockAiPlanReserve = {
+  preference: { enabled: false, reservedPercent: 25 },
+  usage: [],
+  revision: 0,
+  overrides: new Set(),
+};
+
+function unavailableAiPlanUsage(): import("@/shared/api/aiPlanUsage").AiPlanUsage[] {
+  const observedAt = Date.now();
+  return (["codex", "claude"] as const).map((provider) => ({
+    provider,
+    availability: "unavailable" as const,
+    usedPercent: null,
+    resetAt: null,
+    source: "unavailable" as const,
+    observedAt,
+    freshness: "unavailable" as const,
+    confidence: null,
+    message: "usage not available for your AI",
+  }));
+}
+
+function resetMockAiPlanReserve(config: E2eConfig) {
+  mockAiPlanReserve = {
+    preference: {
+      enabled: config.mock?.aiPlanReservePreference?.enabled ?? false,
+      reservedPercent:
+        config.mock?.aiPlanReservePreference?.reservedPercent ?? 25,
+    },
+    usage: (config.mock?.aiPlanUsage ?? unavailableAiPlanUsage()).map(
+      (usage) => ({ ...usage }),
+    ),
+    revision: 0,
+    overrides: new Set(),
+  };
+}
+
+function mockAiPlanReserveState() {
+  const now = Date.now();
+  const { preference, usage } = mockAiPlanReserve;
+  const actionable = usage.filter(
+    (entry) =>
+      entry.availability === "available" &&
+      entry.freshness === "fresh" &&
+      entry.usedPercent !== null &&
+      entry.resetAt !== null &&
+      entry.resetAt > now,
+  );
+  let admission:
+    | {
+        state: "allowed" | "paused";
+        reasonCode:
+          | "no_reserve"
+          | "one_off_override"
+          | "reserve_crossed"
+          | "reserve_off"
+          | "usage_unavailable"
+          | "within_reserve";
+        reason: string | null;
+        provider?: "claude" | "codex";
+        resetAt?: number;
+        overrideKey?: string;
+      }
+    | undefined;
+  if (!preference.enabled) {
+    admission = { state: "allowed", reasonCode: "reserve_off", reason: null };
+  } else if (preference.reservedPercent === 0) {
+    admission = { state: "allowed", reasonCode: "no_reserve", reason: null };
+  } else if (actionable.length === 0) {
+    admission = {
+      state: "allowed",
+      reasonCode: "usage_unavailable",
+      reason: null,
+    };
+  } else {
+    const threshold = 100 - preference.reservedPercent;
+    for (const entry of actionable) {
+      if (entry.usedPercent === null || entry.usedPercent < threshold) continue;
+      const overrideKey = `${entry.provider}:${entry.resetAt}`;
+      if (mockAiPlanReserve.overrides.has(overrideKey)) continue;
+      admission = {
+        state: "paused",
+        reasonCode: "reserve_crossed",
+        reason: `Scout outreach drafting is paused to keep ${preference.reservedPercent}% of your AI plan free.`,
+        provider: entry.provider,
+        resetAt: entry.resetAt ?? undefined,
+        overrideKey,
+      };
+      break;
+    }
+    admission ??= {
+      state: "allowed",
+      reasonCode:
+        mockAiPlanReserve.overrides.size > 0
+          ? "one_off_override"
+          : "within_reserve",
+      reason: null,
+    };
+  }
+  return {
+    preference: { ...preference },
+    usage: usage.map((entry) => ({ ...entry })),
+    admission,
+    revision: mockAiPlanReserve.revision,
+    generation: mockAiPlanReserve.revision,
+  };
+}
 
 type MockObservedUnreadScope = {
   generation: string;
@@ -17761,9 +17880,7 @@ async function handleDiscoverManagedAgentPrereqs(
     acp: {
       command:
         configuredPrereqs?.acp?.command ?? args.input?.acpCommand ?? "buzz-acp",
-      resolved_path:
-        configuredPrereqs?.acp?.resolvedPath ??
-        "/Users/wesb/dev/buzz/target/debug/buzz-acp",
+      resolved_path: configuredPrereqs?.acp?.resolvedPath ?? "/mock/buzz-acp",
       available: configuredPrereqs?.acp?.available ?? true,
     },
     mcp: {
@@ -18448,7 +18565,7 @@ async function handleExportTeamToJson(args: { id: string }): Promise<boolean> {
 }
 
 async function handlePickTeamDirectory(): Promise<string | null> {
-  return "/Users/dev/agents/new-team";
+  return "/mock/agents/new-team";
 }
 
 async function handleInstallTeamFromDirectory(args: {
@@ -21425,6 +21542,7 @@ export function maybeInstallE2eTauriMocks() {
   resetMockObservedUnread();
   resetMockTeamCatalogEvents(config);
   resetMockSaveSubscriptions(config);
+  resetMockAiPlanReserve(config);
   resetMockPendingCommunityDeepLinks(config);
   resetMockPendingNavigationDeepLinks(config);
   resetMockPendingEntityDeepLinks(config);
@@ -23791,6 +23909,39 @@ export function maybeInstallE2eTauriMocks() {
             },
           ]
         );
+      case "get_ai_plan_usage":
+        return mockAiPlanReserveState().usage;
+      case "get_ai_plan_reserve":
+        return mockAiPlanReserveState();
+      case "update_ai_plan_reserve": {
+        const preference = payload as {
+          enabled?: unknown;
+          reservedPercent?: unknown;
+        };
+        if (
+          typeof preference.enabled !== "boolean" ||
+          typeof preference.reservedPercent !== "number" ||
+          !Number.isInteger(preference.reservedPercent) ||
+          preference.reservedPercent < 0 ||
+          preference.reservedPercent > 100
+        ) {
+          throw new Error("Invalid AI plan reserve preference.");
+        }
+        mockAiPlanReserve.preference = {
+          enabled: preference.enabled,
+          reservedPercent: preference.reservedPercent,
+        };
+        mockAiPlanReserve.revision += 1;
+        return mockAiPlanReserveState();
+      }
+      case "override_ai_plan_reserve_once": {
+        const state = mockAiPlanReserveState();
+        if (state.admission.state === "paused" && state.admission.overrideKey) {
+          mockAiPlanReserve.overrides.add(state.admission.overrideKey);
+          mockAiPlanReserve.revision += 1;
+        }
+        return mockAiPlanReserveState();
+      }
       case "check_claude_subscription":
         return (
           activeConfig?.mock?.claudeSubscriptionResult ?? {

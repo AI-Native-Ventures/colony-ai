@@ -35,6 +35,7 @@ import {
   BATCH_MANAGE_NOTE,
   canManageWhatsAppContact,
 } from "./whatsappContactAccess";
+import { aiPlanReserveChipLabel, useAiPlanReserveQuery } from "./aiPlanUsage";
 import { WhatsAppMessagePreview } from "./WhatsAppMessageMedia";
 import {
   getWhatsAppNeedsYouItems,
@@ -449,6 +450,7 @@ function NeedsContactCard({
 }
 
 export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
+  const navigate = useNavigate();
   const statusQuery = useWhatsAppStatusQuery();
   const contactsQuery = useWhatsAppContactsQuery();
   const draftsQuery = useWhatsAppDraftsQuery();
@@ -464,6 +466,10 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
   const customerAction = useCustomerRecordAction();
   const membership = useMyRelayMembershipLookupQuery();
   const profile = useProfileQuery();
+  const aiPlanReserveQuery = useAiPlanReserveQuery();
+  const aiPlanReserveLabel = aiPlanReserveQuery.isError
+    ? "AI plan usage could not be checked"
+    : aiPlanReserveChipLabel(aiPlanReserveQuery.data);
   const command = useWhatsAppCommand();
   const [actionError, setActionError] = React.useState("");
   const [busyWaId, setBusyWaId] = React.useState<string | null>(null);
@@ -576,6 +582,21 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
           </h1>
           <p>Scout prepared these. Nothing goes out until you say so.</p>
         </div>
+        <button
+          aria-label={`Open AI plan reserve settings. ${aiPlanReserveLabel}`}
+          className={`c3wa-desk-cap-pill c3wa-ai-plan-chip${
+            aiPlanReserveQuery.data?.admission.state === "paused"
+              ? " is-paused"
+              : ""
+          }`}
+          data-testid="ai-plan-usage-chip"
+          onClick={() =>
+            void navigate({ to: "/settings", search: { section: "whatsapp" } })
+          }
+          type="button"
+        >
+          <span>Your AI plan:</span> {aiPlanReserveLabel}
+        </button>
       </header>
       {status ? (
         <WhatsAppSendHealthBanner canManage={canManage} status={status} />
