@@ -90,6 +90,44 @@ test("the real search seam carries relay status and code to the campaign dialog"
   assert.match(authorization, /^Nostr /);
 });
 
+test("the real search seam maps a monthly limit and its reset date for the dialog", async () => {
+  setInvoke(async (command) => {
+    assert.equal(command, "sign_event");
+    return JSON.stringify({
+      id: "a".repeat(64),
+      pubkey: "b".repeat(64),
+      kind: 27235,
+      content: "",
+      created_at: 1,
+      tags: [],
+      sig: "c".repeat(128),
+    });
+  });
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        error: "monthly_limit",
+        resets_at: "2026-12-01T00:00:00Z",
+      }),
+      { status: 429 },
+    );
+
+  await assert.rejects(
+    searchPlaces({ relayUrl: "ws://relay.example", request }),
+    (error) => {
+      assert.ok(error instanceof DiscoverySearchError);
+      assert.equal(error.code, "monthly_limit");
+      assert.equal(error.status, 429);
+      assert.equal(error.resetsAt, "2026-12-01");
+      assert.equal(
+        error.actionFailure?.message,
+        "You have used this month’s prospect searches. They reset on 2026-12-01.",
+      );
+      return true;
+    },
+  );
+});
+
 test("the real search seam classifies a relay connection failure", async () => {
   setInvoke(async (command) => {
     assert.equal(command, "sign_event");

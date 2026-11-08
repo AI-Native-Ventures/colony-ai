@@ -1,0 +1,16 @@
+{
+  "reportedCodex": {
+    "source": "codex-app-server",
+    "usedPercent": 62,
+    "resetAt": 1800003600000,
+    "observedAt": 1800000000000,
+    "confidence": "reported"
+  },
+  "estimatedClaude": {
+    "source": "colony-token-counts",
+    "usedPercent": 31.5,
+    "resetAt": 1800007200000,
+    "observedAt": 1799999400000,
+    "confidence": "estimated"
+  }
+}

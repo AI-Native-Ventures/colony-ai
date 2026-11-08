@@ -3,6 +3,7 @@ import type {
   DiscoveryCampaignInput,
   DiscoveryCampaignProvider,
 } from "@/features/discovery/discoveryProvider";
+import { BUDGET_USD_PER_PROSPECT } from "@/features/discovery/discoveryCampaignContinuation";
 import {
   REFERENCE_DISCOVERY_CAMPAIGN_IDS,
   REFERENCE_AGENTS,
@@ -14,6 +15,10 @@ const REFERENCE_RUNNER = {
   name: REFERENCE_AGENTS.aya.name,
   pubkey: REFERENCE_AGENTS.aya.pubkey,
 };
+
+function providerBudgetForTarget(target: number): number {
+  return Math.round(target * BUDGET_USD_PER_PROSPECT * 10_000) / 10_000;
+}
 
 // The reference workspace also seeds guesthouse leads for outreach scenarios.
 // Keep this simulated home-furnishings campaign restricted to its twelve
@@ -44,7 +49,7 @@ const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   location: "South Africa",
   target: 50,
   count: 12,
-  budgetUsd: 2.5,
+  budgetUsd: providerBudgetForTarget(50),
   criteria: "",
   status: "complete",
   prospectIds: [...REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS],
@@ -65,6 +70,7 @@ const REFERENCE_GUESTHOUSE_CAMPAIGN: DiscoveryCampaign = {
   location: "Johannesburg",
   target: 12,
   count: 12,
+  budgetUsd: providerBudgetForTarget(12),
   prospectIds: [
     REFERENCE_PROSPECT_IDS.stillroom,
     REFERENCE_PROSPECT_IDS["north-note"],
@@ -92,6 +98,7 @@ const REFERENCE_RESTAURANT_CAMPAIGN: DiscoveryCampaign = {
   location: "Johannesburg",
   target: 41,
   count: 41,
+  budgetUsd: providerBudgetForTarget(41),
   prospectIds: Array.from({ length: 41 }, (_, index) =>
     referenceRestaurantProspectId(index),
   ),
@@ -175,7 +182,7 @@ function createReferenceDiscoveryProvider(
       ...input,
       id: campaignId,
       count: 0,
-      budgetUsd: Math.round(input.target * 5) / 100,
+      budgetUsd: providerBudgetForTarget(input.target),
       status: prospectIds.length ? "running" : "complete",
       prospectIds,
       created: true,

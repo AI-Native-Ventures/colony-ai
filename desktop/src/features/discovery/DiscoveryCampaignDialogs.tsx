@@ -16,9 +16,17 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { formatBudget } from "./CampaignHelpers";
 import { ArrowRightGlyph } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import {
+  BUDGET_USD_PER_PROSPECT,
+  PAGE_BUDGET_USD,
+} from "./discoveryCampaignContinuation";
+import {
+  customerPriceFromProviderCost,
+  formatCustomerPrice,
+  providerCostFromCustomerPrice,
+} from "./discoveryCustomerPricing";
 import {
   attachNearbyLocations,
   readRecentDiscoveryLocations,
@@ -62,7 +70,6 @@ export type CampaignFormInput = {
   qualification: CampaignQualificationSettings;
 };
 
-const BUDGET_PER_PROSPECT_USD = 0.003;
 const LOCATION_DEBOUNCE_MS = 250;
 
 function discoveryActionFailure(error: unknown): ActionFailure {
@@ -326,7 +333,8 @@ export function DiscoveryCampaignDialog({
   const [failure, setFailure] = React.useState<ActionFailure | null>(null);
   const [detailsCopied, setDetailsCopied] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-  const budget = Math.max(0, Number(target) || 0) * BUDGET_PER_PROSPECT_USD;
+  const providerBudget =
+    Math.max(0, Number(target) || 0) * BUDGET_USD_PER_PROSPECT;
 
   React.useEffect(() => {
     if (!open || !pending) return;
@@ -613,10 +621,12 @@ export function DiscoveryCampaignDialog({
               <small>
                 {simulatedCosts
                   ? "Example pricing · Actual results and costs are simulated."
-                  : "Website check adds no cost."}
+                  : `About ${formatCustomerPrice(PAGE_BUDGET_USD)} per 20 results. ${formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per prospect. Website check adds no cost. This is the maximum you approve.`}
               </small>
             </span>
-            <span className="c3d-budget-amount">${budget.toFixed(2)}</span>
+            <span className="c3d-budget-amount">
+              {formatCustomerPrice(providerBudget)}
+            </span>
           </div>
           {runner ? (
             <div className="c3d-runner-line">
@@ -704,27 +714,37 @@ export function DiscoveryContinuationDialog({
   const pagesAtProviderCeiling = continuation?.pagesAtProviderCeiling ?? 0;
   const estimatedCost = continuation?.estimatedCostUsd ?? 0;
   const minimum = continuation?.minimumAdditionalBudgetUsd ?? 0;
+  const minimumCustomerPrice = customerPriceFromProviderCost(minimum);
 
   React.useEffect(() => {
     if (!open || !continuation) return;
-    setAdditionalBudget(continuation.recommendedAdditionalBudgetUsd.toFixed(2));
+    setAdditionalBudget(
+      customerPriceFromProviderCost(
+        continuation.recommendedAdditionalBudgetUsd,
+      ).toFixed(2),
+    );
     setApproved(false);
     setError("");
   }, [continuation, open]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = Number(additionalBudget);
-    if (!Number.isFinite(amount) || amount < minimum || !approved) {
+    const customerAmount = Number(additionalBudget);
+    const providerAmount = providerCostFromCustomerPrice(customerAmount);
+    if (
+      !Number.isFinite(customerAmount) ||
+      customerAmount < minimumCustomerPrice ||
+      !approved
+    ) {
       setError(
-        `Approve at least ${formatBudget(minimum)} more to cover the next provider page.`,
+        `Approve at least ${formatCustomerPrice(minimum)} more to cover the next provider page.`,
       );
       return;
     }
     setSubmitting(true);
     setError("");
     try {
-      await onSubmit(amount);
+      await onSubmit(providerAmount);
       onOpenChange(false);
     } catch (continueError) {
       setError(startFailureMessage(continueError));
@@ -759,7 +779,8 @@ export function DiscoveryContinuationDialog({
             <dd>{campaign.name}</dd>
             <dt>Spent</dt>
             <dd>
-              {formatBudget(spent)} of {formatBudget(approvedBudget)} approved
+              {formatCustomerPrice(spent)} of{" "}
+              {formatCustomerPrice(approvedBudget)} approved
             </dd>
             <dt>Target</dt>
             <dd>
@@ -772,7 +793,7 @@ export function DiscoveryContinuationDialog({
             </label>
             <input
               id="w10-continuation-budget"
-              min={minimum.toFixed(2)}
+              min={minimumCustomerPrice.toFixed(2)}
               onChange={(event) =>
                 setAdditionalBudget(event.currentTarget.value)
               }
@@ -786,18 +807,22 @@ export function DiscoveryContinuationDialog({
             <span>
               <strong>What this estimate covers</strong>
               <small>
-                At $0.003 per returned record, {remainingTarget} new prospects
-                need at least {estimatedPages}{" "}
+                At {formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per prospect,{" "}
+                {remainingTarget} new prospects need at least {estimatedPages}{" "}
                 {estimatedPages === 1 ? "page" : "pages"} and{" "}
-                {formatBudget(estimatedCost)}. Results already in your Leads are
-                skipped, so it may take more pages. This query can use up to{" "}
-                {pagesAtProviderCeiling}{" "}
+                {formatCustomerPrice(estimatedCost)}. Results already in your
+                Leads are skipped, so it may take more pages. This query can use
+                up to {pagesAtProviderCeiling}{" "}
                 {pagesAtProviderCeiling === 1 ? "page" : "pages"} before the
                 400-record provider ceiling.
               </small>
             </span>
             <span className="c3d-budget-amount">
-              {formatBudget(Math.max(0, Number(additionalBudget) || 0))}
+              {formatCustomerPrice(
+                providerCostFromCustomerPrice(
+                  Math.max(0, Number(additionalBudget) || 0),
+                ),
+              )}
             </span>
           </div>
           <label className="c3d-approval">

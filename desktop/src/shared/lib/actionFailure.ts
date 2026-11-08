@@ -8,6 +8,8 @@ export type ActionFailure = {
   details: string;
   status: number | null;
   code: string | null;
+  /** Safe YYYY-MM-DD date supplied by a known monthly-limit response. */
+  resetDate: string | null;
 };
 
 type ActionFailureInput = {
@@ -37,7 +39,7 @@ function safeCode(value: unknown): string | null {
     : code;
 }
 
-function structuredValue(error: unknown, name: "code" | "status"): unknown {
+function structuredValue(error: unknown, name: string): unknown {
   if (typeof error !== "object" || error === null) return undefined;
   return (error as Record<string, unknown>)[name];
 }
@@ -49,6 +51,38 @@ function statusValue(value: unknown): number | null {
     value <= 599
     ? value
     : null;
+}
+
+function resetDateValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T[^\s]+)?$/u.exec(value.trim());
+  if (!match) return null;
+  const date = new Date(`${match[1]}T00:00:00.000Z`);
+  return Number.isNaN(date.valueOf()) ||
+    date.toISOString().slice(0, 10) !== match[1]
+    ? null
+    : match[1];
+}
+
+function failureDetails(input: {
+  action: string;
+  stage: string;
+  failureClass: ActionFailure["failureClass"];
+  status: number | null;
+  code: string | null;
+  resetDate: string | null;
+}): string {
+  const details = [
+    `action=${input.action}`,
+    `stage=${input.stage}`,
+    `class=${input.failureClass}`,
+    `status=${input.status ?? "none"}`,
+    `code=${input.code ?? "none"}`,
+  ];
+  if (input.resetDate) {
+    details.push(`reset_date=${input.resetDate}`);
+  }
+  return details.join("\n");
 }
 
 function errorMessage(error: unknown): string {
@@ -86,14 +120,18 @@ function isActionFailure(value: unknown): value is ActionFailure {
   if (failure.status !== status) return false;
   const code = failure.code === null ? null : safeCode(failure.code);
   if (failure.code !== code) return false;
-  const copy = description({ action, failureClass, status, code });
-  const details = [
-    `action=${action}`,
-    `stage=${stage}`,
-    `class=${failureClass}`,
-    `status=${status ?? "none"}`,
-    `code=${code ?? "none"}`,
-  ].join("\n");
+  const resetDate =
+    failure.resetDate === null ? null : resetDateValue(failure.resetDate);
+  if (failure.resetDate !== resetDate) return false;
+  const copy = description({ action, failureClass, status, code, resetDate });
+  const details = failureDetails({
+    action,
+    stage,
+    failureClass,
+    status,
+    code,
+    resetDate,
+  });
   return (
     failure.title === copy.title &&
     failure.message === copy.message &&
@@ -124,6 +162,7 @@ function description(input: {
   failureClass: ActionFailure["failureClass"];
   status: number | null;
   code: string | null;
+  resetDate: string | null;
 }): Pick<ActionFailure, "title" | "message"> {
   if (input.action === "prospect-search") {
     if (input.code === "discovery_not_configured") {
@@ -138,6 +177,60 @@ function description(input: {
         title: "Sales channel not set up",
         message:
           "The private Sales channel is not set up yet. An owner or admin of this business sets it up by opening Leads once. Ask one of them, then retry.",
+      };
+    }
+    if (input.code === "monthly_limit") {
+      return {
+        title: "Monthly prospect search limit reached",
+        message: input.resetDate
+          ? `You have used this month’s prospect searches. They reset on ${input.resetDate}.`
+          : "You have used this month’s prospect searches. They reset at the start of next month.",
+      };
+    }
+    if (input.code === "relay_membership_required") {
+      return {
+        title: "Community access required",
+        message: "Join this community to search for prospects.",
+      };
+    }
+    if (input.code === "discovery_unsupported") {
+      return {
+        title: "Prospect search is unavailable",
+        message:
+          "This server does not support prospect search yet. The server owner needs to update it.",
+      };
+    }
+    if (input.code === "discovery_provider_auth") {
+      return {
+        title: "Prospect search provider needs attention",
+        message:
+          "The prospect search provider rejected the server key. The server owner should check the Outscraper key.",
+      };
+    }
+    if (input.code === "discovery_provider_credits") {
+      return {
+        title: "Prospect search provider has no credits",
+        message:
+          "The prospect search provider has no credits left. The server owner needs to top up Outscraper.",
+      };
+    }
+    if (input.code === "discovery_provider_busy") {
+      return {
+        title: "Prospect search provider is busy",
+        message: "The prospect search provider is busy. Try again in a minute.",
+      };
+    }
+    if (input.code === "discovery_provider_unavailable") {
+      return {
+        title: "Prospect search is temporarily unavailable",
+        message: "The prospect search provider did not answer. Try again.",
+      };
+    }
+    if (input.code === "discovery_usage_unavailable") {
+      return {
+        title: "Prospect search usage is unavailable",
+        message:
+          "Prospect search could not check this month’s usage. Try again.",
       };
     }
   }
@@ -187,6 +280,9 @@ export function actionFailureFromError(
     statusValue(structuredValue(input.error, "status"));
   const suppliedCode =
     safeCode(input.code) ?? safeCode(structuredValue(input.error, "code"));
+  const resetDate =
+    resetDateValue(structuredValue(input.error, "resetsAt")) ??
+    resetDateValue(structuredValue(input.error, "resets_at"));
   const signing =
     input.stage.includes("sign") ||
     /identity.*(?:recovery|lost|locked)|event signing|keyring|\bnsec\b/iu.test(
@@ -208,15 +304,25 @@ export function actionFailureFromError(
   const code = failureCode(failureClass, message, suppliedCode);
   const action = safeValue(input.action) ?? "unknown-action";
   const stage = safeValue(input.stage) ?? "unknown-stage";
-  const copy = description({ action, failureClass, status, code });
-  const details = [
-    `action=${action}`,
-    `stage=${stage}`,
-    `class=${failureClass}`,
-    `status=${status ?? "none"}`,
-    `code=${code ?? "none"}`,
-  ].join("\n");
-  return { action, stage, failureClass, status, code, details, ...copy };
+  const copy = description({ action, failureClass, status, code, resetDate });
+  const details = failureDetails({
+    action,
+    stage,
+    failureClass,
+    status,
+    code,
+    resetDate,
+  });
+  return {
+    action,
+    stage,
+    failureClass,
+    status,
+    code,
+    resetDate,
+    details,
+    ...copy,
+  };
 }
 
 /** Wraps a safe action failure so callers cannot accidentally discard it. */

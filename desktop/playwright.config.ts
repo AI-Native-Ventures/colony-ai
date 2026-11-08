@@ -144,6 +144,7 @@ export default defineConfig({
         "**/work-area-pins.spec.ts",
         "**/whatsapp-work-area.spec.ts",
         "**/whatsapp-outreach-desk.spec.ts",
+        "**/ai-plan-usage.spec.ts",
         "**/whatsapp-outreach-desk.visual.spec.ts",
         "**/whatsapp-outreach-desk-narrow.spec.ts",
         "**/whatsapp-decided-card.spec.ts",
@@ -375,6 +376,7 @@ export default defineConfig({
       testMatch: [
         "**/colony3-discovery-logo-prospect-proof.spec.ts",
         "**/colony3-campaigns-page.spec.ts",
+        "**/colony3-discovery-continue.spec.ts",
         "**/colony3-agents-simple.spec.ts",
         "**/colony3-discovery-v4.spec.ts",
         "**/colony3-discovery-tags.spec.ts",
@@ -410,6 +412,7 @@ export default defineConfig({
         "**/work-area-pins.spec.ts",
         "**/whatsapp-work-area.integration.spec.ts",
         "**/whatsapp-outreach-desk.spec.ts",
+        "**/ai-plan-usage.spec.ts",
         "**/whatsapp-decided-card.spec.ts",
         "**/whatsapp-polish.spec.ts",
         "**/whatsapp-dock-narrow.spec.ts",

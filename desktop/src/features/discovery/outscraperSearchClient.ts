@@ -71,7 +71,17 @@ function errorFromHook(error: unknown): Error {
     typeof (error as { code?: unknown } | null)?.code === "string"
       ? ((error as { code: string }).code ?? null)
       : null;
-  return new DiscoverySearchError(message, { code });
+  const status =
+    typeof (error as { status?: unknown } | null)?.status === "number"
+      ? ((error as { status: number }).status ?? null)
+      : null;
+  const resetsAt =
+    typeof (error as { resetsAt?: unknown } | null)?.resetsAt === "string"
+      ? ((error as { resetsAt: string }).resetsAt ?? null)
+      : typeof (error as { resets_at?: unknown } | null)?.resets_at === "string"
+        ? ((error as { resets_at: string }).resets_at ?? null)
+        : null;
+  return new DiscoverySearchError(message, { code, status, resetsAt });
 }
 
 function actionFailureError(
@@ -87,6 +97,7 @@ function actionFailureError(
     actionFailure: failure,
     code: failure.code,
     status: failure.status,
+    resetsAt: failure.resetDate,
   });
 }
 

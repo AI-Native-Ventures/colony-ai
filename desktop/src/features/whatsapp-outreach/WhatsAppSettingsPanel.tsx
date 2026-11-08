@@ -29,6 +29,12 @@ import {
   useWhatsAppTemplatesQuery,
   whatsappOutreachQueryKeys,
 } from "./whatsappOutreachQueries";
+import {
+  aiPlanReserveChipLabel,
+  useAiPlanReserveOverride,
+  useAiPlanReserveQuery,
+  useAiPlanReserveUpdate,
+} from "./aiPlanUsage";
 import "./whatsappOutreach.css";
 
 const TEMPLATE_GROUPS = ["Openers", "Follow-ups", "Payments", "Other"] as const;
@@ -283,7 +289,15 @@ export function WhatsAppSettingsPanel() {
     membership.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
+  const canManagePlan =
+    membership.data?.membershipRequired === false || role === "owner";
   const statusQuery = useWhatsAppStatusQuery();
+  const aiPlanReserveQuery = useAiPlanReserveQuery();
+  const aiPlanReserve = aiPlanReserveQuery.data;
+  const reserveReadFailed = aiPlanReserveQuery.isError;
+  const reservePercent = aiPlanReserve?.preference.reservedPercent;
+  const updateAiPlanReserve = useAiPlanReserveUpdate();
+  const overrideAiPlanReserve = useAiPlanReserveOverride();
   const contactsQuery = useWhatsAppContactsQuery(
     statusQuery.data?.connected === true,
   );
@@ -297,6 +311,9 @@ export function WhatsAppSettingsPanel() {
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
   const [capDraft, setCapDraft] = React.useState<string | null>(null);
+  const [reserveDraft, setReserveDraft] = React.useState<string | null>(null);
+  const [reserveBusy, setReserveBusy] = React.useState(false);
+  const [reserveError, setReserveError] = React.useState("");
   const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
   const [activeSection, setActiveSection] = React.useState("wa-number");
 
@@ -316,6 +333,12 @@ export function WhatsAppSettingsPanel() {
   React.useEffect(() => {
     setCapDraft(status ? String(status.dailyNewChatCap) : null);
   }, [status?.dailyNewChatCap, status]);
+
+  React.useEffect(() => {
+    if (reservePercent !== undefined) {
+      setReserveDraft(String(reservePercent));
+    }
+  }, [reservePercent]);
 
   async function submitConnect(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -408,6 +431,74 @@ export function WhatsAppSettingsPanel() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveAiPlanReserve(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!aiPlanReserve || !canManagePlan || reserveBusy) return;
+    const reservedPercent = Number(reserveDraft);
+    if (
+      !Number.isInteger(reservedPercent) ||
+      reservedPercent < 0 ||
+      reservedPercent > 100
+    ) {
+      setReserveError("Choose a whole percentage from 0 to 100.");
+      return;
+    }
+    setReserveBusy(true);
+    setReserveError("");
+    try {
+      const next = await updateAiPlanReserve({
+        ...aiPlanReserve.preference,
+        reservedPercent,
+      });
+      setReserveDraft(String(next.preference.reservedPercent));
+    } catch (reserveSaveError) {
+      setReserveError(
+        reserveSaveError instanceof Error
+          ? reserveSaveError.message
+          : "Could not save the AI plan reserve.",
+      );
+    } finally {
+      setReserveBusy(false);
+    }
+  }
+
+  async function setAiPlanReserveEnabled(enabled: boolean) {
+    if (!aiPlanReserve || !canManagePlan || reserveBusy) return;
+    setReserveBusy(true);
+    setReserveError("");
+    try {
+      await updateAiPlanReserve({
+        ...aiPlanReserve.preference,
+        enabled,
+      });
+    } catch (reserveUpdateError) {
+      setReserveError(
+        reserveUpdateError instanceof Error
+          ? reserveUpdateError.message
+          : "Could not update the AI plan reserve.",
+      );
+    } finally {
+      setReserveBusy(false);
+    }
+  }
+
+  async function allowAiPlanReserveOnce() {
+    if (!canManagePlan || reserveBusy) return;
+    setReserveBusy(true);
+    setReserveError("");
+    try {
+      await overrideAiPlanReserve();
+    } catch (reserveOverrideError) {
+      setReserveError(
+        reserveOverrideError instanceof Error
+          ? reserveOverrideError.message
+          : "Could not allow Scout once.",
+      );
+    } finally {
+      setReserveBusy(false);
     }
   }
 
@@ -888,6 +979,102 @@ export function WhatsAppSettingsPanel() {
                   </Button>
                 </div>
               </form>
+              <div
+                className="c3wa-plan-reserve"
+                data-testid="ai-plan-reserve-setting"
+              >
+                <form
+                  className="c3wa-plan-reserve-form"
+                  onSubmit={(event) => void saveAiPlanReserve(event)}
+                >
+                  <div className="c3wa-plan-reserve-copy">
+                    <strong>Keep my AI plan free</strong>
+                    <span>
+                      {reserveReadFailed
+                        ? "AI plan usage could not be checked. Try again."
+                        : aiPlanReserve?.admission.reasonCode ===
+                            "usage_unavailable"
+                          ? "usage not available for your AI. This reserve does not apply."
+                          : aiPlanReserve?.admission.state === "paused"
+                            ? aiPlanReserve.admission.reason
+                            : "Scout pauses new outreach drafting before it uses your reserved share. Existing drafts stay untouched and nothing sends automatically."}
+                    </span>
+                  </div>
+                  <div className="c3wa-plan-reserve-controls">
+                    <button
+                      aria-checked={aiPlanReserve?.preference.enabled ?? false}
+                      aria-label={
+                        aiPlanReserve?.preference.enabled
+                          ? "Turn off AI plan reserve"
+                          : "Turn on AI plan reserve"
+                      }
+                      className="c3wa-switch"
+                      data-testid="ai-plan-reserve-switch"
+                      disabled={!aiPlanReserve || !canManagePlan || reserveBusy}
+                      onClick={() =>
+                        void setAiPlanReserveEnabled(
+                          !aiPlanReserve?.preference.enabled,
+                        )
+                      }
+                      role="switch"
+                      type="button"
+                    >
+                      <span aria-hidden="true" />
+                    </button>
+                    <label htmlFor="wa-ai-plan-reserve">Keep free</label>
+                    <input
+                      aria-describedby="wa-ai-plan-reserve-status"
+                      className="c3wa-plan-reserve-input"
+                      disabled={!aiPlanReserve || !canManagePlan || reserveBusy}
+                      id="wa-ai-plan-reserve"
+                      inputMode="numeric"
+                      max={100}
+                      min={0}
+                      onChange={(event) =>
+                        setReserveDraft(event.currentTarget.value)
+                      }
+                      type="number"
+                      value={
+                        reserveDraft ??
+                        aiPlanReserve?.preference.reservedPercent ??
+                        25
+                      }
+                    />
+                    <span aria-hidden="true">%</span>
+                    <Button
+                      disabled={!aiPlanReserve || !canManagePlan || reserveBusy}
+                      size="sm"
+                      type="submit"
+                      variant="outline"
+                    >
+                      Save reserve
+                    </Button>
+                  </div>
+                </form>
+                <p aria-live="polite" id="wa-ai-plan-reserve-status">
+                  {aiPlanReserveQuery.isPending
+                    ? "Checking usage"
+                    : reserveReadFailed
+                      ? "AI plan usage could not be checked."
+                      : aiPlanReserve
+                        ? aiPlanReserveChipLabel(aiPlanReserve)
+                        : "usage not available for your AI"}
+                </p>
+                {reserveError ? <p role="alert">{reserveError}</p> : null}
+                {aiPlanReserve?.admission.state === "paused" &&
+                canManagePlan ? (
+                  <Button
+                    className="c3wa-plan-reserve-override"
+                    disabled={reserveBusy}
+                    onClick={() => void allowAiPlanReserveOnce()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Allow Scout once
+                  </Button>
+                ) : null}
+              </div>
               <div className="c3wa-opt-outs">
                 <div>
                   <strong>Opt-outs</strong>

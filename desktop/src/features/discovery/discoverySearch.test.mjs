@@ -103,6 +103,20 @@ test("machine-only bodies and missing bodies fall back to plain words", () => {
   );
 });
 
+test("monthly-limit responses preserve an optional relay reset timestamp", () => {
+  const dated = searchErrorFromHttp(429, {
+    error: "monthly_limit",
+    resets_at: "2026-12-01T00:00:00Z",
+  });
+  const undated = searchErrorFromHttp(429, { error: "monthly_limit" });
+
+  assert.equal(dated.code, "monthly_limit");
+  assert.equal(dated.status, 429);
+  assert.equal(dated.resetsAt, "2026-12-01T00:00:00Z");
+  assert.equal(undated.code, "monthly_limit");
+  assert.equal(undated.resetsAt, null);
+});
+
 test("only busy, unavailable and network failures are worth a retry", () => {
   for (const code of [
     "discovery_provider_busy",

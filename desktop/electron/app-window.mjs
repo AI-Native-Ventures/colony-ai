@@ -1,4 +1,6 @@
 import path from "node:path";
+import { createAiPlanReserveService } from "./ai-plan-reserve.mjs";
+import { readAiPlanUsage } from "./ai-plan-usage.mjs";
 import { createSubscriptionService } from "./ai-subscriptions.mjs";
 import { requestClaudeCredential } from "./claude-credential-access.mjs";
 import {
@@ -116,6 +118,9 @@ export function createAppWindow({
         alive: () => !window.isDestroyed(),
       }),
   });
+  const aiPlanReserve = main
+    ? createAiPlanReserveService({ userData: app.getPath("userData") })
+    : null;
   const workspaceFiles = createWorkspaceFileService({
     invoke: (command, args) =>
       rendererHost.request("invoke", { command, args }),
@@ -197,6 +202,14 @@ export function createAppWindow({
         }
       }
       switch (payload.command) {
+        case "get_ai_plan_usage":
+          return readAiPlanUsage();
+        case "get_ai_plan_reserve":
+          return aiPlanReserve.get();
+        case "update_ai_plan_reserve":
+          return aiPlanReserve.update(payload.args ?? {});
+        case "override_ai_plan_reserve_once":
+          return aiPlanReserve.overrideOnce();
         case "get_ai_subscriptions":
           return subscriptions.read();
         case "check_claude_subscription":

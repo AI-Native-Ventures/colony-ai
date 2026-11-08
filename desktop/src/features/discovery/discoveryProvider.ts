@@ -59,15 +59,17 @@ export type DiscoveryContinuation = {
   message: string | null;
   remainingTarget: number;
   pagesAtProviderCeiling: number;
+  /** Provider-cost value retained for storage and continuation arithmetic. */
   spentUsd: number;
+  /** Provider-cost value retained for storage and continuation arithmetic. */
   approvedBudgetUsd: number;
-  /** Extra approval needed before one more full provider page can be requested. */
+  /** Provider-cost value needed before another provider page can be requested. */
   minimumAdditionalBudgetUsd: number;
-  /** A sensible pre-filled additional approval for the remaining target. */
+  /** Provider-cost value for the suggested remaining-target approval. */
   recommendedAdditionalBudgetUsd: number;
   /** Minimum pages needed for the remaining target before duplicate skips. */
   estimatedPages: number;
-  /** Cost of those minimum pages at the provider's $0.003 record price. */
+  /** Provider cost of those minimum pages. */
   estimatedCostUsd: number;
 };
 
@@ -98,6 +100,7 @@ export type DiscoveryCampaign = {
   locationSelection?: DiscoveryLocation | null;
   target: number;
   count: number;
+  /** Provider-cost value retained in durable campaign storage. */
   budgetUsd: number;
   /** Actual provider estimate accumulated from pages that were fully saved. */
   spentUsd?: number;

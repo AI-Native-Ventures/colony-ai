@@ -2,6 +2,10 @@ import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
 import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSettingsLogic";
 import type {
+  AiPlanReservePreference,
+  AiPlanUsage,
+} from "../../src/shared/api/aiPlanUsage";
+import type {
   Colony3Extras,
   MockCofounderLeadStatus,
   MockCofounderSettings,
@@ -192,6 +196,10 @@ type MockBridgeOptions = {
   accountEmail?: string;
   /** Current user status event returned by the mocked relay. */
   userStatus?: string;
+  /** Safe normalized plan usage for AI plan reserve UI tests. */
+  aiPlanUsage?: AiPlanUsage[];
+  /** Initial local preference for AI plan reserve UI tests. */
+  aiPlanReservePreference?: AiPlanReservePreference;
   /** Visual harness: reproduce the reference "Lerato Social" workspace. */
   referenceWorkspace?: boolean;
   /** Override the active workspace name in the reference mock. */
