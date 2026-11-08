@@ -303,6 +303,77 @@ pub struct WhatsappContact {
     pub created_at: DateTime<Utc>,
 }
 
+/// One active or historical contact-safety decision. `identity_kind` is deliberately broader
+/// than WhatsApp numbers so email and domain safety can join the same ledger later.
+#[derive(Clone, Debug)]
+pub struct WhatsappSuppression {
+    /// Stable row id.
+    pub id: Uuid,
+    /// `phone`, `email` or `domain`.
+    pub identity_kind: String,
+    /// Canonical identity value.
+    pub identity_value: String,
+    /// `opt_out` or `never_contact`.
+    pub scope: String,
+    /// Human-readable decision reason.
+    pub reason: String,
+    /// Deterministic phrase rule when an inbound phrase created the row.
+    pub matched_rule: Option<String>,
+    /// Inbound detection or owner action.
+    pub source: String,
+    /// When the decision was recorded.
+    pub created_at: DateTime<Utc>,
+    /// When an owner or admin undid it, if ever.
+    pub undone_at: Option<DateTime<Utc>>,
+}
+
+/// A durable hold on every current and future contact attached to one business. The source
+/// reply stays visible so an owner can understand why the business was stopped.
+#[derive(Clone, Debug)]
+pub struct WhatsappBusinessStop {
+    /// Business or prospect identity shared by its WhatsApp contacts.
+    pub business_id: String,
+    /// Number that sent the inbound reply which created the hold.
+    pub source_wa_id: String,
+    /// Plain reason for the stop.
+    pub reason: String,
+    /// Deterministic phrase rule when the source reply was an opt-out.
+    pub matched_rule: Option<String>,
+    /// When the hold was recorded.
+    pub created_at: DateTime<Utc>,
+}
+
+/// The first active safety fence that prevents a WhatsApp recipient from receiving outreach.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WhatsappSendSafety {
+    /// `opt_out`, `never_contact` or `business_stop`.
+    pub scope: String,
+    /// Plain reason shown to the caller and stored on skipped rows.
+    pub reason: String,
+    /// Matching phrase rule when the fence came from a deterministic opt-out rule.
+    pub matched_rule: Option<String>,
+    /// Business id for a whole-business stop.
+    pub business_id: Option<String>,
+}
+
+/// Result of durably applying an inbound reply's safety effect.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct InboundSafetyOutcome {
+    /// The inbound event made this phone's opt-out record active for the first time.
+    pub opted_out_now: bool,
+    /// The inbound event stopped this linked business for the first time.
+    pub business_stopped_now: bool,
+}
+
+/// The result of an owner-confirmed replacement for an unknown provider outcome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnknownSendReplacement {
+    /// This action created the only permitted replacement row.
+    Created(Uuid),
+    /// A previous owner action already created a replacement row.
+    Existing(Uuid),
+}
+
 /// Result of recording a definitive account-level Graph refusal.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AccountFailureOutcome {
@@ -613,6 +684,30 @@ fn row_to_contact(row: &PgRow) -> Result<WhatsappContact> {
         paused_at: row.try_get("paused_at")?,
         pause_reason: row.try_get("pause_reason")?,
         retry_after: row.try_get("retry_after")?,
+        created_at: row.try_get("created_at")?,
+    })
+}
+
+fn row_to_suppression(row: &PgRow) -> Result<WhatsappSuppression> {
+    Ok(WhatsappSuppression {
+        id: row.try_get("id")?,
+        identity_kind: row.try_get("identity_kind")?,
+        identity_value: row.try_get("identity_value")?,
+        scope: row.try_get("scope")?,
+        reason: row.try_get("reason")?,
+        matched_rule: row.try_get("matched_rule")?,
+        source: row.try_get("source")?,
+        created_at: row.try_get("created_at")?,
+        undone_at: row.try_get("undone_at")?,
+    })
+}
+
+fn row_to_business_stop(row: &PgRow) -> Result<WhatsappBusinessStop> {
+    Ok(WhatsappBusinessStop {
+        business_id: row.try_get("business_id")?,
+        source_wa_id: row.try_get("source_wa_id")?,
+        reason: row.try_get("reason")?,
+        matched_rule: row.try_get("matched_rule")?,
         created_at: row.try_get("created_at")?,
     })
 }
@@ -1631,6 +1726,343 @@ impl Db {
         Ok(result.rows_affected() == 1)
     }
 
+    /// Persist every safety consequence of one inbound reply in a transaction. An opt-out keeps
+    /// the legacy contact projection for installed desktop clients and also records the exact
+    /// matched rule in the append-only suppression ledger. Any linked reply stops every current
+    /// and future contact of that business before another outbound lease can be claimed.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn whatsapp_record_inbound_safety(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        lead_id: Option<&str>,
+        at: DateTime<Utc>,
+        opt_out_reason: Option<&str>,
+        matched_rule: Option<&str>,
+    ) -> Result<InboundSafetyOutcome> {
+        let mut tx = begin(&self.pool).await?;
+        // A lead link is first-writer-wins, matching the previous inbound path. The same
+        // transaction then reads the actual link that fences every number of the business.
+        if let Some(lead_id) = lead_id {
+            sqlx::query(
+                "UPDATE whatsapp_contacts SET lead_id = COALESCE(lead_id, $3), updated_at = now() \
+                 WHERE community_id = $1 AND wa_id = $2",
+            )
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .bind(lead_id.chars().take(128).collect::<String>())
+            .execute(&mut *tx)
+            .await?;
+        }
+        sqlx::query(
+            "UPDATE whatsapp_contacts SET last_inbound_at = $3, outbound_since_inbound = 0, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND wa_id = $2 \
+               AND (last_inbound_at IS NULL OR last_inbound_at < $3)",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .bind(at)
+        .execute(&mut *tx)
+        .await?;
+
+        let business_id: Option<String> = sqlx::query_scalar(
+            "SELECT lead_id FROM whatsapp_contacts WHERE community_id = $1 AND wa_id = $2 \
+             FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .flatten();
+
+        let mut outcome = InboundSafetyOutcome::default();
+        if let Some(reason) = opt_out_reason {
+            let opted_out = sqlx::query(
+                "UPDATE whatsapp_contacts SET opted_out_at = $3, opt_out_reason = $4, \
+                     updated_at = now() \
+                 WHERE community_id = $1 AND wa_id = $2 AND opted_out_at IS NULL",
+            )
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .bind(at)
+            .bind(reason.chars().take(200).collect::<String>())
+            .execute(&mut *tx)
+            .await?;
+            outcome.opted_out_now = opted_out.rows_affected() == 1;
+            sqlx::query(
+                "INSERT INTO whatsapp_suppressions \
+                 (community_id, id, identity_kind, identity_value, scope, reason, matched_rule, source) \
+                 VALUES ($1, $2, 'phone', $3, 'opt_out', $4, $5, 'inbound') \
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(community.as_uuid())
+            .bind(Uuid::new_v4())
+            .bind(wa_id)
+            .bind(reason.chars().take(500).collect::<String>())
+            .bind(matched_rule.map(|rule| rule.chars().take(120).collect::<String>()))
+            .execute(&mut *tx)
+            .await?;
+            // Rows already queued for this number are not left waiting for a later sender
+            // tick. The claim predicate below is the concurrent-race fence.
+            sqlx::query(
+                "UPDATE whatsapp_messages SET state = 'skipped', skip_reason = $3, updated_at = now() \
+                 WHERE community_id = $1 AND wa_id = $2 AND direction = 'out' \
+                   AND state IN ('queued', 'ready')",
+            )
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .bind("contact opted out")
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        if let Some(business_id) = business_id.as_deref() {
+            let reason = if opt_out_reason.is_some() {
+                "contact opted out"
+            } else {
+                "inbound reply received"
+            };
+            let inserted = sqlx::query(
+                "INSERT INTO whatsapp_business_stops \
+                 (community_id, business_id, source_wa_id, reason, matched_rule) \
+                 VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+            )
+            .bind(community.as_uuid())
+            .bind(business_id)
+            .bind(wa_id)
+            .bind(reason)
+            .bind(matched_rule.map(|rule| rule.chars().take(120).collect::<String>()))
+            .execute(&mut *tx)
+            .await?;
+            outcome.business_stopped_now = inserted.rows_affected() == 1;
+            sqlx::query(
+                "UPDATE whatsapp_messages m SET state = 'skipped', \
+                     skip_reason = 'outreach stopped for the whole business', updated_at = now() \
+                 FROM whatsapp_contacts c \
+                 WHERE m.community_id = $1 AND c.community_id = m.community_id \
+                   AND c.wa_id = m.wa_id AND c.lead_id = $2 AND m.direction = 'out' \
+                   AND m.state IN ('queued', 'ready')",
+            )
+            .bind(community.as_uuid())
+            .bind(business_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(outcome)
+    }
+
+    /// Add an owner-maintained never-contact phone entry. `false` means the same active entry
+    /// already exists, so retries do not create a second decision.
+    pub async fn whatsapp_add_never_contact(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        reason: &str,
+        created_by: &[u8],
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let inserted = sqlx::query(
+            "INSERT INTO whatsapp_suppressions \
+             (community_id, id, identity_kind, identity_value, scope, reason, source, created_by) \
+             VALUES ($1, $2, 'phone', $3, 'never_contact', $4, 'owner', $5) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(community.as_uuid())
+        .bind(Uuid::new_v4())
+        .bind(wa_id)
+        .bind(reason.chars().take(500).collect::<String>())
+        .bind(created_by)
+        .execute(&mut *tx)
+        .await?;
+        if inserted.rows_affected() == 1 {
+            sqlx::query(
+                "UPDATE whatsapp_messages SET state = 'skipped', skip_reason = $3, updated_at = now() \
+                 WHERE community_id = $1 AND wa_id = $2 AND direction = 'out' \
+                   AND state IN ('queued', 'ready')",
+            )
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .bind("never-contact entry")
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(inserted.rows_affected() == 1)
+    }
+
+    /// Undo one active phone-safety decision while retaining its full history. Undoing an
+    /// opt-out clears the legacy contact projection as well; a business reply stop remains a
+    /// separate conservative hold until a later product decision provides an override.
+    pub async fn whatsapp_undo_suppression(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        scope: &str,
+        undone_by: &[u8],
+        at: DateTime<Utc>,
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let undone = sqlx::query(
+            "UPDATE whatsapp_suppressions SET undone_at = $5, undone_by = $4, \
+                 undo_reason = 'owner undo' \
+             WHERE community_id = $1 AND identity_kind = 'phone' AND identity_value = $2 \
+               AND scope = $3 AND undone_at IS NULL",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .bind(scope)
+        .bind(undone_by)
+        .bind(at)
+        .execute(&mut *tx)
+        .await?;
+        if undone.rows_affected() == 1 && scope == "opt_out" {
+            sqlx::query(
+                "UPDATE whatsapp_contacts SET opted_out_at = NULL, opt_out_reason = NULL, \
+                     updated_at = now() WHERE community_id = $1 AND wa_id = $2",
+            )
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(undone.rows_affected() == 1)
+    }
+
+    /// Return the active direct or business-scoped send fence for a recipient. Direct consent
+    /// fences sort before a business hold so a specific opt-out reason stays explainable.
+    pub async fn whatsapp_send_safety(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        lead_id: Option<&str>,
+    ) -> Result<Option<WhatsappSendSafety>> {
+        let row = sqlx::query(
+            "SELECT scope, reason, matched_rule, business_id FROM ( \
+                 SELECT s.scope, s.reason, s.matched_rule, NULL::text AS business_id, 0 AS priority \
+                 FROM whatsapp_suppressions s \
+                 WHERE s.community_id = $1 AND s.identity_kind = 'phone' \
+                   AND s.identity_value = $2 AND s.undone_at IS NULL \
+                 UNION ALL \
+                 SELECT 'business_stop', b.reason, b.matched_rule, b.business_id, 1 AS priority \
+                 FROM whatsapp_business_stops b \
+                 WHERE b.community_id = $1 AND b.business_id = $3::text \
+             ) safety ORDER BY priority LIMIT 1",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .bind(lead_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|row| {
+            Ok(WhatsappSendSafety {
+                scope: row.try_get("scope")?,
+                reason: row.try_get("reason")?,
+                matched_rule: row.try_get("matched_rule")?,
+                business_id: row.try_get("business_id")?,
+            })
+        })
+        .transpose()
+    }
+
+    /// Active phone decisions for settings and discovery/list preflight. Historical rows stay
+    /// in the ledger but are deliberately absent here.
+    pub async fn whatsapp_list_active_suppressions(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappSuppression>> {
+        let rows = sqlx::query(
+            "SELECT id, identity_kind, identity_value, scope, reason, matched_rule, source, \
+                    created_at, undone_at FROM whatsapp_suppressions \
+             WHERE community_id = $1 AND undone_at IS NULL \
+             ORDER BY created_at DESC, id DESC LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 1_000))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_suppression).collect()
+    }
+
+    /// Active whole-business reply stops for the owner safety ledger.
+    pub async fn whatsapp_list_business_stops(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappBusinessStop>> {
+        let rows = sqlx::query(
+            "SELECT business_id, source_wa_id, reason, matched_rule, created_at \
+             FROM whatsapp_business_stops WHERE community_id = $1 \
+             ORDER BY created_at DESC, business_id DESC LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 1_000))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_business_stop).collect()
+    }
+
+    /// Whole-business holds keyed by the contact number they fence. This bulk projection keeps
+    /// contact and thread reads additive while avoiding one query per contact row.
+    pub async fn whatsapp_business_stops_for_contacts(
+        &self,
+        community: CommunityId,
+        wa_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, WhatsappBusinessStop>> {
+        if wa_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let rows = sqlx::query(
+            "SELECT c.wa_id, b.business_id, b.source_wa_id, b.reason, b.matched_rule, \
+                    b.created_at \
+             FROM whatsapp_contacts c JOIN whatsapp_business_stops b \
+               ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+             WHERE c.community_id = $1 AND c.wa_id = ANY($2)",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| Ok((row.try_get("wa_id")?, row_to_business_stop(row)?)))
+            .collect()
+    }
+
+    /// Return active decisions that match the caller-provided identities. This intentionally
+    /// returns the durable rows rather than a boolean so owner settings can show the same
+    /// reason and audit rule as the send fence. Callers that are not allowed to read those
+    /// details should project only their own matched input values.
+    pub async fn whatsapp_match_active_suppressions(
+        &self,
+        community: CommunityId,
+        identities: &[(String, String)],
+    ) -> Result<Vec<WhatsappSuppression>> {
+        if identities.is_empty() {
+            return Ok(Vec::new());
+        }
+        let kinds: Vec<&str> = identities.iter().map(|(kind, _)| kind.as_str()).collect();
+        let values: Vec<&str> = identities.iter().map(|(_, value)| value.as_str()).collect();
+        let rows = sqlx::query(
+            "SELECT DISTINCT ON (s.id) s.id, s.identity_kind, s.identity_value, s.scope, \
+                    s.reason, s.matched_rule, s.source, s.created_at, s.undone_at \
+             FROM whatsapp_suppressions s \
+             JOIN unnest($2::text[], $3::text[]) AS requested(identity_kind, identity_value) \
+               ON requested.identity_kind = s.identity_kind \
+              AND requested.identity_value = s.identity_value \
+             WHERE s.community_id = $1 AND s.undone_at IS NULL \
+             ORDER BY s.id, s.created_at DESC",
+        )
+        .bind(community.as_uuid())
+        .bind(kinds)
+        .bind(values)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_suppression).collect()
+    }
+
     /// Pause a contact after a Meta block or spam error. Returns `true` when newly paused.
     pub async fn whatsapp_pause_contact(
         &self,
@@ -2213,13 +2645,29 @@ impl Db {
         now: DateTime<Utc>,
     ) -> Result<bool> {
         let result = sqlx::query(
-            "UPDATE whatsapp_messages SET state = 'sending', lease_token = $3, lease_until = $4, \
+            "UPDATE whatsapp_messages AS m SET state = 'sending', lease_token = $3, lease_until = $4, \
                  sent_at = $5, updated_at = now() \
-             WHERE community_id = $1 AND id = $2 AND state IN ('queued', 'ready') \
+             WHERE m.community_id = $1 AND m.id = $2 AND m.state IN ('queued', 'ready') \
                AND NOT EXISTS ( \
                    SELECT 1 FROM whatsapp_settings s \
-                   WHERE s.community_id = whatsapp_messages.community_id \
+                   WHERE s.community_id = m.community_id \
                      AND s.send_paused \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                     AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions s \
+                   WHERE s.community_id = m.community_id AND s.identity_kind = 'phone' \
+                     AND s.identity_value = m.wa_id AND s.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   JOIN whatsapp_business_stops b \
+                     ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                )",
         )
         .bind(community.as_uuid())
@@ -2366,6 +2814,17 @@ impl Db {
                    SELECT 1 FROM whatsapp_contacts c \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                      AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions s \
+                   WHERE s.community_id = m.community_id AND s.identity_kind = 'phone' \
+                     AND s.identity_value = m.wa_id AND s.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   JOIN whatsapp_business_stops b \
+                     ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                )",
         )
         .bind(community.as_uuid())
@@ -2395,6 +2854,17 @@ impl Db {
                    SELECT 1 FROM whatsapp_contacts c \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                      AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions s \
+                   WHERE s.community_id = m.community_id AND s.identity_kind = 'phone' \
+                     AND s.identity_value = m.wa_id AND s.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   JOIN whatsapp_business_stops b \
+                     ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                )",
         )
         .bind(community.as_uuid())
@@ -2428,6 +2898,17 @@ impl Db {
                    SELECT 1 FROM whatsapp_contacts c \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                      AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions s \
+                   WHERE s.community_id = m.community_id AND s.identity_kind = 'phone' \
+                     AND s.identity_value = m.wa_id AND s.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   JOIN whatsapp_business_stops b \
+                     ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                ) \
              RETURNING m.batch_id",
         )
@@ -2507,6 +2988,17 @@ impl Db {
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                      AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
                ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions s \
+                   WHERE s.community_id = m.community_id AND s.identity_kind = 'phone' \
+                     AND s.identity_value = m.wa_id AND s.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   JOIN whatsapp_business_stops b \
+                     ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+               ) \
              RETURNING m.batch_id",
         )
         .bind(community.as_uuid())
@@ -2572,6 +3064,17 @@ impl Db {
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                      AND (c.opted_out_at IS NOT NULL OR c.paused_at IS NOT NULL) \
                ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions s \
+                   WHERE s.community_id = m.community_id AND s.identity_kind = 'phone' \
+                     AND s.identity_value = m.wa_id AND s.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   JOIN whatsapp_business_stops b \
+                     ON b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+               ) \
              RETURNING m.batch_id",
         )
         .bind(community.as_uuid())
@@ -2618,6 +3121,15 @@ impl Db {
                  WHERE c.community_id = $1 AND c.wa_id = $2 \
                    AND c.opted_out_at IS NULL AND c.retry_after IS NULL \
                    AND (c.paused_at IS NULL OR c.pause_reason = $6) \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM whatsapp_suppressions s \
+                       WHERE s.community_id = c.community_id AND s.identity_kind = 'phone' \
+                         AND s.identity_value = c.wa_id AND s.undone_at IS NULL \
+                   ) \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM whatsapp_business_stops b \
+                       WHERE b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   ) \
                    AND EXISTS ( \
                        SELECT 1 FROM whatsapp_messages m \
                        WHERE m.community_id = c.community_id AND m.id = $3 AND m.wa_id = c.wa_id \
@@ -2660,6 +3172,15 @@ impl Db {
                  WHERE c.community_id = $1 AND c.retry_after IS NOT NULL \
                    AND c.retry_after <= $3 AND c.opted_out_at IS NULL \
                    AND c.pause_reason = $2 \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM whatsapp_suppressions s \
+                       WHERE s.community_id = c.community_id AND s.identity_kind = 'phone' \
+                         AND s.identity_value = c.wa_id AND s.undone_at IS NULL \
+                   ) \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM whatsapp_business_stops b \
+                       WHERE b.community_id = c.community_id AND b.business_id = c.lead_id \
+                   ) \
                    AND EXISTS ( \
                        SELECT 1 FROM whatsapp_messages m \
                        WHERE m.community_id = c.community_id AND m.wa_id = c.wa_id \
@@ -2748,6 +3269,219 @@ impl Db {
                 ))
             })
             .collect()
+    }
+
+    /// List unresolved sends whose Graph outcome was never recorded. They are intentionally not
+    /// part of the ordinary send queue and need an owner recovery decision.
+    pub async fn whatsapp_list_unknown_sends(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages WHERE community_id = $1 AND direction = 'out' \
+               AND state = 'unconfirmed' ORDER BY updated_at DESC, id DESC LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 500))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_message).collect()
+    }
+
+    /// Record that an owner checked the relay's last known state for an unknown send. There is
+    /// no fabricated provider read here: the durable row remains `unconfirmed` until the owner
+    /// explicitly marks it delivered or creates a new replacement.
+    pub async fn whatsapp_check_unknown_send(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        checked_by: &[u8],
+        at: DateTime<Utc>,
+    ) -> Result<Option<WhatsappMessage>> {
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages WHERE community_id = $1 AND id = $2 AND direction = 'out' \
+               AND state = 'unconfirmed' FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        sqlx::query(
+            "INSERT INTO whatsapp_unknown_send_recoveries \
+             (community_id, message_id, checked_at, checked_by) VALUES ($1, $2, $3, $4) \
+             ON CONFLICT (community_id, message_id) DO UPDATE SET \
+                 checked_at = EXCLUDED.checked_at, checked_by = EXCLUDED.checked_by",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(at)
+        .bind(checked_by)
+        .execute(&mut *tx)
+        .await?;
+        let message = row_to_message(&row)?;
+        tx.commit().await?;
+        Ok(Some(message))
+    }
+
+    /// Apply an owner's explicit confirmation that an unknown send reached the recipient. The
+    /// original id and draft remain intact; only `unconfirmed` can make this transition.
+    pub async fn whatsapp_mark_unknown_send_delivered(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        marked_by: &[u8],
+        at: DateTime<Utc>,
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        // Lock the original before reading the recovery record. A concurrent confirmed resend
+        // must win or lose as one decision: marking the original delivered after its replacement
+        // was queued could otherwise produce two deliberate sends.
+        let original = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM whatsapp_messages WHERE community_id = $1 AND id = $2 \
+             AND direction = 'out' AND state = 'unconfirmed' FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(_) = original else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        let replacement: Option<Uuid> = sqlx::query_scalar(
+            "SELECT replacement_message_id FROM whatsapp_unknown_send_recoveries \
+             WHERE community_id = $1 AND message_id = $2 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .flatten();
+        if replacement.is_some() {
+            tx.commit().await?;
+            return Ok(false);
+        }
+        let updated = sqlx::query(
+            "UPDATE whatsapp_messages SET state = 'delivered', \
+                 error_text = 'Marked delivered by owner after unknown send outcome.', \
+                 updated_at = now() \
+             WHERE community_id = $1 AND id = $2 AND state = 'unconfirmed'",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() == 1 {
+            sqlx::query(
+                "INSERT INTO whatsapp_unknown_send_recoveries \
+                 (community_id, message_id, marked_delivered_at, marked_delivered_by) \
+                 VALUES ($1, $2, $3, $4) \
+                 ON CONFLICT (community_id, message_id) DO UPDATE SET \
+                     marked_delivered_at = EXCLUDED.marked_delivered_at, \
+                     marked_delivered_by = EXCLUDED.marked_delivered_by",
+            )
+            .bind(community.as_uuid())
+            .bind(message_id)
+            .bind(at)
+            .bind(marked_by)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(updated.rows_affected() == 1)
+    }
+
+    /// Create exactly one new queued message after an owner's explicit resend confirmation. The
+    /// original unknown row stays `unconfirmed`, retaining its evidence and at-most-once fence.
+    pub async fn whatsapp_create_unknown_send_replacement(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        created_by: &[u8],
+        at: DateTime<Utc>,
+    ) -> Result<Option<UnknownSendReplacement>> {
+        let mut tx = begin(&self.pool).await?;
+        // Lock the original first. This serializes every recovery path for this send, including
+        // two owners choosing Resend at the same time and Mark delivered racing a resend.
+        let row = sqlx::query(
+            "SELECT id, wa_id, direction, kind, body, template_name, template_language, params, \
+                    state, skip_reason, wamid, error_code, error_text, event_id, batch_id, \
+                    batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at \
+             FROM whatsapp_messages WHERE community_id = $1 AND id = $2 AND direction = 'out' \
+               AND state = 'unconfirmed' FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            "SELECT replacement_message_id FROM whatsapp_unknown_send_recoveries \
+             WHERE community_id = $1 AND message_id = $2 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .flatten();
+        if let Some(existing) = existing {
+            tx.commit().await?;
+            return Ok(Some(UnknownSendReplacement::Existing(existing)));
+        }
+        let original = row_to_message(&row)?;
+        let replacement_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO whatsapp_messages \
+             (community_id, id, wa_id, direction, kind, body, template_name, template_language, \
+              params, state, idempotency_key, new_chat, sender_pubkey) \
+             VALUES ($1, $2, $3, 'out', $4, $5, $6, $7, $8, 'queued', $9, $10, $11)",
+        )
+        .bind(community.as_uuid())
+        .bind(replacement_id)
+        .bind(&original.wa_id)
+        .bind(&original.kind)
+        .bind(&original.body)
+        .bind(&original.template_name)
+        .bind(&original.template_language)
+        .bind(&original.params)
+        .bind(format!("unknown-recovery:{message_id}"))
+        .bind(original.new_chat)
+        .bind(created_by)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO whatsapp_unknown_send_recoveries \
+             (community_id, message_id, replacement_message_id, replacement_created_at, \
+              replacement_created_by) VALUES ($1, $2, $3, $4, $5) \
+             ON CONFLICT (community_id, message_id) DO UPDATE SET \
+                 replacement_message_id = EXCLUDED.replacement_message_id, \
+                 replacement_created_at = EXCLUDED.replacement_created_at, \
+                 replacement_created_by = EXCLUDED.replacement_created_by",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(replacement_id)
+        .bind(at)
+        .bind(created_by)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(Some(UnknownSendReplacement::Created(replacement_id)))
     }
 
     /// Apply a Meta status callback. States only move forward, `failed` always applies.

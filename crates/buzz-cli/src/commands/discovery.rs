@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::client::{BuzzClient, CappedPost};
 use crate::commands::leads::{load_leads, CurrentLead};
+use crate::commands::whatsapp::safety_check_matches;
 use crate::error::CliError;
 use crate::links::lead_link;
 use crate::validate::sdk_err;
@@ -745,6 +746,7 @@ async fn save_place(
 struct SaveSummary {
     saved: Vec<Value>,
     skipped_existing: usize,
+    skipped_safety: usize,
 }
 
 impl SaveSummary {
@@ -752,9 +754,43 @@ impl SaveSummary {
         json!({
             "saved": self.saved.len(),
             "skipped_existing": self.skipped_existing,
+            "skipped_safety": self.skipped_safety,
             "leads": self.saved,
         })
     }
+}
+
+/// Candidate values for the relay's privacy-preserving suppression preflight. The saved record
+/// still retains the original values; these are only comparisons before a new prospect exists.
+fn suppression_inputs(place: &Place) -> Vec<(String, String)> {
+    let mut inputs = Vec::new();
+    if let Some(phone) = present(&place.phone) {
+        inputs.push(("phone".to_owned(), phone.to_owned()));
+    }
+    if let Some(email) = present(&place.email) {
+        inputs.push(("email".to_owned(), email.to_owned()));
+    }
+    if let Some(website) = present(&place.website) {
+        let candidate = if website.contains("://") {
+            website.to_owned()
+        } else {
+            format!("https://{website}")
+        };
+        if let Ok(url) = url::Url::parse(&candidate) {
+            if let Some(host) = url.host_str() {
+                if host.contains('.') {
+                    inputs.push(("domain".to_owned(), host.to_owned()));
+                }
+            }
+        }
+    }
+    inputs
+}
+
+fn matches_active_suppression(place: &Place, matches: &HashSet<(String, String)>) -> bool {
+    suppression_inputs(place)
+        .into_iter()
+        .any(|identity| matches.contains(&identity))
 }
 
 /// Save every new place, stopping at the first failure. Places saved before a
@@ -769,6 +805,24 @@ async fn save_places(
     let mut existing = ExistingLeads::from_leads(&leads);
     let (fresh, skipped) = partition_new(places, &mut existing);
     summary.skipped_existing += skipped;
+    if fresh.is_empty() {
+        return Ok(());
+    }
+    let identities = fresh
+        .iter()
+        .flat_map(|(_, place)| suppression_inputs(place))
+        .collect::<Vec<_>>();
+    let safety_matches = safety_check_matches(client, &identities).await?;
+    let fresh = fresh
+        .into_iter()
+        .filter(|(_, place)| {
+            let suppressed = matches_active_suppression(place, &safety_matches);
+            if suppressed {
+                summary.skipped_safety += 1;
+            }
+            !suppressed
+        })
+        .collect::<Vec<_>>();
     if fresh.is_empty() {
         return Ok(());
     }
@@ -1041,6 +1095,24 @@ mod tests {
         let (retry, retry_skipped) = partition_new(&places, &mut existing);
         assert!(retry.is_empty());
         assert_eq!(retry_skipped, 4);
+    }
+
+    #[test]
+    fn discovery_never_saves_a_place_with_a_suppressed_identity() {
+        let mut candidate = place(Some("ChIJ-safety"), "Safety Lodge");
+        candidate.phone = Some("+27 82 123 4567".into());
+        candidate.email = Some("owner@safetylodge.example".into());
+        candidate.website = Some("https://safetylodge.example/contact".into());
+
+        let identities = suppression_inputs(&candidate);
+        assert!(identities.contains(&("phone".into(), "+27 82 123 4567".into())));
+        assert!(identities.contains(&("email".into(), "owner@safetylodge.example".into())));
+        assert!(identities.contains(&("domain".into(), "safetylodge.example".into())));
+
+        let phone_match = HashSet::from([("phone".into(), "+27 82 123 4567".into())]);
+        assert!(matches_active_suppression(&candidate, &phone_match));
+        let unrelated = HashSet::from([("domain".into(), "other.example".into())]);
+        assert!(!matches_active_suppression(&candidate, &unrelated));
     }
 
     #[test]

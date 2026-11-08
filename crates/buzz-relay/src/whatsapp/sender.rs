@@ -18,6 +18,7 @@ use uuid::Uuid;
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::whatsapp::{
     NewOutboundMessage, WhatsappAccountFailure, WhatsappContact, WhatsappMessage,
+    WhatsappSendSafety,
 };
 
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
@@ -63,6 +64,18 @@ pub struct SendContext<'a> {
     pub is_owner_admin: bool,
     /// The message is a template (otherwise free text).
     pub is_template: bool,
+    /// A durable direct or business-scoped safety fence for this recipient.
+    pub safety: Option<&'a WhatsappSendSafety>,
+}
+
+/// Plain refusal text for an active durable safety fence.
+pub fn safety_refusal(safety: &WhatsappSendSafety) -> String {
+    match safety.scope.as_str() {
+        "never_contact" => format!("never-contact entry: {}", safety.reason),
+        "business_stop" => "outreach stopped for the whole business: ".to_string() + &safety.reason,
+        "opt_out" => format!("contact opted out: {}", safety.reason),
+        _ => format!("outreach safety hold: {}", safety.reason),
+    }
 }
 
 /// The rules for one send. Returns the plain reason when the send is refused.
@@ -72,6 +85,9 @@ pub fn check_send(ctx: &SendContext<'_>) -> Result<SendPlan, String> {
             "sending is paused: {}",
             ctx.pause_reason.unwrap_or("see the status")
         ));
+    }
+    if let Some(safety) = ctx.safety {
+        return Err(safety_refusal(safety));
     }
     if let Some(contact) = ctx.contact {
         if let Some(at) = contact.opted_out_at {
@@ -204,6 +220,17 @@ pub async fn enqueue_send(
         .whatsapp_count_pending_outbound(community, &wa_id)
         .await
         .map_err(|error| error.to_string())?;
+    let safety = state
+        .db
+        .whatsapp_send_safety(
+            community,
+            &wa_id,
+            contact
+                .as_ref()
+                .and_then(|contact| contact.lead_id.as_deref()),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
     let plan = check_send(&SendContext {
         contact: contact.as_ref(),
         send_paused: settings.send_paused,
@@ -212,6 +239,7 @@ pub async fn enqueue_send(
         now,
         is_owner_admin: access.is_owner_admin(),
         is_template: command.template.is_some(),
+        safety: safety.as_ref(),
     })?;
 
     let (kind, body, template_name, template_language, params) =
@@ -528,6 +556,15 @@ pub async fn process_community(
         }
         if contact.paused_at.is_some() {
             skip(state, community, &message, "contact is paused").await;
+            continue;
+        }
+        let safety = state
+            .db
+            .whatsapp_send_safety(community, &message.wa_id, contact.lead_id.as_deref())
+            .await
+            .map_err(|error| error.to_string())?;
+        if let Some(safety) = safety.as_ref() {
+            skip(state, community, &message, &safety_refusal(safety)).await;
             continue;
         }
         if message.new_chat {
@@ -921,6 +958,7 @@ mod tests {
             now: now(),
             is_owner_admin,
             is_template,
+            safety: None,
         }
     }
 
@@ -983,6 +1021,33 @@ mod tests {
         assert!(check_send(&ctx(Some(&paused), true, true))
             .unwrap_err()
             .contains("131049"));
+    }
+
+    #[test]
+    fn a_business_or_never_contact_safety_hold_refuses_every_send_shape() {
+        let c = contact();
+        for safety in [
+            WhatsappSendSafety {
+                scope: "never_contact".into(),
+                reason: "owner requested no contact".into(),
+                matched_rule: None,
+                business_id: None,
+            },
+            WhatsappSendSafety {
+                scope: "business_stop".into(),
+                reason: "inbound reply received".into(),
+                matched_rule: None,
+                business_id: Some("business-1".into()),
+            },
+        ] {
+            let mut context = ctx(Some(&c), true, true);
+            context.safety = Some(&safety);
+            assert!(
+                check_send(&context).is_err(),
+                "{} must prevent this send",
+                safety.scope
+            );
+        }
     }
 
     #[test]

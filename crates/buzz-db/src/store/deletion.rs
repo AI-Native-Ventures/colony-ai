@@ -89,11 +89,14 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "thread_metadata",
     "users",
     "whatsapp_batches",
+    "whatsapp_business_stops",
     "whatsapp_connections",
     "whatsapp_contacts",
     "whatsapp_messages",
     "whatsapp_settings",
+    "whatsapp_suppressions",
     "whatsapp_templates",
+    "whatsapp_unknown_send_recoveries",
     "workflow_agent_waits",
     "workflow_approvals",
     "workflow_runs",
@@ -119,8 +122,11 @@ pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "money_rails_jobs",
     "money_rails_recipients",
     "money_rails_connections",
+    "whatsapp_unknown_send_recoveries",
     "whatsapp_messages",
     "whatsapp_batches",
+    "whatsapp_business_stops",
+    "whatsapp_suppressions",
     "whatsapp_contacts",
     "whatsapp_templates",
     "whatsapp_connections",
@@ -3289,6 +3295,81 @@ mod tests {
             .position(|table| *table == "channels")
             .expect("channel table is purged");
         assert!(deliveries_index < channels_index);
+    }
+
+    #[test]
+    fn whatsapp_schema_tables_are_inventoried_purged_and_fenced() {
+        let schema_tables = include_str!("../../../../schema/schema.sql")
+            .lines()
+            .filter_map(|line| {
+                line.strip_prefix("CREATE TABLE ")
+                    .and_then(|declaration| declaration.split_once('('))
+                    .map(|(table, _)| table.trim())
+            })
+            .filter(|table| table.starts_with("whatsapp_"))
+            .collect::<BTreeSet<_>>();
+        let inventoried_tables = EXPECTED_SCOPED_TABLES
+            .iter()
+            .copied()
+            .filter(|table| table.starts_with("whatsapp_"))
+            .collect::<BTreeSet<_>>();
+        let purged_tables = PURGE_SCOPED_TABLES
+            .iter()
+            .copied()
+            .filter(|table| table.starts_with("whatsapp_"))
+            .collect::<BTreeSet<_>>();
+        let reconciliation =
+            include_str!("../../../../scripts/reconcile-schema-after-pgschema.sql");
+        let reconciled_tables = reconciliation
+            .lines()
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("SELECT attach_community_write_fence('")
+                    .and_then(|declaration| declaration.strip_suffix("');"))
+            })
+            .filter(|table| table.starts_with("whatsapp_"))
+            .collect::<BTreeSet<_>>();
+        let verification_table_list = reconciliation
+            .split("FOREACH fenced IN ARRAY ARRAY[")
+            .nth(1)
+            .and_then(|declaration| declaration.split("] LOOP").next())
+            .expect("post-apply reconciliation verifies its fenced table list");
+        let verification_tables = verification_table_list
+            .split(',')
+            .map(str::trim)
+            .map(|table| table.trim_matches('\''))
+            .filter(|table| table.starts_with("whatsapp_"))
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            inventoried_tables, schema_tables,
+            "every WhatsApp table in the desired schema must be in the deletion catalog"
+        );
+        assert_eq!(
+            purged_tables, schema_tables,
+            "every WhatsApp table in the desired schema must be purged with its community"
+        );
+        assert_eq!(
+            reconciled_tables, schema_tables,
+            "every WhatsApp table in the desired schema must have a post-apply write fence"
+        );
+        assert_eq!(
+            verification_tables, schema_tables,
+            "every WhatsApp table in the desired schema must have its post-apply write fence verified"
+        );
+
+        let recovery_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "whatsapp_unknown_send_recoveries")
+            .expect("unknown-send recovery table is purged");
+        let messages_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "whatsapp_messages")
+            .expect("WhatsApp messages are purged");
+        assert!(
+            recovery_index < messages_index,
+            "unknown-send recoveries reference WhatsApp messages and must be deleted first"
+        );
     }
 
     #[test]

@@ -1871,6 +1871,12 @@ pub enum WhatsappCmd {
     /// Approve, edit or reject one agent draft (owner or admin)
     #[command(subcommand)]
     Draft(WhatsappDraftCmd),
+    /// Review or change durable opt-out and never-contact safety entries (owner or admin)
+    #[command(subcommand)]
+    Safety(WhatsappSafetyCmd),
+    /// Resolve a send whose delivery outcome is unknown (owner or admin)
+    #[command(subcommand)]
+    UnknownSend(WhatsappUnknownSendCmd),
     /// List contacts, most recently active first
     Contacts {
         /// Maximum contacts, 1 through 200 (default 50)
@@ -1947,6 +1953,71 @@ pub enum WhatsappDraftCmd {
         /// Draft message id (from `drafts`)
         #[arg(long)]
         draft: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappSafetyCmd {
+    /// List active opt-out and never-contact entries
+    List {
+        /// Maximum entries, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Add one number to the never-contact list with a durable reason
+    NeverContact {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        wa_id: String,
+        /// Why this number must not be contacted
+        #[arg(long)]
+        reason: String,
+    },
+    /// Undo one active never-contact entry
+    UndoNeverContact {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        wa_id: String,
+    },
+    /// Undo one active opt-out entry; a whole-business reply hold remains active
+    UndoOptOut {
+        /// Phone number, for example +27821234567
+        #[arg(long)]
+        wa_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappUnknownSendCmd {
+    /// List sends whose provider outcome is still unknown
+    List {
+        /// Maximum sends, 1 through 200 (default 50)
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Record an owner check of the relay's last known state without resending
+    Check {
+        /// Unknown message id
+        #[arg(long)]
+        message: String,
+    },
+    /// Mark one unknown send delivered after checking the recipient or provider
+    MarkDelivered {
+        /// Unknown message id
+        #[arg(long)]
+        message: String,
+        /// Required acknowledgement that the send reached the recipient
+        #[arg(long)]
+        confirm: bool,
+    },
+    /// Queue one new replacement after checking the original was not delivered
+    Resend {
+        /// Unknown message id
+        #[arg(long)]
+        message: String,
+        /// Required acknowledgement that a new message may be sent
+        #[arg(long)]
+        confirm: bool,
     },
 }
 
@@ -5396,7 +5467,8 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
-            ("whatsapp", 13),
+            // Safety and unknown-send recovery are intentional owner-facing WhatsApp groups.
+            ("whatsapp", 15),
             ("work", 16),
             ("workflows", 8),
         ];

@@ -17,8 +17,8 @@ use buzz_db::EventQuery;
 use super::channel;
 use super::connect::{refresh_phone_info, sync_templates};
 use super::policy::{
-    account_retry_error_codes, classify_failure_code, classify_opt_out, contact_label, e164,
-    is_wants_call_tap, normalize_wa_id, FailureKind,
+    account_retry_error_codes, classify_failure_code, contact_label, e164,
+    has_complaint_or_legal_signal, is_wants_call_tap, match_opt_out, normalize_wa_id, FailureKind,
 };
 use super::sender::handle_failure;
 use crate::state::AppState;
@@ -523,13 +523,6 @@ async fn handle_message(
         )
         .await
         .map_err(|error| error.to_string())?;
-    // Every step below is safe to repeat, so a webhook that died half way is finished by
-    // Meta's redelivery instead of leaving the window, the opt-out or the post undone.
-    state
-        .db
-        .whatsapp_touch_inbound(community, &message.wa_id, message.at)
-        .await
-        .map_err(|error| error.to_string())?;
     let stored = match stored_id {
         Some(id) => state
             .db
@@ -545,6 +538,26 @@ async fn handle_message(
     let Some(stored) = stored else {
         return Err("stored message vanished".into());
     };
+
+    if contact.lead_id.is_none() {
+        contact.lead_id = find_lead_by_phone(state, tenant, &message.wa_id).await;
+    }
+    let opt_out = match_opt_out(&message.text);
+    let opt_out_kind = opt_out.map(|matched| matched.kind);
+    // Every safety write is one transaction. A failed write returns 500, so Meta redelivers the
+    // same inbound message instead of allowing an incomplete contact or business fence.
+    let safety = state
+        .db
+        .whatsapp_record_inbound_safety(
+            community,
+            &message.wa_id,
+            contact.lead_id.as_deref(),
+            message.at,
+            opt_out_kind.map(OptOutKind::reason),
+            opt_out.map(|matched| matched.rule_id),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
 
     // Keep what Meta said about the media (its id expires), then fetch the bytes while the
     // webhook is still open so the picture is there when the owner opens the chat. The first
@@ -568,16 +581,6 @@ async fn handle_message(
         }
     }
 
-    let opt_out_kind = classify_opt_out(&message.text, message.is_button);
-    let opted_out_now = if let Some(kind) = opt_out_kind {
-        state
-            .db
-            .whatsapp_opt_out(community, &message.wa_id, kind.reason(), message.at)
-            .await
-            .map_err(|error| error.to_string())?
-    } else {
-        false
-    };
     // A tap on the template's first quick-reply button means "call me". Recorded on the
     // message so the contact's stage reads it later; safe to repeat on a redelivery.
     if message.is_button
@@ -591,15 +594,6 @@ async fn handle_message(
             .map_err(|error| error.to_string())?;
     }
 
-    if contact.lead_id.is_none() {
-        if let Some(lead) = find_lead_by_phone(state, tenant, &message.wa_id).await {
-            state
-                .db
-                .whatsapp_set_lead(community, &message.wa_id, &lead)
-                .await
-                .map_err(|error| error.to_string())?;
-        }
-    }
     contact = state
         .db
         .whatsapp_get_contact(community, &message.wa_id)
@@ -623,7 +617,7 @@ async fn handle_message(
         "",
     )
     .await;
-    if opted_out_now {
+    if safety.opted_out_now {
         let label = contact_label(&contact.display_name, &contact.wa_id);
         let who = if label == e164(&contact.wa_id) {
             label
@@ -640,6 +634,24 @@ async fn handle_message(
             tenant,
             "opt_out",
             &format!("{who} {what}. Nothing more will be sent to them."),
+        )
+        .await;
+    }
+    if opt_out_kind.is_some() && has_complaint_or_legal_signal(&message.text) {
+        channel::post_owner_notice(
+            state,
+            tenant,
+            "opt_out_legal_escalation",
+            "A contact opted out and mentioned a complaint or legal action. Outreach remains stopped; review the conversation before any further action.",
+        )
+        .await;
+    }
+    if safety.business_stopped_now {
+        channel::post_notice(
+            state,
+            tenant,
+            "business_outreach_stopped",
+            "An inbound reply stopped outreach to every contact of this business.",
         )
         .await;
     }

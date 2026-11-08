@@ -25,7 +25,8 @@ use uuid::Uuid;
 use buzz_core::channel::MemberRole;
 use buzz_core::kind::{
     KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
-    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
+    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::whatsapp_stage::WhatsappStage;
@@ -458,6 +459,23 @@ fn batch(batch_id: Uuid, numbers: &[&str]) -> Value {
     })
 }
 
+fn batch_for_business(batch_id: Uuid, business_id: &str, numbers: &[&str]) -> Value {
+    json!({
+        "v": 1,
+        "batchId": batch_id.to_string(),
+        "template": "intro",
+        "language": "en",
+        "rows": numbers
+            .iter()
+            .map(|number| json!({
+                "to": number,
+                "leadId": business_id,
+                "params": ["Thabo"],
+            }))
+            .collect::<Vec<_>>(),
+    })
+}
+
 fn base() -> DateTime<Utc> {
     // 12:00 in Johannesburg.
     Utc.with_ymd_and_hms(2026, 10, 29, 10, 0, 0)
@@ -536,11 +554,14 @@ async fn webhook_checks_the_signature_answers_the_challenge_and_dedupes() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
-async fn a_stop_word_opts_the_contact_out_and_later_sends_are_refused() {
+async fn a_local_language_opt_out_is_durable_and_later_sends_are_refused() {
     let fx = fixture().await;
     assert_eq!(
-        fx.deliver(APP_SECRET, &inbound("27821230002", "wamid.IN2", "STOP."))
-            .await,
+        fx.deliver(
+            APP_SECRET,
+            &inbound("27821230002", "wamid.IN2", "Yeka imilayezo, ngiyabonga."),
+        )
+        .await,
         StatusCode::OK
     );
     let contact = fx
@@ -551,6 +572,17 @@ async fn a_stop_word_opts_the_contact_out_and_later_sends_are_refused() {
         .expect("contact")
         .expect("exists");
     assert!(contact.opted_out_at.is_some());
+    let rule: Option<String> = sqlx::query_scalar(
+        "SELECT matched_rule FROM whatsapp_suppressions \
+         WHERE community_id = $1 AND identity_kind = 'phone' AND identity_value = $2 \
+           AND scope = 'opt_out' AND undone_at IS NULL",
+    )
+    .bind(fx.community().as_uuid())
+    .bind("27821230002")
+    .fetch_one(&fx.pool)
+    .await
+    .expect("durable local-language opt-out rule");
+    assert_eq!(rule.as_deref(), Some("zu_yeka_imilayezo"));
 
     // GUARD: the opted_out check in `sender::check_send`. The inbound message opened the
     // 24 hour window, so without the guard this free text would be queued.
@@ -574,6 +606,202 @@ async fn a_stop_word_opts_the_contact_out_and_later_sends_are_refused() {
         .await,
     );
     assert!(refusal.contains("opted out"), "{refusal}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_reply_stops_its_whole_business_and_never_contact_blocks_every_send_fence() {
+    let fx = fixture().await;
+    let business_id = "business-outreach-safety";
+    let first = "+27821230021";
+    let second = "+27821230022";
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH,
+        batch_for_business(batch_id, business_id, &[first, second]),
+    )
+    .await
+    .expect("prepare linked business batch");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("approve linked business batch");
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(
+                "27821230021",
+                "wamid.BUSINESS-STOP",
+                "Please call tomorrow."
+            )
+        )
+        .await,
+        StatusCode::OK
+    );
+    let stopped_rows = batch_rows(&fx, batch_id).await;
+    assert!(
+        stopped_rows.iter().all(|row| row.state == "skipped"),
+        "every queued business contact must stop after one reply: {stopped_rows:?}"
+    );
+    assert!(stopped_rows.iter().all(|row| {
+        row.skip_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("whole business"))
+    }));
+
+    // GUARD: batch preflight and `whatsapp_claim_message` both read the same durable business
+    // fence. The direct request proves callers cannot bypass the held batch rows.
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "to": second,
+                "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+            }),
+        )
+        .await,
+    );
+    assert!(refusal.contains("whole business"), "{refusal}");
+
+    let atomic_business_row = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: "27821230022".into(),
+        kind: "template".into(),
+        body: "Hi Thabo".into(),
+        template_name: Some("intro".into()),
+        template_language: Some("en".into()),
+        params: json!(["Thabo"]),
+        state: "queued".into(),
+        idempotency_key: format!("business-claim:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &atomic_business_row)
+        .await
+        .expect("insert stale business row");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                atomic_business_row.id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(2),
+                base(),
+            )
+            .await
+            .expect("business claim result"),
+        "the final atomic claim fence rejects a row that predates the reply"
+    );
+
+    let never_contact = "+27821230023";
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SAFETY_ACTION,
+        json!({
+            "v": 1,
+            "action": "never_contact_add",
+            "waId": never_contact,
+            "reason": "owner privacy request",
+        }),
+    )
+    .await
+    .expect("add never-contact entry");
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH,
+            batch(Uuid::new_v4(), &[never_contact]),
+        )
+        .await,
+    );
+    assert!(refusal.contains("never-contact"), "{refusal}");
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), "27821230023", None)
+        .await
+        .expect("never-contact test contact");
+    let atomic_never_contact_row = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: "27821230023".into(),
+        kind: "template".into(),
+        body: "Hi Thabo".into(),
+        template_name: Some("intro".into()),
+        template_language: Some("en".into()),
+        params: json!(["Thabo"]),
+        state: "queued".into(),
+        idempotency_key: format!("never-contact-claim:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &atomic_never_contact_row)
+        .await
+        .expect("insert stale never-contact row");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                atomic_never_contact_row.id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(2),
+                base(),
+            )
+            .await
+            .expect("never-contact claim result"),
+        "the final atomic claim fence rejects a row that predates a never-contact decision"
+    );
+
+    let (action, detail): (String, Value) = sqlx::query_as(
+        "SELECT action, detail FROM audit_log WHERE community_id = $1 AND object_id = $2 \
+         ORDER BY seq DESC LIMIT 1",
+    )
+    .bind(fx.community().as_uuid())
+    .bind("27821230023")
+    .fetch_one(&fx.pool)
+    .await
+    .expect("never-contact audit entry");
+    assert_eq!(action, "whatsapp_outreach_safety_changed");
+    assert_eq!(detail["action"], "never_contact_add");
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SAFETY_ACTION,
+        json!({
+            "v": 1,
+            "action": "never_contact_undo",
+            "waId": never_contact,
+        }),
+    )
+    .await
+    .expect("undo never-contact entry");
+    let (action, detail): (String, Value) = sqlx::query_as(
+        "SELECT action, detail FROM audit_log WHERE community_id = $1 AND object_id = $2 \
+         ORDER BY seq DESC LIMIT 1",
+    )
+    .bind(fx.community().as_uuid())
+    .bind("27821230023")
+    .fetch_one(&fx.pool)
+    .await
+    .expect("never-contact undo audit entry");
+    assert_eq!(action, "whatsapp_outreach_safety_changed");
+    assert_eq!(detail["action"], "never_contact_undo");
 }
 
 #[tokio::test]
@@ -1970,12 +2198,174 @@ async fn a_crash_between_the_graph_call_and_the_record_never_sends_twice() {
         .collect();
     assert_eq!(mine.len(), 1);
     assert_eq!(mine[0].1.state, "unconfirmed");
+    let unknown_id = mine[0].1.id;
     fx.run_sender(base() + Duration::hours(24)).await;
     assert_eq!(
         fx.graph.send_count(),
         1,
         "an unconfirmed row is never resent"
     );
+
+    // GUARD: recovery stays owner-controlled. Checking leaves the original unconfirmed and
+    // does not reach Graph; only an explicit, confirmed resend creates one new row.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+        json!({
+            "v": 1,
+            "action": "check_status",
+            "messageId": unknown_id.to_string(),
+            "confirm": false,
+        }),
+    )
+    .await
+    .expect("owner checks the unknown outcome");
+    assert_eq!(fx.graph.send_count(), 1, "checking does not send");
+    let listed = fx
+        .state
+        .db
+        .whatsapp_list_unknown_sends(fx.community(), 10)
+        .await
+        .expect("list unknown sends");
+    assert_eq!(
+        listed.iter().map(|message| message.id).collect::<Vec<_>>(),
+        vec![unknown_id]
+    );
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+        json!({
+            "v": 1,
+            "action": "resend",
+            "messageId": unknown_id.to_string(),
+            "confirm": true,
+        }),
+    )
+    .await
+    .expect("owner confirms one replacement");
+    let original = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), unknown_id)
+        .await
+        .expect("original lookup")
+        .expect("original row");
+    assert_eq!(
+        original.state, "unconfirmed",
+        "the original evidence stays intact"
+    );
+    let thread = fx.thread("27820000009").await;
+    assert_eq!(
+        thread
+            .iter()
+            .filter(|message| message.state == "queued")
+            .count(),
+        1,
+        "one explicit replacement is queued"
+    );
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+            json!({
+                "v": 1,
+                "action": "resend",
+                "messageId": unknown_id.to_string(),
+                "confirm": true,
+            }),
+        )
+        .await,
+    );
+    assert!(refusal.contains("already has a replacement"), "{refusal}");
+
+    fx.graph.sabotage_after_send.store(false, Ordering::SeqCst);
+    fx.run_sender(base() + Duration::hours(24)).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        2,
+        "one owner-confirmed replacement, and no automatic resend, reaches Graph"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn an_owner_can_mark_an_unknown_send_delivered_only_with_confirmation() {
+    let fx = fixture().await;
+    let wa_id = "27820000010";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Thabo"))
+        .await
+        .expect("contact");
+    let message_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key, \
+          lease_token, lease_until) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Hi Thabo', 'sending', $4, $5, $6)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(message_id)
+    .bind(wa_id)
+    .bind(format!("mark-delivered:{message_id}"))
+    .bind(Uuid::new_v4())
+    .bind(base() - Duration::minutes(1))
+    .execute(&fx.pool)
+    .await
+    .expect("simulate expired in-flight send");
+    fx.state
+        .db
+        .whatsapp_expire_leases(base())
+        .await
+        .expect("turn expired lease into unknown outcome");
+
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+            json!({
+                "v": 1,
+                "action": "mark_delivered",
+                "messageId": message_id.to_string(),
+                "confirm": false,
+            }),
+        )
+        .await,
+    );
+    assert!(refusal.contains("requires confirm"), "{refusal}");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+        json!({
+            "v": 1,
+            "action": "mark_delivered",
+            "messageId": message_id.to_string(),
+            "confirm": true,
+        }),
+    )
+    .await
+    .expect("owner marks delivery after confirmation");
+    let message = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), message_id)
+        .await
+        .expect("message lookup")
+        .expect("message exists");
+    assert_eq!(message.state, "delivered");
+    assert_eq!(fx.graph.send_count(), 0, "marking delivery does not send");
+    let (action, detail): (String, Value) = sqlx::query_as(
+        "SELECT action, detail FROM audit_log WHERE community_id = $1 AND object_id = $2 \
+         ORDER BY seq DESC LIMIT 1",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(message_id.to_string())
+    .fetch_one(&fx.pool)
+    .await
+    .expect("unknown-send audit entry");
+    assert_eq!(action, "whatsapp_unknown_send_recovery");
+    assert_eq!(detail["action"], "mark_delivered");
 }
 
 #[tokio::test]

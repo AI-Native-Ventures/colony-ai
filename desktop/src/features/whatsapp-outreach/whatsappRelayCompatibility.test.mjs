@@ -271,6 +271,10 @@ const relayOutput = {
     pauseReason: "Meta error 131049",
     unanswered: false,
     awaitingApproval: false,
+    // Outreach safety adds only fields that older strict desktop parsers ignore. It never adds
+    // a contact-stage or message-state enum value before the desktop supports it.
+    businessOutreachStopped: true,
+    businessStopReason: "inbound reply received",
   },
 };
 
