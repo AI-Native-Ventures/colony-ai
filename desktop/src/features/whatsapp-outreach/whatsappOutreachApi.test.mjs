@@ -3,10 +3,14 @@ import test from "node:test";
 
 import {
   buildWhatsAppNip98Header,
+  loadWhatsAppSafetyLedger,
+  loadWhatsAppThread,
+  loadWhatsAppUnknownSends,
   makeWhatsAppCommand,
   postWhatsAppJson,
   publishWhatsAppCommand,
   queryWhatsApp,
+  WHATSAPP_THREAD_VISIBLE_LIMIT,
   whatsappCommandKinds,
 } from "./whatsappOutreachApi.ts";
 import { relayClient } from "@/shared/api/relayClient";
@@ -117,6 +121,124 @@ test("current desktop advertises the queued-stage capability on every query", as
   });
 });
 
+test("safety, recovery, and thread review use the relay's additive contract", async () => {
+  const bodies = [];
+  const contact = {
+    waId: "27821237135",
+    e164: "+27 82 123 7135",
+    displayName: "Plane Tree Guesthouse",
+    profileName: "Thandeka",
+    businessName: "Plane Tree Guesthouse",
+    website: null,
+    label: null,
+    leadId: "lead-id",
+    ownerPubkey: null,
+    threadRootEventId: "thread-id",
+    lastInboundAt: null,
+    lastContactedAt: "2026-11-08T08:00:00Z",
+    lastReplyAt: null,
+    lastOutboundState: "sent",
+    stage: "contacted",
+    stageSetBy: "auto",
+    stageChangedAt: "2026-11-08T08:00:00Z",
+    windowOpen: false,
+    windowClosesAt: null,
+    optedOut: false,
+    paused: false,
+    pauseReason: null,
+    unanswered: false,
+  };
+  const dependencies = {
+    nonce: () => "safety-contract",
+    signer: async (event) => ({
+      id: "id",
+      pubkey: "pubkey",
+      kind: 27235,
+      content: "",
+      tags: event.tags,
+      created_at: 1,
+      sig: "sig",
+    }),
+    fetcher: async (_url, init) => {
+      const body = JSON.parse(init.body);
+      bodies.push(body);
+      if (body.what === "suppressions") {
+        return new Response(
+          JSON.stringify({
+            suppressions: [
+              {
+                id: "suppression-id",
+                identityKind: "phone",
+                identityValue: "27821237135",
+                scope: "opt_out",
+                reason: "stop",
+                matchedRule: "stop",
+                source: "inbound",
+                createdAt: "2026-11-08T08:00:00Z",
+                undoneAt: null,
+              },
+            ],
+            businessStops: [],
+          }),
+          { status: 200 },
+        );
+      }
+      if (body.what === "unknown_sends") {
+        return new Response(
+          JSON.stringify({
+            unknownSends: [
+              {
+                id: "unknown-id",
+                waId: "27821237135",
+                direction: "out",
+                kind: "text",
+                text: "Hello",
+                templateName: null,
+                state: "unconfirmed",
+                errorCode: null,
+                errorText: null,
+                eventId: null,
+                senderPubkey: null,
+                createdAt: "2026-11-08T08:00:00Z",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ contact, messages: [] }), {
+        status: 200,
+      });
+    },
+  };
+
+  const ledger = await loadWhatsAppSafetyLedger(
+    "wss://relay.example",
+    dependencies,
+  );
+  const unknownSends = await loadWhatsAppUnknownSends(
+    "wss://relay.example",
+    dependencies,
+  );
+  const thread = await loadWhatsAppThread(
+    "wss://relay.example",
+    contact.waId,
+    dependencies,
+  );
+
+  assert.equal(ledger.suppressions[0].reason, "stop");
+  assert.equal(unknownSends[0].state, "unconfirmed");
+  assert.equal(thread.contact.waId, contact.waId);
+  assert.deepEqual(
+    bodies.map(({ what, limit }) => ({ what, limit })),
+    [
+      { what: "suppressions", limit: 200 },
+      { what: "unknown_sends", limit: 100 },
+      { what: "thread", limit: WHATSAPP_THREAD_VISIBLE_LIMIT },
+    ],
+  );
+});
+
 test("HTTP failures surface relay copy and malformed success bodies fail closed", async () => {
   const common = {
     signer: async (event) => ({
@@ -185,6 +307,33 @@ test("signed command payloads use the contract kind and have no channel tags", a
     content: '{"v":1,"waId":"27821237135","stage":"call_booked"}',
     tags: [],
   });
+
+  assert.deepEqual(
+    makeWhatsAppCommand(whatsappCommandKinds.safetyAction, {
+      v: 1,
+      action: "opt_out_undo",
+      waId: "27821237135",
+    }),
+    {
+      kind: 47053,
+      content: '{"v":1,"action":"opt_out_undo","waId":"27821237135"}',
+      tags: [],
+    },
+  );
+  assert.deepEqual(
+    makeWhatsAppCommand(whatsappCommandKinds.unknownSendRecovery, {
+      v: 1,
+      action: "resend",
+      messageId: "unknown-id",
+      confirm: true,
+    }),
+    {
+      kind: 47054,
+      content:
+        '{"v":1,"action":"resend","messageId":"unknown-id","confirm":true}',
+      tags: [],
+    },
+  );
 
   let signed = null;
   let published = null;

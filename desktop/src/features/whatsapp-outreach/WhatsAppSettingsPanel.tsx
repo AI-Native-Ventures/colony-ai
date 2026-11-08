@@ -20,11 +20,12 @@ import {
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
+import { WhatsAppSafetySettings } from "./WhatsAppSafetySettings";
 import {
   useInvalidateWhatsAppQueries,
   useWhatsAppCommand,
-  useWhatsAppContactsQuery,
   useWhatsAppRelayUrl,
+  useWhatsAppSafetyLedgerQuery,
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
   whatsappOutreachQueryKeys,
@@ -298,8 +299,8 @@ export function WhatsAppSettingsPanel() {
   const reservePercent = aiPlanReserve?.preference.reservedPercent;
   const updateAiPlanReserve = useAiPlanReserveUpdate();
   const overrideAiPlanReserve = useAiPlanReserveOverride();
-  const contactsQuery = useWhatsAppContactsQuery(
-    statusQuery.data?.connected === true,
+  const safetyLedgerQuery = useWhatsAppSafetyLedgerQuery(
+    canManage && statusQuery.data?.connected === true,
   );
   const templatesQuery = useWhatsAppTemplatesQuery(
     statusQuery.data?.connected === true,
@@ -771,6 +772,7 @@ export function WhatsAppSettingsPanel() {
             {[
               { id: "wa-number", label: "Number" },
               { id: "wa-sending", label: "Sending" },
+              { id: "wa-safety", label: "Safety" },
               { id: "wa-templates", label: "Templates" },
             ].map((item) => (
               <button
@@ -1075,20 +1077,16 @@ export function WhatsAppSettingsPanel() {
                   </Button>
                 ) : null}
               </div>
-              <div className="c3wa-opt-outs">
-                <div>
-                  <strong>Opt-outs</strong>
-                  <span>
-                    Anyone who replies stop or no thanks is never messaged
-                    again.{" "}
-                    {contactsQuery.data?.filter((contact) => contact.optedOut)
-                      .length ?? 0}{" "}
-                    so far.
-                  </span>
-                </div>
-                <a href="/leads?whatsapp=opted-out">View opted out</a>
-              </div>
             </div>
+          </SettingsOptionGroup>
+
+          <SettingsOptionGroup className="c3wa-group">
+            <WhatsAppSafetySettings
+              canManage={canManage}
+              ledger={safetyLedgerQuery.data}
+              loading={safetyLedgerQuery.isPending}
+              unavailable={safetyLedgerQuery.isError}
+            />
           </SettingsOptionGroup>
 
           <section className="c3wa-templates-section" id="wa-templates">

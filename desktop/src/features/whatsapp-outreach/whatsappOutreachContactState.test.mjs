@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   contactStatus,
+  isWhatsAppAwaitingReply,
   sendNowBatchIdForQueuedMessage,
 } from "./whatsappOutreachContactState.ts";
 
@@ -102,5 +103,40 @@ test("a failed latest outbound message is never called sent", () => {
       lastOutboundState: "failed",
     }),
     "Send failed",
+  );
+});
+
+test("awaiting reply is conservative for old relays and excludes durable holds", () => {
+  const sent = {
+    optedOut: false,
+    businessOutreachStopped: false,
+    unanswered: false,
+    awaitingApproval: false,
+    stage: "contacted",
+    hasSentOutbound: true,
+    lastOutboundState: "sent",
+    lastContactedAt: "2026-11-08T09:00:00Z",
+    lastInboundAt: null,
+  };
+  assert.equal(isWhatsAppAwaitingReply(sent), true);
+  assert.equal(
+    isWhatsAppAwaitingReply({
+      ...sent,
+      lastInboundAt: "2026-11-08T10:00:00Z",
+    }),
+    false,
+  );
+  assert.equal(
+    isWhatsAppAwaitingReply({ ...sent, businessOutreachStopped: true }),
+    false,
+  );
+  assert.equal(
+    isWhatsAppAwaitingReply({
+      ...sent,
+      hasSentOutbound: false,
+      lastOutboundState: null,
+      lastContactedAt: null,
+    }),
+    false,
   );
 });

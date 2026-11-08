@@ -47,6 +47,10 @@ export const KIND_WHATSAPP_SEND_REQUEST = 47050;
 export const KIND_WHATSAPP_SETTINGS = 47051;
 /** Manual WhatsApp contact stage and owner label updates. */
 export const KIND_WHATSAPP_CONTACT_UPDATE = 47052;
+/** Owner/admin WhatsApp opt-out and never-contact safety decisions. */
+export const KIND_WHATSAPP_SAFETY_ACTION = 47053;
+/** Owner/admin recovery actions for an unresolved WhatsApp send outcome. */
+export const KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY = 47054;
 export const KIND_APPROVAL_REQUEST = 46010;
 export const KIND_MEMBER_ADDED_NOTIFICATION = 44100;
 export const KIND_MEMBER_REMOVED_NOTIFICATION = 44101;

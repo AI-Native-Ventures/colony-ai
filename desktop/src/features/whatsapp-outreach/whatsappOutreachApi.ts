@@ -6,13 +6,17 @@ import {
   KIND_WHATSAPP_BATCH_DECISION,
   KIND_WHATSAPP_CONTACT_UPDATE,
   KIND_WHATSAPP_SEND_REQUEST,
+  KIND_WHATSAPP_SAFETY_ACTION,
   KIND_WHATSAPP_SETTINGS,
+  KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 } from "@/shared/constants/kinds";
 import {
   parseWhatsAppBatchDetail,
   parseWhatsAppBatchSummary,
   parseWhatsAppContact,
   parseWhatsAppDraft,
+  parseWhatsAppMessage,
+  parseWhatsAppSafetyLedger,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
   parseWhatsAppThread,
@@ -20,6 +24,8 @@ import {
   type WhatsAppBatchSummary,
   type WhatsAppContact,
   type WhatsAppDraft,
+  type WhatsAppMessage,
+  type WhatsAppSafetyLedger,
   type WhatsAppStatus,
   type WhatsAppTemplate,
   type WhatsAppThread,
@@ -32,13 +38,17 @@ const CONNECT_PATH = "/api/whatsapp/connect";
 const DISCONNECT_PATH = "/api/whatsapp/disconnect";
 /** Opt in to the stage enum introduced after desktop-v3.0.37. Older apps omit this marker. */
 const RELAY_CAPABILITIES = ["whatsapp-outreach-stage-queued"] as const;
+/** Current relay query cap. The drafting runtime has its own, separate context boundary. */
+export const WHATSAPP_THREAD_VISIBLE_LIMIT = 200;
 
 export type WhatsAppCommandKind =
   | typeof KIND_WHATSAPP_BATCH
   | typeof KIND_WHATSAPP_BATCH_DECISION
   | typeof KIND_WHATSAPP_CONTACT_UPDATE
   | typeof KIND_WHATSAPP_SEND_REQUEST
-  | typeof KIND_WHATSAPP_SETTINGS;
+  | typeof KIND_WHATSAPP_SAFETY_ACTION
+  | typeof KIND_WHATSAPP_SETTINGS
+  | typeof KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY;
 
 type WhatsAppQuery =
   | { what: "status" }
@@ -48,6 +58,8 @@ type WhatsAppQuery =
   | { what: "drafts"; limit?: number }
   | { what: "contacts"; limit?: number }
   | { what: "inbox"; limit?: number }
+  | { what: "suppressions"; limit?: number }
+  | { what: "unknown_sends"; limit?: number }
   | { what: "thread"; waId: string; limit?: number };
 
 export type WhatsAppApiTestRequest = Readonly<{
@@ -345,10 +357,45 @@ export async function loadWhatsAppThread(
   return parseWhatsAppThread(
     await queryWhatsApp(
       relayUrl,
-      { what: "thread", waId, limit: 100 },
+      { what: "thread", waId, limit: WHATSAPP_THREAD_VISIBLE_LIMIT },
       dependencies,
     ),
   );
+}
+
+/**
+ * Loads the owner-only safety ledger. Relays before outreach safety reject this query, which the
+ * caller presents as unavailable instead of treating as an empty safety ledger.
+ */
+export async function loadWhatsAppSafetyLedger(
+  relayUrl: string,
+  dependencies?: ApiDependencies,
+): Promise<WhatsAppSafetyLedger> {
+  return parseWhatsAppSafetyLedger(
+    await queryWhatsApp(
+      relayUrl,
+      { what: "suppressions", limit: 200 },
+      dependencies,
+    ),
+  );
+}
+
+/** Loads owner-only unresolved send outcomes that require an explicit recovery decision. */
+export async function loadWhatsAppUnknownSends(
+  relayUrl: string,
+  dependencies?: ApiDependencies,
+): Promise<readonly WhatsAppMessage[]> {
+  const response = await queryWhatsApp<{ unknownSends?: unknown }>(
+    relayUrl,
+    { what: "unknown_sends", limit: 100 },
+    dependencies,
+  );
+  if (!Array.isArray(response.unknownSends)) {
+    throw new Error(
+      "The WhatsApp relay returned an invalid unknown-send list.",
+    );
+  }
+  return response.unknownSends.map(parseWhatsAppMessage);
 }
 
 export async function connectWhatsApp(
@@ -424,4 +471,6 @@ export const whatsappCommandKinds = {
   send: KIND_WHATSAPP_SEND_REQUEST,
   settings: KIND_WHATSAPP_SETTINGS,
   contactUpdate: KIND_WHATSAPP_CONTACT_UPDATE,
+  safetyAction: KIND_WHATSAPP_SAFETY_ACTION,
+  unknownSendRecovery: KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 } as const;

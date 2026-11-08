@@ -30,6 +30,7 @@ import {
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
+  useWhatsAppUnknownSendsQuery,
 } from "./whatsappOutreachQueries";
 import {
   BATCH_MANAGE_NOTE,
@@ -49,6 +50,7 @@ import {
   WhatsAppSendHealthBanner,
   WhatsAppSendHealthNeedsCard,
 } from "./WhatsAppSendHealthNotice";
+import { WhatsAppUnknownSendRecoveryCard } from "./WhatsAppUnknownSendRecovery";
 
 type Props = {
   channelIsMember: boolean;
@@ -139,6 +141,12 @@ function BatchApprovalCard({
     });
   }
   const batchBusinesses = [...batchBusinessById.values()];
+  const safetyChecksPassed = batch.rows.every(
+    (row) =>
+      row.skipReason === null &&
+      row.state !== "skipped" &&
+      row.state !== "failed",
+  );
 
   async function approve() {
     if (!canManage || busy) return;
@@ -257,6 +265,15 @@ function BatchApprovalCard({
             : ""}
         </p>
       ) : null}
+      {safetyChecksPassed ? (
+        <p className="c3wa-desk-safety-passed" role="status">
+          <span aria-hidden="true">✓</span>Safety checks passed
+        </p>
+      ) : (
+        <p className="c3wa-desk-cap-note" role="status">
+          Some contacts were held or skipped by the recorded safety checks.
+        </p>
+      )}
       {error ? (
         <p className="c3wa-desk-error" role="alert">
           {error}
@@ -478,6 +495,9 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
     membership.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
+  const unknownSendsQuery = useWhatsAppUnknownSendsQuery(
+    canManage && statusQuery.data?.connected === true,
+  );
   const canEdit = canManageWhatsAppContact({
     role,
     isOutreachMember: channelIsMember,
@@ -493,9 +513,13 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
   const businessRecords = business.records;
   const items = getWhatsAppNeedsYouItems(contacts, drafts);
   const pendingBatches = batchesQuery.data ?? [];
+  const unknownSends = unknownSendsQuery.data ?? [];
   const hasSendHealthNeed = canManage && Boolean(status?.sendHealth);
   const needsCount =
-    pendingBatches.length + items.length + Number(hasSendHealthNeed);
+    pendingBatches.length +
+    unknownSends.length +
+    items.length +
+    Number(hasSendHealthNeed);
 
   async function bookCall(contact: WhatsAppContact) {
     if (!canEdit || busyWaId) return;
@@ -643,6 +667,30 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
             </div>
           </section>
         ) : null}
+        {unknownSends.length > 0 ? (
+          <section
+            aria-labelledby="outreach-unknown-sends-heading"
+            className="c3wa-desk-needs-section"
+          >
+            <div className="c3wa-desk-section-head">
+              <h2 id="outreach-unknown-sends-heading">Held for you</h2>
+              <span>{unknownSends.length}</span>
+            </div>
+            <div className="c3wa-desk-batch-grid">
+              {unknownSends.map((message) => (
+                <WhatsAppUnknownSendRecoveryCard
+                  key={message.id}
+                  message={message}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {canManage && unknownSendsQuery.isError ? (
+          <p className="c3wa-desk-cap-note" role="status">
+            Unknown-send recovery details need a current relay.
+          </p>
+        ) : null}
         {pendingBatches.length > 0 ? (
           <section
             aria-labelledby="outreach-batches-heading"
@@ -751,13 +799,15 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
 
         {statusQuery.isPending ||
         contactsQuery.isPending ||
-        batchesQuery.isPending ? (
+        batchesQuery.isPending ||
+        (canManage && unknownSendsQuery.isPending) ? (
           <p className="c3wa-desk-empty" role="status">
             Loading WhatsApp needs…
           </p>
         ) : pendingBatches.length === 0 &&
           items.length === 0 &&
-          !hasSendHealthNeed ? (
+          !hasSendHealthNeed &&
+          unknownSends.length === 0 ? (
           <section
             className="c3wa-desk-empty-state"
             data-testid="outreach-needs-empty"

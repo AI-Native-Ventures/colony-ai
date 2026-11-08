@@ -21,6 +21,7 @@ import { useIsMobile } from "@/shared/hooks/use-mobile";
 import {
   KIND_WHATSAPP_BATCH_DECISION,
   KIND_WHATSAPP_SEND_REQUEST,
+  KIND_WHATSAPP_SAFETY_ACTION,
   KIND_WHATSAPP_SETTINGS,
 } from "@/shared/constants/kinds";
 import {
@@ -34,6 +35,7 @@ import {
 } from "./whatsappOutreachModels";
 import {
   contactStatus,
+  isWhatsAppAwaitingReply,
   pendingBatchRowsForContact,
   uniquePendingBatchRowForContact,
 } from "./whatsappOutreachContactState";
@@ -58,12 +60,14 @@ import {
   WhatsAppOutreachContactFilters,
 } from "./WhatsAppOutreachContactFilters";
 import { WhatsAppTemplatePicker } from "./WhatsAppTemplatePicker";
+import { WHATSAPP_THREAD_VISIBLE_LIMIT } from "./whatsappOutreachApi";
 import {
   useWhatsAppCommand,
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
   useWhatsAppPendingBatchDetailsQuery,
   useWhatsAppStatusQuery,
+  useWhatsAppSafetyLedgerQuery,
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
@@ -101,6 +105,10 @@ function windowTimeRemaining(value: string | null): string {
   );
   if (minutes >= 60) return `${Math.ceil(minutes / 60)}h left`;
   return `${Math.max(1, minutes)}m left`;
+}
+
+function normalizedSafetyPhone(value: string): string {
+  return value.replace(/\D/gu, "");
 }
 
 export function WhatsAppOutreachScreen({
@@ -162,6 +170,9 @@ export function WhatsAppOutreachScreen({
     membershipQuery.data?.membershipRequired === false ||
     role === "owner" ||
     role === "admin";
+  const safetyLedgerQuery = useWhatsAppSafetyLedgerQuery(
+    canManage && statusQuery.data?.connected === true,
+  );
   const canEditContact = canManageWhatsAppContact({
     role,
     isOutreachMember: channelIsMember,
@@ -238,6 +249,22 @@ export function WhatsAppOutreachScreen({
     thread?.messages ?? [],
   );
   const pendingBatches = pendingBatchesQuery.data ?? [];
+  const optOutSuppressionByWaId = React.useMemo(
+    () =>
+      new Map(
+        (safetyLedgerQuery.data?.suppressions ?? [])
+          .filter(
+            (suppression) =>
+              suppression.scope === "opt_out" &&
+              suppression.identityKind === "phone",
+          )
+          .map((suppression) => [
+            normalizedSafetyPhone(suppression.identityValue),
+            suppression,
+          ]),
+      ),
+    [safetyLedgerQuery.data?.suppressions],
+  );
   const selectedPendingBatchRows = selectedContact
     ? pendingBatchRowsForContact(selectedContact, pendingBatches)
     : [];
@@ -286,6 +313,16 @@ export function WhatsAppOutreachScreen({
           null,
         lastReplyAt:
           selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
+        hasSentOutbound:
+          selectedContact.hasSentOutbound ||
+          thread?.contact.hasSentOutbound === true,
+        businessOutreachStopped:
+          selectedContact.businessOutreachStopped ||
+          thread?.contact.businessOutreachStopped === true,
+        businessStopReason:
+          selectedContact.businessStopReason ??
+          thread?.contact.businessStopReason ??
+          null,
         leadId:
           selectedContact.leadId ??
           thread?.contact.leadId ??
@@ -314,17 +351,19 @@ export function WhatsAppOutreachScreen({
     const matchesFilter =
       mode === "desk" && activeFilter === "needs-reply"
         ? visibleContact.stage !== "queued" && (contact.unanswered || hasDraft)
-        : mode === "desk" && activeFilter === "wants-call"
-          ? contact.stage === "wants_call"
-          : activeFilter === "queued"
-            ? visibleContact.stage === "queued"
-            : activeFilter === "opted-out"
-              ? visibleStatus === "Opted out"
-              : activeFilter === "replied"
-                ? visibleStatus === "Replied"
-                : activeFilter === "sent"
-                  ? visibleStatus === "Sent"
-                  : true;
+        : mode === "desk" && activeFilter === "awaiting-reply"
+          ? isWhatsAppAwaitingReply(visibleContact)
+          : mode === "desk" && activeFilter === "wants-call"
+            ? contact.stage === "wants_call"
+            : activeFilter === "queued"
+              ? visibleContact.stage === "queued"
+              : activeFilter === "opted-out"
+                ? visibleStatus === "Opted out"
+                : activeFilter === "replied"
+                  ? visibleStatus === "Replied"
+                  : activeFilter === "sent"
+                    ? visibleStatus === "Sent"
+                    : true;
     const search = searchTerm.trim().toLocaleLowerCase();
     const matchesSearch =
       !search ||
@@ -454,6 +493,7 @@ export function WhatsAppOutreachScreen({
       busy ||
       selectedContact.optedOut ||
       selectedContact.paused ||
+      selectedContactWithThreadIdentity?.businessOutreachStopped ||
       (hasPendingDraft && !canManage)
     )
       return;
@@ -698,6 +738,17 @@ export function WhatsAppOutreachScreen({
             const hasDraft = pendingDrafts.some(
               (draft) => draft.waId === contact.waId,
             );
+            const optOutSuppression = optOutSuppressionByWaId.get(
+              normalizedSafetyPhone(contact.waId),
+            );
+            const undoOptOut = optOutSuppression
+              ? () =>
+                  command(KIND_WHATSAPP_SAFETY_ACTION, {
+                    v: 1,
+                    action: "opt_out_undo",
+                    waId: contact.waId,
+                  })
+              : undefined;
             return mode === "desk" ? (
               <WhatsAppOutreachContactRow
                 businessName={identity.displayName}
@@ -708,6 +759,8 @@ export function WhatsAppOutreachScreen({
                 logoUrl={identity.logoUrl}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
+                onUndoOptOut={canManage ? undoOptOut : undefined}
+                optOutReason={optOutSuppression?.reason ?? null}
                 personName={identity.personName}
                 placePhotoUrl={identity.placePhotoUrl}
                 preview={preview}
@@ -726,6 +779,8 @@ export function WhatsAppOutreachScreen({
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
+                onUndoOptOut={canManage ? undoOptOut : undefined}
+                optOutReason={optOutSuppression?.reason ?? null}
                 preview={preview}
                 selected={isSelected}
                 waitingForApproval={rowMatches.length > 0}
@@ -840,6 +895,18 @@ export function WhatsAppOutreachScreen({
             </div>
           </header>
 
+          {selectedContactWithThreadIdentity?.businessOutreachStopped ? (
+            <div className="c3wa-business-stop-note" role="status">
+              <strong>
+                Automatic outreach is stopped for everyone at this business.
+              </strong>
+              <span>
+                {selectedContactWithThreadIdentity.businessStopReason
+                  ? `Reason: ${selectedContactWithThreadIdentity.businessStopReason}`
+                  : "A linked reply created a durable business-level hold."}
+              </span>
+            </div>
+          ) : null}
           {selectedContact.optedOut ? (
             <div className="c3wa-contact-lock" role="status">
               <strong>This contact opted out.</strong>
@@ -892,6 +959,12 @@ export function WhatsAppOutreachScreen({
               <div className="c3wa-alert" role="alert">
                 {threadQuery.error.message}
               </div>
+            ) : null}
+            {chronologicalMessages.length >= WHATSAPP_THREAD_VISIBLE_LIMIT ? (
+              <p className="c3wa-thread-context-limit" role="status">
+                Showing the newest {WHATSAPP_THREAD_VISIBLE_LIMIT} messages.
+                Earlier conversation may be outside this review.
+              </p>
             ) : null}
             {chronologicalMessages.map((message, index) => {
               const previousMessage = chronologicalMessages[index - 1];
@@ -1007,7 +1080,12 @@ export function WhatsAppOutreachScreen({
                 {actionError}
               </p>
             ) : null}
-            {selectedContact.windowOpen ? (
+            {selectedContactWithThreadIdentity?.businessOutreachStopped ? (
+              <div className="c3wa-window-status is-closed" role="status">
+                <span aria-hidden="true">◷</span>Outreach is stopped for this
+                business.
+              </div>
+            ) : selectedContact.windowOpen ? (
               <div className="c3wa-window-status is-open" role="status">
                 <span aria-hidden="true">◷</span>Reply window open
                 {selectedContact.windowClosesAt
@@ -1085,6 +1163,7 @@ export function WhatsAppOutreachScreen({
                 disabled={
                   !selectedContact.windowOpen ||
                   selectedContact.optedOut ||
+                  selectedContactWithThreadIdentity?.businessOutreachStopped ||
                   selectedContact.paused ||
                   (hasPendingDraft && !canManage) ||
                   busy ||
@@ -1095,11 +1174,13 @@ export function WhatsAppOutreachScreen({
                 placeholder={
                   selectedContact.optedOut
                     ? "This contact opted out"
-                    : selectedContact.windowOpen
-                      ? isMobile
-                        ? "Reply on WhatsApp…"
-                        : `Reply on WhatsApp as ${businessName}`
-                      : "Choose a template to send a message"
+                    : selectedContactWithThreadIdentity?.businessOutreachStopped
+                      ? "Outreach is stopped for this business"
+                      : selectedContact.windowOpen
+                        ? isMobile
+                          ? "Reply on WhatsApp…"
+                          : `Reply on WhatsApp as ${businessName}`
+                        : "Choose a template to send a message"
                 }
                 rows={2}
                 value={messageText}
@@ -1110,6 +1191,7 @@ export function WhatsAppOutreachScreen({
                   className="c3wa-mobile-template-action"
                   disabled={
                     selectedContact.optedOut ||
+                    selectedContactWithThreadIdentity?.businessOutreachStopped ||
                     selectedContact.paused ||
                     (hasPendingDraft && !canManage) ||
                     busy
@@ -1135,6 +1217,7 @@ export function WhatsAppOutreachScreen({
                   className="c3wa-mobile-send-action"
                   disabled={
                     selectedContact.optedOut ||
+                    selectedContactWithThreadIdentity?.businessOutreachStopped ||
                     selectedContact.paused ||
                     (hasPendingDraft && !canManage) ||
                     busy ||

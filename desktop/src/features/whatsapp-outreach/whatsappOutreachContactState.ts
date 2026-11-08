@@ -25,6 +25,34 @@ export function contactStatus(
   return "Sent";
 }
 
+/**
+ * A sent outreach contact whose latest known inbound message has already been answered, or which
+ * has never replied. This stays conservative when talking to an older relay without the new flag.
+ */
+export function isWhatsAppAwaitingReply(contact: WhatsAppContact): boolean {
+  if (
+    contact.optedOut ||
+    contact.businessOutreachStopped ||
+    contact.unanswered ||
+    contact.awaitingApproval ||
+    contact.stage === "queued"
+  ) {
+    return false;
+  }
+  const hasOutbound =
+    contact.hasSentOutbound ||
+    contact.lastOutboundState !== null ||
+    contact.lastContactedAt !== null;
+  if (!hasOutbound) return false;
+  if (!contact.lastInboundAt) return true;
+  if (!contact.lastContactedAt) return false;
+  const inboundAt = Date.parse(contact.lastInboundAt);
+  const outboundAt = Date.parse(contact.lastContactedAt);
+  return Number.isFinite(inboundAt) && Number.isFinite(outboundAt)
+    ? outboundAt > inboundAt
+    : false;
+}
+
 function normalizedPhone(value: string): string {
   return value.replace(/\D/gu, "");
 }

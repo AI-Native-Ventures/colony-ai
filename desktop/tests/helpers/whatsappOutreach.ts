@@ -47,6 +47,7 @@ export const JACARANDA_LEAD_ID = REFERENCE_PROSPECT_IDS.stillroom;
 export const LAVENDER_HILL_WA_ID = "27795552241";
 export const GREEN_SHUTTER_WA_ID = "27605553422";
 export const OAKLEAF_WA_ID = "27655551175";
+export const QUIET_OWL_WA_ID = "27684441106";
 export const QUEUED_LEAD_WA_ID = "27794441101";
 const E2E_SELF_PUBKEY = "deadbeef".repeat(8);
 
@@ -93,6 +94,10 @@ type WhatsAppMockActor = {
   workspaceName?: string;
   /** Seed the approved desk states without changing legacy inbox fixtures. */
   deskFixture?: boolean;
+  /** Seed owner-only outreach safety and unknown-send recovery states. */
+  outreachSafetyFixture?: boolean;
+  /** Make optional safety queries behave like an older relay that has no endpoint. */
+  outreachSafetyUnsupported?: boolean;
   /** Seed one approved, unsent contact for Pipeline queue proofs. */
   queuedFixture?: boolean;
   /** A plain relay member can see an open Outreach channel without membership. */
@@ -1051,6 +1056,9 @@ export async function installWhatsAppMockBridge(
     isManagedAgent: actor.profileIsAgent ?? false,
     ownerPubkey: actor.profileOwnerPubkey ?? null,
   });
+  const canManageSafety =
+    (actor.relayRole ?? "owner") === "owner" ||
+    (actor.relayRole ?? "owner") === "admin";
   await page.emulateMedia({ colorScheme: theme });
   await installMockBridge(page, {
     referenceWorkspace: true,
@@ -1121,6 +1129,7 @@ export async function installWhatsAppMockBridge(
       const {
         selfPubkey,
         canManageContacts,
+        canManageSafety,
         activeLeadIds,
         referenceProspectIds,
         visualBatch: visual,
@@ -1131,6 +1140,9 @@ export async function installWhatsAppMockBridge(
         decidedBatchId,
         batchVariant: seededBatchVariant,
         deskFixture,
+        outreachSafetyFixture,
+        outreachSafetyUnsupported,
+        oakleafWaId,
         queuedFixture,
         queuedLeadWaId,
         deskFirstBatchRows,
@@ -1144,7 +1156,11 @@ export async function installWhatsAppMockBridge(
         rejectSendingPause,
         ...baseSeed
       } = seed;
-      const state = clone(baseSeed);
+      const state = Object.assign(clone(baseSeed), {
+        suppressions: [] as Array<Record<string, unknown>>,
+        businessStops: [] as Array<Record<string, unknown>>,
+        unknownSends: [] as Array<Record<string, unknown>>,
+      });
       const routeSearch = new URLSearchParams(
         window.location.hash.split("?")[1] ?? "",
       );
@@ -1603,6 +1619,84 @@ export async function installWhatsAppMockBridge(
           ];
         }
       }
+      if (outreachSafetyFixture) {
+        const quietOwl = state.contacts.find(
+          (contact) => contact.waId === "27684441106",
+        );
+        const cornerCottage = state.contacts.find(
+          (contact) => contact.waId === "27725551188",
+        );
+        const awaitingReply = state.contacts.find(
+          (contact) => contact.waId === oakleafWaId,
+        );
+        if (!quietOwl || !cornerCottage || !awaitingReply) {
+          throw new Error("The outreach safety fixture contacts are missing.");
+        }
+        Object.assign(cornerCottage, {
+          businessOutreachStopped: true,
+          businessStopReason: "Lindiwe replied stop.",
+        });
+        Object.assign(awaitingReply, {
+          hasSentOutbound: true,
+          lastInboundAt: null,
+          lastContactedAt: "2026-10-29T09:30:00+02:00",
+        });
+        const cornerThread = state.threads[cornerCottage.waId];
+        if (cornerThread) cornerThread.contact = clone(cornerCottage);
+        const awaitingReplyThread = state.threads[awaitingReply.waId];
+        if (awaitingReplyThread) {
+          awaitingReplyThread.contact = clone(awaitingReply);
+        }
+        state.suppressions.push(
+          {
+            id: "e2e-suppression-opt-out-quiet-owl",
+            identityKind: "phone",
+            identityValue: quietOwl.waId,
+            scope: "opt_out",
+            reason: "stop",
+            matchedRule: "stop",
+            source: "inbound",
+            createdAt: "2026-10-27T14:00:00+02:00",
+            undoneAt: null,
+          },
+          {
+            id: "e2e-suppression-never-contact",
+            identityKind: "phone",
+            identityValue: "27824440000",
+            scope: "never_contact",
+            reason: "Owner requested no contact",
+            matchedRule: null,
+            source: "owner",
+            createdAt: "2026-10-27T14:00:00+02:00",
+            undoneAt: null,
+          },
+        );
+        state.businessStops.push({
+          businessId: String(cornerCottage.leadId ?? "corner-cottage"),
+          sourceWaId: cornerCottage.waId,
+          reason: "Lindiwe replied stop.",
+          matchedRule: "stop",
+          createdAt: "2026-10-29T08:45:00+02:00",
+        });
+        state.unknownSends.push({
+          id: "e2e-wa-unknown-send",
+          waId: cornerCottage.waId,
+          direction: "out",
+          kind: "text",
+          text: "Hello Lindiwe, I wanted to share an update.",
+          templateName: null,
+          state: "unconfirmed",
+          errorCode: null,
+          errorText: null,
+          failureSummary: null,
+          retryScope: null,
+          canRetry: false,
+          canRetryLater: false,
+          eventId: null,
+          senderPubkey: selfPubkey,
+          createdAt: "2026-10-29T08:44:00+02:00",
+        });
+      }
       const jacarandaContact = missingJacarandaIdentity
         ? state.contacts.find((contact) => contact.waId === "27821234410")
         : null;
@@ -1835,6 +1929,15 @@ export async function installWhatsAppMockBridge(
               };
             case "contacts":
               return { contacts: clone(state.contacts) };
+            case "suppressions":
+              if (outreachSafetyUnsupported) return {};
+              return {
+                suppressions: clone(state.suppressions),
+                businessStops: clone(state.businessStops),
+              };
+            case "unknown_sends":
+              if (outreachSafetyUnsupported) return {};
+              return { unknownSends: clone(state.unknownSends) };
             case "batches": {
               const requestedState = body.state;
               const batches = [state.batch, state.secondPendingBatch]
@@ -1896,6 +1999,100 @@ export async function installWhatsAppMockBridge(
           throw new Error("The relay refused the sending pause.");
         }
         state.commands.push({ kind, body: clone(body) });
+        if (kind === 47053) {
+          if (outreachSafetyUnsupported) {
+            throw new Error(
+              "This relay does not support outreach safety actions.",
+            );
+          }
+          if (!canManageSafety) {
+            throw new Error(
+              "Only the owner or an admin can change the safety ledger.",
+            );
+          }
+          if (typeof body.waId !== "string") {
+            throw new Error("The safety action requires a phone number.");
+          }
+          if (body.action === "opt_out_undo") {
+            state.suppressions = state.suppressions.filter(
+              (suppression) =>
+                !(
+                  suppression.scope === "opt_out" &&
+                  suppression.identityValue === body.waId
+                ),
+            );
+            const contact = state.contacts.find(
+              (candidate) => candidate.waId === body.waId,
+            );
+            if (contact) {
+              contact.optedOut = false;
+              const thread = state.threads[contact.waId];
+              if (thread) thread.contact = clone(contact);
+            }
+            return {};
+          }
+          if (body.action === "never_contact_add") {
+            if (typeof body.reason !== "string" || !body.reason.trim()) {
+              throw new Error("The never-contact action requires a reason.");
+            }
+            state.suppressions.push({
+              id: `e2e-never-contact-${body.waId}`,
+              identityKind: "phone",
+              identityValue: body.waId,
+              scope: "never_contact",
+              reason: body.reason,
+              matchedRule: null,
+              source: "owner",
+              createdAt: new Date().toISOString(),
+              undoneAt: null,
+            });
+            return {};
+          }
+          if (body.action === "never_contact_undo") {
+            state.suppressions = state.suppressions.filter(
+              (suppression) =>
+                !(
+                  suppression.scope === "never_contact" &&
+                  suppression.identityValue === body.waId
+                ),
+            );
+            return {};
+          }
+          throw new Error("The relay rejected the safety action.");
+        }
+        if (kind === 47054) {
+          if (outreachSafetyUnsupported) {
+            throw new Error(
+              "This relay does not support unknown-send recovery.",
+            );
+          }
+          if (!canManageSafety) {
+            throw new Error(
+              "Only the owner or an admin can recover an unknown send.",
+            );
+          }
+          if (typeof body.messageId !== "string") {
+            throw new Error("The recovery action requires a message id.");
+          }
+          if (body.action === "check_status") {
+            if (body.confirm !== undefined) {
+              throw new Error(
+                "Checking status must not confirm a recovery action.",
+              );
+            }
+            return {};
+          }
+          if (
+            (body.action === "mark_delivered" || body.action === "resend") &&
+            body.confirm === true
+          ) {
+            state.unknownSends = state.unknownSends.filter(
+              (message) => message.id !== body.messageId,
+            );
+            return {};
+          }
+          throw new Error("This recovery action needs explicit confirmation.");
+        }
         if (kind === 47051) {
           if (typeof body.dailyNewChatCap === "number")
             state.status.dailyNewChatCap = body.dailyNewChatCap;
@@ -2119,6 +2316,7 @@ export async function installWhatsAppMockBridge(
       initiallyConnected: actor.connected,
       selfPubkey: E2E_SELF_PUBKEY,
       canManageContacts,
+      canManageSafety,
       activeLeadIds: Object.values(REFERENCE_PROSPECT_IDS),
       referenceProspectIds: REFERENCE_PROSPECT_IDS,
       templates,
@@ -2134,6 +2332,9 @@ export async function installWhatsAppMockBridge(
       decidedBatchId: WHATSAPP_DECIDED_BATCH_ID,
       batchVariant: actor.batchVariant ?? null,
       deskFixture: actor.deskFixture === true,
+      outreachSafetyFixture: actor.outreachSafetyFixture === true,
+      outreachSafetyUnsupported: actor.outreachSafetyUnsupported === true,
+      oakleafWaId: OAKLEAF_WA_ID,
       queuedFixture: actor.queuedFixture === true,
       queuedLeadWaId: QUEUED_LEAD_WA_ID,
       deskFirstBatchRows,

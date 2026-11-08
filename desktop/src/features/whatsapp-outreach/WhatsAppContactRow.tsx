@@ -3,6 +3,8 @@ import { UserRound } from "lucide-react";
 import { BusinessLogoMark } from "@/features/discovery/BusinessLogoMark";
 import { cn } from "@/shared/lib/cn";
 import { contactStatus } from "./whatsappOutreachContactState";
+import { isWhatsAppAwaitingReply } from "./whatsappOutreachContactState";
+import { WhatsAppConfirmAction } from "./WhatsAppConfirmAction";
 import {
   formatWhatsAppDateTime,
   whatsappInitials,
@@ -39,6 +41,8 @@ export function WhatsAppContactRow({
   selected,
   onSelect,
   onReviewBatch,
+  optOutReason = null,
+  onUndoOptOut,
 }: {
   contact: WhatsAppContact;
   identity: ReturnType<typeof resolveOutreachContactIdentity>;
@@ -49,8 +53,12 @@ export function WhatsAppContactRow({
   selected: boolean;
   onSelect: () => void;
   onReviewBatch: () => void;
+  optOutReason?: string | null;
+  onUndoOptOut?: () => Promise<void>;
 }) {
-  const status = contactStatus(contact, waitingForApproval);
+  const status = isWhatsAppAwaitingReply(contact)
+    ? "Awaiting reply"
+    : contactStatus(contact, waitingForApproval);
   return (
     <div className={cn("c3wa-contact-row", selected && "is-selected")}>
       <button
@@ -112,6 +120,19 @@ export function WhatsAppContactRow({
         >
           Review
         </button>
+      ) : null}
+      {contact.optedOut && optOutReason && onUndoOptOut ? (
+        <div className="c3wa-contact-safety-action">
+          <span title={optOutReason}>Replied “{optOutReason}”. Permanent.</span>
+          <WhatsAppConfirmAction
+            confirmLabel="Undo opt-out"
+            description="This removes the active opt-out for this phone number. A whole-business hold, if present, remains in place."
+            onConfirm={onUndoOptOut}
+            testId={`whatsapp-opt-out-undo-${contact.waId}`}
+            title="Undo this opt-out?"
+            triggerLabel="Undo"
+          />
+        </div>
       ) : null}
     </div>
   );
