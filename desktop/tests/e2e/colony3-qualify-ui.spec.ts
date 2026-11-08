@@ -15,8 +15,15 @@ const REAL_RUNNER = {
   referenceWorkspace: true,
   referenceWorkspaceDiscoveryStandIn: false,
 } as const;
+const FIT_SCORE_RUNNER = {
+  ...REAL_RUNNER,
+  referenceWorkspaceLeadCount: 108,
+  referenceWorkspaceOutreachBoard: true,
+  referenceWorkspaceOutreachReady: true,
+} as const;
 const RUN_ID = "d39cf188-319a-4efc-92cc-8c55c5f2d6d2";
 const SCREENSHOT_DIR = process.env.QUALIFY_UI_SCREENSHOTS_DIR;
+const FIT_SCORE_NO_PHONE_LEAD = "1e1a7000-0000-4000-9000-000000900106";
 
 type DiscoveryWindow = Window & {
   __BUZZ_E2E_DISCOVERY_LOCATIONS__?: () => Promise<unknown>;
@@ -130,6 +137,65 @@ async function installSearchFixture(
   await installMockBridge(page, REAL_RUNNER);
 }
 
+async function installFitScoreFixture(page: Page) {
+  await page.addInitScript(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_WHATSAPP__?: (request: {
+        action: "post" | "command";
+        path?: string;
+        body?: Record<string, unknown>;
+        kind?: number;
+      }) => Promise<unknown>;
+    };
+    const template = {
+      title: "Fit score outreach",
+      name: "fit_score_outreach",
+      proposedTitle: null,
+      titleCustom: true,
+      language: "en",
+      category: "MARKETING",
+      status: "APPROVED",
+      body: "A carefully reviewed website idea.",
+      slots: 0,
+      buttons: [],
+    };
+    testWindow.__BUZZ_E2E_WHATSAPP__ = async (request) => {
+      if (request.action !== "post" || request.path !== "/api/whatsapp/query") {
+        return {};
+      }
+      switch (request.body?.what) {
+        case "status":
+          return {
+            connected: true,
+            connectionId: "e2e-fit-score",
+            displayPhoneNumber: "+27 61 534 0627",
+            verifiedName: "Horizon Labs",
+            quality: "GREEN",
+            phoneStatus: "CONNECTED",
+            dailyNewChatCap: 30,
+            newChatsSentToday: 0,
+            sendingPaused: false,
+            pauseReason: null,
+            issues: [],
+            outreachChannelId: null,
+            templatesSyncedAt: null,
+            templates: [template],
+            webhookUrl: null,
+          };
+        case "templates":
+          return { templates: [template] };
+        case "contacts":
+          return { contacts: [] };
+        case "batches":
+          return { batches: [] };
+        default:
+          return {};
+      }
+    };
+  });
+  await installMockBridge(page, FIT_SCORE_RUNNER);
+}
+
 async function openDiscovery(
   page: Page,
   fixtureOptions?: { ownerReplay?: boolean },
@@ -137,6 +203,13 @@ async function openDiscovery(
   await installSearchFixture(page, fixtureOptions);
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+}
+
+async function openFitScoreLeads(page: Page) {
+  await installFitScoreFixture(page);
+  await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+  await waitForQualificationSubscription(page);
 }
 
 async function openCampaignForm(page: Page) {
@@ -201,10 +274,18 @@ async function waitForQualificationSubscription(page: Page) {
     .toBe(true);
 }
 
-async function seedQualificationHead(page: Page) {
-  const leadId = REFERENCE_PROSPECT_IDS["form-field"];
+async function seedQualificationHeadForLead(
+  page: Page,
+  leadId: string,
+  observations: Array<{
+    signal: string;
+    confidence: number;
+    value: string;
+    evidenceUrls?: string[];
+  }>,
+) {
   const result = await page.evaluate(
-    async ({ channelId, communityId, lead, runId }) => {
+    async ({ channelId, communityId, lead, observations: seeded, runId }) => {
       const testWindow = window as DiscoveryWindow;
       if (!testWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__) {
         throw new Error("The qualification fixture relay is unavailable.");
@@ -218,31 +299,16 @@ async function seedQualificationHead(page: Page) {
             schemaVersion: 1,
             leadId: lead,
             runId,
-            checkedSignals: ["NO_WEBSITE", "NO_ONLINE_BOOKING"],
-            observations: [
-              {
-                signal: "NO_WEBSITE",
-                state: "observed",
-                value: "No website listed",
-                confidence: 1,
-                evidenceUrls: [],
-                observedAt: 1_793_535_600,
-                runId,
-                notCheckedReason: null,
-                personalData: false,
-              },
-              {
-                signal: "NO_ONLINE_BOOKING",
-                state: "observed",
-                value: "No booking page found",
-                confidence: 0.6,
-                evidenceUrls: ["https://form-field.example/"],
-                observedAt: 1_793_535_600,
-                runId,
-                notCheckedReason: null,
-                personalData: false,
-              },
-            ],
+            checkedSignals: seeded.map((item) => item.signal),
+            observations: seeded.map((item) => ({
+              ...item,
+              state: "observed",
+              evidenceUrls: item.evidenceUrls ?? [],
+              observedAt: 1_793_535_600,
+              runId,
+              notCheckedReason: null,
+              personalData: false,
+            })),
             checkedAt: 1_793_535_600,
             sourceActionEventId: "a".repeat(64),
           },
@@ -253,10 +319,31 @@ async function seedQualificationHead(page: Page) {
       channelId: REFERENCE_CHANNEL_IDS.sales,
       communityId: MOCK_TENANT_COMMUNITY_ID,
       lead: leadId,
+      observations,
       runId: RUN_ID,
     },
   );
   expect(result).toMatchObject({ eventId: expect.any(String) });
+}
+
+async function seedQualificationHead(page: Page) {
+  await seedQualificationHeadForLead(
+    page,
+    REFERENCE_PROSPECT_IDS["form-field"],
+    [
+      {
+        signal: "NO_WEBSITE",
+        confidence: 1,
+        value: "No website listed",
+      },
+      {
+        signal: "NO_ONLINE_BOOKING",
+        confidence: 0.6,
+        value: "No booking page found",
+        evidenceUrls: ["https://form-field.example/"],
+      },
+    ],
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -343,6 +430,142 @@ test.describe("Qualify website checks", () => {
     await expect(
       campaign.getByRole("button", { name: "Find more" }),
     ).toHaveCount(0);
+  });
+
+  test("fit score keeps the batch, not-contacted reasons, and why card in sync", async ({
+    page,
+  }) => {
+    const highFitLead = REFERENCE_PROSPECT_IDS.stillroom;
+    const lowFitLead = REFERENCE_PROSPECT_IDS["north-note"];
+    const uncheckedLead = REFERENCE_PROSPECT_IDS["woven-living"];
+    await openFitScoreLeads(page);
+    await page
+      .getByRole("button", { name: "Remove phone number filter" })
+      .click();
+    await page.getByRole("button", { name: "Remove WhatsApp filter" }).click();
+    await page
+      .getByRole("button", { name: "Remove stage filter: New" })
+      .click();
+    await expect(page.getByTestId("qualification-filter-count")).toHaveText(
+      "108 leads",
+    );
+    await seedQualificationHeadForLead(page, highFitLead, [
+      {
+        signal: "NO_WEBSITE",
+        confidence: 1,
+        value: "No public website",
+      },
+      {
+        signal: "SITE_DOWN",
+        confidence: 1,
+        value: "Website did not respond",
+        evidenceUrls: ["https://jacaranda.example/"],
+      },
+      {
+        signal: "NOT_MOBILE_FRIENDLY",
+        confidence: 1,
+        value: "Desktop-only layout",
+        evidenceUrls: ["https://jacaranda.example/"],
+      },
+    ]);
+    await seedQualificationHeadForLead(page, lowFitLead, [
+      {
+        signal: "NO_WEBSITE",
+        confidence: 1,
+        value: "No public website",
+      },
+    ]);
+
+    const dashboard = page.getByTestId("fit-score-dashboard");
+    const minimumEnabled = page.getByRole("checkbox", {
+      name: "Only message the best matches",
+    });
+    const minimumFit = page.getByRole("slider", {
+      name: "Minimum fit score",
+    });
+    await expect(dashboard).toContainText("Jacaranda Lane Guesthouse");
+    await expect(minimumEnabled).not.toBeChecked();
+    await expect(minimumFit).toBeDisabled();
+    await expect(
+      page.getByTestId(`fit-not-contacted-${lowFitLead}`),
+    ).toHaveCount(0);
+
+    await minimumEnabled.focus();
+    await page.keyboard.press("Space");
+    await expect(minimumEnabled).toBeChecked();
+    await expect(minimumFit).toBeEnabled();
+    await expect(minimumFit).toHaveValue("60");
+    await expect(
+      page.getByRole("tab", { name: /Will message 1/ }),
+    ).toBeVisible();
+
+    const notContactedTab = page.getByRole("tab", {
+      name: /Not contacted/,
+    });
+    await page.getByRole("tab", { name: /^All / }).focus();
+    await page.keyboard.press("End");
+    await expect(notContactedTab).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByTestId(`fit-not-contacted-${lowFitLead}`),
+    ).toContainText("Below your minimum of 60");
+    await expect(
+      page.getByTestId(`fit-not-contacted-${uncheckedLead}`),
+    ).toContainText("Not checked yet");
+    await expect(
+      page.getByTestId(`fit-not-contacted-${FIT_SCORE_NO_PHONE_LEAD}`),
+    ).toContainText("No WhatsApp number");
+    await captureQualificationBoard(
+      page,
+      "04-fit-score-not-contacted.png",
+      1180,
+    );
+
+    await page
+      .getByRole("checkbox", { name: "Select Jacaranda Lane Guesthouse" })
+      .check();
+    await page
+      .getByRole("checkbox", { name: "Select Koppie View Lodge" })
+      .check();
+    await page
+      .getByRole("checkbox", { name: "Select Bramble & Brick Guesthouse" })
+      .check();
+    const selection = page.getByRole("toolbar", { name: "Selected leads" });
+    await expect(selection).toContainText("3 selected");
+    await selection.getByRole("button", { name: "WhatsApp batch" }).click();
+    const batch = page.getByTestId("outreach-batch-dialog");
+    await expect(batch).toBeVisible();
+    const template = batch.getByRole("button", { name: /fit_score_outreach/ });
+    await template.click();
+    const batchMinimumFit = batch.getByRole("slider", {
+      name: "Minimum fit score",
+    });
+    await batchMinimumFit.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(template).toHaveAttribute("aria-pressed", "true");
+    await expect(batch.getByTestId("batch-skip-summary")).toContainText(
+      "1 ready for review",
+    );
+    const notContacted = batch.getByLabel("Not contacted");
+    await expect(notContacted).toContainText("Koppie View Lodge");
+    await expect(notContacted).toContainText("Below your minimum of 61");
+    await expect(notContacted).toContainText("Bramble & Brick Guesthouse");
+    await expect(notContacted).toContainText("Not checked yet");
+    await page.keyboard.press("Escape");
+
+    await page.evaluate((leadId) => {
+      window.location.hash = `/sales/lead/${leadId}`;
+    }, highFitLead);
+    await expect(page.getByTestId("w10-prospect-page")).toBeVisible();
+    const breakdown = page.getByTestId("outreach-fit-breakdown");
+    await breakdown.scrollIntoViewIfNeeded();
+    await expect(breakdown).toContainText(
+      "Why Jacaranda Lane Guesthouse scores 80",
+    );
+    await expect(breakdown).toContainText("No website");
+    await expect(breakdown).toContainText("Website not loading");
+    await expect(breakdown).toContainText("Hard to use on a phone");
+    await expect(breakdown).toContainText("+25");
+    await captureQualificationBoard(page, "05-fit-score-why.png", 1180);
   });
 
   test("leads preserve a filtered static list", async ({ page }) => {

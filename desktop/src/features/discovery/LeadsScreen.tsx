@@ -13,6 +13,7 @@ import { AddLeadDialog } from "./LeadDialogs";
 import { LeadPill, PlusGlyph, SearchGlyph } from "./LeadParts";
 import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
 import { OutreachBatchDialog } from "./OutreachBatchDialog";
+import { OutreachFitScoreDashboard } from "./OutreachFitScorePanel";
 import { OutreachFilterControls } from "./OutreachFilterControls";
 import { OutreachSelectionBar } from "./OutreachSelectionBar";
 import { QualificationFilterControls } from "./QualificationFilterControls";
@@ -49,6 +50,7 @@ import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOu
 import type { ProspectStage, QualifySignal } from "./businessRecordContract";
 import { buildLeadLink } from "@/shared/lib/entityLink";
 import type { OutreachBatchLead } from "./outreachBatch";
+import { calculateOutreachFitScore } from "./outreachFitScore";
 import {
   filterQualificationLeads,
   qualificationFilterLeadFromRecords,
@@ -123,6 +125,7 @@ export function LeadsScreen(context: LeadContext) {
     string[]
   >([]);
   const [batchDialogOpen, setBatchDialogOpen] = React.useState(false);
+  const [minimumFit, setMinimumFit] = React.useState<number | null>(null);
   const [qualificationDialogOpen, setQualificationDialogOpen] =
     React.useState(false);
   const [qualificationRun, setQualificationRun] =
@@ -243,8 +246,32 @@ export function LeadsScreen(context: LeadContext) {
       ),
     [context.records.qualificationObservations],
   );
+  const fitByLeadId = React.useMemo(
+    () =>
+      new Map(
+        activeProspects.map(({ record }) => [
+          record.prospectId,
+          calculateOutreachFitScore(
+            record.prospect.maps,
+            qualificationHeadsByLeadId.get(record.prospectId),
+          ),
+        ]),
+      ),
+    [activeProspects, qualificationHeadsByLeadId],
+  );
   const filteredRows = filterOutreachRows(outreachRows, filters, query).filter(
     ({ id }) => qualifiedLeadIds.has(id),
+  );
+  const outreachFitLeads = React.useMemo(
+    () =>
+      filteredRows.map(({ hasPhone, id, record }) => ({
+        leadId: id,
+        name: record.prospect.party.displayName,
+        location: record.prospect.location,
+        fit: fitByLeadId.get(id) ?? null,
+        hasWhatsAppNumber: hasPhone,
+      })),
+    [filteredRows, fitByLeadId],
   );
   const pageSize = 8;
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
@@ -275,6 +302,7 @@ export function LeadsScreen(context: LeadContext) {
     contactName: record.prospect.contactName,
     phone: record.prospect.phone,
     whatsappPhone: record.prospect.whatsappPhone,
+    fit: fitByLeadId.get(record.prospectId) ?? null,
   }));
   const manualQualificationProgress = qualificationRun
     ? (qualificationProgress.get(qualificationRun.runId) ?? qualificationRun)
@@ -636,6 +664,12 @@ export function LeadsScreen(context: LeadContext) {
             Services
           </span>
         </nav>
+
+        <OutreachFitScoreDashboard
+          leads={outreachFitLeads}
+          minimumFit={minimumFit}
+          onMinimumFitChange={setMinimumFit}
+        />
 
         <div className="c3l-filterbar">
           <label className="c3l-search">
@@ -1028,6 +1062,8 @@ export function LeadsScreen(context: LeadContext) {
       <OutreachBatchDialog
         leads={batchLeads}
         listName="selected leads"
+        minimumFit={minimumFit}
+        onMinimumFitChange={setMinimumFit}
         onOpenChange={setBatchDialogOpen}
         open={batchDialogOpen}
       />

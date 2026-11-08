@@ -29,6 +29,7 @@ import { CloseOpportunityDialog } from "./LeadDialogs";
 import { BusinessLogoMark } from "./BusinessLogoMark";
 import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
 import { OutreachBatchDialog } from "./OutreachBatchDialog";
+import { OutreachFitScoreBreakdown } from "./OutreachFitScorePanel";
 import {
   campaignFor,
   ChatGlyph,
@@ -39,6 +40,7 @@ import {
 import { buildLeadLink } from "@/shared/lib/entityLink";
 import type { OutreachBatchLead } from "./outreachBatch";
 import { normalizeOutreachPhone } from "./outreachBatch";
+import { calculateOutreachFitScore } from "./outreachFitScore";
 import {
   Dialog,
   DialogContent,
@@ -319,7 +321,7 @@ export function LeadDetailScreen({
     inBatchLeadIds.has(record.prospectId),
   );
   const foundBy = campaignFor(provider, campaign, record.prospectId)?.runBy;
-  const fit = person.fitScore;
+  const discoveryRecordFit = person.fitScore;
   const discoveryMatches = person.discoveryTags ?? [];
   const discoveryFit = discoveryTagFitLabel(discoveryMatches);
   const discoveryTagGroups = groupDiscoveryTags(discoveryMatches);
@@ -329,13 +331,6 @@ export function LeadDetailScreen({
       list.status === "active" &&
       list.members.some((member) => member.leadId === record.prospectId),
   );
-  const batchLead: OutreachBatchLead = {
-    leadId: record.prospectId,
-    name,
-    contactName: person.contactName,
-    phone: person.phone,
-    whatsappPhone: person.whatsappPhone,
-  };
   const whatsappNumber =
     person.whatsappPhone?.trim() ||
     person.phone?.trim() ||
@@ -354,6 +349,15 @@ export function LeadDetailScreen({
     qualificationHead,
     Math.floor(Date.now() / 1_000),
   );
+  const outreachFit = calculateOutreachFitScore(person.maps, qualificationHead);
+  const batchLead: OutreachBatchLead = {
+    leadId: record.prospectId,
+    name,
+    contactName: person.contactName,
+    phone: person.phone,
+    whatsappPhone: person.whatsappPhone,
+    fit: outreachFit,
+  };
 
   async function saveProspect(
     changes: ProspectChanges,
@@ -548,6 +552,7 @@ export function LeadDetailScreen({
             incomplete={qualificationIncomplete}
           />
         ) : null}
+        <OutreachFitScoreBreakdown fit={outreachFit} name={name} />
 
         <div className="c3l-contact-whatsapp-grid">
           <section
@@ -717,7 +722,9 @@ export function LeadDetailScreen({
             >
               <div className="c3l-panel-head">
                 <h2 id="c3l-why-title">Why this business</h2>
-                {foundBy || (fit !== null && fit !== undefined) ? (
+                {foundBy ||
+                (discoveryRecordFit !== null &&
+                  discoveryRecordFit !== undefined) ? (
                   <span className="c3l-found-by">
                     {foundBy ? (
                       <>
@@ -725,12 +732,18 @@ export function LeadDetailScreen({
                         Found by {foundBy.name}
                       </>
                     ) : null}
-                    {foundBy && fit !== null && fit !== undefined
+                    {foundBy &&
+                    discoveryRecordFit !== null &&
+                    discoveryRecordFit !== undefined
                       ? " · fit "
-                      : fit !== null && fit !== undefined
+                      : discoveryRecordFit !== null &&
+                          discoveryRecordFit !== undefined
                         ? "Fit "
                         : null}
-                    {fit !== null && fit !== undefined ? fit : null}
+                    {discoveryRecordFit !== null &&
+                    discoveryRecordFit !== undefined
+                      ? discoveryRecordFit
+                      : null}
                     {discoveryFit ? ` · ${discoveryFit}` : null}
                   </span>
                 ) : null}

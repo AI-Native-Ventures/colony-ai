@@ -32,6 +32,7 @@ import { publishOutreachListAction } from "./businessRecordMutations";
 import type { LeadContext } from "./leadShared";
 import { buildOutreachListMutation } from "./outreachRecords";
 import type { OutreachBatchLead } from "./outreachBatch";
+import { calculateOutreachFitScore } from "./outreachFitScore";
 import { canEdit } from "./leadShared";
 import {
   useWhatsAppStatusQuery,
@@ -143,6 +144,7 @@ export function OutreachListScreen({
   );
   const [query, setQuery] = React.useState("");
   const [batchOpen, setBatchOpen] = React.useState(false);
+  const [minimumFit, setMinimumFit] = React.useState<number | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("");
   const [showArchived, setShowArchived] = React.useState(false);
@@ -182,6 +184,12 @@ export function OutreachListScreen({
   const leadsById = new Map(
     context.records.prospects.map((row) => [row.record.prospectId, row]),
   );
+  const qualificationHeadsByLeadId = new Map(
+    context.records.qualificationObservations.map((head) => [
+      head.record.leadId,
+      head.record,
+    ]),
+  );
   const memberLeads: OutreachBatchLead[] = (
     current?.record.members ?? []
   ).flatMap((member) => {
@@ -194,6 +202,10 @@ export function OutreachListScreen({
         contactName: row.record.prospect.contactName,
         phone: row.record.prospect.phone,
         whatsappPhone: row.record.prospect.whatsappPhone,
+        fit: calculateOutreachFitScore(
+          row.record.prospect.maps,
+          qualificationHeadsByLeadId.get(member.leadId),
+        ),
       },
     ];
   });
@@ -905,6 +917,8 @@ export function OutreachListScreen({
         defaultTemplate={current.record.defaultTemplate}
         leads={memberLeads}
         listName={current.record.name}
+        minimumFit={minimumFit}
+        onMinimumFitChange={setMinimumFit}
         onOpenChange={setBatchOpen}
         open={batchOpen && current.record.status === "active"}
       />
