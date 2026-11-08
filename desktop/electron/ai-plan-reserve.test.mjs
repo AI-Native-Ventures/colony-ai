@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -10,6 +12,8 @@ import {
 } from "./ai-plan-reserve.mjs";
 
 const NOW = 1_800_000_000_000;
+const TEST_TEMP_PREFIX = join(tmpdir(), "colony-ai-plan-reserve-test-");
+const TEST_USER_DATA = join(tmpdir(), "colony-ai-plan-reserve-test");
 
 function reportedUsage({ usedPercent, resetAt = NOW + 3_600_000 } = {}) {
   return {
@@ -43,8 +47,8 @@ function memoryStore(initial) {
 }
 
 test("snapshot store atomically persists only the non-secret reserve preference", async () => {
-  const userData = await mkdtemp("/private/tmp/colony-ai-plan-reserve-test-");
-  assert.match(userData, /^\/private\/tmp\//u);
+  const userData = await mkdtemp(TEST_TEMP_PREFIX);
+  assert.ok(userData.startsWith(TEST_TEMP_PREFIX));
   try {
     const store = createAiPlanReserveSnapshotStore(userData);
     const initial = await store.read();
@@ -177,7 +181,7 @@ test("one override is durable for one usage window and does not carry into the n
   let usage = [reportedUsage({ usedPercent: 80 })];
   const store = memoryStore();
   const service = createAiPlanReserveService({
-    userData: "/private/tmp/ai-plan-reserve-test",
+    userData: TEST_USER_DATA,
     now: () => NOW,
     readUsage: async () => usage,
     snapshotStore: store,
@@ -196,7 +200,7 @@ test("one override is durable for one usage window and does not carry into the n
 test("serialized writes retain the latest generation and write failures propagate", async () => {
   const store = memoryStore();
   const service = createAiPlanReserveService({
-    userData: "/private/tmp/ai-plan-reserve-test",
+    userData: TEST_USER_DATA,
     now: () => NOW,
     readUsage: async () => [reportedUsage({ usedPercent: 20 })],
     snapshotStore: store,
@@ -208,7 +212,7 @@ test("serialized writes retain the latest generation and write failures propagat
   assert.equal((await service.get()).preference.reservedPercent, 30);
 
   const failingService = createAiPlanReserveService({
-    userData: "/private/tmp/ai-plan-reserve-test",
+    userData: TEST_USER_DATA,
     now: () => NOW,
     readUsage: async () => [reportedUsage({ usedPercent: 20 })],
     snapshotStore: {
@@ -229,7 +233,7 @@ test("serialized writes retain the latest generation and write failures propagat
   );
 
   const unreadableService = createAiPlanReserveService({
-    userData: "/private/tmp/ai-plan-reserve-test",
+    userData: TEST_USER_DATA,
     now: () => NOW,
     readUsage: async () => [reportedUsage({ usedPercent: 20 })],
     snapshotStore: {

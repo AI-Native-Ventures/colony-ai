@@ -3794,7 +3794,7 @@ function resetMockTeams(config?: E2eConfig) {
           description: "Directory-backed research team",
           persona_ids: [],
           is_builtin: false,
-          source_dir: "/Users/dev/agents/research",
+          source_dir: "/mock/agents/research",
           is_symlink: false,
           symlink_target: null,
           version: "1.2.0",
@@ -3807,7 +3807,7 @@ function resetMockTeams(config?: E2eConfig) {
           description: "Symlinked platform team",
           persona_ids: [],
           is_builtin: false,
-          source_dir: "/Users/dev/agents/platform",
+          source_dir: "/mock/agents/platform",
           is_symlink: true,
           symlink_target: "/opt/shared-teams/platform",
           version: "2.0.1",
@@ -17880,9 +17880,7 @@ async function handleDiscoverManagedAgentPrereqs(
     acp: {
       command:
         configuredPrereqs?.acp?.command ?? args.input?.acpCommand ?? "buzz-acp",
-      resolved_path:
-        configuredPrereqs?.acp?.resolvedPath ??
-        "/Users/wesb/dev/buzz/target/debug/buzz-acp",
+      resolved_path: configuredPrereqs?.acp?.resolvedPath ?? "/mock/buzz-acp",
       available: configuredPrereqs?.acp?.available ?? true,
     },
     mcp: {
@@ -18567,7 +18565,7 @@ async function handleExportTeamToJson(args: { id: string }): Promise<boolean> {
 }
 
 async function handlePickTeamDirectory(): Promise<string | null> {
-  return "/Users/dev/agents/new-team";
+  return "/mock/agents/new-team";
 }
 
 async function handleInstallTeamFromDirectory(args: {
