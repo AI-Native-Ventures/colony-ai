@@ -757,10 +757,17 @@ mod postgres_tests {
         assert_eq!(migrations[65].version, 66);
         assert!(migrations[65].sql.as_str().contains("owner_paused"));
         assert_eq!(migrations[66].version, 67);
-        assert!(migrations[66]
-            .sql
-            .as_str()
-            .contains("CREATE TABLE whatsapp_suppressions"));
+        let outreach_safety_migration = migrations[66].sql.as_str();
+        for table in [
+            "CREATE TABLE whatsapp_suppressions",
+            "CREATE TABLE whatsapp_business_stops",
+            "CREATE TABLE whatsapp_unknown_send_recoveries",
+        ] {
+            assert!(
+                outreach_safety_migration.contains(table),
+                "outreach safety migration must create {table}"
+            );
+        }
         assert!(migrations[54]
             .sql
             .as_str()
