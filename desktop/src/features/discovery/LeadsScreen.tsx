@@ -790,7 +790,11 @@ export function LeadsScreen(context: LeadContext) {
         {pageRows.length ? (
           <React.Fragment>
             <div className="c3l-card c3l-table-wrap">
-              <table aria-label="Leads" className="c3l-table">
+              <table
+                aria-label="Leads"
+                className="c3l-table"
+                data-testid="leads-primary-table"
+              >
                 <thead>
                   <tr className="c3l-row c3l-row-head">
                     <th>
