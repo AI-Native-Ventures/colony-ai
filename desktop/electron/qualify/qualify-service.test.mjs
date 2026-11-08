@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -33,7 +35,7 @@ async function waitFor(predicate) {
 }
 
 async function temporaryUserData() {
-  return fs.mkdtemp("/private/tmp/colony-qualify-service-");
+  return fs.mkdtemp(path.join(os.tmpdir(), "colony-qualify-service-"));
 }
 
 test("main service writes a run journal before reporting its first progress", async (t) => {
