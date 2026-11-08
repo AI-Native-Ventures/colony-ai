@@ -41,6 +41,7 @@ import {
   type ProspectSort,
 } from "./CampaignProspectTable";
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
+import { CampaignQualificationPanel } from "./CampaignQualificationPanel";
 import type { DiscoveryLocation } from "./discoveryLocation";
 import {
   type DiscoveryContinuation,
@@ -667,6 +668,12 @@ export function CampaignScreen(context: CampaignContext) {
             onOpenDetails={() => setDialogMode("details")}
             onOpenSettings={() => setDialogMode("settings")}
             onSearchNearby={openNearbySearch}
+          />
+          <CampaignQualificationPanel
+            campaign={campaign}
+            context={context}
+            provider={provider}
+            rows={campaignRows}
           />
           {relatedTypes.length ? (
             <section

@@ -6,6 +6,7 @@ import { campaignStatusLabel } from "./CampaignHelpers";
 import { DiscoveryBusinessCatalogue } from "./DiscoveryBusinessCatalogue";
 import {
   DiscoveryCampaignDialog,
+  type CampaignFormInput,
   type PendingCampaign,
 } from "./DiscoveryCampaignDialogs";
 import {
@@ -19,7 +20,6 @@ import {
   industryTileColour,
 } from "./DiscoveryIcons";
 import { RunnerAvatar, useCurrentRunner } from "./DiscoveryRunner";
-import type { DiscoveryLocation } from "./discoveryLocation";
 import {
   useDiscoveryCampaign,
   type DiscoveryCampaign,
@@ -158,13 +158,7 @@ export function DiscoveryScreen() {
     });
   }
 
-  async function startCampaign(input: {
-    name: string;
-    location: string;
-    locationSelection: DiscoveryLocation;
-    target: number;
-    criteria: string;
-  }) {
+  async function startCampaign(input: CampaignFormInput) {
     if (!provider || !pendingCampaign) return;
     await provider.start({
       ...pendingCampaign,

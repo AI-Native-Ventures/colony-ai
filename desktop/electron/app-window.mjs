@@ -13,6 +13,11 @@ import {
   shell,
 } from "electron";
 import { createOpenRouterService } from "./openrouter-oauth.mjs";
+import {
+  createQualifyService,
+  QUALIFY_MAIN_COMMANDS,
+} from "./qualify/qualify-service.mjs";
+import { createQualificationRendererRequestBroker } from "./qualify/renderer-bridge.mjs";
 import { CHATGPT_COMMANDS, dispatchChatGpt } from "./chatgpt/ipc.mjs";
 import {
   createWorkspaceFileService,
@@ -72,6 +77,19 @@ export function createAppWindow({
   const send = (message) => {
     if (!window.isDestroyed()) window.webContents.send("colony:event", message);
   };
+  const qualificationRenderer = createQualificationRendererRequestBroker({
+    currentGeneration: () => rendererHost.generation,
+    isAvailable: () => main && !window.isDestroyed(),
+    send,
+  });
+
+  const qualification = main
+    ? createQualifyService({
+        userDataPath: app.getPath("userData"),
+        requestRenderer: qualificationRenderer.request,
+        emit: (event, payload) => send({ type: "shell-event", event, payload }),
+      })
+    : null;
   const shellPlugins = createShellPlugins({
     app,
     shell,
@@ -110,6 +128,8 @@ export function createAppWindow({
   window.on("closed", () => {
     openRouter.cancel();
     if (main) chatGpt?.cancel();
+    qualificationRenderer.rejectAll("The qualification window closed.");
+    qualification?.dispose();
   });
   const disposeWindowEvents = shellPlugins.attachWindowEvents(window);
   rendererHost.on("event", send);
@@ -131,6 +151,9 @@ export function createAppWindow({
     }
     openRouter.cancel();
     if (main) chatGpt?.cancel();
+    qualificationRenderer.rejectAll(
+      "Desktop renderer changed; reopen this qualification action.",
+    );
     // A reload retires the previous renderer's subscriptions and channels
     // before the new one may issue commands.
     void rendererHost.reset().catch(() => {
@@ -164,6 +187,20 @@ export function createAppWindow({
       return result;
     }
     if (type === "invoke" && main) {
+      if (QUALIFY_MAIN_COMMANDS.has(payload.command)) {
+        switch (payload.command) {
+          case "qualify_start":
+            return qualification.start(payload.args);
+          case "qualify_resume":
+            return qualification.resume(payload.args);
+          case "qualify_cancel":
+            return qualification.cancel(payload.args);
+          case "qualify_snapshot":
+            return qualification.snapshot(payload.args);
+          case "qualify_renderer_response":
+            return qualificationRenderer.respond(payload.args);
+        }
+      }
       switch (payload.command) {
         case "get_ai_plan_usage":
           return readAiPlanUsage();
@@ -205,6 +242,8 @@ export function createAppWindow({
   async function dispose() {
     openRouter.cancel();
     if (main) chatGpt?.cancel();
+    qualificationRenderer.rejectAll("The qualification window closed.");
+    qualification?.dispose();
     disposeWindowEvents();
     if (!main) await rendererHost.reset().catch(() => {});
   }

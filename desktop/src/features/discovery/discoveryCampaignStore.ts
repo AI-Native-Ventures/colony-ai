@@ -21,13 +21,17 @@ import type {
   DiscoverySearchResponse,
 } from "./discoverySearch";
 import { resolveVerticalId } from "./taxonomy";
+import {
+  cloneCampaignQualificationSettings,
+  parseCampaignQualificationSettings,
+} from "./qualificationCampaign";
 
 /** The campaigns page paginates this durable history instead of trimming it. */
 export const MAX_STORED_CAMPAIGNS = 5_000;
 const MAX_TOP_FITS = 5;
 /** The server returns 1 to 50 places a page; a stored page is capped the same. */
 const MAX_PENDING_PLACES = 50;
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 const MAX_SEEN_PROVIDER_PLACE_IDS = 400;
 const MAX_COVERAGE_STREAMS = 3;
 const MAX_PAGE_LOGS = 25;
@@ -401,6 +405,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     stopNotePosted: value.stopNotePosted === true,
     topFits: parseTopFits(value.topFits),
     pendingPage: parsePendingPage(value.pendingPage),
+    qualification: parseCampaignQualificationSettings(value.qualification),
   };
 }
 
@@ -423,6 +428,7 @@ export function parseStoredState(raw: string | null): StoredState {
   if (
     (value.version !== 1 &&
       value.version !== 2 &&
+      value.version !== 3 &&
       value.version !== STORE_VERSION) ||
     !Array.isArray(value.campaigns)
   ) {
@@ -551,6 +557,7 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     postedInSales: campaign.postedInSales === true,
     createdAt: campaign.createdAt,
     skippedDuplicates: campaign.skippedDuplicates,
+    qualification: cloneCampaignQualificationSettings(campaign.qualification),
   };
 }
 

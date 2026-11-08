@@ -76,7 +76,49 @@ test("a saved list round-trips", () => {
   const restored = parseStoredState(serializeState(state));
   assert.equal(restored.currentId, "one");
   assert.equal(restored.ownerPubkey, "owner");
-  assert.deepEqual(restored.campaigns[0], state.campaigns[0]);
+  assert.deepEqual(restored.campaigns[0], {
+    ...state.campaigns[0],
+    qualification: {
+      enabled: false,
+      selectedSignals: [],
+      runId: null,
+      phase: "idle",
+      failureReason: null,
+    },
+  });
+});
+
+test("campaign qualification starts fully off and preserves an explicit selection", () => {
+  const state = withCampaigns(
+    campaign("qualified", {
+      qualification: {
+        enabled: true,
+        selectedSignals: ["NO_WEBSITE", "NO_WHATSAPP_LINK"],
+        runId: "d39cf188-319a-4efc-92cc-8c55c5f2d6d2",
+        phase: "paused",
+        failureReason: "relay publish failed",
+      },
+    }),
+  );
+  const restored = parseStoredState(serializeState(state));
+  assert.deepEqual(restored.campaigns[0].qualification, {
+    enabled: true,
+    selectedSignals: ["NO_WEBSITE", "NO_WHATSAPP_LINK"],
+    runId: "d39cf188-319a-4efc-92cc-8c55c5f2d6d2",
+    phase: "paused",
+    failureReason: "relay publish failed",
+  });
+  assert.deepEqual(
+    parseStoredState(serializeState(withCampaigns(campaign("off"))))
+      .campaigns[0].qualification,
+    {
+      enabled: false,
+      selectedSignals: [],
+      runId: null,
+      phase: "idle",
+      failureReason: null,
+    },
+  );
 });
 
 test("legacy storage receives safe continuation defaults", () => {

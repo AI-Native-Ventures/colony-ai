@@ -48,6 +48,14 @@ import {
 } from "@/shared/ui/dialog";
 import { DiscoveryLeadTags } from "./DiscoveryLeadTags";
 import { discoveryTagFitLabel, groupDiscoveryTags } from "./discoveryTags";
+import { buildQualificationDraftContext } from "./qualifyDraftContext";
+import { qualificationSignalDefinition } from "./qualificationCampaign";
+import {
+  qualificationCheckedDate,
+  qualificationNotChecked,
+  qualificationObserved,
+  qualificationReason,
+} from "./qualificationPresentation";
 import {
   canEdit,
   displayWebsite,
@@ -73,6 +81,161 @@ function monthlyValue(minor: number | null | undefined): string {
   return minor === null || minor === undefined
     ? "Not set"
     : `${formatZar(minor)} / month`;
+}
+
+function qualificationEvidenceLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname === "/" ? "" : parsed.pathname;
+    return `${parsed.hostname}${path}`;
+  } catch {
+    return url;
+  }
+}
+
+function QualificationLeadFound({
+  checkedAt,
+  facts,
+  incomplete,
+  draft,
+}: {
+  checkedAt: number;
+  facts: ReturnType<typeof qualificationObserved>;
+  incomplete: ReturnType<typeof qualificationNotChecked>;
+  draft: ReturnType<typeof buildQualificationDraftContext>;
+}) {
+  const approvalFacts = draft.approvalEvidence.slice(0, 2);
+
+  return (
+    <div className="c3q-lead-found-layout">
+      <section
+        aria-labelledby="c3q-what-found-title"
+        className="c3l-card c3q-lead-found-card"
+        data-testid="lead-qualification-findings"
+      >
+        <div className="c3q-lead-found-heading">
+          <h2 id="c3q-what-found-title">What we found on their website</h2>
+          <span>Checked {qualificationCheckedDate(checkedAt)}</span>
+        </div>
+        {facts.length ? (
+          <div className="c3q-lead-found-list">
+            {facts.map((fact) => {
+              const definition = qualificationSignalDefinition(
+                fact.observation.signal,
+              );
+              return (
+                <article key={fact.observation.signal}>
+                  <span
+                    className={`c3q-certainty is-${fact.certainty.toLocaleLowerCase()}`}
+                  >
+                    {fact.certainty}
+                  </span>
+                  <div>
+                    <strong>{fact.label}</strong>
+                    <p>{definition.description}</p>
+                    <span className="c3q-finding-meta">
+                      Checked{" "}
+                      {qualificationCheckedDate(fact.observation.observedAt)}
+                    </span>
+                    {fact.observation.evidenceUrls.map((url) => (
+                      <a
+                        href={url}
+                        key={url}
+                        rel="noreferrer noopener"
+                        target="_blank"
+                      >
+                        Evidence: {qualificationEvidenceLabel(url)}
+                      </a>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="c3l-note">No selected website facts were observed.</p>
+        )}
+        {incomplete.length ? (
+          <div className="c3q-not-checked-list">
+            {incomplete.map((observation) => (
+              <p key={observation.signal}>
+                <span>Not checked</span>
+                {qualificationSignalDefinition(observation.signal).label}:{" "}
+                {qualificationReason(observation.notCheckedReason)}
+              </p>
+            ))}
+          </div>
+        ) : null}
+        <div className="c3q-lead-found-footer">
+          <a className="c3q-check-again" href="#/leads">
+            Check again
+          </a>
+          <span>Facts older than 30 days are not used in messages.</span>
+        </div>
+      </section>
+
+      <aside
+        aria-labelledby="c3q-draft-evidence-title"
+        className="c3q-scout-draft-card"
+      >
+        <div className="c3q-scout-draft-heading">
+          <span aria-hidden="true" className="c3q-scout-mark">
+            S
+          </span>
+          <h2 id="c3q-draft-evidence-title">Scout's draft evidence</h2>
+        </div>
+        {approvalFacts.length ? (
+          <>
+            <div className="c3q-draft-preview">
+              Scout can use{" "}
+              {approvalFacts.map((fact, index) => (
+                <React.Fragment key={fact.signal}>
+                  {index > 0 ? " and " : null}
+                  <mark>{fact.statement}</mark>
+                </React.Fragment>
+              ))}{" "}
+              when it prepares a draft for your approval.
+            </div>
+            <div className="c3q-draft-why">
+              <span>Why Scout said this</span>
+              <ol>
+                {approvalFacts.map((fact, index) => (
+                  <li key={fact.signal}>
+                    <span>{index + 1}</span>
+                    <p>
+                      {fact.certainty === "likely"
+                        ? `Likely: ${fact.statement}`
+                        : fact.statement}{" "}
+                      {fact.evidenceUrls.map((url) => (
+                        <a
+                          href={url}
+                          key={url}
+                          rel="noreferrer noopener"
+                          target="_blank"
+                        >
+                          {qualificationEvidenceLabel(url)}
+                        </a>
+                      ))}{" "}
+                      checked {qualificationCheckedDate(fact.observedAt)}.
+                    </p>
+                  </li>
+                ))}
+              </ol>
+              <p>
+                Facts marked Likely are worded as "I couldn't find" before Scout
+                puts them in a draft.
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="c3q-draft-empty">
+            Scout needs fresh, evidence-backed findings before it can suggest a
+            sentence for approval.
+          </p>
+        )}
+      </aside>
+    </div>
+  );
 }
 
 export function LeadDetailScreen({
@@ -181,6 +344,16 @@ export function LeadDetailScreen({
   const phoneSource = person.evidence.find((item) =>
     /google maps/i.test(item.title),
   )?.title;
+  const qualificationHead =
+    context.records.qualificationObservations.find(
+      (head) => head.record.leadId === record.prospectId,
+    )?.record ?? null;
+  const qualificationFacts = qualificationObserved(qualificationHead);
+  const qualificationIncomplete = qualificationNotChecked(qualificationHead);
+  const qualificationDraft = buildQualificationDraftContext(
+    qualificationHead,
+    Math.floor(Date.now() / 1_000),
+  );
 
   async function saveProspect(
     changes: ProspectChanges,
@@ -365,6 +538,15 @@ export function LeadDetailScreen({
           <p className="c3l-conversion-error" role="alert">
             {conversionError}
           </p>
+        ) : null}
+
+        {qualificationHead ? (
+          <QualificationLeadFound
+            checkedAt={qualificationHead.checkedAt}
+            draft={qualificationDraft}
+            facts={qualificationFacts}
+            incomplete={qualificationIncomplete}
+          />
         ) : null}
 
         <div className="c3l-contact-whatsapp-grid">
