@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
-use buzz_core::business_records::ProspectHead;
+use buzz_core::business_records::{ProspectActivityKind, ProspectHead};
 use buzz_core::kind::KIND_PROSPECT_HEAD;
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{WhatsappConnection, WhatsappStatusHealthUpdate};
@@ -30,7 +30,7 @@ const MAX_LEADS_SCANNED: i64 = 2000;
 /// Result of looking up one WhatsApp number in the active prospect heads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LeadPhoneMatch {
-    /// No active prospect head uses this number.
+    /// No active prospect head names this number through the bounded resolver.
     None,
     /// Exactly one active prospect head uses this number.
     Unique(String),
@@ -38,24 +38,64 @@ pub enum LeadPhoneMatch {
     Ambiguous,
 }
 
-/// One bounded snapshot of the active prospect phones for a company.
+/// One bounded snapshot of active prospect phone and Scout-note candidates for a company.
 ///
 /// The sender shares this snapshot across its bounded row batch, while inbound and direct
 /// sends can load it for their one lookup. Keeping the matching rules here prevents the paths
 /// from drifting apart.
 #[derive(Debug, Default)]
 pub struct LeadPhoneLookup {
-    matches: HashMap<String, LeadPhoneMatch>,
+    phone_matches: HashMap<String, LeadPhoneMatch>,
+    activity_note_matches: HashMap<String, LeadPhoneMatch>,
 }
 
 impl LeadPhoneLookup {
     /// Resolve one normalized WhatsApp id against this authoritative snapshot.
+    ///
+    /// An exact `prospect.phone` match is always authoritative. Only when no prospect phone
+    /// names the number do we use the narrower Scout-note fallback.
     pub fn find_lead_by_phone(&self, wa_id: &str) -> LeadPhoneMatch {
-        self.matches
+        match self
+            .phone_matches
             .get(wa_id)
             .cloned()
             .unwrap_or(LeadPhoneMatch::None)
+        {
+            LeadPhoneMatch::None => self
+                .activity_note_matches
+                .get(wa_id)
+                .cloned()
+                .unwrap_or(LeadPhoneMatch::None),
+            primary => primary,
+        }
     }
+}
+
+/// Extract the deliberately narrow phone tokens Scout writes in an activity note.
+///
+/// A token contains only ASCII digits, one optional `+`, and ASCII spaces. Splitting on every
+/// other character keeps adjacent digits in the same token, so a target can never match a
+/// substring of a longer digit run. `normalize_wa_id` then rejects malformed tokens and turns
+/// the accepted local and international forms into WhatsApp's canonical digits.
+fn activity_note_phone_tokens(note: &str) -> impl Iterator<Item = String> + '_ {
+    note.split(|ch: char| !(ch.is_ascii_digit() || matches!(ch, '+' | ' ')))
+        .filter_map(normalize_wa_id)
+}
+
+fn candidate_matches(
+    candidates: HashMap<String, HashSet<String>>,
+) -> HashMap<String, LeadPhoneMatch> {
+    candidates
+        .into_iter()
+        .map(|(wa_id, candidate_ids)| {
+            let mut candidate_ids = candidate_ids.into_iter();
+            let matched = match (candidate_ids.next(), candidate_ids.next()) {
+                (Some(lead_id), None) => LeadPhoneMatch::Unique(lead_id),
+                _ => LeadPhoneMatch::Ambiguous,
+            };
+            (wa_id, matched)
+        })
+        .collect()
 }
 
 /// The media or structured content of an inbound message: a picture, sticker, voice note,
@@ -467,7 +507,7 @@ pub fn parse_payload(payload: &Value, expected_phone_number_id: &str) -> ParsedP
     parsed
 }
 
-/// Load the bounded authoritative prospect-phone index for a company.
+/// Load the bounded authoritative prospect-phone and activity-note index for a company.
 ///
 /// Fetching one extra row makes an over-limit result an error instead of silently treating a
 /// truncated snapshot as a no-match. Callers then leave their durable retry record untouched.
@@ -490,40 +530,44 @@ pub async fn load_lead_phone_lookup(
         ));
     }
 
-    let mut candidates: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut phone_candidates: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut activity_note_candidates: HashMap<String, HashSet<String>> = HashMap::new();
     for stored in rows {
         let head: ProspectHead = serde_json::from_str(&stored.event.content)
             .map_err(|error| format!("invalid prospect head during phone lookup: {error}"))?;
         if head.status == "archived" {
             continue;
         }
-        let Some(phone) = head.prospect.phone.as_deref() else {
-            continue;
-        };
-        let Some(wa_id) = normalize_wa_id(phone) else {
-            continue;
-        };
-        candidates
-            .entry(wa_id)
-            .or_default()
-            .insert(head.prospect_id.to_string());
+        let prospect_id = head.prospect_id.to_string();
+        if let Some(wa_id) = head.prospect.phone.as_deref().and_then(normalize_wa_id) {
+            phone_candidates
+                .entry(wa_id)
+                .or_default()
+                .insert(prospect_id.clone());
+        }
+        for activity in &head.activities {
+            if activity.activity_kind != ProspectActivityKind::Note {
+                continue;
+            }
+            for wa_id in activity_note_phone_tokens(&activity.content) {
+                activity_note_candidates
+                    .entry(wa_id)
+                    .or_default()
+                    .insert(prospect_id.clone());
+            }
+        }
     }
 
-    let matches = candidates
-        .into_iter()
-        .map(|(wa_id, candidate_ids)| {
-            let mut candidate_ids = candidate_ids.into_iter();
-            let matched = match (candidate_ids.next(), candidate_ids.next()) {
-                (Some(lead_id), None) => LeadPhoneMatch::Unique(lead_id),
-                _ => LeadPhoneMatch::Ambiguous,
-            };
-            (wa_id, matched)
-        })
-        .collect();
-    Ok(LeadPhoneLookup { matches })
+    Ok(LeadPhoneLookup {
+        phone_matches: candidate_matches(phone_candidates),
+        activity_note_matches: candidate_matches(activity_note_candidates),
+    })
 }
 
 /// Find the active lead whose phone number matches, by E.164 digits.
+///
+/// This prefers an exact `prospect.phone` match, then falls back to one uniquely matching
+/// active activity note using [`activity_note_phone_tokens`].
 pub async fn find_lead_by_phone(
     state: &Arc<AppState>,
     tenant: &TenantContext,
@@ -863,6 +907,32 @@ mod tests {
     use super::super::policy::is_opt_out_button;
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn scout_activity_phone_tokens_normalize_the_supported_standalone_formats() {
+        let expected = "27732086891";
+        for number in ["+27 73 208 6891", "0732086891", "27732086891"] {
+            let note = format!("Used mobile {number} from their website.");
+            assert!(
+                activity_note_phone_tokens(&note).any(|candidate| candidate == expected),
+                "expected {number:?} to name {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn scout_activity_phone_tokens_never_match_a_substring_of_a_longer_digit_run() {
+        let expected = "27732086891";
+        for note in [
+            "Used mobile 127732086891 from their website.",
+            "Used mobile 277320868911 from their website.",
+        ] {
+            assert!(
+                !activity_note_phone_tokens(note).any(|candidate| candidate == expected),
+                "a longer digit run must not link {expected}: {note:?}"
+            );
+        }
+    }
 
     fn text_payload(phone_id: &str, from: &str, id: &str, body: &str) -> Value {
         json!({"object": "whatsapp_business_account", "entry": [{"id": "W", "changes": [{

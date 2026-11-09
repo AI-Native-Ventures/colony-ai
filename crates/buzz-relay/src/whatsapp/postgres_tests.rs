@@ -23,8 +23,8 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use buzz_core::business_records::{
-    prospect_d_tag, PartyRecord, ProspectHead, ProspectQualification, ProspectRecordInput,
-    ProspectStage, BUSINESS_RECORD_SCHEMA_VERSION,
+    prospect_d_tag, PartyRecord, ProspectActivity, ProspectActivityKind, ProspectHead,
+    ProspectQualification, ProspectRecordInput, ProspectStage, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::channel::MemberRole;
 use buzz_core::kind::{
@@ -497,6 +497,34 @@ fn rejection(result: Result<IngestResult, IngestError>) -> String {
 
 /// Seed the authoritative relay-signed prospect head that the phone linker reads in production.
 async fn seed_prospect_head(fx: &Fixture, phone: &str, name: &str, status: &str) -> String {
+    seed_prospect_head_with_note(fx, phone, name, status, None).await
+}
+
+/// Seed a prospect head whose immutable activity history may contain one Scout note.
+async fn seed_prospect_head_with_note(
+    fx: &Fixture,
+    phone: &str,
+    name: &str,
+    status: &str,
+    note: Option<&str>,
+) -> String {
+    seed_prospect_head_with_activity(
+        fx,
+        phone,
+        name,
+        status,
+        note.map(|content| (ProspectActivityKind::Note, content)),
+    )
+    .await
+}
+
+async fn seed_prospect_head_with_activity(
+    fx: &Fixture,
+    phone: &str,
+    name: &str,
+    status: &str,
+    activity: Option<(ProspectActivityKind, &str)>,
+) -> String {
     let prospect_id = Uuid::new_v4();
     let head = ProspectHead {
         schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
@@ -530,7 +558,19 @@ async fn seed_prospect_head(fx: &Fixture, phone: &str, name: &str, status: &str)
             stage: ProspectStage::Qualified,
             lost_reason: None,
         },
-        activities: Vec::new(),
+        activities: activity
+            .map(|(activity_kind, content)| {
+                vec![ProspectActivity {
+                    activity_id: Uuid::new_v4(),
+                    activity_kind,
+                    content: content.to_string(),
+                    proposal_id: None,
+                    proposal_version_event_id: None,
+                    author_pubkey: "0".repeat(64),
+                    created_at: base().timestamp(),
+                }]
+            })
+            .unwrap_or_default(),
         source_action_event_id: "0".repeat(64),
     };
     let d_tag = prospect_d_tag(*fx.community().as_uuid(), prospect_id);
@@ -649,6 +689,180 @@ async fn a_batch_without_lead_id_links_its_exact_phone_match_without_renaming_th
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn sender_backfill_links_a_phone_named_only_in_an_active_prospect_note() {
+    // GUARD: a WhatsApp number Scout found in a note, rather than in `prospect.phone`, must
+    // link through the same production sender backfill seam as an exact phone-field match.
+    let fx = fixture().await;
+    let wa_id = "27732086891";
+    let lead_id = seed_prospect_head_with_note(
+        &fx,
+        "+27110001111",
+        "Scout mobile only",
+        "active",
+        Some("Added to hl_posts WhatsApp batch. Used mobile +27 73 208 6891 from their website."),
+    )
+    .await;
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Meta profile"))
+        .await
+        .expect("backfill fixture contact");
+
+    fx.run_sender(base()).await;
+
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), wa_id)
+        .await
+        .expect("contact query")
+        .expect("fixture contact remains");
+    assert_eq!(contact.lead_id.as_deref(), Some(lead_id.as_str()));
+    assert_eq!(contact.display_name, "Meta profile");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn sender_backfill_requires_one_active_standalone_activity_note_match() {
+    // GUARD: a secondary match is safe only for one active prospect's complete phone token.
+    // Ambiguous notes, archived prospects, and target-looking substrings stay unlinked and
+    // retain the existing durable retry behavior.
+    let fx = fixture().await;
+    let unique = "27732086892";
+    let ambiguous = "27732086893";
+    let archived = "27732086894";
+    let substring = "27732086895";
+    let contact_activity = "27732086897";
+    let unique_note = format!("Used WhatsApp +{unique} from their website.");
+    let ambiguous_note = format!("Used WhatsApp +{ambiguous} from their website.");
+    let archived_note = format!("Used WhatsApp +{archived} from their website.");
+    let substring_note = format!("Used WhatsApp 1{substring}0 from their website.");
+    let contact_activity_note = format!("Used WhatsApp +{contact_activity} from their website.");
+    let unique_lead = seed_prospect_head_with_note(
+        &fx,
+        "+27110001112",
+        "Unique note business",
+        "active",
+        Some(&unique_note),
+    )
+    .await;
+    let _ambiguous_one = seed_prospect_head_with_note(
+        &fx,
+        "+27110001113",
+        "First note duplicate",
+        "active",
+        Some(&ambiguous_note),
+    )
+    .await;
+    let _ambiguous_two = seed_prospect_head_with_note(
+        &fx,
+        "+27110001114",
+        "Second note duplicate",
+        "active",
+        Some(&ambiguous_note),
+    )
+    .await;
+    let _archived = seed_prospect_head_with_note(
+        &fx,
+        "+27110001115",
+        "Archived note business",
+        "archived",
+        Some(&archived_note),
+    )
+    .await;
+    let _substring = seed_prospect_head_with_note(
+        &fx,
+        "+27110001116",
+        "Embedded digits business",
+        "active",
+        Some(&substring_note),
+    )
+    .await;
+    let _contact_activity = seed_prospect_head_with_activity(
+        &fx,
+        "+27110001119",
+        "Contact activity business",
+        "active",
+        Some((ProspectActivityKind::Contact, &contact_activity_note)),
+    )
+    .await;
+    for (wa_id, name) in [
+        (unique, "Unique profile"),
+        (ambiguous, "Ambiguous profile"),
+        (archived, "Archived profile"),
+        (substring, "Substring profile"),
+        (contact_activity, "Contact activity profile"),
+    ] {
+        fx.state
+            .db
+            .whatsapp_ensure_contact(fx.community(), wa_id, Some(name))
+            .await
+            .expect("backfill fixture contact");
+    }
+
+    fx.run_sender(base()).await;
+    let first = contact_link_snapshot(&fx).await;
+    let linked = |wa_id: &str| {
+        first
+            .iter()
+            .find(|row| row.0 == wa_id)
+            .expect("fixture contact appears in snapshot")
+    };
+    assert_eq!(linked(unique).1.as_deref(), Some(unique_lead.as_str()));
+    for wa_id in [ambiguous, archived, substring, contact_activity] {
+        assert_eq!(linked(wa_id).1, None, "{wa_id} stays unlinked");
+        assert!(
+            linked(wa_id).2.is_some(),
+            "{wa_id} records the durable retry timestamp"
+        );
+    }
+
+    fx.run_sender(base() + Duration::seconds(5)).await;
+    assert_eq!(
+        contact_link_snapshot(&fx).await,
+        first,
+        "a second sender pass before retry is idempotent"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn sender_backfill_prefers_an_exact_prospect_phone_over_an_activity_note() {
+    // GUARD: the existing exact `prospect.phone` resolver is authoritative even when another
+    // active prospect's Scout note names the same mobile number.
+    let fx = fixture().await;
+    let wa_id = "27732086896";
+    let primary_lead =
+        seed_prospect_head(&fx, &format!("+{wa_id}"), "Phone field business", "active").await;
+    let note = format!("Used WhatsApp +{wa_id} from their website.");
+    let _secondary_lead = seed_prospect_head_with_note(
+        &fx,
+        "+27110001117",
+        "Note field business",
+        "active",
+        Some(&note),
+    )
+    .await;
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Meta profile"))
+        .await
+        .expect("backfill fixture contact");
+
+    fx.run_sender(base()).await;
+
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), wa_id)
+        .await
+        .expect("contact query")
+        .expect("fixture contact remains");
+    assert_eq!(contact.lead_id.as_deref(), Some(primary_lead.as_str()));
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn sender_backfill_links_exact_matches_once_and_records_retry_state_for_other_contacts() {
     // GUARD: the sender's bounded durable backfill must link only exact active matches, retain
     // an existing association, and acknowledge no-match or ambiguous rows so a restart makes
@@ -743,13 +957,22 @@ async fn sender_backfill_links_exact_matches_once_and_records_retry_state_for_ot
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
 async fn a_legacy_queued_contact_links_before_the_business_stop_is_checked() {
-    // GUARD: the worker links a legacy queued row before its existing safety lookup. Without
-    // that ordering, a business reply stop misses this contact and Graph receives the send.
+    // GUARD: the worker links a legacy queued row from Scout's secondary note match before its
+    // existing safety lookup. Without that ordering, a business reply stop misses this contact
+    // and Graph receives the send.
     let fx = fixture().await;
     let target = "27821234568";
     let source = "27821234569";
-    let lead_id =
-        seed_prospect_head(&fx, &format!("+{target}"), "Stopped business", "active").await;
+    let note =
+        format!("Added to hl_posts WhatsApp batch. Used mobile +{target} from their website.");
+    let lead_id = seed_prospect_head_with_note(
+        &fx,
+        "+27110001118",
+        "Stopped business",
+        "active",
+        Some(&note),
+    )
+    .await;
     fx.state
         .db
         .whatsapp_ensure_contact(fx.community(), source, Some("Replying profile"))
