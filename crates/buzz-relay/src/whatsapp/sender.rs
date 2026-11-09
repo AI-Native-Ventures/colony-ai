@@ -1472,6 +1472,13 @@ mod tests {
             })
         );
 
+        // A relay-owned follow-up must not inherit the P0 owner-reply exception. Its own
+        // durable scheduling and send-time predicates treat every business reply as a stop.
+        let mut follow_up_owner_text = ctx(Some(&open), false, true);
+        follow_up_owner_text.is_follow_up = true;
+        follow_up_owner_text.safety = Some(&inbound_reply_stop);
+        assert!(check_send(&follow_up_owner_text).is_err());
+
         let mut owner_template = ctx(Some(&open), true, true);
         owner_template.safety = Some(&inbound_reply_stop);
         assert!(check_send(&owner_template).is_err());
