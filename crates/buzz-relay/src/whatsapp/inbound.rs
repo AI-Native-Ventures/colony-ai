@@ -3,6 +3,7 @@
 //! The HTTP layer has already checked the signature. Everything here is bound to one
 //! company's connection: a payload for another phone number id is ignored.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -25,6 +26,37 @@ use crate::state::AppState;
 use buzz_core::whatsapp_stage::OptOutKind;
 
 const MAX_LEADS_SCANNED: i64 = 2000;
+
+/// Result of looking up one WhatsApp number in the active prospect heads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeadPhoneMatch {
+    /// No active prospect head uses this number.
+    None,
+    /// Exactly one active prospect head uses this number.
+    Unique(String),
+    /// More than one active prospect head uses this number, so linking would be unsafe.
+    Ambiguous,
+}
+
+/// One bounded snapshot of the active prospect phones for a company.
+///
+/// The sender shares this snapshot across its bounded row batch, while inbound and direct
+/// sends can load it for their one lookup. Keeping the matching rules here prevents the paths
+/// from drifting apart.
+#[derive(Debug, Default)]
+pub struct LeadPhoneLookup {
+    matches: HashMap<String, LeadPhoneMatch>,
+}
+
+impl LeadPhoneLookup {
+    /// Resolve one normalized WhatsApp id against this authoritative snapshot.
+    pub fn find_lead_by_phone(&self, wa_id: &str) -> LeadPhoneMatch {
+        self.matches
+            .get(wa_id)
+            .cloned()
+            .unwrap_or(LeadPhoneMatch::None)
+    }
+}
 
 /// The media or structured content of an inbound message: a picture, sticker, voice note,
 /// document, location or contact card.
@@ -435,24 +467,71 @@ pub fn parse_payload(payload: &Value, expected_phone_number_id: &str) -> ParsedP
     parsed
 }
 
-/// Find the lead whose phone number matches, by E.164 digits.
+/// Load the bounded authoritative prospect-phone index for a company.
+///
+/// Fetching one extra row makes an over-limit result an error instead of silently treating a
+/// truncated snapshot as a no-match. Callers then leave their durable retry record untouched.
+pub async fn load_lead_phone_lookup(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+) -> Result<LeadPhoneLookup, String> {
+    let mut query = EventQuery::for_community(tenant.community());
+    query.kinds = Some(vec![KIND_PROSPECT_HEAD as i32]);
+    query.limit = Some(MAX_LEADS_SCANNED + 1);
+    query.max_limit = Some(MAX_LEADS_SCANNED + 1);
+    let rows = state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(|error| format!("prospect phone lookup failed: {error}"))?;
+    if rows.len() > MAX_LEADS_SCANNED as usize {
+        return Err(format!(
+            "prospect phone lookup exceeds its bounded scan of {MAX_LEADS_SCANNED} heads"
+        ));
+    }
+
+    let mut candidates: HashMap<String, HashSet<String>> = HashMap::new();
+    for stored in rows {
+        let head: ProspectHead = serde_json::from_str(&stored.event.content)
+            .map_err(|error| format!("invalid prospect head during phone lookup: {error}"))?;
+        if head.status == "archived" {
+            continue;
+        }
+        let Some(phone) = head.prospect.phone.as_deref() else {
+            continue;
+        };
+        let Some(wa_id) = normalize_wa_id(phone) else {
+            continue;
+        };
+        candidates
+            .entry(wa_id)
+            .or_default()
+            .insert(head.prospect_id.to_string());
+    }
+
+    let matches = candidates
+        .into_iter()
+        .map(|(wa_id, candidate_ids)| {
+            let mut candidate_ids = candidate_ids.into_iter();
+            let matched = match (candidate_ids.next(), candidate_ids.next()) {
+                (Some(lead_id), None) => LeadPhoneMatch::Unique(lead_id),
+                _ => LeadPhoneMatch::Ambiguous,
+            };
+            (wa_id, matched)
+        })
+        .collect();
+    Ok(LeadPhoneLookup { matches })
+}
+
+/// Find the active lead whose phone number matches, by E.164 digits.
 pub async fn find_lead_by_phone(
     state: &Arc<AppState>,
     tenant: &TenantContext,
     wa_id: &str,
-) -> Option<String> {
-    let mut query = EventQuery::for_community(tenant.community());
-    query.kinds = Some(vec![KIND_PROSPECT_HEAD as i32]);
-    query.limit = Some(MAX_LEADS_SCANNED);
-    let rows = state.db.query_events_for_event_write(&query).await.ok()?;
-    rows.iter().find_map(|stored| {
-        let head: ProspectHead = serde_json::from_str(&stored.event.content).ok()?;
-        if head.status == "archived" {
-            return None;
-        }
-        let phone = head.prospect.phone.as_deref()?;
-        (normalize_wa_id(phone).as_deref() == Some(wa_id)).then(|| head.prospect_id.to_string())
-    })
+) -> Result<LeadPhoneMatch, String> {
+    Ok(load_lead_phone_lookup(state, tenant)
+        .await?
+        .find_lead_by_phone(wa_id))
 }
 
 /// Act on one verified payload. An `Err` makes the webhook answer 500 so Meta retries.
@@ -540,7 +619,11 @@ async fn handle_message(
     };
 
     if contact.lead_id.is_none() {
-        contact.lead_id = find_lead_by_phone(state, tenant, &message.wa_id).await;
+        if let LeadPhoneMatch::Unique(lead_id) =
+            find_lead_by_phone(state, tenant, &message.wa_id).await?
+        {
+            contact.lead_id = Some(lead_id);
+        }
     }
     let opt_out = match_opt_out(&message.text);
     let opt_out_kind = opt_out.map(|matched| matched.kind);

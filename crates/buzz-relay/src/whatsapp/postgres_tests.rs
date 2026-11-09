@@ -14,7 +14,7 @@ use axum::routing::get;
 use axum::Router;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use hmac::{Hmac, KeyInit, Mac};
-use nostr::{EventBuilder, Keys, Kind};
+use nostr::{EventBuilder, Keys, Kind, Tag};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use sqlx::postgres::PgPoolOptions;
@@ -22,11 +22,15 @@ use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+use buzz_core::business_records::{
+    prospect_d_tag, PartyRecord, ProspectHead, ProspectQualification, ProspectRecordInput,
+    ProspectStage, BUSINESS_RECORD_SCHEMA_VERSION,
+};
 use buzz_core::channel::MemberRole;
 use buzz_core::kind::{
-    KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
-    KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
-    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+    KIND_PROSPECT_HEAD, KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION,
+    KIND_WHATSAPP_CONTACT_UPDATE, KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST,
+    KIND_WHATSAPP_SETTINGS, KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::whatsapp_stage::WhatsappStage;
@@ -489,6 +493,345 @@ fn rejection(result: Result<IngestResult, IngestError>) -> String {
         Some(other) => panic!("expected a rejection, got {other:?}"),
         None => panic!("expected a rejection, the command was accepted"),
     }
+}
+
+/// Seed the authoritative relay-signed prospect head that the phone linker reads in production.
+async fn seed_prospect_head(fx: &Fixture, phone: &str, name: &str, status: &str) -> String {
+    let prospect_id = Uuid::new_v4();
+    let head = ProspectHead {
+        schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+        prospect_id,
+        status: status.to_string(),
+        prospect: ProspectRecordInput {
+            prospect_id,
+            party: PartyRecord {
+                party_id: prospect_id,
+                party_type: "organization".into(),
+                display_name: name.to_string(),
+                external_ids: Vec::new(),
+            },
+            industry: "Hospitality".into(),
+            vertical: "Guesthouse".into(),
+            fit_score: None,
+            origin: None,
+            discovery_tags: Vec::new(),
+            maps: None,
+            potential_monthly_value_minor: None,
+            website: Some("https://example.test".into()),
+            contact_name: None,
+            location: Some("Sandton".into()),
+            email: None,
+            phone: Some(phone.to_string()),
+            whatsapp_phone: None,
+            evidence: Vec::new(),
+            last_verified_at: None,
+            qualification: ProspectQualification::Unreviewed,
+            saved: false,
+            stage: ProspectStage::Qualified,
+            lost_reason: None,
+        },
+        activities: Vec::new(),
+        source_action_event_id: "0".repeat(64),
+    };
+    let d_tag = prospect_d_tag(*fx.community().as_uuid(), prospect_id);
+    let event = EventBuilder::new(
+        Kind::Custom(KIND_PROSPECT_HEAD as u16),
+        serde_json::to_string(&head).expect("serialize prospect head"),
+    )
+    .tags(vec![
+        Tag::parse(["d", d_tag.as_str()]).expect("prospect d tag")
+    ])
+    .sign_with_keys(&fx.state.relay_keypair)
+    .expect("sign prospect head");
+    let (_, inserted) = fx
+        .state
+        .db
+        .replace_parameterized_event(fx.community(), &event, &d_tag, None)
+        .await
+        .expect("insert prospect head");
+    assert!(inserted, "the fixture prospect head is stored");
+    prospect_id.to_string()
+}
+
+async fn contact_link_snapshot(
+    fx: &Fixture,
+) -> Vec<(String, Option<String>, Option<DateTime<Utc>>, String)> {
+    sqlx::query(
+        "SELECT wa_id, lead_id, lead_link_checked_at, display_name FROM whatsapp_contacts \
+         WHERE community_id = $1 ORDER BY wa_id",
+    )
+    .bind(fx.community().as_uuid())
+    .fetch_all(&fx.pool)
+    .await
+    .expect("contact link snapshot")
+    .iter()
+    .map(|row| {
+        (
+            row.try_get("wa_id").expect("wa id"),
+            row.try_get("lead_id").expect("lead id"),
+            row.try_get("lead_link_checked_at")
+                .expect("lead link check timestamp"),
+            row.try_get("display_name").expect("display name"),
+        )
+    })
+    .collect()
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_direct_send_links_a_phone_matched_lead_before_graph() {
+    // GUARD: `enqueue_send` must resolve and persist an unlinked contact before its safety
+    // lookup. The contact therefore carries the business identity before the sender can call
+    // Graph, and a later business stop can fence this number too.
+    let fx = fixture().await;
+    let wa = "+27821234561";
+    let lead_id = seed_prospect_head(&fx, wa, "Sandton Country Manor", "active").await;
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SEND_REQUEST,
+        json!({
+            "v": 1,
+            "requestId": Uuid::new_v4().to_string(),
+            "to": wa,
+            "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+        }),
+    )
+    .await
+    .expect("owner queues the matching contact");
+
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), "27821234561")
+        .await
+        .expect("contact query")
+        .expect("queued send created the contact");
+    assert_eq!(contact.lead_id.as_deref(), Some(lead_id.as_str()));
+    assert_eq!(fx.graph.send_count(), 0, "linking finishes before Graph");
+
+    fx.run_sender(base()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "the linked row reaches fake Graph"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_batch_without_lead_id_links_its_exact_phone_match_without_renaming_the_contact() {
+    // GUARD: batch preflight resolves a missing `leadId` before `whatsapp_send_safety`, then
+    // persists the exact unique match only after every row passes validation.
+    let fx = fixture().await;
+    let wa = "+27821234562";
+    let lead_id = seed_prospect_head(&fx, wa, "The Dog's Bollocks at YARD", "active").await;
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), "27821234562", Some("Meta profile"))
+        .await
+        .expect("existing profile contact");
+
+    fx.command(&fx.owner, KIND_WHATSAPP_BATCH, batch(Uuid::new_v4(), &[wa]))
+        .await
+        .expect("batch without lead id is prepared");
+
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), "27821234562")
+        .await
+        .expect("contact query")
+        .expect("batch contact");
+    assert_eq!(contact.lead_id.as_deref(), Some(lead_id.as_str()));
+    assert_eq!(contact.display_name, "Meta profile");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn sender_backfill_links_exact_matches_once_and_records_retry_state_for_other_contacts() {
+    // GUARD: the sender's bounded durable backfill must link only exact active matches, retain
+    // an existing association, and acknowledge no-match or ambiguous rows so a restart makes
+    // no further change before their retry is due.
+    let fx = fixture().await;
+    let matched = "27821234563";
+    let unmatched = "27821234564";
+    let ambiguous = "27821234565";
+    let preserved = "27821234566";
+    let archived = "27821234567";
+    let matched_lead = seed_prospect_head(
+        &fx,
+        &format!("+{matched}"),
+        "Sandton Country Manor",
+        "active",
+    )
+    .await;
+    let _ambiguous_one =
+        seed_prospect_head(&fx, &format!("+{ambiguous}"), "First duplicate", "active").await;
+    let _ambiguous_two =
+        seed_prospect_head(&fx, &format!("+{ambiguous}"), "Second duplicate", "active").await;
+    let _archived_lead =
+        seed_prospect_head(&fx, &format!("+{archived}"), "Closed venue", "archived").await;
+    for (wa_id, name) in [
+        (matched, "Matched profile"),
+        (unmatched, "No match profile"),
+        (ambiguous, "Ambiguous profile"),
+        (preserved, "Existing profile"),
+        (archived, "Archived profile"),
+    ] {
+        fx.state
+            .db
+            .whatsapp_ensure_contact(fx.community(), wa_id, Some(name))
+            .await
+            .expect("backfill fixture contact");
+    }
+    let existing_lead = Uuid::new_v4().to_string();
+    assert!(
+        fx.state
+            .db
+            .whatsapp_set_lead(fx.community(), preserved, &existing_lead)
+            .await
+            .expect("set preserved lead"),
+        "fixture contact starts linked"
+    );
+    let competing_lead = Uuid::new_v4().to_string();
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_set_lead(fx.community(), preserved, &competing_lead)
+            .await
+            .expect("second lead write"),
+        "the production contact write must never overwrite an existing lead id"
+    );
+
+    fx.run_sender(base()).await;
+    let first = contact_link_snapshot(&fx).await;
+    let linked = |wa_id: &str| {
+        first
+            .iter()
+            .find(|row| row.0 == wa_id)
+            .expect("fixture contact appears in snapshot")
+    };
+    assert_eq!(linked(matched).1.as_deref(), Some(matched_lead.as_str()));
+    assert_eq!(linked(unmatched).1, None);
+    assert!(
+        linked(unmatched).2.is_some(),
+        "no-match row has retry state"
+    );
+    assert_eq!(linked(ambiguous).1, None);
+    assert!(
+        linked(ambiguous).2.is_some(),
+        "ambiguous row has retry state"
+    );
+    assert_eq!(linked(preserved).1.as_deref(), Some(existing_lead.as_str()));
+    assert_eq!(linked(preserved).2, None, "existing link is not revisited");
+    assert_eq!(linked(archived).1, None);
+    assert!(
+        linked(archived).2.is_some(),
+        "archived-only row has retry state"
+    );
+    assert_eq!(linked(matched).3, "Matched profile");
+
+    fx.run_sender(base() + Duration::seconds(5)).await;
+    assert_eq!(
+        contact_link_snapshot(&fx).await,
+        first,
+        "a restart before the durable retry time makes no contact changes"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_legacy_queued_contact_links_before_the_business_stop_is_checked() {
+    // GUARD: the worker links a legacy queued row before its existing safety lookup. Without
+    // that ordering, a business reply stop misses this contact and Graph receives the send.
+    let fx = fixture().await;
+    let target = "27821234568";
+    let source = "27821234569";
+    let lead_id =
+        seed_prospect_head(&fx, &format!("+{target}"), "Stopped business", "active").await;
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), source, Some("Replying profile"))
+        .await
+        .expect("source contact");
+    assert!(
+        fx.state
+            .db
+            .whatsapp_set_lead(fx.community(), source, &lead_id)
+            .await
+            .expect("link stop source"),
+        "source link is inserted"
+    );
+    fx.state
+        .db
+        .whatsapp_record_inbound_safety(fx.community(), source, Some(&lead_id), base(), None, None)
+        .await
+        .expect("record business reply stop");
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), target, Some("Legacy profile"))
+        .await
+        .expect("legacy target contact");
+    assert!(
+        fx.state
+            .db
+            .whatsapp_mark_lead_link_checked(fx.community(), target, base())
+            .await
+            .expect("record a recent legacy backfill check"),
+        "the sender path, not the earlier backfill page, must resolve this queued contact"
+    );
+    let queued = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: target.into(),
+        kind: "template".into(),
+        body: "Hi Thabo".into(),
+        template_name: Some("intro".into()),
+        template_language: Some("en".into()),
+        params: json!(["Thabo"]),
+        state: "queued".into(),
+        idempotency_key: format!("legacy-unlinked:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &queued)
+        .await
+        .expect("legacy queued row");
+
+    fx.run_sender(base()).await;
+
+    let contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), target)
+        .await
+        .expect("target contact query")
+        .expect("legacy target contact remains");
+    assert_eq!(contact.lead_id.as_deref(), Some(lead_id.as_str()));
+    let message = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), queued.id)
+        .await
+        .expect("queued row query")
+        .expect("queued row remains visible");
+    assert_eq!(message.state, "skipped");
+    assert!(
+        message
+            .skip_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("whole business")),
+        "the existing business stop, rather than the window check, skips the row"
+    );
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "the stopped business never reaches Graph"
+    );
 }
 
 #[tokio::test]

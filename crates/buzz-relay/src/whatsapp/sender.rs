@@ -23,6 +23,7 @@ use buzz_db::whatsapp::{
 
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
 use super::graph::{GraphError, SendRequest};
+use super::inbound::{load_lead_phone_lookup, LeadPhoneLookup, LeadPhoneMatch};
 use super::policy::{
     account_retry_error_codes, classify_failure_code, decide_new_chat, decide_owner_send_now, e164,
     normalize_wa_id, render_template, row_gap, sast_day_start, window_open, FailureKind,
@@ -34,7 +35,9 @@ use crate::state::AppState;
 const TICK: StdDuration = StdDuration::from_secs(5);
 const LEASE_SECS: i64 = 120;
 const SENDABLE_PER_TICK: i64 = 25;
+const CONTACT_LEAD_LINKS_PER_TICK: i64 = 25;
 const UNPOSTED_PER_TICK: i64 = 25;
+const CONTACT_LEAD_LINK_RETRY: Duration = Duration::hours(1);
 const PHONE_REFRESH_EVERY: Duration = Duration::minutes(30);
 const TEMPLATE_RESYNC_EVERY: Duration = Duration::hours(6);
 const MAX_TEXT_CHARS: usize = 4096;
@@ -230,9 +233,11 @@ pub async fn enqueue_send(
         .map_err(|error| error.to_string())?;
     let contact = state
         .db
-        .whatsapp_get_contact(community, &wa_id)
+        .whatsapp_ensure_contact(community, &wa_id, None)
         .await
         .map_err(|error| error.to_string())?;
+    let mut lead_lookup = None;
+    let contact = link_contact_for_sender(state, tenant, contact, &mut lead_lookup).await?;
     let pending = state
         .db
         .whatsapp_count_pending_outbound(community, &wa_id)
@@ -240,17 +245,11 @@ pub async fn enqueue_send(
         .map_err(|error| error.to_string())?;
     let safety = state
         .db
-        .whatsapp_send_safety(
-            community,
-            &wa_id,
-            contact
-                .as_ref()
-                .and_then(|contact| contact.lead_id.as_deref()),
-        )
+        .whatsapp_send_safety(community, &wa_id, contact.lead_id.as_deref())
         .await
         .map_err(|error| error.to_string())?;
     let plan = check_send(&SendContext {
-        contact: contact.as_ref(),
+        contact: Some(&contact),
         send_paused: settings.send_paused,
         pause_reason: settings.pause_reason.as_deref(),
         pending_outbound: pending,
@@ -295,11 +294,6 @@ pub async fn enqueue_send(
             _ => return Err("send exactly one of text or template".into()),
         };
 
-    state
-        .db
-        .whatsapp_ensure_contact(community, &wa_id, None)
-        .await
-        .map_err(|error| error.to_string())?;
     state
         .db
         .whatsapp_set_owner_if_unowned(community, &wa_id, sender)
@@ -394,6 +388,130 @@ pub fn build_request(message: &WhatsappMessage) -> Result<SendRequest, String> {
             body: message.body.clone(),
         })
     }
+}
+
+/// Link an unlinked contact from one already-loaded authoritative phone snapshot.
+///
+/// The conditional write and reload make a concurrent first writer authoritative. The helper
+/// never changes the WhatsApp profile name or an existing business link.
+async fn link_contact_from_lookup(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    contact: WhatsappContact,
+    lookup: &LeadPhoneLookup,
+) -> Result<WhatsappContact, String> {
+    let LeadPhoneMatch::Unique(lead_id) = lookup.find_lead_by_phone(&contact.wa_id) else {
+        return Ok(contact);
+    };
+    if contact.lead_id.is_some() {
+        return Ok(contact);
+    }
+    state
+        .db
+        .whatsapp_set_lead(community, &contact.wa_id, &lead_id)
+        .await
+        .map_err(|error| format!("contact lead link failed: {error}"))?;
+    state
+        .db
+        .whatsapp_get_contact(community, &contact.wa_id)
+        .await
+        .map_err(|error| format!("linked contact reload failed: {error}"))?
+        .ok_or_else(|| "linked WhatsApp contact vanished".to_string())
+}
+
+/// Resolve an unlinked contact while lazily sharing one bounded snapshot through a sender pass.
+async fn link_contact_for_sender(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    contact: WhatsappContact,
+    lookup: &mut Option<LeadPhoneLookup>,
+) -> Result<WhatsappContact, String> {
+    if contact.lead_id.is_some() {
+        return Ok(contact);
+    }
+    if lookup.is_none() {
+        *lookup = Some(load_lead_phone_lookup(state, tenant).await?);
+    }
+    let Some(lookup) = lookup.as_ref() else {
+        return Err("contact lead lookup was not initialized".into());
+    };
+    link_contact_from_lookup(state, tenant.community(), contact, lookup).await
+}
+
+/// Advance one bounded durable page of legacy contacts that were created without a lead id.
+///
+/// No-match and ambiguous rows receive a retry timestamp. A resolver or database failure
+/// propagates before the current row is acknowledged, so it stays due after a restart.
+async fn backfill_contact_leads(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    now: DateTime<Utc>,
+) -> Result<Option<LeadPhoneLookup>, String> {
+    let community = tenant.community();
+    let wa_ids = state
+        .db
+        .whatsapp_list_contacts_needing_lead_link(
+            community,
+            now - CONTACT_LEAD_LINK_RETRY,
+            CONTACT_LEAD_LINKS_PER_TICK,
+        )
+        .await
+        .map_err(|error| format!("contact lead backfill lookup failed: {error}"))?;
+    if wa_ids.is_empty() {
+        return Ok(None);
+    }
+
+    let lookup = load_lead_phone_lookup(state, tenant).await?;
+    let mut linked = 0usize;
+    let mut unmatched = 0usize;
+    let mut ambiguous = 0usize;
+    for wa_id in &wa_ids {
+        match lookup.find_lead_by_phone(wa_id) {
+            LeadPhoneMatch::Unique(lead_id) => {
+                if state
+                    .db
+                    .whatsapp_set_lead(community, wa_id, &lead_id)
+                    .await
+                    .map_err(|error| format!("contact lead backfill write failed: {error}"))?
+                {
+                    linked += 1;
+                }
+            }
+            LeadPhoneMatch::None => {
+                if state
+                    .db
+                    .whatsapp_mark_lead_link_checked(community, wa_id, now)
+                    .await
+                    .map_err(|error| {
+                        format!("contact lead backfill acknowledgement failed: {error}")
+                    })?
+                {
+                    unmatched += 1;
+                }
+            }
+            LeadPhoneMatch::Ambiguous => {
+                if state
+                    .db
+                    .whatsapp_mark_lead_link_checked(community, wa_id, now)
+                    .await
+                    .map_err(|error| {
+                        format!("contact lead backfill acknowledgement failed: {error}")
+                    })?
+                {
+                    ambiguous += 1;
+                }
+            }
+        }
+    }
+    tracing::info!(
+        %community,
+        checked = wa_ids.len(),
+        linked,
+        unmatched,
+        ambiguous,
+        "whatsapp contact lead backfill completed"
+    );
+    Ok(Some(lookup))
 }
 
 /// Run the sender forever.
@@ -539,6 +657,7 @@ pub async fn process_community(
     {
         tracing::warn!(%community, "whatsapp delayed-contact retry release failed: {error}");
     }
+    let mut lead_lookup = backfill_contact_leads(state, &tenant, now).await?;
     if settings.send_paused {
         return Ok(());
     }
@@ -562,6 +681,7 @@ pub async fn process_community(
         else {
             continue;
         };
+        let contact = link_contact_for_sender(state, &tenant, contact, &mut lead_lookup).await?;
         if let Some(at) = contact.opted_out_at {
             skip(
                 state,
