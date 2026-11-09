@@ -172,6 +172,13 @@ function description(input: {
           "Prospect search is not set up on this server yet. The server owner needs to add the Outscraper key.",
       };
     }
+    if (input.code === "tenant_community_unknown") {
+      return {
+        title: "Business could not be confirmed",
+        message:
+          "Colony could not confirm which business this is. Check your connection and try again.",
+      };
+    }
     if (input.code === "sales_channel_not_allowed") {
       return {
         title: "Sales channel not set up",

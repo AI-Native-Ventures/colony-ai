@@ -392,7 +392,10 @@ test.describe("W10 discovery and sales", () => {
 
     const leads = page.getByTestId("w10-leads-page");
     const row = () =>
-      leads.locator("tbody tr").filter({ hasText: "Form & Field" });
+      leads
+        .getByTestId("leads-primary-table")
+        .locator("tbody tr")
+        .filter({ hasText: "Form & Field" });
     await expect(row()).toBeVisible();
     await expect(row()).toContainText("New");
     await row().getByRole("checkbox", { name: "Select Form & Field" }).check();
@@ -458,7 +461,9 @@ test.describe("W10 discovery and sales", () => {
     await expect(
       leads.getByRole("heading", { name: "Leads", exact: true }),
     ).toBeVisible();
-    await expect(leads.locator("tbody tr")).toHaveCount(1);
+    await expect(
+      leads.getByTestId("leads-primary-table").locator("tbody tr"),
+    ).toHaveCount(1);
     const views = leads.getByRole("navigation", { name: "Business views" });
     await expect(views.getByRole("link", { name: "Lists" })).toBeVisible();
     await expect(views.getByRole("link", { name: "Pipeline" })).toBeVisible();

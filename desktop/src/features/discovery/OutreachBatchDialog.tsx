@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { errorMessage } from "./BusinessCommon";
+import { MinimumFitControl } from "./OutreachFitScorePanel";
 import {
   buildOutreachBatchPlan,
   type OutreachBatchLead,
@@ -26,12 +27,16 @@ export function OutreachBatchDialog({
   leads,
   listName,
   defaultTemplate,
+  minimumFit,
+  onMinimumFitChange,
   onOpenChange,
   open,
 }: {
   leads: readonly OutreachBatchLead[];
   listName: string;
   defaultTemplate?: { name: string; language: string } | null;
+  minimumFit?: number | null;
+  onMinimumFitChange?: (minimumFit: number | null) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
@@ -43,9 +48,17 @@ export function OutreachBatchDialog({
   const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const command = useWhatsAppCommand();
   const [template, setTemplate] = React.useState<WhatsAppTemplate | null>(null);
+  const [localMinimumFit, setLocalMinimumFit] = React.useState<number | null>(
+    null,
+  );
   const userSelectedTemplate = React.useRef(false);
+  const wasOpen = React.useRef(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const effectiveMinimumFit =
+    minimumFit === undefined ? localMinimumFit : minimumFit;
+  const changeMinimumFit = onMinimumFitChange ?? setLocalMinimumFit;
+  const hasFitData = leads.some((lead) => lead.fit !== undefined);
   const templates = (
     templatesQuery.data ??
     statusQuery.data?.templates ??
@@ -59,15 +72,19 @@ export function OutreachBatchDialog({
         contacts: contactsQuery.data ?? [],
         inBatchLeadIds,
         template,
+        minimumFit: effectiveMinimumFit,
       })
     : null;
 
   React.useEffect(() => {
-    if (!open) return;
+    const justOpened = open && !wasOpen.current;
+    wasOpen.current = open;
+    if (!justOpened) return;
     userSelectedTemplate.current = false;
     setTemplate(null);
     setError("");
-  }, [open]);
+    if (minimumFit === undefined) setLocalMinimumFit(null);
+  }, [minimumFit, open]);
 
   React.useEffect(() => {
     if (!open || userSelectedTemplate.current || !defaultTemplate) return;
@@ -124,6 +141,17 @@ export function OutreachBatchDialog({
             Sending waits for approval.
           </DialogDescription>
         </DialogHeader>
+        {hasFitData ? (
+          <section
+            aria-label="Outreach fit selection"
+            className="c3f-dialog-fit"
+          >
+            <MinimumFitControl
+              minimumFit={effectiveMinimumFit}
+              onMinimumFitChange={changeMinimumFit}
+            />
+          </section>
+        ) : null}
         {!statusQuery.data?.connected ? (
           <p className="c3l-outreach-note" role="status">
             WhatsApp is not connected for this business.
@@ -183,6 +211,16 @@ export function OutreachBatchDialog({
                 .join(" · ") || "No leads skipped"}
             </span>
           </div>
+        ) : null}
+        {batchPlan?.notContacted.length ? (
+          <ul aria-label="Not contacted" className="c3f-batch-not-contacted">
+            {batchPlan.notContacted.map((item) => (
+              <li key={item.leadId}>
+                <strong>{item.name}</strong>
+                <span>{item.reason.label}</span>
+              </li>
+            ))}
+          </ul>
         ) : null}
         {error ? (
           <p className="c3l-outreach-error" role="alert">

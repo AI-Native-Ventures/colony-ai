@@ -78,6 +78,7 @@ test("batch plan keeps only eligible leads and explains every skipped row", () =
     invalidPhone: 0,
     duplicate: 1,
   });
+  assert.deepEqual(result.notContacted, []);
   assert.equal(result.content.template, "welcome_note");
   assert.equal(result.content.note, "List Melville guesthouses.");
 });
@@ -129,4 +130,54 @@ test("the business phone stays the default when a linked WhatsApp contact differ
   });
 
   assert.equal(result.content.rows[0]?.to, "+27825554410");
+});
+
+test("minimum fit keeps below-threshold, phone-less, and unchecked leads out of the batch", () => {
+  const result = buildOutreachBatchPlan({
+    batchId: "fit-batch",
+    listName: "Fit review",
+    minimumFit: 60,
+    leads: [
+      {
+        leadId: "low-fit",
+        name: "Low fit",
+        contactName: null,
+        phone: "+27 82 555 4401",
+        fit: { score: 48, parts: [] },
+      },
+      {
+        leadId: "no-whatsapp",
+        name: "No WhatsApp",
+        contactName: null,
+        phone: null,
+        fit: { score: 82, parts: [] },
+      },
+      {
+        leadId: "not-checked",
+        name: "Not checked",
+        contactName: null,
+        phone: "+27 82 555 4402",
+        fit: null,
+      },
+      {
+        leadId: "ready",
+        name: "Ready",
+        contactName: "Nandi",
+        phone: "+27 82 555 4403",
+        fit: { score: 82, parts: [] },
+      },
+    ],
+    contacts: [],
+    inBatchLeadIds: new Set(),
+    template: { name: "welcome_note", language: "en", slots: 1 },
+  });
+
+  assert.deepEqual(
+    result.notContacted.map((item) => item.reason.code),
+    ["below_minimum_fit", "no_whatsapp_number", "not_checked"],
+  );
+  assert.deepEqual(
+    result.content.rows.map((row) => row.leadId),
+    ["ready"],
+  );
 });

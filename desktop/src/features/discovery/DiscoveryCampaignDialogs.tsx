@@ -4,6 +4,7 @@ import {
   loadActiveCommunityId,
   loadCommunities,
 } from "@/features/communities/communityStorage";
+import { TENANT_COMMUNITY_UNKNOWN_MESSAGE } from "@/features/communities/tenantCommunity";
 import { copyTextToSystemClipboard } from "@/shared/api/tauriMedia";
 import {
   actionFailureFromError,
@@ -73,14 +74,17 @@ export type CampaignFormInput = {
 const LOCATION_DEBOUNCE_MS = 250;
 
 function discoveryActionFailure(error: unknown): ActionFailure {
+  const message = error instanceof Error ? error.message : "";
   const failure = actionFailureFromError({
     action: "prospect-search",
     stage: "campaign-start",
     error,
     code:
-      error instanceof Error && error.message === SALES_NOT_ALLOWED_MESSAGE
-        ? "sales_channel_not_allowed"
-        : null,
+      message === TENANT_COMMUNITY_UNKNOWN_MESSAGE
+        ? "tenant_community_unknown"
+        : message === SALES_NOT_ALLOWED_MESSAGE
+          ? "sales_channel_not_allowed"
+          : null,
   });
   logActionFailure(failure);
   return failure;

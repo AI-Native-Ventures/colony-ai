@@ -74,6 +74,7 @@ import {
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
 import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import type { OutreachBatchLead } from "./outreachBatch";
+import { calculateOutreachFitScore } from "./outreachFitScore";
 import { findScoutDirectMessage } from "./leadShared";
 import type { LeadContext } from "./leadShared";
 import type { ProspectStage } from "./businessRecordContract";
@@ -126,6 +127,7 @@ export function CampaignScreen(context: CampaignContext) {
   );
   const [listDialogOpen, setListDialogOpen] = React.useState(false);
   const [batchDialogOpen, setBatchDialogOpen] = React.useState(false);
+  const [minimumFit, setMinimumFit] = React.useState<number | null>(null);
   const [dialogMode, setDialogMode] = React.useState<CampaignDialogMode>(null);
   const [relatedTypeId, setRelatedTypeId] = React.useState<string | null>(null);
   const [widenPending, setWidenPending] =
@@ -266,6 +268,12 @@ export function CampaignScreen(context: CampaignContext) {
     .filter((row): row is CampaignProspect =>
       Boolean(row && row.record.status === "active"),
     );
+  const qualificationHeadsByLeadId = new Map(
+    context.records.qualificationObservations.map((head) => [
+      head.record.leadId,
+      head.record,
+    ]),
+  );
   const campaignFilterRows = campaignRows.map((row) => {
     const prospect = row.record.prospect;
     const contact = findWhatsAppContactForLead(
@@ -361,6 +369,10 @@ export function CampaignScreen(context: CampaignContext) {
       contactName: record.prospect.contactName,
       phone: record.prospect.phone,
       whatsappPhone: record.prospect.whatsappPhone,
+      fit: calculateOutreachFitScore(
+        record.prospect.maps,
+        qualificationHeadsByLeadId.get(record.prospectId),
+      ),
     }),
   );
   const canWrite =
@@ -902,6 +914,8 @@ export function CampaignScreen(context: CampaignContext) {
       <OutreachBatchDialog
         leads={selectedBatchLeads}
         listName={campaign.name}
+        minimumFit={minimumFit}
+        onMinimumFitChange={setMinimumFit}
         onOpenChange={setBatchDialogOpen}
         open={batchDialogOpen}
       />

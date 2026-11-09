@@ -2,6 +2,11 @@ import type {
   WhatsAppContact,
   WhatsAppTemplate,
 } from "@/features/whatsapp-outreach/whatsappOutreachModels";
+import {
+  outreachNotContactedReason,
+  type OutreachFitScore,
+  type OutreachNotContactedReason,
+} from "./outreachFitScore";
 
 export type OutreachBatchLead = {
   leadId: string;
@@ -9,6 +14,8 @@ export type OutreachBatchLead = {
   contactName: string | null;
   phone: string | null;
   whatsappPhone?: string | null;
+  /** Undefined preserves the existing batch behavior for older callers. */
+  fit?: OutreachFitScore | null;
 };
 
 export type OutreachBatchContent = {
@@ -39,6 +46,11 @@ export type OutreachBatchPlan = {
     | "duplicate",
     number
   >;
+  notContacted: Array<{
+    leadId: string;
+    name: string;
+    reason: OutreachNotContactedReason;
+  }>;
 };
 
 export function normalizeOutreachPhone(value: string): string | null {
@@ -61,6 +73,8 @@ export function buildOutreachBatchPlan(input: {
   contacts: readonly WhatsAppContact[];
   inBatchLeadIds: ReadonlySet<string>;
   template: WhatsAppTemplate;
+  /** Null means the default-off setting does not filter on fit. */
+  minimumFit?: number | null;
 }): OutreachBatchPlan {
   const skipped = {
     noPhone: 0,
@@ -74,10 +88,27 @@ export function buildOutreachBatchPlan(input: {
   };
   const seenNumbers = new Set<string>();
   const rows: OutreachBatchContent["rows"] = [];
+  const notContacted: OutreachBatchPlan["notContacted"] = [];
   for (const lead of input.leads) {
     const contact = input.contacts.find((item) => item.leadId === lead.leadId);
     const targetPhone =
       lead.whatsappPhone?.trim() || lead.phone?.trim() || contact?.e164 || "";
+    if (lead.fit !== undefined) {
+      const reason = outreachNotContactedReason({
+        fit: lead.fit,
+        hasWhatsAppNumber: Boolean(targetPhone.trim()),
+        minimumFit: input.minimumFit,
+      });
+      if (reason) {
+        notContacted.push({
+          leadId: lead.leadId,
+          name: lead.name,
+          reason,
+        });
+        if (reason.code === "no_whatsapp_number") skipped.noPhone += 1;
+        continue;
+      }
+    }
     if (!targetPhone.trim()) {
       skipped.noPhone += 1;
       continue;
@@ -132,5 +163,6 @@ export function buildOutreachBatchPlan(input: {
       note: `List ${input.listName}.`,
     },
     skipped,
+    notContacted,
   };
 }
