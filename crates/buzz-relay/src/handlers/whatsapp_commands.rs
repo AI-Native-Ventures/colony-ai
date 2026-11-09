@@ -32,6 +32,7 @@ use buzz_db::whatsapp::{
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
+use crate::whatsapp::inbound::{load_lead_phone_lookup, LeadPhoneLookup, LeadPhoneMatch};
 use crate::whatsapp::policy::{
     account_retry_error_codes, clean_title, e164, is_contact_engagement_limit, normalize_wa_id,
     render_template, retry_scope_for_error_code, template_slot_count, window_open,
@@ -419,6 +420,7 @@ async fn handle_batch(
     let mut rows: Vec<NewOutboundMessage> = Vec::with_capacity(command.rows.len());
     let mut leads: Vec<(String, String)> = Vec::new();
     let mut names: Vec<(String, String)> = Vec::new();
+    let mut lead_lookup: Option<LeadPhoneLookup> = None;
     for (index, row) in command.rows.iter().enumerate() {
         let label = format!("row {index} ({})", row.to.trim());
         let Some(wa_id) = normalize_wa_id(&row.to) else {
@@ -448,19 +450,38 @@ async fn handle_batch(
             .whatsapp_get_contact(community, &wa_id)
             .await
             .map_err(internal)?;
+        let existing_lead = contact
+            .as_ref()
+            .and_then(|contact| contact.lead_id.as_deref());
+        let supplied_lead = row
+            .lead_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|lead| !lead.is_empty());
+        let resolved_lead = if existing_lead.is_none() && supplied_lead.is_none() {
+            if lead_lookup.is_none() {
+                lead_lookup = Some(
+                    load_lead_phone_lookup(state, tenant)
+                        .await
+                        .map_err(internal)?,
+                );
+            }
+            let Some(lead_lookup) = lead_lookup.as_ref() else {
+                return Err(internal("batch contact lead lookup was not initialized"));
+            };
+            match lead_lookup.find_lead_by_phone(&wa_id) {
+                LeadPhoneMatch::Unique(lead_id) => Some(lead_id),
+                LeadPhoneMatch::None | LeadPhoneMatch::Ambiguous => None,
+            }
+        } else {
+            None
+        };
         let safety = state
             .db
             .whatsapp_send_safety(
                 community,
                 &wa_id,
-                contact
-                    .as_ref()
-                    .and_then(|contact| contact.lead_id.as_deref())
-                    .or_else(|| {
-                        row.lead_id
-                            .as_deref()
-                            .filter(|lead| !lead.trim().is_empty())
-                    }),
+                existing_lead.or(supplied_lead).or(resolved_lead.as_deref()),
             )
             .await
             .map_err(internal)?;
@@ -473,8 +494,10 @@ async fn handle_batch(
             continue;
         }
         let new_chat = !window_open(contact.as_ref().and_then(|c| c.last_inbound_at), now);
-        if let Some(lead) = row.lead_id.as_ref().filter(|lead| !lead.trim().is_empty()) {
-            leads.push((wa_id.clone(), lead.trim().to_string()));
+        if existing_lead.is_none() {
+            if let Some(lead) = supplied_lead.or(resolved_lead.as_deref()) {
+                leads.push((wa_id.clone(), lead.to_string()));
+            }
         }
         if let Some(name) = row.name.as_ref().filter(|name| !name.trim().is_empty()) {
             names.push((wa_id.clone(), name.trim().to_string()));

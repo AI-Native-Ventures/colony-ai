@@ -725,6 +725,7 @@ CREATE TABLE whatsapp_contacts (
     wa_id TEXT NOT NULL CHECK (wa_id ~ '^[0-9]{6,15}$'),
     display_name TEXT NOT NULL DEFAULT '',
     lead_id TEXT,
+    lead_link_checked_at TIMESTAMPTZ,
     owner_pubkey BYTEA CHECK (owner_pubkey IS NULL OR octet_length(owner_pubkey) = 32),
     thread_root_event_id BYTEA CHECK (
         thread_root_event_id IS NULL OR octet_length(thread_root_event_id) = 32
@@ -880,6 +881,9 @@ CREATE INDEX whatsapp_messages_due
 CREATE INDEX whatsapp_contacts_retry_due
     ON whatsapp_contacts (community_id, retry_after)
     WHERE retry_after IS NOT NULL;
+CREATE INDEX whatsapp_contacts_lead_link_due
+    ON whatsapp_contacts (community_id, lead_link_checked_at, created_at, wa_id)
+    WHERE lead_id IS NULL;
 CREATE INDEX whatsapp_messages_thread
     ON whatsapp_messages (community_id, wa_id, created_at DESC);
 CREATE INDEX whatsapp_messages_new_chat_day

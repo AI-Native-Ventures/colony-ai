@@ -1686,23 +1686,65 @@ impl Db {
         Ok(())
     }
 
-    /// Tag the contact with the lead it matches.
+    /// Return a bounded page of unlinked contacts whose durable lookup retry is due.
+    pub async fn whatsapp_list_contacts_needing_lead_link(
+        &self,
+        community: CommunityId,
+        retry_before: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query_scalar(
+            "SELECT wa_id FROM whatsapp_contacts \
+             WHERE community_id = $1 AND lead_id IS NULL \
+               AND (lead_link_checked_at IS NULL OR lead_link_checked_at <= $2) \
+             ORDER BY lead_link_checked_at NULLS FIRST, created_at, wa_id LIMIT $3",
+        )
+        .bind(community.as_uuid())
+        .bind(retry_before)
+        .bind(limit.clamp(1, 100))
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Record that an unlinked contact was checked, so no-match and ambiguous rows retry on a
+    /// bounded durable schedule rather than starving later contacts after a restart.
+    pub async fn whatsapp_mark_lead_link_checked(
+        &self,
+        community: CommunityId,
+        wa_id: &str,
+        checked_at: DateTime<Utc>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE whatsapp_contacts SET lead_link_checked_at = $3, updated_at = now() \
+             WHERE community_id = $1 AND wa_id = $2 AND lead_id IS NULL",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .bind(checked_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Tag a previously unlinked contact with the lead it matches. First writer wins so a
+    /// concurrent exact lookup or an existing batch association can never be overwritten.
     pub async fn whatsapp_set_lead(
         &self,
         community: CommunityId,
         wa_id: &str,
         lead_id: &str,
-    ) -> Result<()> {
-        sqlx::query(
+    ) -> Result<bool> {
+        let result = sqlx::query(
             "UPDATE whatsapp_contacts SET lead_id = $3, updated_at = now() \
-             WHERE community_id = $1 AND wa_id = $2",
+             WHERE community_id = $1 AND wa_id = $2 AND lead_id IS NULL",
         )
         .bind(community.as_uuid())
         .bind(wa_id)
         .bind(lead_id.chars().take(128).collect::<String>())
         .execute(&self.pool)
         .await?;
-        Ok(())
+        Ok(result.rows_affected() == 1)
     }
 
     /// Mark a contact opted out. Returns `true` when this call changed it.
