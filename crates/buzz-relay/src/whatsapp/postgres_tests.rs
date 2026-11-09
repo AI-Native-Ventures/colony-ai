@@ -610,6 +610,202 @@ async fn a_local_language_opt_out_is_durable_and_later_sends_are_refused() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn owner_reply_after_inbound_business_stop_is_queued_and_sent() {
+    let fx = fixture().await;
+    let wa_id = "27821230024";
+    let business_id = "business-owner-reply";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, None)
+        .await
+        .expect("create linked contact");
+    fx.state
+        .db
+        .whatsapp_set_lead(fx.community(), wa_id, business_id)
+        .await
+        .expect("link contact to business");
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(wa_id, "wamid.OWNER-REPLY-STOP", "Please tell me more."),
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    // This exercises the real command handler, enqueue safety check, sender safety recheck,
+    // and atomic claim. Before the owner-reply exception it is rejected as a business stop.
+    let queued = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "to": "+27821230024",
+                "text": "Thanks for getting back to us.",
+            }),
+        )
+        .await
+        .expect("an owner can reply during the open window");
+    assert!(queued.message.starts_with("queued"), "{}", queued.message);
+
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        1,
+        "the queued owner reply reaches Graph"
+    );
+    assert_eq!(
+        fx.graph.sends.lock().expect("sends").last(),
+        Some(&SendRequest::Text {
+            to: wa_id.into(),
+            body: "Thanks for getting back to us.".into(),
+        })
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn owner_can_approve_an_existing_agent_text_draft_after_an_inbound_business_stop() {
+    let fx = fixture().await;
+    let wa_id = "27821230025";
+    let business_id = "business-owner-draft-reply";
+    let agent = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &agent.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("agent joins Outreach");
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, None)
+        .await
+        .expect("create linked contact");
+    fx.state
+        .db
+        .whatsapp_set_lead(fx.community(), wa_id, business_id)
+        .await
+        .expect("link contact to business");
+    sqlx::query(
+        "UPDATE whatsapp_contacts SET last_inbound_at = $3, outbound_since_inbound = 0 \
+         WHERE community_id = $1 AND wa_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(wa_id)
+    .bind(Utc::now() - Duration::minutes(1))
+    .execute(&fx.pool)
+    .await
+    .expect("open the service window for the draft");
+
+    fx.command(
+        &agent,
+        KIND_WHATSAPP_SEND_REQUEST,
+        json!({
+            "v": 1,
+            "requestId": Uuid::new_v4().to_string(),
+            "to": "+27821230025",
+            "text": "Thank you for replying.",
+        }),
+    )
+    .await
+    .expect("agent creates a draft before the inbound safety stop");
+    let draft = fx
+        .state
+        .db
+        .whatsapp_list_drafts(fx.community(), 10)
+        .await
+        .expect("list drafts")
+        .into_iter()
+        .next()
+        .expect("one pending draft");
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(wa_id, "wamid.OWNER-DRAFT-STOP", "Can we talk this week?"),
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "draftId": draft.id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner can approve the in-window free-text draft");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(fx.graph.send_count(), 1, "the approved draft reaches Graph");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn an_opt_out_business_stop_blocks_an_owner_reply_to_another_open_contact() {
+    let fx = fixture().await;
+    let business_id = "business-opt-out-stop";
+    let source = "27821230026";
+    let other = "27821230027";
+    for wa_id in [source, other] {
+        fx.state
+            .db
+            .whatsapp_ensure_contact(fx.community(), wa_id, None)
+            .await
+            .expect("create linked contact");
+        fx.state
+            .db
+            .whatsapp_set_lead(fx.community(), wa_id, business_id)
+            .await
+            .expect("link contact to business");
+    }
+    sqlx::query(
+        "UPDATE whatsapp_contacts SET last_inbound_at = $3, outbound_since_inbound = 0 \
+         WHERE community_id = $1 AND wa_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(other)
+    .bind(Utc::now() - Duration::minutes(1))
+    .execute(&fx.pool)
+    .await
+    .expect("open the other contact's service window");
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(source, "wamid.BUSINESS-OPTOUT", "STOP")
+        )
+        .await,
+        StatusCode::OK
+    );
+
+    // GUARD: an opt-out-caused business stop is never the inbound-reply exception, even where
+    // the other contact has an otherwise open free-text window.
+    let refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "to": "+27821230027",
+                "text": "Thank you for your reply.",
+            }),
+        )
+        .await,
+    );
+    assert!(refusal.contains("whole business"), "{refusal}");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn a_reply_stops_its_whole_business_and_never_contact_blocks_every_send_fence() {
     let fx = fixture().await;
     let business_id = "business-outreach-safety";
@@ -704,6 +900,54 @@ async fn a_reply_stops_its_whole_business_and_never_contact_blocks_every_send_fe
             .await
             .expect("business claim result"),
         "the final atomic claim fence rejects a row that predates the reply"
+    );
+
+    // GUARD: the direct-command idempotency predicate in `whatsapp_claim_message`. A future
+    // relay-owned follow-up is free text and may have an open target window, but it must never
+    // inherit the owner-reply exception.
+    sqlx::query(
+        "UPDATE whatsapp_contacts SET last_inbound_at = $3, outbound_since_inbound = 0 \
+         WHERE community_id = $1 AND wa_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind("27821230022")
+    .bind(Utc::now() - Duration::minutes(1))
+    .execute(&fx.pool)
+    .await
+    .expect("open the other contact's service window");
+    let automatic_text_row = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: "27821230022".into(),
+        kind: "text".into(),
+        body: "Automated follow-up".into(),
+        template_name: None,
+        template_language: None,
+        params: json!([]),
+        state: "queued".into(),
+        idempotency_key: format!("followup:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &automatic_text_row)
+        .await
+        .expect("insert automatic text row");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                automatic_text_row.id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(2),
+                Utc::now(),
+            )
+            .await
+            .expect("automatic text claim result"),
+        "the final atomic claim fence rejects an automatic free-text row after a reply"
     );
 
     let never_contact = "+27821230023";

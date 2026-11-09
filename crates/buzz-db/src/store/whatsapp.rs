@@ -29,6 +29,11 @@ pub const MEDIA_MAX_ATTEMPTS: i32 = 8;
 /// Failed follow-up posts (the link added to an already posted message) before the repair
 /// loop stops trying. Counted together with the download attempts of the same row.
 pub const MEDIA_LINK_MAX_ATTEMPTS: i32 = 40;
+/// Idempotency-key prefix assigned only by the interactive WhatsApp send command.
+///
+/// Batch and relay-owned follow-up rows use their own prefixes. This keeps the narrow owner
+/// reply exception below from becoming a general automatic-send exception.
+pub const SEND_REQUEST_IDEMPOTENCY_PREFIX: &str = "req:";
 
 async fn begin(pool: &PgPool) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
     let connection = crate::observability::acquire_writer(
@@ -343,6 +348,39 @@ pub struct WhatsappBusinessStop {
     pub created_at: DateTime<Utc>,
 }
 
+/// The durable reason that created a whole-business stop.
+///
+/// The database schema intentionally retains the plain reason for existing installations and
+/// owner-visible history. New writes use this type; reads classify historical rows by their
+/// persisted reason and fail closed for an unrecognized value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WhatsappBusinessStopCause {
+    /// A customer replied without opting out. Outreach stops, but an owner may answer that
+    /// contact with free text while its service window is open.
+    InboundReply,
+    /// The inbound message was an opt-out. Nothing may bypass this stop.
+    ContactOptOut,
+}
+
+impl WhatsappBusinessStopCause {
+    /// Stable stored representation retained for legacy rows and owner-visible records.
+    pub const fn reason(self) -> &'static str {
+        match self {
+            Self::InboundReply => "inbound reply received",
+            Self::ContactOptOut => "contact opted out",
+        }
+    }
+
+    /// Classify a persisted legacy reason. Unknown values remain a strict business stop.
+    pub fn from_reason(reason: &str) -> Option<Self> {
+        match reason {
+            "inbound reply received" => Some(Self::InboundReply),
+            "contact opted out" => Some(Self::ContactOptOut),
+            _ => None,
+        }
+    }
+}
+
 /// The first active safety fence that prevents a WhatsApp recipient from receiving outreach.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WhatsappSendSafety {
@@ -354,6 +392,17 @@ pub struct WhatsappSendSafety {
     pub matched_rule: Option<String>,
     /// Business id for a whole-business stop.
     pub business_id: Option<String>,
+}
+
+impl WhatsappSendSafety {
+    /// Whether this is the one business-stop cause eligible for the owner reply exception.
+    pub fn is_inbound_reply_business_stop(&self) -> bool {
+        self.scope == "business_stop"
+            && matches!(
+                WhatsappBusinessStopCause::from_reason(&self.reason),
+                Some(WhatsappBusinessStopCause::InboundReply)
+            )
+    }
 }
 
 /// Result of durably applying an inbound reply's safety effect.
@@ -1728,8 +1777,9 @@ impl Db {
 
     /// Persist every safety consequence of one inbound reply in a transaction. An opt-out keeps
     /// the legacy contact projection for installed desktop clients and also records the exact
-    /// matched rule in the append-only suppression ledger. Any linked reply stops every current
-    /// and future contact of that business before another outbound lease can be claimed.
+    /// matched rule in the append-only suppression ledger. Any linked reply stops outreach to
+    /// every current and future contact of that business. The only exception is an owner-approved
+    /// free-text reply to a linked contact with an open service window.
     #[allow(clippy::too_many_arguments)]
     pub async fn whatsapp_record_inbound_safety(
         &self,
@@ -1818,10 +1868,10 @@ impl Db {
         }
 
         if let Some(business_id) = business_id.as_deref() {
-            let reason = if opt_out_reason.is_some() {
-                "contact opted out"
+            let cause = if opt_out_reason.is_some() {
+                WhatsappBusinessStopCause::ContactOptOut
             } else {
-                "inbound reply received"
+                WhatsappBusinessStopCause::InboundReply
             };
             let inserted = sqlx::query(
                 "INSERT INTO whatsapp_business_stops \
@@ -1831,7 +1881,7 @@ impl Db {
             .bind(community.as_uuid())
             .bind(business_id)
             .bind(wa_id)
-            .bind(reason)
+            .bind(cause.reason())
             .bind(matched_rule.map(|rule| rule.chars().take(120).collect::<String>()))
             .execute(&mut *tx)
             .await?;
@@ -1965,6 +2015,38 @@ impl Db {
             })
         })
         .transpose()
+    }
+
+    /// Whether this stored row is the narrow direct-send shape that may answer an inbound-reply
+    /// business stop. A `req:` row is queued only by an owner/admin command or after an owner
+    /// approves an agent draft. The query deliberately excludes batches and relay-owned
+    /// follow-ups, and repeats the open-window predicate at sender time rather than trusting an
+    /// earlier command check.
+    pub async fn whatsapp_is_open_owner_reply(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool> {
+        sqlx::query_scalar(
+            "SELECT EXISTS ( \
+                 SELECT 1 FROM whatsapp_messages m \
+                 JOIN whatsapp_contacts c \
+                   ON c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                 WHERE m.community_id = $1 AND m.id = $2 AND m.direction = 'out' \
+                   AND m.kind = 'text' AND m.batch_id IS NULL AND NOT m.new_chat \
+                   AND m.idempotency_key LIKE $3 \
+                   AND c.last_inbound_at IS NOT NULL \
+                   AND c.last_inbound_at + interval '24 hours' > $4 \
+             )",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .bind(format!("{SEND_REQUEST_IDEMPOTENCY_PREFIX}%"))
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     /// Active phone decisions for settings and discovery/list preflight. Historical rows stay
@@ -2668,6 +2750,13 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                     AND NOT ( \
+                         m.direction = 'out' AND m.kind = 'text' AND m.batch_id IS NULL \
+                         AND NOT m.new_chat AND m.idempotency_key LIKE $6 \
+                         AND c.last_inbound_at IS NOT NULL \
+                         AND c.last_inbound_at + interval '24 hours' > $5 \
+                         AND b.reason = $7 \
+                     ) \
                )",
         )
         .bind(community.as_uuid())
@@ -2675,6 +2764,8 @@ impl Db {
         .bind(lease_token)
         .bind(lease_until)
         .bind(now)
+        .bind(format!("{SEND_REQUEST_IDEMPOTENCY_PREFIX}%"))
+        .bind(WhatsappBusinessStopCause::InboundReply.reason())
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
