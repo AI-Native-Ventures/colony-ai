@@ -674,6 +674,11 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         .whatsapp_count_new_chats_since(community, sast_day_start(Utc::now()))
         .await
         .map_err(|error| error.to_string())?;
+    let paced_outreach_today = state
+        .db
+        .whatsapp_count_paced_outreach_since(community, sast_day_start(Utc::now()))
+        .await
+        .map_err(|error| error.to_string())?;
     let account_retry_codes = account_retry_error_codes();
     let account_retry_count = state
         .db
@@ -716,7 +721,14 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         "phoneStatus": connection.as_ref().and_then(|c| c.phone_status.clone()),
         "dailyNewChatCap": settings.daily_new_chat_cap,
         "newChatsSentToday": sent_today,
+        // The legacy names above remain stable. New desktops use these additive values to show
+        // that enabled follow-ups share the same bounded outreach lane as new conversations.
+        "dailyOutreachCap": settings.daily_new_chat_cap,
+        "outreachSendsToday": paced_outreach_today,
         "accountRetryCount": account_retry_count,
+        // A capability hint only. Older desktops ignore it and continue using the stable status
+        // object; follow-up detail remains behind its separate private query.
+        "followUpsAvailable": true,
         // Additive health data. Desktops before this slice ignore the fields, and a relay before
         // this slice simply omits them for the new desktop parser's safe defaults.
         "sendHealth": send_health,

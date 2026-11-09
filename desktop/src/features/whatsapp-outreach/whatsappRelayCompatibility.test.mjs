@@ -204,7 +204,12 @@ const relayOutput = {
     phoneStatus: "CONNECTED",
     dailyNewChatCap: 30,
     newChatsSentToday: 12,
+    // The shared outreach-lane counters are also additive for installed desktops.
+    dailyOutreachCap: 30,
+    outreachSendsToday: 18,
     accountRetryCount: 63,
+    // Follow-up support is additive. Old status parsers intentionally do not inspect it.
+    followUpsAvailable: true,
     sendingPaused: true,
     pauseReason: "owner paused",
     // Additive fields must not make strict older desktop parsers reject this response.

@@ -77,6 +77,7 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `batches` | `state` optional | owner/admin, Outreach member | `{ "batches": [BatchSummary] }` |
 | `batch` | `batchId` | owner/admin, Outreach member | `BatchDetail` |
 | `drafts` | `limit` | owner/admin, Outreach member | `{ "drafts": [Message + to, params] }` pending agent drafts, oldest first |
+| `follow_ups` | `limit` | owner/admin, Outreach member | `{ "sequences": [FollowUpSequence], "due": [FollowUpDue] }` active relay-owned timing and owner-review work only |
 | `safety_check` | `identities: [{kind: "phone"|"email"|"domain", value}]` | any member | `{ "matches": [{kind, value}] }` for caller-provided active suppressions only |
 | `suppressions` | `limit` | owner/admin | `{ "suppressions": [Suppression], "businessStops": [BusinessStop] }` |
 | `unknown_sends` | `limit` | owner/admin | `{ "unknownSends": [Message] }` whose result needs an owner decision |
@@ -108,6 +109,8 @@ Status object:
   "phoneStatus": "CONNECTED",
   "dailyNewChatCap": 30,
   "newChatsSentToday": 4,
+  "dailyOutreachCap": 30,
+  "outreachSendsToday": 7,
   "sendingPaused": false,
   "pauseReason": null,
   "ownerPaused": false,
@@ -125,6 +128,9 @@ Status object:
 `quality_red`, `template_paused`, `webhook_failing`. Sending stops by itself on `quality_red`.
 `ownerPaused`, `ownerPausedBy` and `ownerPausedAt` describe the active manual owner/admin pause.
 They are additive so installed desktop clients safely ignore them.
+`dailyOutreachCap` and `outreachSendsToday` are additive counters for the shared paced lane of
+new conversations and enabled follow-ups. The legacy new-chat counters remain unchanged for
+installed desktops and scorecards.
 
 Template: `{ title, name, proposedTitle, titleCustom, language, category, status, body, slots,
 buttons: [{type, text}] }`.
@@ -212,7 +218,7 @@ submit. Discovery and list preparation use it before creating outreach work.
 
 ## Events (member signed commands, handled by the relay)
 
-**Kind block.** This feature owns actions `47048` to `47055` (seven used: `47048` to `47054`) and,
+**Kind block.** This feature owns actions `47048` to `47055` (eight used: `47048` to `47055`) and,
 if relay-signed heads are ever needed, `30660` to `30667` (none used today). `47046` and `47047` are
 reserved for the business profile and team computer actions. Co-founder mode owns
 `30670` to `30679` and `47060` to `47069`. A compile-time assert in `kind.rs` keeps the
@@ -237,7 +243,8 @@ accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
     { "to": "+27821234567", "leadId": "uuid or null", "name": "optional contact name", "params": ["Thabo", "Horizon Labs"] }
   ],
   "materialLinks": ["https://..."],
-  "note": "optional text for the approver"
+  "note": "optional text for the approver",
+  "followUpScope": { "kind": "outreach_list" | "campaign", "id": "uuid" }
 }
 ```
 
@@ -246,6 +253,9 @@ re-renders every preview itself and stores the batch as `pending`. A pending bat
 Opted-out, paused, never-contact, or whole-business-stopped numbers are refused at create time
 with a clear reason per row.
 Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
+`followUpScope` is optional and must be configured first with `47055`. It tags only the accepted
+opener. The relay schedules the first delay only after Meta accepts that opener, so a batch
+approval or a desktop timer never creates a phantom follow-up.
 
 ### `47049` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
 
@@ -319,6 +329,13 @@ contact (a pending draft counts toward rule 4). Free text still only inside the 
 
 The request is stored durably and sent by the relay worker. `requestId` is the idempotency
 key: one request is at most one Graph send.
+
+For a relay-created due item, add `"followUpId": "uuid"` to the same request. The `to` or
+`threadRoot` must name that exact recipient. This is a special owner-review path: it bypasses
+only the ordinary one-message-at-a-time rule, never a safety stop or window rule, and it always
+creates a `draft`, including when an owner sent the request. Free text outside 24 hours becomes
+`held` with a plain template-required reason. A later owner `retry` deliberately supersedes that
+stale draft before Scout can propose a compliant replacement.
 
 ### `47051` `KIND_WHATSAPP_SETTINGS` (owner/admin; agents may only propose a title)
 
@@ -401,15 +418,45 @@ provider result or send anything. `mark_delivered` changes only an unresolved `u
 explicit confirmation. A repeat resend is rejected rather than creating another replacement.
 Every recovery action is audited as `whatsapp_unknown_send_recovery`.
 
+### `47055` `KIND_WHATSAPP_FOLLOW_UP` (owner/admin only)
+
+```json
+{
+  "v": 1,
+  "action": "configure",
+  "scope": { "kind": "outreach_list", "id": "uuid" },
+  "enabled": false,
+  "steps": [{ "step": 1, "delayDays": 3 }, { "step": 2, "delayDays": 5 }]
+}
+{ "v": 1, "action": "retry", "dueId": "uuid" }
+{ "v": 1, "action": "mark_done", "dueId": "uuid" }
+```
+
+Each scope has one to three numbered steps, each delayed 1 through 90 days. A new scope is off
+until `enabled: true`; omitted steps default to 3 and 5 days. `retry` is explicit because template
+loss and definite send refusals stay held after a restart. An unknown send outcome remains held
+until its separate owner recovery decision. `mark_done` stops the due item
+and rejects or skips its attached draft. A recipient leaves the sequence immediately on any inbound
+reply in the linked business, opt-out, never-contact entry, business stop, contact pause or owner
+rejection, or a system, owner or RED-quality sending pause. The relay rechecks those
+conditions while making a draft and in the final lease claim before Graph is called. It never
+auto-sends a follow-up. When a teammate's normal message is accepted, the relay also stops any
+pending sequence for that recipient's whole business.
+
 ## Sending, pacing, cap
 
-* Approved batch rows send between 08:00 and 18:00 Africa/Johannesburg, one every 3 to 6
-  minutes (deterministic jitter per row), never past the daily cap of NEW chats
-  (a new chat is a template send to a contact with no open window). Unsent rows roll to
-  the next day automatically. The owner's `send_now` on an approved batch of at most 3 rows
-  skips the window and the gap (see `47049`); the cap still holds.
-* Replies and follow-ups inside an open window are not capped and are not paced, but an agent's
-  reply or follow-up waits for its own owner/admin approval (draft) before it is sent.
+* Approved batch rows and owner-approved follow-ups share one paced outreach lane: 08:00 to
+  18:00 Africa/Johannesburg, one every 3 to 6 minutes (deterministic jitter per row), never
+  past the daily cap. Follow-ups are considered first. A new chat is a template send to a
+  contact with no open window. Unsent rows roll to the next day automatically. The owner's
+  `send_now` on an approved batch of at most 3 rows skips the window and the gap (see `47049`);
+  the cap still holds.
+* Replies inside an open window are not capped and are not paced, but an agent reply or
+  follow-up always waits for its own owner/admin approval (draft) before it is sent.
+* A follow-up sequence has at most three steps. It creates exactly one due item per lead (or
+  unlinked recipient), scope and step, and each due item can own only one active draft. The successful accepted message,
+  not a UI timer, schedules the next step. A free-text follow-up after the 24 hour window is held;
+  it is never silently converted to free text or dropped.
 * An owner or admin can set `sendingPaused` through the settings command. The relay stores that
   manual source as `owner paused`, records who paused and when, and appends an audit entry.
   Quality RED and automatic account incidents have independent pause sources. Recovering one of

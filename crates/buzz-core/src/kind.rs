@@ -887,6 +887,8 @@ pub const KIND_WHATSAPP_CONTACT_UPDATE: u32 = 47052;
 pub const KIND_WHATSAPP_SAFETY_ACTION: u32 = 47053;
 /// Owner or admin resolves an unknown WhatsApp send outcome after explicit confirmation.
 pub const KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY: u32 = 47054;
+/// Owner-controlled WhatsApp follow-up sequence configuration and due-item actions.
+pub const KIND_WHATSAPP_FOLLOW_UP: u32 = 47055;
 
 /// Every WhatsApp outreach command kind.
 pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
@@ -897,6 +899,7 @@ pub const WHATSAPP_COMMAND_KINDS: &[u32] = &[
     KIND_WHATSAPP_CONTACT_UPDATE,
     KIND_WHATSAPP_SAFETY_ACTION,
     KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+    KIND_WHATSAPP_FOLLOW_UP,
 ];
 
 /// Returns `true` for member commands handled by the WhatsApp outreach broker.
@@ -910,6 +913,7 @@ pub const fn is_whatsapp_command_kind(kind: u32) -> bool {
             | KIND_WHATSAPP_CONTACT_UPDATE
             | KIND_WHATSAPP_SAFETY_ACTION
             | KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY
+            | KIND_WHATSAPP_FOLLOW_UP
     )
 }
 
@@ -1410,6 +1414,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_WHATSAPP_CONTACT_UPDATE,
     KIND_WHATSAPP_SAFETY_ACTION,
     KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+    KIND_WHATSAPP_FOLLOW_UP,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1519,6 +1524,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_WHATSAPP_CONTACT_UPDATE
             | KIND_WHATSAPP_SAFETY_ACTION
             | KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY
+            | KIND_WHATSAPP_FOLLOW_UP
     )
 }
 
@@ -1648,6 +1654,7 @@ const _: () = assert!(
         && KIND_WHATSAPP_CONTACT_UPDATE >= 47048
         && KIND_WHATSAPP_SAFETY_ACTION >= 47048
         && KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY >= 47048
+        && KIND_WHATSAPP_FOLLOW_UP >= 47048
         && KIND_WHATSAPP_BATCH <= 47055
         && KIND_WHATSAPP_BATCH_DECISION <= 47055
         && KIND_WHATSAPP_SEND_REQUEST <= 47055
@@ -1655,6 +1662,7 @@ const _: () = assert!(
         && KIND_WHATSAPP_CONTACT_UPDATE <= 47055
         && KIND_WHATSAPP_SAFETY_ACTION <= 47055
         && KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY <= 47055
+        && KIND_WHATSAPP_FOLLOW_UP <= 47055
 );
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.

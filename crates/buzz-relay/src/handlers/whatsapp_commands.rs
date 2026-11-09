@@ -19,14 +19,15 @@ use uuid::Uuid;
 
 use buzz_core::kind::{
     KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION, KIND_WHATSAPP_CONTACT_UPDATE,
-    KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
-    KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+    KIND_WHATSAPP_FOLLOW_UP, KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST,
+    KIND_WHATSAPP_SETTINGS, KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
 use buzz_core::whatsapp_stage::{derive_stage, WhatsappStage};
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
     BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, SendNowOutcome,
-    UnknownSendReplacement, WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP, OWNER_PAUSE_REASON,
+    UnknownSendReplacement, WhatsappBatch, WhatsappFollowUpScope, WhatsappFollowUpStep,
+    MAX_DAILY_NEW_CHAT_CAP, OWNER_PAUSE_REASON,
 };
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
@@ -39,7 +40,8 @@ use crate::whatsapp::policy::{
     FailureRetryScope, SEND_NOW_MAX_ROWS,
 };
 use crate::whatsapp::sender::{
-    check_send, enqueue_send, safety_refusal, Enqueued, SendCommand, SendContext, TemplateRef,
+    check_send, enqueue_follow_up_send, enqueue_send, safety_refusal, Enqueued, FollowUpEnqueued,
+    SendCommand, SendContext, TemplateRef,
 };
 use crate::whatsapp::{access_for, channel, parse_uuid, Access};
 
@@ -75,6 +77,9 @@ struct BatchCommand {
     material_links: Vec<String>,
     #[serde(default)]
     note: String,
+    /// Optional list or campaign whose configured sequence starts after this opener is accepted.
+    #[serde(default)]
+    follow_up_scope: Option<FollowUpScopeCommand>,
 }
 
 fn default_language() -> String {
@@ -134,6 +139,41 @@ struct SendRequestCommand {
     text: Option<String>,
     #[serde(default)]
     template: Option<SendTemplate>,
+    /// Durable sequence item an agent is preparing, never a direct-send escape hatch.
+    #[serde(default)]
+    follow_up_id: Option<String>,
+}
+
+/// The list or campaign to which a bounded follow-up sequence belongs.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FollowUpScopeCommand {
+    kind: String,
+    id: String,
+}
+
+/// One explicit delay in a sequence. Step numbering makes a partial or reordered request fail.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FollowUpStepCommand {
+    step: i16,
+    delay_days: i16,
+}
+
+/// Owner controls for the relay-owned sequence state machine.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FollowUpCommand {
+    v: u8,
+    action: String,
+    #[serde(default)]
+    scope: Option<FollowUpScopeCommand>,
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    steps: Option<Vec<FollowUpStepCommand>>,
+    #[serde(default)]
+    due_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,6 +320,57 @@ fn check_version(v: u8) -> Result<(), IngestError> {
     }
 }
 
+fn parse_follow_up_scope(
+    scope: &FollowUpScopeCommand,
+) -> Result<WhatsappFollowUpScope, IngestError> {
+    let kind = scope.kind.trim();
+    if !matches!(kind, "outreach_list" | "campaign") {
+        return Err(invalid("scope.kind must be outreach_list or campaign"));
+    }
+    Ok(WhatsappFollowUpScope {
+        kind: kind.to_string(),
+        id: parse_uuid(&scope.id, "scope.id").map_err(invalid)?,
+    })
+}
+
+fn parse_follow_up_steps(
+    raw: &[FollowUpStepCommand],
+) -> Result<Vec<WhatsappFollowUpStep>, IngestError> {
+    if raw.is_empty() || raw.len() > 3 {
+        return Err(invalid("steps must contain one through three entries"));
+    }
+    let mut steps = Vec::with_capacity(raw.len());
+    for (index, step) in raw.iter().enumerate() {
+        let expected = (index + 1) as i16;
+        if step.step != expected {
+            return Err(invalid(
+                "steps must be ordered and numbered from 1 without gaps",
+            ));
+        }
+        if !(1..=90).contains(&step.delay_days) {
+            return Err(invalid("each delayDays must be 1 through 90"));
+        }
+        steps.push(WhatsappFollowUpStep {
+            step: step.step,
+            delay_days: step.delay_days,
+        });
+    }
+    Ok(steps)
+}
+
+fn default_follow_up_steps() -> Vec<WhatsappFollowUpStep> {
+    vec![
+        WhatsappFollowUpStep {
+            step: 1,
+            delay_days: 3,
+        },
+        WhatsappFollowUpStep {
+            step: 2,
+            delay_days: 5,
+        },
+    ]
+}
+
 /// Route one WhatsApp command.
 pub async fn handle(
     tenant: &TenantContext,
@@ -314,6 +405,7 @@ pub async fn handle(
         KIND_WHATSAPP_BATCH_DECISION => handle_decision(tenant, state, &event, access).await,
         KIND_WHATSAPP_SEND_REQUEST => handle_send(tenant, state, &event, access).await,
         KIND_WHATSAPP_SETTINGS => handle_settings(tenant, state, &event, access).await,
+        KIND_WHATSAPP_FOLLOW_UP => handle_follow_up(tenant, state, &event, access).await,
         KIND_WHATSAPP_CONTACT_UPDATE => handle_contact_update(tenant, state, &event, access).await,
         KIND_WHATSAPP_SAFETY_ACTION => handle_safety_action(tenant, state, &event, access).await,
         KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY => {
@@ -339,6 +431,113 @@ pub fn row_refusal(contact: Option<&buzz_db::whatsapp::WhatsappContact>) -> Opti
         return Some("already messaged with no reply yet".to_string());
     }
     None
+}
+
+/// Configure or explicitly resolve a relay-owned follow-up item. Scout prepares the actual
+/// message through the normal send request with `followUpId`, which always creates a draft.
+async fn handle_follow_up(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    access: Access,
+) -> Result<IngestResult, IngestError> {
+    if !access.is_owner_admin() {
+        return Err(restricted(
+            "only the owner or an admin can configure or resolve follow-ups",
+        ));
+    }
+    let command: FollowUpCommand = parse(event)?;
+    check_version(command.v)?;
+    let community = tenant.community();
+    match command.action.as_str() {
+        "configure" => {
+            let scope = command
+                .scope
+                .as_ref()
+                .ok_or_else(|| invalid("configure needs scope"))
+                .and_then(parse_follow_up_scope)?;
+            let previous = state
+                .db
+                .whatsapp_get_follow_up_sequence(community, &scope)
+                .await
+                .map_err(internal)?;
+            let enabled = command
+                .enabled
+                .unwrap_or_else(|| previous.as_ref().is_some_and(|sequence| sequence.enabled));
+            let steps = match command.steps.as_ref() {
+                Some(steps) => parse_follow_up_steps(steps)?,
+                None => previous
+                    .as_ref()
+                    .map(|sequence| sequence.steps.clone())
+                    .unwrap_or_else(default_follow_up_steps),
+            };
+            state
+                .db
+                .whatsapp_configure_follow_up_sequence(
+                    community,
+                    &scope,
+                    enabled,
+                    &steps,
+                    &event.pubkey.to_bytes(),
+                )
+                .await
+                .map_err(internal)?;
+            let delays = steps
+                .iter()
+                .map(|step| {
+                    format!(
+                        "{} day{}",
+                        step.delay_days,
+                        if step.delay_days == 1 { "" } else { "s" }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", then ");
+            Ok(ok(
+                event,
+                format!(
+                    "follow-ups {} for {} {}: {}",
+                    if enabled { "enabled" } else { "disabled" },
+                    scope.kind,
+                    scope.id,
+                    delays
+                ),
+            ))
+        }
+        "retry" => {
+            if command.scope.is_some() || command.enabled.is_some() || command.steps.is_some() {
+                return Err(invalid("retry takes only dueId"));
+            }
+            let due_id =
+                parse_uuid(command.due_id.as_deref().unwrap_or(""), "dueId").map_err(invalid)?;
+            if !state
+                .db
+                .whatsapp_retry_follow_up(community, due_id)
+                .await
+                .map_err(internal)?
+            {
+                return Err(invalid("no held follow-up with that dueId"));
+            }
+            Ok(ok(event, format!("follow-up retry opened: {due_id}")))
+        }
+        "mark_done" => {
+            if command.scope.is_some() || command.enabled.is_some() || command.steps.is_some() {
+                return Err(invalid("mark_done takes only dueId"));
+            }
+            let due_id =
+                parse_uuid(command.due_id.as_deref().unwrap_or(""), "dueId").map_err(invalid)?;
+            if !state
+                .db
+                .whatsapp_mark_follow_up_done(community, due_id)
+                .await
+                .map_err(internal)?
+            {
+                return Err(invalid("no active follow-up with that dueId"));
+            }
+            Ok(ok(event, format!("follow-up marked done: {due_id}")))
+        }
+        _ => Err(invalid("action must be configure, retry or mark_done")),
+    }
 }
 
 fn valid_link(link: &str) -> bool {
@@ -373,6 +572,24 @@ async fn handle_batch(
         .is_some()
     {
         return Ok(ok(event, "duplicate: this batch was already received"));
+    }
+    let follow_up_scope = command
+        .follow_up_scope
+        .as_ref()
+        .map(parse_follow_up_scope)
+        .transpose()?;
+    if let Some(scope) = follow_up_scope.as_ref() {
+        if state
+            .db
+            .whatsapp_get_follow_up_sequence(community, scope)
+            .await
+            .map_err(internal)?
+            .is_none()
+        {
+            return Err(invalid(
+                "configure this follow-up scope before attaching it to an outreach batch",
+            ));
+        }
     }
     if command.rows.is_empty() || command.rows.len() > MAX_BATCH_ROWS {
         return Err(invalid(format!(
@@ -577,7 +794,13 @@ async fn handle_batch(
     };
     let inserted = state
         .db
-        .whatsapp_insert_batch(community, &batch, event.id.as_bytes(), &rows)
+        .whatsapp_insert_batch(
+            community,
+            &batch,
+            event.id.as_bytes(),
+            &rows,
+            follow_up_scope.as_ref(),
+        )
         .await
         .map_err(internal)?;
     if !inserted {
@@ -819,6 +1042,20 @@ async fn handle_draft_decision(
             "duplicate: this draft was already decided".into(),
         ));
     }
+    let follow_up = state
+        .db
+        .whatsapp_follow_up_due_for_message(community, draft_id)
+        .await
+        .map_err(internal)?;
+    if let Some(due) = follow_up.as_ref() {
+        if due.state != "draft" {
+            return Err(restricted(
+                due.reason
+                    .as_deref()
+                    .unwrap_or("this follow-up is held or stopped"),
+            ));
+        }
+    }
 
     let mut edit: Option<(String, serde_json::Value)> = None;
     if approve {
@@ -850,7 +1087,7 @@ async fn handle_draft_decision(
             )
             .await
             .map_err(internal)?;
-        let plan = check_send(&SendContext {
+        let plan = match check_send(&SendContext {
             contact: contact.as_ref(),
             send_paused: settings.send_paused,
             pause_reason: settings.pause_reason.as_deref(),
@@ -858,13 +1095,63 @@ async fn handle_draft_decision(
             now: Utc::now(),
             is_owner_admin: true,
             is_template: message.kind == "template",
+            is_follow_up: follow_up.is_some(),
             safety: safety.as_ref(),
-        })
-        .map_err(restricted)?;
-        if plan.new_chat {
+        }) {
+            Ok(plan) => plan,
+            Err(reason) => {
+                if let Some(due) = follow_up.as_ref() {
+                    let terminal = safety.is_some()
+                        || settings.send_paused
+                        || contact.as_ref().is_some_and(|contact| {
+                            contact.opted_out_at.is_some() || contact.paused_at.is_some()
+                        });
+                    if terminal {
+                        state
+                            .db
+                            .whatsapp_stop_follow_up(community, due.id, &reason)
+                            .await
+                            .map_err(internal)?;
+                    } else {
+                        state
+                            .db
+                            .whatsapp_hold_follow_up(community, due.id, &reason)
+                            .await
+                            .map_err(internal)?;
+                    }
+                }
+                return Err(restricted(reason));
+            }
+        };
+        if plan.new_chat && follow_up.is_none() {
             return Err(restricted(
                 "the 24 hour window closed; a new chat needs an approved batch",
             ));
+        }
+        if follow_up.is_some() && message.kind == "template" {
+            let approved = match (
+                message.template_name.as_deref(),
+                message.template_language.as_deref(),
+            ) {
+                (Some(name), Some(language)) => state
+                    .db
+                    .whatsapp_get_template(community, name, language)
+                    .await
+                    .map_err(internal)?
+                    .is_some_and(|template| template.status.eq_ignore_ascii_case("APPROVED")),
+                _ => false,
+            };
+            if !approved {
+                let reason = "the follow-up template is no longer approved";
+                if let Some(due) = follow_up.as_ref() {
+                    state
+                        .db
+                        .whatsapp_hold_follow_up(community, due.id, reason)
+                        .await
+                        .map_err(internal)?;
+                }
+                return Err(restricted(reason));
+            }
         }
         match message.kind.as_str() {
             "text" => {
@@ -960,6 +1247,11 @@ async fn handle_send(
     let command: SendRequestCommand = parse(event)?;
     check_version(command.v)?;
     let request_id = parse_uuid(&command.request_id, "requestId").map_err(invalid)?;
+    let follow_up_id = command
+        .follow_up_id
+        .as_deref()
+        .map(|id| parse_uuid(id, "followUpId").map_err(invalid))
+        .transpose()?;
     let send = SendCommand {
         request_id,
         to: command.to,
@@ -971,6 +1263,32 @@ async fn handle_send(
             params: template.params,
         }),
     };
+    if let Some(due_id) = follow_up_id {
+        return match enqueue_follow_up_send(
+            state,
+            tenant,
+            &event.pubkey.to_bytes(),
+            due_id,
+            &send,
+        )
+        .await
+        .map_err(restricted)?
+        {
+            FollowUpEnqueued::Draft(id) => Ok(ok(
+                event,
+                format!(
+                    "follow-up draft pending approval: {id}. An owner or admin must approve it before it is sent."
+                ),
+            )),
+            FollowUpEnqueued::Duplicate(id) => Ok(ok(
+                event,
+                format!("duplicate: follow-up already has draft {id}"),
+            )),
+            FollowUpEnqueued::Held(reason) => Ok(ok(event, format!("follow-up held: {reason}"))),
+            FollowUpEnqueued::NotDue => Err(restricted("this follow-up is not due yet")),
+            FollowUpEnqueued::Stopped(reason) => Err(restricted(reason)),
+        };
+    }
     match enqueue_send(state, tenant, access, &event.pubkey.to_bytes(), &send)
         .await
         .map_err(restricted)?
@@ -1897,6 +2215,50 @@ mod tests {
             serde_json::from_str(r#"{"v":1,"dailyNewChatCap":45}"#).expect("settings");
         assert_eq!(settings.daily_new_chat_cap, Some(45));
         assert_eq!(e164("27821234567"), "+27821234567");
+    }
+
+    #[test]
+    fn follow_up_commands_keep_the_owner_policy_bounded_and_off_by_default() {
+        let command: FollowUpCommand = serde_json::from_str(
+            r#"{"v":1,"action":"configure","scope":{"kind":"campaign","id":"6f1f4f7a-3c3a-4e0e-9b55-0b6c3f6f9a11"}}"#,
+        )
+        .expect("follow-up command");
+        let scope = parse_follow_up_scope(command.scope.as_ref().expect("scope")).expect("scope");
+        assert_eq!(scope.kind, "campaign");
+        assert_eq!(
+            default_follow_up_steps(),
+            vec![
+                WhatsappFollowUpStep {
+                    step: 1,
+                    delay_days: 3,
+                },
+                WhatsappFollowUpStep {
+                    step: 2,
+                    delay_days: 5,
+                },
+            ]
+        );
+        assert_eq!(
+            command.enabled, None,
+            "new sequences are off unless enabled"
+        );
+        assert!(parse_follow_up_steps(&[]).is_err());
+        assert!(parse_follow_up_steps(&[
+            FollowUpStepCommand {
+                step: 1,
+                delay_days: 3,
+            },
+            FollowUpStepCommand {
+                step: 3,
+                delay_days: 5,
+            },
+        ])
+        .is_err());
+        assert!(parse_follow_up_scope(&FollowUpScopeCommand {
+            kind: "everybody".to_string(),
+            id: Uuid::new_v4().to_string(),
+        })
+        .is_err());
     }
 
     #[test]

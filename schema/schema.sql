@@ -799,6 +799,34 @@ CREATE TABLE whatsapp_business_stops (
 CREATE INDEX whatsapp_business_stops_source
     ON whatsapp_business_stops (community_id, source_wa_id);
 
+-- One owner-controlled follow-up policy per outreach list or Discovery campaign. A newly
+-- configured sequence stays off until its owner deliberately enables it.
+CREATE TABLE whatsapp_follow_up_sequences (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    scope_kind TEXT NOT NULL CHECK (scope_kind IN ('outreach_list', 'campaign')),
+    scope_id UUID NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    created_by BYTEA NOT NULL CHECK (octet_length(created_by) = 32),
+    updated_by BYTEA NOT NULL CHECK (octet_length(updated_by) = 32),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, scope_kind, scope_id)
+);
+
+-- The first two delays reproduce the approved 3-day and 5-day design. A sequence may add a
+-- third follow-up but no more, keeping the outreach bounded by schema and command validation.
+CREATE TABLE whatsapp_follow_up_steps (
+    community_id UUID NOT NULL,
+    scope_kind TEXT NOT NULL,
+    scope_id UUID NOT NULL,
+    step SMALLINT NOT NULL CHECK (step BETWEEN 1 AND 3),
+    delay_days SMALLINT NOT NULL CHECK (delay_days BETWEEN 1 AND 90),
+    PRIMARY KEY (community_id, scope_kind, scope_id, step),
+    FOREIGN KEY (community_id, scope_kind, scope_id)
+        REFERENCES whatsapp_follow_up_sequences (community_id, scope_kind, scope_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE whatsapp_batches (
     community_id UUID NOT NULL REFERENCES communities(id),
     id UUID NOT NULL,
@@ -845,6 +873,11 @@ CREATE TABLE whatsapp_messages (
     idempotency_key TEXT,
     batch_id UUID,
     batch_idx INTEGER,
+    follow_up_scope_kind TEXT CHECK (
+        follow_up_scope_kind IS NULL OR follow_up_scope_kind IN ('outreach_list', 'campaign')
+    ),
+    follow_up_scope_id UUID,
+    follow_up_due_id UUID,
     new_chat BOOLEAN NOT NULL DEFAULT false,
     sender_pubkey BYTEA CHECK (sender_pubkey IS NULL OR octet_length(sender_pubkey) = 32),
     send_after TIMESTAMPTZ,
@@ -872,6 +905,7 @@ CREATE TABLE whatsapp_messages (
     UNIQUE (community_id, idempotency_key),
     UNIQUE (community_id, wamid),
     UNIQUE (community_id, batch_id, batch_idx),
+    CHECK ((follow_up_scope_kind IS NULL) = (follow_up_scope_id IS NULL)),
     CHECK ((state = 'sending') = (lease_token IS NOT NULL AND lease_until IS NOT NULL))
 );
 
@@ -892,6 +926,60 @@ CREATE INDEX whatsapp_messages_new_chat_day
 CREATE INDEX whatsapp_messages_media_due
     ON whatsapp_messages (community_id, media_retry_at)
     WHERE media_state = 'pending';
+CREATE UNIQUE INDEX whatsapp_messages_follow_up_due_unique
+    ON whatsapp_messages (community_id, follow_up_due_id)
+    WHERE follow_up_due_id IS NOT NULL;
+
+-- A scheduled step is a durable work item, not a timer held in a desktop process. A unique
+-- `(scope, contact, step)` row prevents restart and retry paths from creating a second follow-up.
+CREATE TABLE whatsapp_follow_up_due (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    id UUID NOT NULL,
+    scope_kind TEXT NOT NULL CHECK (scope_kind IN ('outreach_list', 'campaign')),
+    scope_id UUID NOT NULL,
+    wa_id TEXT NOT NULL CHECK (wa_id ~ '^[0-9]{6,15}$'),
+    business_id TEXT,
+    step SMALLINT NOT NULL CHECK (step BETWEEN 1 AND 3),
+    predecessor_message_id UUID NOT NULL,
+    draft_message_id UUID,
+    due_at TIMESTAMPTZ NOT NULL,
+    state TEXT NOT NULL CHECK (
+        state IN ('scheduled', 'held', 'draft', 'ready', 'sending', 'sent', 'stopped', 'done')
+    ),
+    reason TEXT CHECK (reason IS NULL OR char_length(reason) <= 500),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, id),
+    FOREIGN KEY (community_id, wa_id)
+        REFERENCES whatsapp_contacts (community_id, wa_id),
+    FOREIGN KEY (community_id, scope_kind, scope_id)
+        REFERENCES whatsapp_follow_up_sequences (community_id, scope_kind, scope_id),
+    UNIQUE (community_id, draft_message_id)
+);
+
+CREATE UNIQUE INDEX whatsapp_follow_up_due_lead_step_unique
+    ON whatsapp_follow_up_due (
+        community_id, scope_kind, scope_id, COALESCE(business_id, wa_id), step
+    );
+CREATE INDEX whatsapp_follow_up_due_pending
+    ON whatsapp_follow_up_due (community_id, due_at, state)
+    WHERE state IN ('scheduled', 'held', 'draft', 'ready');
+CREATE INDEX whatsapp_follow_up_due_business
+    ON whatsapp_follow_up_due (community_id, business_id)
+    WHERE state IN ('scheduled', 'held', 'draft', 'ready', 'sending');
+
+ALTER TABLE whatsapp_messages
+    ADD CONSTRAINT whatsapp_messages_follow_up_due_fkey
+        FOREIGN KEY (community_id, follow_up_due_id)
+        REFERENCES whatsapp_follow_up_due (community_id, id)
+        ON DELETE SET NULL (follow_up_due_id);
+ALTER TABLE whatsapp_follow_up_due
+    ADD CONSTRAINT whatsapp_follow_up_due_predecessor_fkey
+        FOREIGN KEY (community_id, predecessor_message_id)
+        REFERENCES whatsapp_messages (community_id, id),
+    ADD CONSTRAINT whatsapp_follow_up_due_draft_fkey
+        FOREIGN KEY (community_id, draft_message_id)
+        REFERENCES whatsapp_messages (community_id, id);
 
 -- An unknown Graph outcome must never be retried implicitly. The original message stays
 -- `unconfirmed`; this record is the owner-only recovery trail, including any new replacement.
@@ -2307,8 +2395,11 @@ SELECT attach_community_write_fence('whatsapp_templates');
 SELECT attach_community_write_fence('whatsapp_contacts');
 SELECT attach_community_write_fence('whatsapp_suppressions');
 SELECT attach_community_write_fence('whatsapp_business_stops');
+SELECT attach_community_write_fence('whatsapp_follow_up_sequences');
+SELECT attach_community_write_fence('whatsapp_follow_up_steps');
 SELECT attach_community_write_fence('whatsapp_batches');
 SELECT attach_community_write_fence('whatsapp_messages');
+SELECT attach_community_write_fence('whatsapp_follow_up_due');
 SELECT attach_community_write_fence('whatsapp_unknown_send_recoveries');
 SELECT attach_community_write_fence('money_rails_connections');
 SELECT attach_community_write_fence('money_rails_recipients');
