@@ -910,6 +910,12 @@
 }
 
 .c3l-wrap-detail > .c3l-columns {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.c3l-wrap-detail > .c3l-columns > .c3l-column-main,
+.c3l-wrap-detail > .c3l-columns .c3l-together {
   display: none;
 }
 

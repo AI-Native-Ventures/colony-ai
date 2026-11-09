@@ -905,12 +905,6 @@ export function LeadDetailScreen({
                 Opportunity
               </h2>
               <div className="c3l-opportunity-row">
-                <LeadPill
-                  large
-                  tone={toneForStage(person.stage, person.qualification)}
-                >
-                  {labelForStage(person.stage, person.qualification, "New")}
-                </LeadPill>
                 <span className="c3l-amount">
                   {person.potentialMonthlyValueMinor === null ||
                   person.potentialMonthlyValueMinor === undefined ? (

@@ -51,16 +51,9 @@ function BusinessRecordsRoute({
   business: ReturnType<typeof useBusinessRecords>;
   pathname: string;
 }) {
-  if (
-    business.channelLoading ||
-    business.tenantLoading ||
-    (business.channelId && business.recordsLoading)
-  ) {
-    return <W10Loading />;
-  }
   if (business.tenantError) {
-    // Without the relay's own business id no record can be saved or found, so
-    // say so plainly instead of showing records that cannot be changed.
+    // Business records cannot be read or saved without the relay's tenant id.
+    // Do not let independent channel loading hide this recovery path.
     return (
       <W10Error
         message={TENANT_COMMUNITY_UNKNOWN_MESSAGE}
@@ -69,6 +62,13 @@ function BusinessRecordsRoute({
         title="Business could not be confirmed"
       />
     );
+  }
+  if (
+    business.channelLoading ||
+    business.tenantLoading ||
+    (business.channelId && business.recordsLoading)
+  ) {
+    return <W10Loading />;
   }
   if (business.channelError instanceof SalesChannelSetupError) {
     return (

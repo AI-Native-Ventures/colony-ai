@@ -74,6 +74,12 @@ test("allowlisted Discovery codes retain their specific safe recovery guidance",
     error: new Error("untrusted channel text"),
     code: "sales_channel_not_allowed",
   });
+  const tenant = actionFailureFromError({
+    action: "prospect-search",
+    stage: "campaign-start",
+    error: new Error("untrusted tenant text"),
+    code: "tenant_community_unknown",
+  });
 
   assert.equal(
     search.message,
@@ -83,8 +89,13 @@ test("allowlisted Discovery codes retain their specific safe recovery guidance",
     sales.message,
     "The private Sales channel is not set up yet. An owner or admin of this business sets it up by opening Leads once. Ask one of them, then retry.",
   );
+  assert.equal(
+    tenant.message,
+    "Colony could not confirm which business this is. Check your connection and try again.",
+  );
   assert.doesNotMatch(search.message, /untrusted/i);
   assert.doesNotMatch(sales.message, /untrusted/i);
+  assert.doesNotMatch(tenant.message, /untrusted/i);
 });
 
 test("a monthly Discovery limit keeps its reset date in plain customer copy", () => {
