@@ -18,7 +18,7 @@ use uuid::Uuid;
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::whatsapp::{
     NewOutboundMessage, WhatsappAccountFailure, WhatsappContact, WhatsappMessage,
-    WhatsappSendSafety,
+    WhatsappSendSafety, SEND_REQUEST_IDEMPOTENCY_PREFIX,
 };
 
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
@@ -78,6 +78,22 @@ pub fn safety_refusal(safety: &WhatsappSendSafety) -> String {
     }
 }
 
+/// The only business-stop exception: an owner or admin may answer a customer who replied,
+/// with free text, while that customer's 24-hour service window is still open. The contact,
+/// company and one-message fences below still run after this predicate.
+fn inbound_reply_stop_allows_owner_text(
+    ctx: &SendContext<'_>,
+    safety: &WhatsappSendSafety,
+) -> bool {
+    ctx.is_owner_admin
+        && !ctx.is_template
+        && safety.is_inbound_reply_business_stop()
+        && window_open(
+            ctx.contact.and_then(|contact| contact.last_inbound_at),
+            ctx.now,
+        )
+}
+
 /// The rules for one send. Returns the plain reason when the send is refused.
 pub fn check_send(ctx: &SendContext<'_>) -> Result<SendPlan, String> {
     if ctx.send_paused {
@@ -87,7 +103,9 @@ pub fn check_send(ctx: &SendContext<'_>) -> Result<SendPlan, String> {
         ));
     }
     if let Some(safety) = ctx.safety {
-        return Err(safety_refusal(safety));
+        if !inbound_reply_stop_allows_owner_text(ctx, safety) {
+            return Err(safety_refusal(safety));
+        }
     }
     if let Some(contact) = ctx.contact {
         if let Some(at) = contact.opted_out_at {
@@ -296,7 +314,7 @@ pub async fn enqueue_send(
         template_language,
         params,
         state: initial_state(access).to_string(),
-        idempotency_key: format!("req:{}", command.request_id),
+        idempotency_key: format!("{SEND_REQUEST_IDEMPOTENCY_PREFIX}{}", command.request_id),
         batch_id: None,
         batch_idx: None,
         new_chat: plan.new_chat,
@@ -564,8 +582,16 @@ pub async fn process_community(
             .await
             .map_err(|error| error.to_string())?;
         if let Some(safety) = safety.as_ref() {
-            skip(state, community, &message, &safety_refusal(safety)).await;
-            continue;
+            let eligible_owner_reply = safety.is_inbound_reply_business_stop()
+                && state
+                    .db
+                    .whatsapp_is_open_owner_reply(community, message.id, now)
+                    .await
+                    .map_err(|error| error.to_string())?;
+            if !eligible_owner_reply {
+                skip(state, community, &message, &safety_refusal(safety)).await;
+                continue;
+            }
         }
         if message.new_chat {
             // A row the owner released with `send_now` skips the window and the gap, so an
@@ -1048,6 +1074,62 @@ mod tests {
                 safety.scope
             );
         }
+    }
+
+    #[test]
+    fn inbound_reply_stop_allows_only_an_owner_in_window_free_text_reply() {
+        let mut open = contact();
+        open.last_inbound_at = Some(now() - Duration::hours(1));
+        let inbound_reply_stop = WhatsappSendSafety {
+            scope: "business_stop".into(),
+            reason: "inbound reply received".into(),
+            matched_rule: None,
+            business_id: Some("business-1".into()),
+        };
+
+        let mut owner_text = ctx(Some(&open), false, true);
+        owner_text.safety = Some(&inbound_reply_stop);
+        assert_eq!(
+            check_send(&owner_text),
+            Ok(SendPlan {
+                kind: "text",
+                new_chat: false,
+            })
+        );
+
+        let mut owner_template = ctx(Some(&open), true, true);
+        owner_template.safety = Some(&inbound_reply_stop);
+        assert!(check_send(&owner_template).is_err());
+
+        let mut agent_text = ctx(Some(&open), false, false);
+        agent_text.safety = Some(&inbound_reply_stop);
+        assert!(check_send(&agent_text).is_err());
+
+        let mut closed = contact();
+        closed.last_inbound_at = Some(now() - Duration::hours(25));
+        let mut closed_owner_text = ctx(Some(&closed), false, true);
+        closed_owner_text.safety = Some(&inbound_reply_stop);
+        assert!(check_send(&closed_owner_text).is_err());
+
+        let opt_out_stop = WhatsappSendSafety {
+            scope: "business_stop".into(),
+            reason: "contact opted out".into(),
+            matched_rule: Some("en_stop".into()),
+            business_id: Some("business-1".into()),
+        };
+        let mut owner_after_opt_out = ctx(Some(&open), false, true);
+        owner_after_opt_out.safety = Some(&opt_out_stop);
+        assert!(check_send(&owner_after_opt_out).is_err());
+
+        let never_contact = WhatsappSendSafety {
+            scope: "never_contact".into(),
+            reason: "owner request".into(),
+            matched_rule: None,
+            business_id: None,
+        };
+        let mut owner_never_contact = ctx(Some(&open), false, true);
+        owner_never_contact.safety = Some(&never_contact);
+        assert!(check_send(&owner_never_contact).is_err());
     }
 
     #[test]
