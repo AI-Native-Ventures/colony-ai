@@ -273,6 +273,7 @@ const relayOutput = {
     awaitingApproval: false,
     // Outreach safety adds only fields that older strict desktop parsers ignore. It never adds
     // a contact-stage or message-state enum value before the desktop supports it.
+    hasSentOutbound: true,
     businessOutreachStopped: true,
     businessStopReason: "inbound reply received",
   },
@@ -299,6 +300,11 @@ test("Slice 2 relay output parses on desktop-v3.0.37 and desktop-v3.0.38", () =>
   assert.equal(
     parseWhatsAppContact(relayOutput.contact).deliveryFailure?.code,
     "131049",
+  );
+  assert.equal(parseWhatsAppContact(relayOutput.contact).hasSentOutbound, true);
+  assert.equal(
+    parseWhatsAppContact(relayOutput.contact).businessOutreachStopped,
+    true,
   );
   // If a relay leaks this v3.0.38 enum value to v3.0.37, the old parser rejects the response.
   assert.throws(

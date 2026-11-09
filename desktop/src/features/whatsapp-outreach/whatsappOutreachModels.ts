@@ -148,6 +148,8 @@ export type WhatsAppContact = Readonly<{
   queuedFrom: string | null;
   /** Additive relay queue state used as a compatibility fallback for older relays. */
   outreachStatus: WhatsAppOutreachStatus | null;
+  /** Additive outbound history flag used for the awaiting-reply view. */
+  hasSentOutbound: boolean;
   windowOpen: boolean;
   windowClosesAt: string | null;
   optedOut: boolean;
@@ -155,6 +157,10 @@ export type WhatsAppContact = Readonly<{
   pauseReason: string | null;
   unanswered: boolean;
   awaitingApproval: boolean;
+  /** Additive whole-business outreach hold. Older relays omit it. */
+  businessOutreachStopped: boolean;
+  /** Plain reason for the additive whole-business outreach hold. */
+  businessStopReason: string | null;
 }>;
 
 export type WhatsAppMediaType =
@@ -571,6 +577,7 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
     ),
     queuedFrom: nullableString(contact.queuedFrom, "queue source"),
     outreachStatus,
+    hasSentOutbound: contact.hasSentOutbound === true,
     windowOpen: booleanValue(contact.windowOpen, "reply-window flag"),
     windowClosesAt: nullableString(
       contact.windowClosesAt,
@@ -581,6 +588,11 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
     pauseReason: nullableString(contact.pauseReason, "contact pause reason"),
     unanswered: booleanValue(contact.unanswered, "unanswered flag"),
     awaitingApproval: contact.awaitingApproval === true,
+    businessOutreachStopped: contact.businessOutreachStopped === true,
+    businessStopReason: nullableString(
+      contact.businessStopReason,
+      "business outreach stop reason",
+    ),
   };
 }
 

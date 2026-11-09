@@ -25,6 +25,7 @@ import {
   whatsappTemplateDisplayTitle,
   whatsappTemplateMetaName,
 } from "./whatsappOutreachModels.ts";
+import { parseWhatsAppSafetyLedger } from "./whatsappOutreachSafety.ts";
 
 const approvedTemplate = {
   title: "Built a site for you",
@@ -64,6 +65,9 @@ test("contact parser accepts the additive stage and identity view fields", () =>
     paused: false,
     pauseReason: null,
     unanswered: true,
+    hasSentOutbound: true,
+    businessOutreachStopped: true,
+    businessStopReason: "Lindiwe replied stop.",
   };
   const contact = parseWhatsAppContact(payload);
   assert.equal(contact.stage, "wants_call");
@@ -76,13 +80,22 @@ test("contact parser accepts the additive stage and identity view fields", () =>
   assert.equal(contact.lastReplyAt, "2026-10-29T09:14:00+02:00");
   assert.equal(contact.lastOutboundState, "read");
   assert.equal(contact.lastFailureSummary, null);
+  assert.equal(contact.hasSentOutbound, true);
+  assert.equal(contact.businessOutreachStopped, true);
+  assert.equal(contact.businessStopReason, "Lindiwe replied stop.");
 
   const legacyContact = parseWhatsAppContact({
     ...payload,
     stageSetBy: "auto",
     lastOutboundState: undefined,
+    hasSentOutbound: undefined,
+    businessOutreachStopped: undefined,
+    businessStopReason: undefined,
   });
   assert.equal(legacyContact.lastOutboundState, null);
+  assert.equal(legacyContact.hasSentOutbound, false);
+  assert.equal(legacyContact.businessOutreachStopped, false);
+  assert.equal(legacyContact.businessStopReason, null);
   assert.throws(
     () => parseWhatsAppContact({ ...payload, stageSetBy: "not-a-pubkey" }),
     /invalid WhatsApp stage author/u,
@@ -123,6 +136,36 @@ test("contact parser accepts the additive stage and identity view fields", () =>
     stageSetBy: "auto",
   });
   assert.equal(futureStageContact.stage, "none");
+});
+
+test("safety ledger parser keeps the relay's durable opt-out and business-stop evidence", () => {
+  const ledger = parseWhatsAppSafetyLedger({
+    suppressions: [
+      {
+        id: "suppression-id",
+        identityKind: "phone",
+        identityValue: "27821237135",
+        scope: "opt_out",
+        reason: "stop",
+        matchedRule: "stop",
+        source: "inbound",
+        createdAt: "2026-11-08T08:00:00Z",
+        undoneAt: null,
+      },
+    ],
+    businessStops: [
+      {
+        businessId: "lead-id",
+        sourceWaId: "27821237135",
+        reason: "stop",
+        matchedRule: "stop",
+        createdAt: "2026-11-08T08:00:00Z",
+      },
+    ],
+  });
+  assert.equal(ledger.suppressions[0].scope, "opt_out");
+  assert.equal(ledger.suppressions[0].reason, "stop");
+  assert.equal(ledger.businessStops[0].businessId, "lead-id");
 });
 
 function baseStatus(overrides = {}) {

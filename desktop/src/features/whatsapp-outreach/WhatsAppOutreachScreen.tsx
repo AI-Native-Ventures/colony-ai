@@ -34,6 +34,9 @@ import {
 } from "./whatsappOutreachModels";
 import {
   contactStatus,
+  contactWithThreadDetails,
+  isWhatsAppAwaitingReply,
+  normalizeWhatsAppSafetyPhone,
   pendingBatchRowsForContact,
   uniquePendingBatchRowForContact,
 } from "./whatsappOutreachContactState";
@@ -57,6 +60,10 @@ import {
   type ContactFilter,
   WhatsAppOutreachContactFilters,
 } from "./WhatsAppOutreachContactFilters";
+import {
+  WhatsAppBusinessStopNotice,
+  WhatsAppThreadContextLimitNotice,
+} from "./WhatsAppOutreachSafetyNotices";
 import { WhatsAppTemplatePicker } from "./WhatsAppTemplatePicker";
 import {
   useWhatsAppCommand,
@@ -67,6 +74,10 @@ import {
   useWhatsAppTemplatesQuery,
   useWhatsAppThreadQuery,
 } from "./whatsappOutreachQueries";
+import {
+  undoWhatsAppOptOut,
+  useWhatsAppOptOutSuppressionByWaId,
+} from "./useWhatsAppOutreachSafety";
 import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
 import "./whatsappOutreach.css";
 
@@ -173,7 +184,6 @@ export function WhatsAppOutreachScreen({
     pubkey: profileQuery.isSuccess ? currentPubkey : undefined,
     ownerPubkey: profileQuery.data?.ownerPubkey,
   });
-  const canRetrySend = canManage;
   const status = statusQuery.data;
   const pauseLabel = `${status?.ownerPaused ? "Resume" : "Pause"} all WhatsApp sending`;
   const accountRetries = accountRecoveryCount(status);
@@ -238,61 +248,21 @@ export function WhatsAppOutreachScreen({
     thread?.messages ?? [],
   );
   const pendingBatches = pendingBatchesQuery.data ?? [];
+  const optOutSuppressionByWaId = useWhatsAppOptOutSuppressionByWaId(
+    canManage,
+    statusQuery.data?.connected === true,
+  );
   const selectedPendingBatchRows = selectedContact
     ? pendingBatchRowsForContact(selectedContact, pendingBatches)
     : [];
   const selectedPendingBatchRow = selectedContact
     ? uniquePendingBatchRowForContact(selectedContact, pendingBatches)
     : null;
-  const selectedContactWithThreadIdentity = selectedContact
-    ? {
-        ...selectedContact,
-        displayName:
-          selectedContact.displayName ?? thread?.contact.displayName ?? null,
-        profileName:
-          selectedContact.profileName ?? thread?.contact.profileName ?? null,
-        businessName:
-          selectedContact.businessName ?? thread?.contact.businessName ?? null,
-        website: selectedContact.website ?? thread?.contact.website ?? null,
-        label: selectedContact.label ?? thread?.contact.label ?? null,
-        stage: selectedContact.stage ?? thread?.contact.stage ?? "none",
-        stageSetBy:
-          selectedContact.stageSetBy ?? thread?.contact.stageSetBy ?? null,
-        stageChangedAt:
-          selectedContact.stageChangedAt ??
-          thread?.contact.stageChangedAt ??
-          null,
-        queuedFrom:
-          selectedContact.queuedFrom ?? thread?.contact.queuedFrom ?? null,
-        outreachStatus:
-          selectedContact.outreachStatus ??
-          thread?.contact.outreachStatus ??
-          null,
-        lastContactedAt:
-          selectedContact.lastContactedAt ??
-          thread?.contact.lastContactedAt ??
-          null,
-        lastOutboundState:
-          selectedContact.lastOutboundState ??
-          thread?.contact.lastOutboundState ??
-          null,
-        lastFailureSummary:
-          selectedContact.lastFailureSummary ??
-          thread?.contact.lastFailureSummary ??
-          null,
-        deliveryFailure:
-          selectedContact.deliveryFailure ??
-          thread?.contact.deliveryFailure ??
-          null,
-        lastReplyAt:
-          selectedContact.lastReplyAt ?? thread?.contact.lastReplyAt ?? null,
-        leadId:
-          selectedContact.leadId ??
-          thread?.contact.leadId ??
-          selectedPendingBatchRow?.row.leadId ??
-          null,
-      }
-    : null;
+  const selectedContactWithThreadIdentity = contactWithThreadDetails(
+    selectedContact,
+    thread?.contact,
+    selectedPendingBatchRow?.row.leadId,
+  );
   const selectedIdentity = selectedContactWithThreadIdentity
     ? identityForContact(selectedContactWithThreadIdentity)
     : null;
@@ -314,17 +284,19 @@ export function WhatsAppOutreachScreen({
     const matchesFilter =
       mode === "desk" && activeFilter === "needs-reply"
         ? visibleContact.stage !== "queued" && (contact.unanswered || hasDraft)
-        : mode === "desk" && activeFilter === "wants-call"
-          ? contact.stage === "wants_call"
-          : activeFilter === "queued"
-            ? visibleContact.stage === "queued"
-            : activeFilter === "opted-out"
-              ? visibleStatus === "Opted out"
-              : activeFilter === "replied"
-                ? visibleStatus === "Replied"
-                : activeFilter === "sent"
-                  ? visibleStatus === "Sent"
-                  : true;
+        : mode === "desk" && activeFilter === "awaiting-reply"
+          ? isWhatsAppAwaitingReply(visibleContact)
+          : mode === "desk" && activeFilter === "wants-call"
+            ? contact.stage === "wants_call"
+            : activeFilter === "queued"
+              ? visibleContact.stage === "queued"
+              : activeFilter === "opted-out"
+                ? visibleStatus === "Opted out"
+                : activeFilter === "replied"
+                  ? visibleStatus === "Replied"
+                  : activeFilter === "sent"
+                    ? visibleStatus === "Sent"
+                    : true;
     const search = searchTerm.trim().toLocaleLowerCase();
     const matchesSearch =
       !search ||
@@ -454,6 +426,7 @@ export function WhatsAppOutreachScreen({
       busy ||
       selectedContact.optedOut ||
       selectedContact.paused ||
+      selectedContactWithThreadIdentity?.businessOutreachStopped ||
       (hasPendingDraft && !canManage)
     )
       return;
@@ -644,9 +617,7 @@ export function WhatsAppOutreachScreen({
               <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
               <span>WhatsApp · {status.displayPhoneNumber}</span>
             </div>
-            {canRetrySend &&
-            status.accountRetryCount > 0 &&
-            !status.sendHealth ? (
+            {canManage && status.accountRetryCount > 0 && !status.sendHealth ? (
               <WhatsAppResumeAndRetryAction count={status.accountRetryCount} />
             ) : null}
             <Tooltip disableHoverableContent>
@@ -698,6 +669,12 @@ export function WhatsAppOutreachScreen({
             const hasDraft = pendingDrafts.some(
               (draft) => draft.waId === contact.waId,
             );
+            const optOutSuppression = optOutSuppressionByWaId.get(
+              normalizeWhatsAppSafetyPhone(contact.waId),
+            );
+            const undoOptOut = optOutSuppression
+              ? () => undoWhatsAppOptOut(command, contact.waId)
+              : undefined;
             return mode === "desk" ? (
               <WhatsAppOutreachContactRow
                 businessName={identity.displayName}
@@ -708,6 +685,8 @@ export function WhatsAppOutreachScreen({
                 logoUrl={identity.logoUrl}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
+                onUndoOptOut={canManage ? undoOptOut : undefined}
+                optOutReason={optOutSuppression?.reason ?? null}
                 personName={identity.personName}
                 placePhotoUrl={identity.placePhotoUrl}
                 preview={preview}
@@ -726,6 +705,8 @@ export function WhatsAppOutreachScreen({
                 key={contact.waId}
                 onReviewBatch={() => reviewBatch(rowBatch?.batch ?? null)}
                 onSelect={() => selectContact(contact)}
+                onUndoOptOut={canManage ? undoOptOut : undefined}
+                optOutReason={optOutSuppression?.reason ?? null}
                 preview={preview}
                 selected={isSelected}
                 waitingForApproval={rowMatches.length > 0}
@@ -840,6 +821,11 @@ export function WhatsAppOutreachScreen({
             </div>
           </header>
 
+          {selectedContactWithThreadIdentity?.businessOutreachStopped ? (
+            <WhatsAppBusinessStopNotice
+              reason={selectedContactWithThreadIdentity.businessStopReason}
+            />
+          ) : null}
           {selectedContact.optedOut ? (
             <div className="c3wa-contact-lock" role="status">
               <strong>This contact opted out.</strong>
@@ -893,6 +879,9 @@ export function WhatsAppOutreachScreen({
                 {threadQuery.error.message}
               </div>
             ) : null}
+            <WhatsAppThreadContextLimitNotice
+              messageCount={chronologicalMessages.length}
+            />
             {chronologicalMessages.map((message, index) => {
               const previousMessage = chronologicalMessages[index - 1];
               const startsDay =
@@ -924,7 +913,7 @@ export function WhatsAppOutreachScreen({
                     currentPubkey={currentPubkey}
                     currentUserName={currentUserName}
                     canSendNow={canSendNow}
-                    canRetrySend={canRetrySend}
+                    canRetrySend={canManage}
                     accountRetryCount={accountRetries}
                     message={message}
                     mobileHistory={index < chronologicalMessages.length - 3}
@@ -1007,7 +996,12 @@ export function WhatsAppOutreachScreen({
                 {actionError}
               </p>
             ) : null}
-            {selectedContact.windowOpen ? (
+            {selectedContactWithThreadIdentity?.businessOutreachStopped ? (
+              <div className="c3wa-window-status is-closed" role="status">
+                <span aria-hidden="true">◷</span>Outreach is stopped for this
+                business.
+              </div>
+            ) : selectedContact.windowOpen ? (
               <div className="c3wa-window-status is-open" role="status">
                 <span aria-hidden="true">◷</span>Reply window open
                 {selectedContact.windowClosesAt
@@ -1085,6 +1079,7 @@ export function WhatsAppOutreachScreen({
                 disabled={
                   !selectedContact.windowOpen ||
                   selectedContact.optedOut ||
+                  selectedContactWithThreadIdentity?.businessOutreachStopped ||
                   selectedContact.paused ||
                   (hasPendingDraft && !canManage) ||
                   busy ||
@@ -1095,11 +1090,13 @@ export function WhatsAppOutreachScreen({
                 placeholder={
                   selectedContact.optedOut
                     ? "This contact opted out"
-                    : selectedContact.windowOpen
-                      ? isMobile
-                        ? "Reply on WhatsApp…"
-                        : `Reply on WhatsApp as ${businessName}`
-                      : "Choose a template to send a message"
+                    : selectedContactWithThreadIdentity?.businessOutreachStopped
+                      ? "Outreach is stopped for this business"
+                      : selectedContact.windowOpen
+                        ? isMobile
+                          ? "Reply on WhatsApp…"
+                          : `Reply on WhatsApp as ${businessName}`
+                        : "Choose a template to send a message"
                 }
                 rows={2}
                 value={messageText}
@@ -1110,6 +1107,7 @@ export function WhatsAppOutreachScreen({
                   className="c3wa-mobile-template-action"
                   disabled={
                     selectedContact.optedOut ||
+                    selectedContactWithThreadIdentity?.businessOutreachStopped ||
                     selectedContact.paused ||
                     (hasPendingDraft && !canManage) ||
                     busy
@@ -1135,6 +1133,7 @@ export function WhatsAppOutreachScreen({
                   className="c3wa-mobile-send-action"
                   disabled={
                     selectedContact.optedOut ||
+                    selectedContactWithThreadIdentity?.businessOutreachStopped ||
                     selectedContact.paused ||
                     (hasPendingDraft && !canManage) ||
                     busy ||

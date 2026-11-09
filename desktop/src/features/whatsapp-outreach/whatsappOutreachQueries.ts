@@ -9,9 +9,11 @@ import {
   loadWhatsAppContacts,
   loadWhatsAppDrafts,
   loadWhatsAppPendingBatchDetails,
+  loadWhatsAppSafetyLedger,
   loadWhatsAppStatus,
   loadWhatsAppTemplates,
   loadWhatsAppThread,
+  loadWhatsAppUnknownSends,
   publishWhatsAppCommand,
   type WhatsAppCommandKind,
 } from "./whatsappOutreachApi";
@@ -36,6 +38,10 @@ export const whatsappOutreachQueryKeys = {
     [...ROOT_QUERY_KEY, relayUrl, "drafts"] as const,
   thread: (relayUrl: string | null, waId: string | null) =>
     [...ROOT_QUERY_KEY, relayUrl, "thread", waId ?? ""] as const,
+  safetyLedger: (relayUrl: string | null) =>
+    [...ROOT_QUERY_KEY, relayUrl, "safety-ledger"] as const,
+  unknownSends: (relayUrl: string | null) =>
+    [...ROOT_QUERY_KEY, relayUrl, "unknown-sends"] as const,
 };
 
 export function useWhatsAppRelayUrl(): string | null {
@@ -191,6 +197,40 @@ export function useWhatsAppThreadQuery(waId: string | null, enabled = true) {
     refetchInterval: THREAD_REFETCH_MS,
     refetchOnWindowFocus: true,
     retry: 1,
+  });
+}
+
+/** Optional owner-only safety endpoint. An older relay reports an error rather than an empty list. */
+export function useWhatsAppSafetyLedgerQuery(enabled = true) {
+  const relayUrl = useWhatsAppRelayUrl();
+  return useQuery({
+    enabled: enabled && relayUrl !== null,
+    queryKey: whatsappOutreachQueryKeys.safetyLedger(relayUrl),
+    queryFn: async () => {
+      if (!relayUrl) throw new Error("The active community relay is missing.");
+      return loadWhatsAppSafetyLedger(relayUrl);
+    },
+    staleTime: 5_000,
+    refetchInterval: STATUS_REFETCH_MS,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+}
+
+/** Optional owner-only recovery endpoint. It is intentionally not part of normal message state. */
+export function useWhatsAppUnknownSendsQuery(enabled = true) {
+  const relayUrl = useWhatsAppRelayUrl();
+  return useQuery({
+    enabled: enabled && relayUrl !== null,
+    queryKey: whatsappOutreachQueryKeys.unknownSends(relayUrl),
+    queryFn: async () => {
+      if (!relayUrl) throw new Error("The active community relay is missing.");
+      return loadWhatsAppUnknownSends(relayUrl);
+    },
+    staleTime: 3_000,
+    refetchInterval: STATUS_REFETCH_MS,
+    refetchOnWindowFocus: true,
+    retry: false,
   });
 }
 

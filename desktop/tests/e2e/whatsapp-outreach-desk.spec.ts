@@ -1,14 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
+import path from "node:path";
 
 import {
   CORNER_COTTAGE_WA_ID,
   GREEN_SHUTTER_WA_ID,
   JACARANDA_WA_ID,
+  OAKLEAF_WA_ID,
   OUTREACH_CHANNEL_ID,
+  QUIET_OWL_WA_ID,
   QUEUED_LEAD_WA_ID,
   installWhatsAppMockBridge,
   gotoWhatsAppScreen,
 } from "../helpers/whatsappOutreach";
+import { waitForAnimations } from "../helpers/animations";
 
 const PLANE_TREE_WA_ID = "27821237135";
 const UNLINKED_WA_ID = "27683735905";
@@ -60,6 +64,13 @@ async function openOutreachFromHome(page: Page) {
   await page.getByTestId("channel-Outreach").click();
   await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
   await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
+}
+
+async function captureSafetyShot(page: Page, name: string) {
+  const directory = process.env.OUTREACH_UI_SHOT_DIR;
+  if (!directory) return;
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(directory, name) });
 }
 
 async function emitOutreachEvent(
@@ -450,6 +461,270 @@ test.describe("Outreach desk", () => {
         .locator(".c3wa-pipeline-columns")
         .getByTestId(`outreach-pipeline-card-${PLANE_TREE_WA_ID}`),
     ).toContainText("Not delivered");
+  });
+
+  test("renders safety decisions and requires explicit unknown-send recovery", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      outreachSafetyFixture: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await openOutreachFromHome(page);
+
+    const needs = page.getByTestId("outreach-desk-needs-you");
+    await expect(needs.getByText("Safety checks passed").first()).toBeVisible();
+    const unknownSend = page.getByTestId(
+      "outreach-unknown-send-e2e-wa-unknown-send",
+    );
+    await expect(unknownSend).toContainText("Held for you");
+    await expect(unknownSend).toContainText(
+      "We cannot confirm this message was delivered",
+    );
+    await captureSafetyShot(page, "ODNeedsYou-safety.png");
+
+    const checkStatus = page.getByTestId(
+      "whatsapp-unknown-send-check-e2e-wa-unknown-send",
+    );
+    await checkStatus.focus();
+    await expect(checkStatus).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(unknownSend).toContainText(
+      "The relay checked the provider status. Checking it did not send another message.",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47054 &&
+                body.action === "check_status" &&
+                body.confirm === undefined,
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
+
+    const resend = page.getByTestId(
+      "whatsapp-unknown-send-resend-e2e-wa-unknown-send",
+    );
+    await resend.click();
+    const resendDialog = page.getByTestId(
+      "whatsapp-unknown-send-resend-e2e-wa-unknown-send-dialog",
+    );
+    await expect(resendDialog).toContainText("Resend this as a new message?");
+    await page.keyboard.press("Escape");
+    await expect(resendDialog).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) => kind === 47054 && body.action === "resend",
+            ) ?? false,
+        ),
+      )
+      .toBe(false);
+    await resend.click();
+    await resendDialog
+      .getByRole("button", { name: "Resend as new message", exact: true })
+      .click();
+    await expect(unknownSend).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47054 &&
+                body.action === "resend" &&
+                body.confirm === true,
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
+
+    await page.getByTestId("channel-view-tab-chats").click();
+    const awaitingReplyFilter = page.getByRole("tab", {
+      name: "Awaiting reply",
+      exact: true,
+    });
+    await awaitingReplyFilter.focus();
+    await expect(awaitingReplyFilter).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByTestId(`whatsapp-contact-${OAKLEAF_WA_ID}`),
+    ).toContainText("Awaiting reply");
+
+    await page.getByRole("tab", { name: "Opted out", exact: true }).click();
+    const optedOut = page.getByTestId(`whatsapp-contact-${QUIET_OWL_WA_ID}`);
+    await expect(optedOut.locator("..")).toContainText(
+      "Replied “stop”. Permanent.",
+    );
+    await captureSafetyShot(page, "ODChats-safety.png");
+    const undoOptOut = page.getByTestId(
+      `whatsapp-opt-out-undo-${QUIET_OWL_WA_ID}`,
+    );
+    await undoOptOut.click();
+    const undoOptOutDialog = page.getByTestId(
+      `whatsapp-opt-out-undo-${QUIET_OWL_WA_ID}-dialog`,
+    );
+    await expect(undoOptOutDialog).toContainText("Undo this opt-out?");
+    await page.keyboard.press("Escape");
+    await expect(undoOptOutDialog).toHaveCount(0);
+    await undoOptOut.click();
+    await undoOptOutDialog
+      .getByRole("button", { name: "Undo opt-out", exact: true })
+      .click();
+    await expect(optedOut).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (waId) =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47053 &&
+                body.action === "opt_out_undo" &&
+                body.waId === waId,
+            ) ?? false,
+          QUIET_OWL_WA_ID,
+        ),
+      )
+      .toBe(true);
+
+    await page.getByRole("tab", { name: "All", exact: true }).click();
+    await page.getByTestId(`whatsapp-contact-${CORNER_COTTAGE_WA_ID}`).click();
+    await expect(
+      page.getByText(
+        "Automatic outreach is stopped for everyone at this business.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByTestId("whatsapp-reply-input")).toBeDisabled();
+
+    await page.getByTestId("whatsapp-settings-trigger").click();
+    const settings = page.getByTestId("whatsapp-settings");
+    await expect(settings).toBeVisible();
+    await settings.getByRole("button", { name: "Safety", exact: true }).click();
+    await expect(
+      settings.getByText("What counts as an opt-out?"),
+    ).toBeVisible();
+    await expect(settings.getByText("Whole-business stop")).toBeVisible();
+    await expect(settings.getByText("Auto-stop")).toBeVisible();
+    await settings.getByRole("button", { name: "Manage list" }).click();
+    await settings
+      .getByLabel("Never-contact phone number")
+      .fill("+27 82 444 0001");
+    await settings
+      .getByLabel("Never-contact reason")
+      .fill("Owner requested no contact");
+    await settings.getByRole("button", { name: "Add to list" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47053 &&
+                body.action === "never_contact_add" &&
+                body.waId === "+27 82 444 0001" &&
+                body.reason === "Owner requested no contact",
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
+    await captureSafetyShot(page, "WAMain-safety.png");
+  });
+
+  test("keeps existing Outreach usable when an older relay lacks safety fields", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      outreachSafetyUnsupported: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+    await page.getByTestId("channel-view-tab-chats").click();
+    await page.getByTestId(`whatsapp-contact-${PLANE_TREE_WA_ID}`).click();
+    await expect(page.getByTestId("whatsapp-reply-input")).toBeEnabled();
+    await page.getByTestId("whatsapp-settings-trigger").click();
+    await expect(
+      page.getByText(
+        "Safety details need a current relay. Existing sending controls remain available.",
+      ),
+    ).toBeVisible();
+  });
+
+  test("requires confirmation before marking an unknown send delivered", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", {
+      deskFixture: true,
+      outreachSafetyFixture: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+
+    const unknownSend = page.getByTestId(
+      "outreach-unknown-send-e2e-wa-unknown-send",
+    );
+    const markDelivered = page.getByTestId(
+      "whatsapp-unknown-send-delivered-e2e-wa-unknown-send",
+    );
+    await markDelivered.focus();
+    await page.keyboard.press("Enter");
+    const deliveredDialog = page.getByTestId(
+      "whatsapp-unknown-send-delivered-e2e-wa-unknown-send-dialog",
+    );
+    await expect(deliveredDialog).toContainText("Mark this message delivered?");
+    await page.keyboard.press("Escape");
+    await expect(deliveredDialog).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47054 && body.action === "mark_delivered",
+            ) ?? false,
+        ),
+      )
+      .toBe(false);
+
+    await markDelivered.click();
+    await deliveredDialog
+      .getByRole("button", { name: "Mark delivered", exact: true })
+      .click();
+    await expect(unknownSend).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as WhatsAppEventWindow
+            ).__BUZZ_E2E_WHATSAPP_STATE__?.commands.some(
+              ({ kind, body }) =>
+                kind === 47054 &&
+                body.action === "mark_delivered" &&
+                body.confirm === true,
+            ) ?? false,
+        ),
+      )
+      .toBe(true);
   });
 
   test("plain members have no stage or rename controls", async ({ page }) => {

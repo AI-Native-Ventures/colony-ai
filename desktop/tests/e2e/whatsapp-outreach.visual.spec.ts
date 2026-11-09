@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -14,7 +15,8 @@ import {
 import { waitForAnimations } from "../helpers/animations";
 
 const proofDirectory =
-  process.env.WA_PROOF_DIR ?? "/private/tmp/colony-whatsapp-outreach-proof";
+  process.env.WA_PROOF_DIR ??
+  path.join(tmpdir(), "colony-whatsapp-outreach-proof");
 const screens = [
   {
     name: "Main",

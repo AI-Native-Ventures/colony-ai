@@ -8,6 +8,8 @@ import {
 } from "./whatsappOutreachModels";
 import { WHATSAPP_STAGE_LABELS } from "./whatsappOutreachStages";
 import { contactStatus } from "./whatsappOutreachContactState";
+import { isWhatsAppAwaitingReply } from "./whatsappOutreachContactState";
+import { WhatsAppConfirmAction } from "./WhatsAppConfirmAction";
 import {
   formatWhatsAppDateTime,
   whatsappInitials,
@@ -46,6 +48,8 @@ export function WhatsAppOutreachContactRow({
   placePhotoUrl,
   isDesk = false,
   isLinked = Boolean(contact.leadId || contact.businessName),
+  optOutReason = null,
+  onUndoOptOut,
 }: {
   contact: WhatsAppContact;
   businessName: string;
@@ -62,13 +66,18 @@ export function WhatsAppOutreachContactRow({
   placePhotoUrl?: string | null;
   isDesk?: boolean;
   isLinked?: boolean;
+  optOutReason?: string | null;
+  onUndoOptOut?: () => Promise<void>;
 }) {
   const status = contactStatus(contact, waitingForApproval);
+  const awaitingReply = isWhatsAppAwaitingReply(contact);
   const stageLabel = contact.deliveryFailure
     ? "Not delivered"
     : contact.lastOutboundState === "failed" && contact.stage === "none"
       ? "Send failed"
-      : WHATSAPP_STAGE_LABELS[contact.stage];
+      : awaitingReply
+        ? "Awaiting reply"
+        : WHATSAPP_STAGE_LABELS[contact.stage];
   const lastMessageAt = [
     contact.lastInboundAt,
     contact.lastReplyAt,
@@ -174,6 +183,19 @@ export function WhatsAppOutreachContactRow({
         >
           Review
         </button>
+      ) : null}
+      {contact.optedOut && optOutReason && onUndoOptOut ? (
+        <div className="c3wa-contact-safety-action">
+          <span title={optOutReason}>Replied “{optOutReason}”. Permanent.</span>
+          <WhatsAppConfirmAction
+            confirmLabel="Undo opt-out"
+            description="This removes the active opt-out for this phone number. A whole-business hold, if present, remains in place."
+            onConfirm={onUndoOptOut}
+            testId={`whatsapp-opt-out-undo-${contact.waId}`}
+            title="Undo this opt-out?"
+            triggerLabel="Undo"
+          />
+        </div>
       ) : null}
     </div>
   );

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  contactWithThreadDetails,
   contactStatus,
+  isWhatsAppAwaitingReply,
   sendNowBatchIdForQueuedMessage,
 } from "./whatsappOutreachContactState.ts";
 
@@ -103,4 +105,83 @@ test("a failed latest outbound message is never called sent", () => {
     }),
     "Send failed",
   );
+});
+
+test("awaiting reply is conservative for old relays and excludes durable holds", () => {
+  const sent = {
+    optedOut: false,
+    businessOutreachStopped: false,
+    unanswered: false,
+    awaitingApproval: false,
+    stage: "contacted",
+    hasSentOutbound: true,
+    lastOutboundState: "sent",
+    lastContactedAt: "2026-11-08T09:00:00Z",
+    lastInboundAt: null,
+  };
+  assert.equal(isWhatsAppAwaitingReply(sent), true);
+  assert.equal(
+    isWhatsAppAwaitingReply({
+      ...sent,
+      lastInboundAt: "2026-11-08T10:00:00Z",
+    }),
+    false,
+  );
+  assert.equal(
+    isWhatsAppAwaitingReply({ ...sent, businessOutreachStopped: true }),
+    false,
+  );
+  assert.equal(
+    isWhatsAppAwaitingReply({
+      ...sent,
+      hasSentOutbound: false,
+      lastOutboundState: null,
+      lastContactedAt: null,
+    }),
+    false,
+  );
+});
+
+test("thread details preserve safety holds when only the additive thread view has them", () => {
+  const listContact = {
+    waId: "27821234410",
+    displayName: null,
+    profileName: null,
+    businessName: null,
+    website: null,
+    label: null,
+    stage: "contacted",
+    stageSetBy: null,
+    stageChangedAt: null,
+    queuedFrom: null,
+    outreachStatus: null,
+    lastContactedAt: null,
+    lastOutboundState: null,
+    lastFailureSummary: null,
+    deliveryFailure: null,
+    lastReplyAt: null,
+    hasSentOutbound: false,
+    businessOutreachStopped: false,
+    businessStopReason: null,
+    leadId: null,
+  };
+  const threadContact = {
+    ...listContact,
+    displayName: "Corner Cottage",
+    hasSentOutbound: true,
+    businessOutreachStopped: true,
+    businessStopReason: "Lindiwe replied stop.",
+    leadId: "business-id",
+  };
+  const resolved = contactWithThreadDetails(
+    listContact,
+    threadContact,
+    "batch-lead-id",
+  );
+
+  assert.equal(resolved?.displayName, "Corner Cottage");
+  assert.equal(resolved?.hasSentOutbound, true);
+  assert.equal(resolved?.businessOutreachStopped, true);
+  assert.equal(resolved?.businessStopReason, "Lindiwe replied stop.");
+  assert.equal(resolved?.leadId, "business-id");
 });
