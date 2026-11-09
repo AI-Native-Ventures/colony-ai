@@ -99,6 +99,100 @@ async fn mark_account_unhealthy_in(
     Ok(became_unhealthy)
 }
 
+/// Stop any still-reversible follow-up item for one contact or business. A row already claimed
+/// by the Graph caller stays `sending`: its outcome is unknown until that caller records it, and
+/// later successful completion rechecks safety before it may create another step.
+async fn stop_follow_ups_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community: CommunityId,
+    wa_id: Option<&str>,
+    business_id: Option<&str>,
+    reason: &str,
+) -> Result<()> {
+    let due_reason = reason.chars().take(500).collect::<String>();
+    let message_reason = reason.chars().take(300).collect::<String>();
+    sqlx::query(
+        "WITH stopped AS ( \
+             UPDATE whatsapp_follow_up_due d \
+             SET state = 'stopped', reason = $4, updated_at = now() \
+             WHERE d.community_id = $1 AND d.state IN ('scheduled', 'held', 'draft', 'ready') \
+               AND ( ($2::text IS NOT NULL AND d.wa_id = $2) \
+                     OR ($3::text IS NOT NULL AND (d.business_id = $3 OR EXISTS ( \
+                         SELECT 1 FROM whatsapp_contacts c \
+                         WHERE c.community_id = d.community_id AND c.wa_id = d.wa_id \
+                           AND c.lead_id = $3 \
+                     ))) ) \
+             RETURNING d.id \
+         ) \
+         UPDATE whatsapp_messages m SET \
+             state = CASE WHEN m.state = 'draft' THEN 'rejected' ELSE 'skipped' END, \
+             skip_reason = $5, updated_at = now() \
+         FROM stopped \
+         WHERE m.community_id = $1 AND m.follow_up_due_id = stopped.id \
+           AND m.state IN ('draft', 'queued', 'ready')",
+    )
+    .bind(community.as_uuid())
+    .bind(wa_id)
+    .bind(business_id)
+    .bind(due_reason)
+    .bind(message_reason)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Stop all mutable sequence work when sending is paused. A later resume must not silently revive
+/// outreach that was already queued when the owner or WhatsApp stopped the sender.
+async fn stop_follow_ups_for_pause_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community: CommunityId,
+    reason: &str,
+) -> Result<()> {
+    let due_reason = reason.chars().take(500).collect::<String>();
+    let message_reason = reason.chars().take(300).collect::<String>();
+    sqlx::query(
+        "WITH stopped AS ( \
+             UPDATE whatsapp_follow_up_due SET state = 'stopped', reason = $2, updated_at = now() \
+             WHERE community_id = $1 AND state IN ('scheduled', 'held', 'draft', 'ready') \
+             RETURNING id \
+         ) \
+         UPDATE whatsapp_messages m SET \
+             state = CASE WHEN m.state = 'draft' THEN 'rejected' ELSE 'skipped' END, \
+             skip_reason = $3, updated_at = now() \
+         FROM stopped \
+         WHERE m.community_id = $1 AND m.follow_up_due_id = stopped.id \
+           AND m.state IN ('draft', 'queued', 'ready')",
+    )
+    .bind(community.as_uuid())
+    .bind(due_reason)
+    .bind(message_reason)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Serialize follow-up safety and send claims for every number attached to one business. Contact
+/// row locks cover same-number replies; this lock closes the equivalent race when a different
+/// number at the same business replies while a follow-up is about to claim its Graph lease.
+async fn lock_follow_up_business_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community: CommunityId,
+    business_id: Option<&str>,
+) -> Result<()> {
+    let Some(business_id) = business_id else {
+        return Ok(());
+    };
+    let key = format!(
+        "whatsapp-follow-up-business:{}:{business_id}",
+        community.as_uuid()
+    );
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(key)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 /// Company level outreach settings.
 #[derive(Clone, Debug)]
 pub struct WhatsappSettings {
@@ -379,6 +473,82 @@ impl WhatsappBusinessStopCause {
             _ => None,
         }
     }
+}
+
+/// The list or campaign that owns an optional follow-up sequence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WhatsappFollowUpScope {
+    /// `outreach_list` or `campaign`.
+    pub kind: String,
+    /// Stable list or campaign id.
+    pub id: Uuid,
+}
+
+/// One configurable delay in an owner-controlled sequence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WhatsappFollowUpStep {
+    /// One-based follow-up number, at most three.
+    pub step: i16,
+    /// Days after the preceding accepted message.
+    pub delay_days: i16,
+}
+
+/// A configured sequence, which remains disabled until its owner turns it on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WhatsappFollowUpSequence {
+    /// List or campaign to which this sequence belongs.
+    pub scope: WhatsappFollowUpScope,
+    /// Whether newly sent openers may create due work.
+    pub enabled: bool,
+    /// Ordered, bounded delays.
+    pub steps: Vec<WhatsappFollowUpStep>,
+}
+
+/// One durable follow-up item. The state is intentionally separate from message states so it
+/// can remain held with a person-readable reason without leaking a new message enum to old apps.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WhatsappFollowUpDue {
+    /// Stable due-item id.
+    pub id: Uuid,
+    /// Sequence scope.
+    pub scope: WhatsappFollowUpScope,
+    /// Recipient number.
+    pub wa_id: String,
+    /// Business identity captured when the opener was accepted.
+    pub business_id: Option<String>,
+    /// One-based follow-up step.
+    pub step: i16,
+    /// Message that started this delay.
+    pub predecessor_message_id: Uuid,
+    /// Draft message once Scout has prepared one.
+    pub draft_message_id: Option<Uuid>,
+    /// Earliest time the item may be drafted.
+    pub due_at: DateTime<Utc>,
+    /// `scheduled`, `held`, `draft`, `ready`, `sending`, `sent`, `stopped` or `done`.
+    pub state: String,
+    /// Why the item is held or stopped.
+    pub reason: Option<String>,
+    /// Creation time.
+    pub created_at: DateTime<Utc>,
+    /// Last durable state transition.
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Outcome of attempting to reserve a due item and persist its one allowed draft.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FollowUpDraftOutcome {
+    /// The durable draft was created.
+    Prepared(Uuid),
+    /// Another request already created the only draft for this due item.
+    Existing(Uuid),
+    /// The item does not exist in this company.
+    NotFound,
+    /// The due time is still in the future.
+    NotDue,
+    /// A conservative hold remains for owner review.
+    Held(String),
+    /// A reply or suppression stopped the sequence.
+    Stopped(String),
 }
 
 /// The first active safety fence that prevents a WhatsApp recipient from receiving outreach.
@@ -761,6 +931,26 @@ fn row_to_business_stop(row: &PgRow) -> Result<WhatsappBusinessStop> {
     })
 }
 
+fn row_to_follow_up_due(row: &PgRow) -> Result<WhatsappFollowUpDue> {
+    Ok(WhatsappFollowUpDue {
+        id: row.try_get("id")?,
+        scope: WhatsappFollowUpScope {
+            kind: row.try_get("scope_kind")?,
+            id: row.try_get("scope_id")?,
+        },
+        wa_id: row.try_get("wa_id")?,
+        business_id: row.try_get("business_id")?,
+        step: row.try_get("step")?,
+        predecessor_message_id: row.try_get("predecessor_message_id")?,
+        draft_message_id: row.try_get("draft_message_id")?,
+        due_at: row.try_get("due_at")?,
+        state: row.try_get("state")?,
+        reason: row.try_get("reason")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
 fn row_to_batch(row: &PgRow) -> Result<WhatsappBatch> {
     Ok(WhatsappBatch {
         id: row.try_get("id")?,
@@ -934,6 +1124,7 @@ impl Db {
             ));
         }
         self.whatsapp_ensure_settings(community).await?;
+        let mut tx = begin(&self.pool).await?;
         sqlx::query(
             "UPDATE whatsapp_settings SET \
                  owner_paused = $2, \
@@ -955,8 +1146,13 @@ impl Db {
         .bind(at)
         .bind(OWNER_PAUSE_REASON)
         .bind(QUALITY_PAUSE_REASON)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        if paused {
+            stop_follow_ups_for_pause_in(&mut tx, community, "sending was paused by an owner")
+                .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -967,6 +1163,7 @@ impl Db {
         paused: bool,
     ) -> Result<()> {
         self.whatsapp_ensure_settings(community).await?;
+        let mut tx = begin(&self.pool).await?;
         sqlx::query(
             "UPDATE whatsapp_settings SET \
                  quality_paused = $2, \
@@ -984,8 +1181,17 @@ impl Db {
         .bind(paused)
         .bind(OWNER_PAUSE_REASON)
         .bind(QUALITY_PAUSE_REASON)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        if paused {
+            stop_follow_ups_for_pause_in(
+                &mut tx,
+                community,
+                "sending was paused for WhatsApp quality",
+            )
+            .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -997,6 +1203,7 @@ impl Db {
         reason: Option<&str>,
     ) -> Result<()> {
         self.whatsapp_ensure_settings(community).await?;
+        let mut tx = begin(&self.pool).await?;
         sqlx::query(
             "UPDATE whatsapp_settings SET \
                  system_paused = $2, \
@@ -1016,8 +1223,16 @@ impl Db {
         .bind(reason.map(|r| r.chars().take(500).collect::<String>()))
         .bind(OWNER_PAUSE_REASON)
         .bind(QUALITY_PAUSE_REASON)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        if paused {
+            let stopped_reason = reason
+                .filter(|value| !value.trim().is_empty())
+                .map(|value| format!("sending was paused: {value}"))
+                .unwrap_or_else(|| "sending was paused".to_string());
+            stop_follow_ups_for_pause_in(&mut tx, community, &stopped_reason).await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -1361,6 +1576,614 @@ impl Db {
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
+    }
+
+    // ── follow-up sequences ───────────────────────────────────────────────────
+
+    /// Replace the bounded timing policy for one list or campaign in one transaction. The
+    /// sequence is deliberately off by default; callers must send `enabled: true` explicitly.
+    pub async fn whatsapp_configure_follow_up_sequence(
+        &self,
+        community: CommunityId,
+        scope: &WhatsappFollowUpScope,
+        enabled: bool,
+        steps: &[WhatsappFollowUpStep],
+        actor: &[u8],
+    ) -> Result<()> {
+        if actor.len() != 32 {
+            return Err(DbError::InvalidData(
+                "follow-up sequence actor must be a 32-byte public key".to_string(),
+            ));
+        }
+        let mut tx = begin(&self.pool).await?;
+        sqlx::query(
+            "INSERT INTO whatsapp_follow_up_sequences \
+             (community_id, scope_kind, scope_id, enabled, created_by, updated_by) \
+             VALUES ($1, $2, $3, $4, $5, $5) \
+             ON CONFLICT (community_id, scope_kind, scope_id) DO UPDATE SET \
+                 enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()",
+        )
+        .bind(community.as_uuid())
+        .bind(&scope.kind)
+        .bind(scope.id)
+        .bind(enabled)
+        .bind(actor)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "DELETE FROM whatsapp_follow_up_steps \
+             WHERE community_id = $1 AND scope_kind = $2 AND scope_id = $3",
+        )
+        .bind(community.as_uuid())
+        .bind(&scope.kind)
+        .bind(scope.id)
+        .execute(&mut *tx)
+        .await?;
+        for step in steps {
+            sqlx::query(
+                "INSERT INTO whatsapp_follow_up_steps \
+                 (community_id, scope_kind, scope_id, step, delay_days) \
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(community.as_uuid())
+            .bind(&scope.kind)
+            .bind(scope.id)
+            .bind(step.step)
+            .bind(step.delay_days)
+            .execute(&mut *tx)
+            .await?;
+        }
+        if !enabled {
+            // Turning a scope off is a terminal owner choice for work already waiting in it. A
+            // later re-enable applies to future accepted openers, never silently resurrects old
+            // outreach.
+            sqlx::query(
+                "WITH stopped AS ( \
+                     UPDATE whatsapp_follow_up_due \
+                     SET state = 'stopped', reason = 'follow-up sequence was disabled', updated_at = now() \
+                     WHERE community_id = $1 AND scope_kind = $2 AND scope_id = $3 \
+                       AND state IN ('scheduled', 'held', 'draft', 'ready') \
+                     RETURNING id \
+                 ) \
+                 UPDATE whatsapp_messages m SET \
+                     state = CASE WHEN m.state = 'draft' THEN 'rejected' ELSE 'skipped' END, \
+                     skip_reason = 'follow-up sequence was disabled', updated_at = now() \
+                 FROM stopped \
+                 WHERE m.community_id = $1 AND m.follow_up_due_id = stopped.id \
+                   AND m.state IN ('draft', 'queued', 'ready')",
+            )
+            .bind(community.as_uuid())
+            .bind(&scope.kind)
+            .bind(scope.id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// One configured sequence with its ordered delays.
+    pub async fn whatsapp_get_follow_up_sequence(
+        &self,
+        community: CommunityId,
+        scope: &WhatsappFollowUpScope,
+    ) -> Result<Option<WhatsappFollowUpSequence>> {
+        let row = sqlx::query(
+            "SELECT enabled FROM whatsapp_follow_up_sequences \
+             WHERE community_id = $1 AND scope_kind = $2 AND scope_id = $3",
+        )
+        .bind(community.as_uuid())
+        .bind(&scope.kind)
+        .bind(scope.id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let rows = sqlx::query(
+            "SELECT step, delay_days FROM whatsapp_follow_up_steps \
+             WHERE community_id = $1 AND scope_kind = $2 AND scope_id = $3 ORDER BY step",
+        )
+        .bind(community.as_uuid())
+        .bind(&scope.kind)
+        .bind(scope.id)
+        .fetch_all(&self.pool)
+        .await?;
+        let steps = rows
+            .iter()
+            .map(|row| {
+                Ok(WhatsappFollowUpStep {
+                    step: row.try_get("step")?,
+                    delay_days: row.try_get("delay_days")?,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Some(WhatsappFollowUpSequence {
+            scope: scope.clone(),
+            enabled: row.try_get("enabled")?,
+            steps,
+        }))
+    }
+
+    /// All configured sequences, oldest scopes first, for the follow-up settings view.
+    pub async fn whatsapp_list_follow_up_sequences(
+        &self,
+        community: CommunityId,
+        limit: i64,
+    ) -> Result<Vec<WhatsappFollowUpSequence>> {
+        let rows = sqlx::query(
+            "SELECT scope_kind, scope_id, enabled FROM whatsapp_follow_up_sequences \
+             WHERE community_id = $1 ORDER BY created_at, scope_kind, scope_id LIMIT $2",
+        )
+        .bind(community.as_uuid())
+        .bind(limit.clamp(1, 200))
+        .fetch_all(&self.pool)
+        .await?;
+        let mut sequences = Vec::with_capacity(rows.len());
+        for row in rows {
+            let scope = WhatsappFollowUpScope {
+                kind: row.try_get("scope_kind")?,
+                id: row.try_get("scope_id")?,
+            };
+            let Some(sequence) = self
+                .whatsapp_get_follow_up_sequence(community, &scope)
+                .await?
+            else {
+                return Err(DbError::InvalidData(
+                    "follow-up sequence disappeared during list".to_string(),
+                ));
+            };
+            sequences.push(sequence);
+        }
+        Ok(sequences)
+    }
+
+    /// Due, held and awaiting-approval follow-ups for a private owner or Scout view. Future
+    /// scheduled rows are deliberately excluded, so the caller cannot draft them early.
+    pub async fn whatsapp_list_follow_up_due(
+        &self,
+        community: CommunityId,
+        now: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<WhatsappFollowUpDue>> {
+        let rows = sqlx::query(
+            "SELECT id, scope_kind, scope_id, wa_id, business_id, step, predecessor_message_id, \
+                    draft_message_id, due_at, state, reason, created_at, updated_at \
+             FROM whatsapp_follow_up_due \
+             WHERE community_id = $1 AND ( \
+                 (state = 'scheduled' AND due_at <= $2) \
+                 OR state IN ('held', 'draft', 'ready') \
+             ) ORDER BY due_at, created_at, id LIMIT $3",
+        )
+        .bind(community.as_uuid())
+        .bind(now)
+        .bind(limit.clamp(1, 200))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_follow_up_due).collect()
+    }
+
+    /// Find a follow-up item by its stable id.
+    pub async fn whatsapp_get_follow_up_due(
+        &self,
+        community: CommunityId,
+        due_id: Uuid,
+    ) -> Result<Option<WhatsappFollowUpDue>> {
+        let row = sqlx::query(
+            "SELECT id, scope_kind, scope_id, wa_id, business_id, step, predecessor_message_id, \
+                    draft_message_id, due_at, state, reason, created_at, updated_at \
+             FROM whatsapp_follow_up_due WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_follow_up_due).transpose()
+    }
+
+    /// Return the durable sequence item attached to one outbound draft or queued row.
+    pub async fn whatsapp_follow_up_due_for_message(
+        &self,
+        community: CommunityId,
+        message_id: Uuid,
+    ) -> Result<Option<WhatsappFollowUpDue>> {
+        let row = sqlx::query(
+            "SELECT d.id, d.scope_kind, d.scope_id, d.wa_id, d.business_id, d.step, \
+                    d.predecessor_message_id, d.draft_message_id, d.due_at, d.state, d.reason, \
+                    d.created_at, d.updated_at \
+             FROM whatsapp_follow_up_due d \
+             WHERE d.community_id = $1 AND d.draft_message_id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_follow_up_due).transpose()
+    }
+
+    /// Hold a due item with a person-readable reason. A hold is durable and never silently
+    /// becomes a send after a relay restart.
+    pub async fn whatsapp_hold_follow_up(
+        &self,
+        community: CommunityId,
+        due_id: Uuid,
+        reason: &str,
+    ) -> Result<Option<WhatsappFollowUpDue>> {
+        let row = sqlx::query(
+            "UPDATE whatsapp_follow_up_due SET state = 'held', reason = $3, updated_at = now() \
+             WHERE community_id = $1 AND id = $2 \
+               AND state IN ('scheduled', 'held', 'draft', 'ready') \
+             RETURNING id, scope_kind, scope_id, wa_id, business_id, step, predecessor_message_id, \
+                       draft_message_id, due_at, state, reason, created_at, updated_at",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .bind(reason.chars().take(500).collect::<String>())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(row_to_follow_up_due).transpose()
+    }
+
+    /// Terminally stop one follow-up whose safety conditions changed after its draft was made.
+    /// The linked draft or ready row changes in the same transaction, so no later sender pass
+    /// can treat a stopped item as approval to send.
+    pub async fn whatsapp_stop_follow_up(
+        &self,
+        community: CommunityId,
+        due_id: Uuid,
+        reason: &str,
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let updated = sqlx::query(
+            "UPDATE whatsapp_follow_up_due SET state = 'stopped', reason = $3, updated_at = now() \
+             WHERE community_id = $1 AND id = $2 \
+               AND state IN ('scheduled', 'held', 'draft', 'ready')",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .bind(reason.chars().take(500).collect::<String>())
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() == 1 {
+            sqlx::query(
+                "UPDATE whatsapp_messages SET state = CASE WHEN state = 'draft' THEN 'rejected' \
+                                                       ELSE 'skipped' END, \
+                     skip_reason = $3, updated_at = now() \
+                 WHERE community_id = $1 AND follow_up_due_id = $2 \
+                   AND state IN ('draft', 'queued', 'ready')",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .bind(reason.chars().take(300).collect::<String>())
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(updated.rows_affected() == 1)
+    }
+
+    /// Re-open a retryable held item only after a deliberate retry. A held draft or definite
+    /// Graph refusal is superseded atomically, allowing Scout to make a fresh compliant proposal
+    /// (for example, replacing expired free text with an approved template). An unconfirmed
+    /// Graph result is deliberately not retryable: the owner must resolve that outcome first.
+    pub async fn whatsapp_retry_follow_up(
+        &self,
+        community: CommunityId,
+        due_id: Uuid,
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
+            "SELECT d.draft_message_id, m.state AS message_state \
+             FROM whatsapp_follow_up_due d \
+             LEFT JOIN whatsapp_messages m \
+                    ON m.community_id = d.community_id AND m.id = d.draft_message_id \
+             WHERE d.community_id = $1 AND d.id = $2 AND d.state = 'held' FOR UPDATE OF d",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        let draft_message_id: Option<Uuid> = row.try_get("draft_message_id")?;
+        let message_state: Option<String> = row.try_get("message_state")?;
+        let (state, detach_message) = match message_state.as_deref() {
+            Some("queued") => ("ready", false),
+            Some("draft") => ("scheduled", true),
+            Some("failed") | Some("skipped") | None => ("scheduled", true),
+            // A Graph call may already have reached WhatsApp. Do not offer a path that creates
+            // another follow-up until the existing unknown-send recovery has a human decision.
+            Some("unconfirmed") => {
+                tx.commit().await?;
+                return Ok(false);
+            }
+            _ => {
+                tx.commit().await?;
+                return Ok(false);
+            }
+        };
+        if message_state.as_deref() == Some("draft") {
+            sqlx::query(
+                "UPDATE whatsapp_messages SET state = 'rejected', \
+                     skip_reason = 'superseded while retrying held follow-up', \
+                     follow_up_due_id = NULL, updated_at = now() \
+                 WHERE community_id = $1 AND id = $2 AND state = 'draft'",
+            )
+            .bind(community.as_uuid())
+            .bind(draft_message_id)
+            .execute(&mut *tx)
+            .await?;
+        } else if detach_message {
+            sqlx::query(
+                "UPDATE whatsapp_messages SET follow_up_due_id = NULL, updated_at = now() \
+                 WHERE community_id = $1 AND id = $2 AND state IN ('failed', 'skipped')",
+            )
+            .bind(community.as_uuid())
+            .bind(draft_message_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        sqlx::query(
+            "UPDATE whatsapp_follow_up_due SET state = $3, \
+                 draft_message_id = CASE WHEN $4 THEN NULL ELSE draft_message_id END, \
+                 reason = NULL, updated_at = now() \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .bind(state)
+        .bind(detach_message)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Mark one due item done and prevent its attached draft or queued row from sending. The
+    /// item lock serializes this owner action against the sender's follow-up claim.
+    pub async fn whatsapp_mark_follow_up_done(
+        &self,
+        community: CommunityId,
+        due_id: Uuid,
+    ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let updated = sqlx::query(
+            "UPDATE whatsapp_follow_up_due SET state = 'done', reason = 'marked done by owner', \
+                 updated_at = now() \
+             WHERE community_id = $1 AND id = $2 \
+               AND state IN ('scheduled', 'held', 'draft', 'ready')",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() == 1 {
+            sqlx::query(
+                "UPDATE whatsapp_messages SET state = CASE WHEN state = 'draft' THEN 'rejected' \
+                                                       ELSE 'skipped' END, \
+                     skip_reason = 'follow-up marked done by owner', updated_at = now() \
+                 WHERE community_id = $1 AND follow_up_due_id = $2 \
+                   AND state IN ('draft', 'queued', 'ready')",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(updated.rows_affected() == 1)
+    }
+
+    /// Persist the single draft allowed for a due follow-up. The due-row lock is the generation
+    /// fence: two agents or a retry cannot both turn the same item into outbound work.
+    pub async fn whatsapp_prepare_follow_up_draft(
+        &self,
+        community: CommunityId,
+        due_id: Uuid,
+        message: &NewOutboundMessage,
+        now: DateTime<Utc>,
+    ) -> Result<FollowUpDraftOutcome> {
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
+            "SELECT d.id, d.scope_kind, d.scope_id, d.wa_id, d.business_id, d.step, \
+                    d.predecessor_message_id, d.draft_message_id, d.due_at, d.state, d.reason, \
+                    d.created_at, d.updated_at, c.lead_id, c.opted_out_at, c.paused_at, \
+                    s.enabled, COALESCE(ws.send_paused, false) AS send_paused, ws.pause_reason \
+             FROM whatsapp_follow_up_due d \
+             JOIN whatsapp_contacts c \
+                    ON c.community_id = d.community_id AND c.wa_id = d.wa_id \
+             JOIN whatsapp_follow_up_sequences s \
+                    ON s.community_id = d.community_id AND s.scope_kind = d.scope_kind \
+                   AND s.scope_id = d.scope_id \
+             LEFT JOIN whatsapp_settings ws ON ws.community_id = d.community_id \
+             WHERE d.community_id = $1 AND d.id = $2 FOR UPDATE OF d",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::NotFound);
+        };
+        let due = row_to_follow_up_due(&row)?;
+        if due.wa_id != message.wa_id {
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::Stopped(
+                "follow-up recipient no longer matches this due item".to_string(),
+            ));
+        }
+        if let Some(existing) = due.draft_message_id {
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::Existing(existing));
+        }
+        match due.state.as_str() {
+            "stopped" | "done" | "sent" | "sending" => {
+                let reason = due
+                    .reason
+                    .unwrap_or_else(|| "follow-up is no longer active".to_string());
+                tx.commit().await?;
+                return Ok(FollowUpDraftOutcome::Stopped(reason));
+            }
+            "held" => {
+                let reason = due
+                    .reason
+                    .unwrap_or_else(|| "follow-up is held for owner review".to_string());
+                tx.commit().await?;
+                return Ok(FollowUpDraftOutcome::Held(reason));
+            }
+            "draft" | "ready" => {
+                tx.commit().await?;
+                return Ok(FollowUpDraftOutcome::Held(
+                    "follow-up has no recoverable draft record".to_string(),
+                ));
+            }
+            "scheduled" => {}
+            _ => {
+                tx.commit().await?;
+                return Ok(FollowUpDraftOutcome::Held(
+                    "follow-up has an unknown durable state".to_string(),
+                ));
+            }
+        }
+        if due.due_at > now {
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::NotDue);
+        }
+        let enabled: bool = row.try_get("enabled")?;
+        if !enabled {
+            let reason = "follow-up sequence is turned off";
+            sqlx::query(
+                "UPDATE whatsapp_follow_up_due SET state = 'stopped', reason = $3, updated_at = now() \
+                 WHERE community_id = $1 AND id = $2",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .bind(reason)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::Stopped(reason.to_string()));
+        }
+        let send_paused: bool = row.try_get("send_paused")?;
+        if send_paused {
+            let reason = row
+                .try_get::<Option<String>, _>("pause_reason")?
+                .unwrap_or_else(|| "sending is paused".to_string());
+            sqlx::query(
+                "UPDATE whatsapp_follow_up_due SET state = 'stopped', reason = $3, updated_at = now() \
+                 WHERE community_id = $1 AND id = $2",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .bind(format!("sending is paused: {reason}"))
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::Stopped(format!(
+                "sending is paused: {reason}"
+            )));
+        }
+        let opted_out: Option<DateTime<Utc>> = row.try_get("opted_out_at")?;
+        let paused_at: Option<DateTime<Utc>> = row.try_get("paused_at")?;
+        if opted_out.is_some() || paused_at.is_some() {
+            let reason = if let Some(at) = opted_out {
+                format!("contact opted out on {}", at.format("%Y-%m-%d"))
+            } else {
+                "contact is paused".to_string()
+            };
+            stop_follow_ups_in(&mut tx, community, Some(&due.wa_id), None, &reason).await?;
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::Stopped(reason));
+        }
+        let direct_safety: Option<String> = sqlx::query_scalar(
+            "SELECT reason FROM whatsapp_suppressions \
+             WHERE community_id = $1 AND identity_kind = 'phone' AND identity_value = $2 \
+               AND undone_at IS NULL ORDER BY scope LIMIT 1",
+        )
+        .bind(community.as_uuid())
+        .bind(&due.wa_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(reason) = direct_safety {
+            let reason = format!("outreach safety stop: {reason}");
+            stop_follow_ups_in(&mut tx, community, Some(&due.wa_id), None, &reason).await?;
+            tx.commit().await?;
+            return Ok(FollowUpDraftOutcome::Stopped(reason));
+        }
+        let current_business_id: Option<String> = row.try_get("lead_id")?;
+        let mut business_ids = [due.business_id.as_deref(), current_business_id.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        business_ids.sort_unstable();
+        business_ids.dedup();
+        for business_id in business_ids {
+            let stopped: Option<String> = sqlx::query_scalar(
+                "SELECT reason FROM whatsapp_business_stops \
+                 WHERE community_id = $1 AND business_id = $2",
+            )
+            .bind(community.as_uuid())
+            .bind(business_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if let Some(reason) = stopped {
+                let reason = format!("outreach stopped for the whole business: {reason}");
+                stop_follow_ups_in(&mut tx, community, None, Some(business_id), &reason).await?;
+                tx.commit().await?;
+                return Ok(FollowUpDraftOutcome::Stopped(reason));
+            }
+        }
+        let inserted: Option<Uuid> = sqlx::query_scalar(
+            "INSERT INTO whatsapp_messages \
+             (community_id, id, wa_id, direction, kind, body, template_name, template_language, \
+              params, state, idempotency_key, new_chat, sender_pubkey, follow_up_due_id) \
+             VALUES ($1, $2, $3, 'out', $4, $5, $6, $7, $8, 'draft', $9, $10, $11, $12) \
+             ON CONFLICT DO NOTHING RETURNING id",
+        )
+        .bind(community.as_uuid())
+        .bind(message.id)
+        .bind(&message.wa_id)
+        .bind(&message.kind)
+        .bind(&message.body)
+        .bind(&message.template_name)
+        .bind(&message.template_language)
+        .bind(&message.params)
+        .bind(&message.idempotency_key)
+        .bind(message.new_chat)
+        .bind(&message.sender_pubkey)
+        .bind(due_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(inserted) = inserted else {
+            let existing: Option<Uuid> = sqlx::query_scalar(
+                "SELECT id FROM whatsapp_messages \
+                 WHERE community_id = $1 AND idempotency_key = $2",
+            )
+            .bind(community.as_uuid())
+            .bind(&message.idempotency_key)
+            .fetch_optional(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return existing.map(FollowUpDraftOutcome::Existing).ok_or_else(|| {
+                DbError::InvalidData(
+                    "follow-up draft insert conflicted without an idempotent row".to_string(),
+                )
+            });
+        };
+        sqlx::query(
+            "UPDATE whatsapp_follow_up_due SET state = 'draft', draft_message_id = $3, \
+                 reason = NULL, updated_at = now() WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(due_id)
+        .bind(inserted)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(FollowUpDraftOutcome::Prepared(inserted))
     }
 
     // ── contacts ───────────────────────────────────────────────────────────────
@@ -1868,6 +2691,11 @@ impl Db {
         .await?
         .flatten();
 
+        // This matches the send-claim lock for every number belonging to the business. Without
+        // it, a reply from one number could commit its business stop just after another number
+        // passed its final send-time check.
+        lock_follow_up_business_in(&mut tx, community, business_id.as_deref()).await?;
+
         let mut outcome = InboundSafetyOutcome::default();
         if let Some(reason) = opt_out_reason {
             let opted_out = sqlx::query(
@@ -1907,6 +2735,7 @@ impl Db {
             .bind("contact opted out")
             .execute(&mut *tx)
             .await?;
+            stop_follow_ups_in(&mut tx, community, Some(wa_id), None, "contact opted out").await?;
         }
 
         if let Some(business_id) = business_id.as_deref() {
@@ -1940,6 +2769,25 @@ impl Db {
             .bind(business_id)
             .execute(&mut *tx)
             .await?;
+            stop_follow_ups_in(
+                &mut tx,
+                community,
+                None,
+                Some(business_id),
+                "inbound reply received for this business",
+            )
+            .await?;
+        } else {
+            // A reply without a linked business still ends this recipient's sequence. It is
+            // safer to leave than to assume a missing CRM link permits another outreach.
+            stop_follow_ups_in(
+                &mut tx,
+                community,
+                Some(wa_id),
+                None,
+                "inbound reply received",
+            )
+            .await?;
         }
         tx.commit().await?;
         Ok(outcome)
@@ -1955,6 +2803,16 @@ impl Db {
         created_by: &[u8],
     ) -> Result<bool> {
         let mut tx = begin(&self.pool).await?;
+        // A due item always has a contact. Taking this row lock before publishing the
+        // never-contact ledger entry serializes it with the sender's final claim.
+        sqlx::query(
+            "SELECT 1 FROM whatsapp_contacts \
+             WHERE community_id = $1 AND wa_id = $2 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(wa_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         let inserted = sqlx::query(
             "INSERT INTO whatsapp_suppressions \
              (community_id, id, identity_kind, identity_value, scope, reason, source, created_by) \
@@ -1979,6 +2837,8 @@ impl Db {
             .bind("never-contact entry")
             .execute(&mut *tx)
             .await?;
+            stop_follow_ups_in(&mut tx, community, Some(wa_id), None, "never-contact entry")
+                .await?;
         }
         tx.commit().await?;
         Ok(inserted.rows_affected() == 1)
@@ -2195,6 +3055,7 @@ impl Db {
         reason: &str,
         at: DateTime<Utc>,
     ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
         let result = sqlx::query(
             "UPDATE whatsapp_contacts SET paused_at = $3, pause_reason = $4, updated_at = now() \
              WHERE community_id = $1 AND wa_id = $2 AND paused_at IS NULL",
@@ -2203,8 +3064,12 @@ impl Db {
         .bind(wa_id)
         .bind(at)
         .bind(reason.chars().take(200).collect::<String>())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        if result.rows_affected() == 1 {
+            stop_follow_ups_in(&mut tx, community, Some(wa_id), None, "contact is paused").await?;
+        }
+        tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
 
@@ -2731,7 +3596,8 @@ impl Db {
         rows.iter().map(row_to_message).collect()
     }
 
-    /// Outbound messages waiting to be sent, singles first then batch rows in batch order.
+    /// Outbound messages waiting to be sent, with approved follow-ups first, then singles and
+    /// batch rows in batch order.
     ///
     /// `send_after` is the owner's existing Send now marker, not a generic eligibility clock.
     /// A delayed per-contact retry stays `failed` until its deadline releases it, so filtering
@@ -2748,7 +3614,8 @@ impl Db {
                     m.new_chat, m.send_after, m.sender_pubkey, m.sent_at, m.created_at \
              FROM whatsapp_messages m \
              WHERE m.community_id = $1 AND m.state IN ('queued', 'ready') \
-             ORDER BY (m.state = 'queued') DESC, (m.send_after IS NOT NULL) DESC, \
+             ORDER BY (m.follow_up_due_id IS NOT NULL) DESC, (m.state = 'queued') DESC, \
+                      (m.send_after IS NOT NULL) DESC, \
                       m.created_at, m.batch_idx NULLS FIRST, m.id \
              LIMIT $2",
         )
@@ -2768,6 +3635,87 @@ impl Db {
         lease_until: DateTime<Utc>,
         now: DateTime<Utc>,
     ) -> Result<bool> {
+        let mut tx = begin(&self.pool).await?;
+        let message = sqlx::query(
+            "SELECT m.wa_id, m.follow_up_due_id, d.business_id AS due_business_id \
+             FROM whatsapp_messages m \
+             LEFT JOIN whatsapp_follow_up_due d \
+               ON d.community_id = m.community_id AND d.id = m.follow_up_due_id \
+             WHERE m.community_id = $1 AND m.id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(message_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(message) = message else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        let wa_id: String = message.try_get("wa_id")?;
+        let follow_up_due_id: Option<Uuid> = message.try_get("follow_up_due_id")?;
+        let due_business_id: Option<String> = message.try_get("due_business_id")?;
+
+        // A sender pause takes this row first, and inbound safety takes the contact first. The
+        // claim follows those same safety generations before it can move a due item to `sending`.
+        sqlx::query("SELECT 1 FROM whatsapp_settings WHERE community_id = $1 FOR UPDATE")
+            .bind(community.as_uuid())
+            .fetch_optional(&mut *tx)
+            .await?;
+        let contact = sqlx::query(
+            "SELECT lead_id FROM whatsapp_contacts \
+             WHERE community_id = $1 AND wa_id = $2 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(&wa_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(contact) = contact else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        let contact_business_id: Option<String> = contact.try_get("lead_id")?;
+        let mut business_ids = [due_business_id.as_deref(), contact_business_id.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        business_ids.sort_unstable();
+        business_ids.dedup();
+        for business_id in business_ids {
+            lock_follow_up_business_in(&mut tx, community, Some(business_id)).await?;
+        }
+        if let Some(due_id) = follow_up_due_id {
+            // The contact and business safety generations above are now fenced. Locking the due
+            // item before the message keeps all terminal paths serialized with this lease. This
+            // is intentionally stricter than the P0 owner-reply exception below: a follow-up
+            // must stop for every business reply, including when the contact was relinked.
+            let due = sqlx::query(
+                "UPDATE whatsapp_follow_up_due d SET state = 'sending', reason = NULL, \
+                     updated_at = now() \
+                 FROM whatsapp_follow_up_sequences s \
+                 WHERE d.community_id = $1 AND d.id = $2 AND d.state = 'ready' \
+                   AND d.due_at <= $3 AND s.community_id = d.community_id \
+                   AND s.scope_kind = d.scope_kind AND s.scope_id = d.scope_id AND s.enabled \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM whatsapp_business_stops stopped \
+                       WHERE stopped.community_id = d.community_id \
+                         AND (stopped.business_id = d.business_id OR EXISTS ( \
+                             SELECT 1 FROM whatsapp_contacts current_contact \
+                             WHERE current_contact.community_id = d.community_id \
+                               AND current_contact.wa_id = d.wa_id \
+                               AND current_contact.lead_id = stopped.business_id \
+                         )) \
+                   )",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+            if due.rows_affected() != 1 {
+                tx.commit().await?;
+                return Ok(false);
+            }
+        }
         let result = sqlx::query(
             "UPDATE whatsapp_messages AS m SET state = 'sending', lease_token = $3, lease_until = $4, \
                  sent_at = $5, updated_at = now() \
@@ -2793,13 +3741,31 @@ impl Db {
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
                      AND NOT ( \
-                         m.direction = 'out' AND m.kind = 'text' AND m.batch_id IS NULL \
+                         m.follow_up_due_id IS NULL \
+                         AND m.direction = 'out' AND m.kind = 'text' AND m.batch_id IS NULL \
                          AND NOT m.new_chat AND m.idempotency_key LIKE $6 \
                          AND c.last_inbound_at IS NOT NULL \
                          AND c.last_inbound_at + interval '24 hours' > $5 \
                          AND b.reason = $7 \
                      ) \
-               )",
+               ) \
+               AND (m.follow_up_due_id IS NULL OR m.kind <> 'text' OR EXISTS ( \
+                   SELECT 1 FROM whatsapp_contacts c \
+                   WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                     AND c.last_inbound_at IS NOT NULL \
+                     AND c.last_inbound_at + interval '24 hours' > $5 \
+               )) \
+               AND (m.follow_up_due_id IS NULL OR m.kind <> 'template' OR EXISTS ( \
+                   SELECT 1 FROM whatsapp_templates t \
+                   WHERE t.community_id = m.community_id AND t.name = m.template_name \
+                     AND t.language = m.template_language \
+                     AND upper(t.status) = 'APPROVED' \
+               )) \
+               AND (m.follow_up_due_id IS NULL OR EXISTS ( \
+                   SELECT 1 FROM whatsapp_follow_up_due d \
+                   WHERE d.community_id = m.community_id AND d.id = m.follow_up_due_id \
+                     AND d.state = 'sending' \
+               ))",
         )
         .bind(community.as_uuid())
         .bind(message_id)
@@ -2808,9 +3774,14 @@ impl Db {
         .bind(now)
         .bind(format!("{SEND_REQUEST_IDEMPOTENCY_PREFIX}%"))
         .bind(WhatsappBusinessStopCause::InboundReply.reason())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
-        Ok(result.rows_affected() == 1)
+        if result.rows_affected() != 1 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// Record the Graph acceptance and update the contact, in one transaction.
@@ -2837,6 +3808,17 @@ impl Db {
         if result.rows_affected() != 1 {
             return Ok(false);
         }
+        let source = sqlx::query(
+            "SELECT follow_up_scope_kind, follow_up_due_id, batch_id FROM whatsapp_messages \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(message.id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let follow_up_scope_kind: Option<String> = source.try_get("follow_up_scope_kind")?;
+        let follow_up_due_id: Option<Uuid> = source.try_get("follow_up_due_id")?;
+        let batch_id: Option<Uuid> = source.try_get("batch_id")?;
         sqlx::query(
             "UPDATE whatsapp_contacts SET last_outbound_at = $3, \
                  outbound_since_inbound = outbound_since_inbound + 1, updated_at = now() \
@@ -2844,6 +3826,110 @@ impl Db {
         )
         .bind(community.as_uuid())
         .bind(&message.wa_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        let business_id: Option<String> = sqlx::query_scalar(
+            "SELECT lead_id FROM whatsapp_contacts \
+             WHERE community_id = $1 AND wa_id = $2 FOR UPDATE",
+        )
+        .bind(community.as_uuid())
+        .bind(&message.wa_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .flatten();
+        lock_follow_up_business_in(&mut tx, community, business_id.as_deref()).await?;
+        if batch_id.is_none() && follow_up_scope_kind.is_none() && follow_up_due_id.is_none() {
+            // A person sending a normal message takes over the conversation. Stop any pending
+            // sequence for that contact or its business before another follow-up can claim.
+            stop_follow_ups_in(
+                &mut tx,
+                community,
+                Some(&message.wa_id),
+                business_id.as_deref(),
+                "a teammate sent a manual message",
+            )
+            .await?;
+        }
+        // A completed follow-up advances its own durable item before the next item is created.
+        // The next insert below is additionally fenced by every current stop, so an inbound
+        // reply that arrived while Graph was accepting this message cannot revive the sequence.
+        sqlx::query(
+            "UPDATE whatsapp_follow_up_due d SET state = 'sent', reason = NULL, updated_at = now() \
+             FROM whatsapp_messages m \
+             WHERE d.community_id = $1 AND m.community_id = d.community_id AND m.id = $2 \
+               AND m.follow_up_due_id = d.id AND d.state = 'sending'",
+        )
+        .bind(community.as_uuid())
+        .bind(message.id)
+        .execute(&mut *tx)
+        .await?;
+        // A first opener carries its optional scope on the message. Later steps inherit the
+        // scope and number from their predecessor due item. The partial unique index makes this
+        // idempotent if a completion write is retried after a connection interruption.
+        sqlx::query(
+            "WITH source AS ( \
+                 SELECT m.wa_id, c.lead_id AS business_id, m.sent_at AS predecessor_sent_at, \
+                        COALESCE(d.scope_kind, m.follow_up_scope_kind) AS scope_kind, \
+                        COALESCE(d.scope_id, m.follow_up_scope_id) AS scope_id, \
+                        COALESCE(d.step, 0) + 1 AS next_step \
+                 FROM whatsapp_messages m \
+                 JOIN whatsapp_contacts c \
+                   ON c.community_id = m.community_id AND c.wa_id = m.wa_id \
+                 LEFT JOIN whatsapp_follow_up_due d \
+                   ON d.community_id = m.community_id AND d.id = m.follow_up_due_id \
+                 WHERE m.community_id = $1 AND m.id = $2 AND m.direction = 'out' \
+             ) \
+             INSERT INTO whatsapp_follow_up_due \
+                 (community_id, id, scope_kind, scope_id, wa_id, business_id, step, \
+                  predecessor_message_id, due_at, state, reason) \
+            SELECT $1, gen_random_uuid(), source.scope_kind, source.scope_id, source.wa_id, \
+                    source.business_id, source.next_step, $2, \
+                    $3 + step.delay_days * interval '1 day', 'scheduled', NULL \
+             FROM source \
+             JOIN whatsapp_follow_up_sequences sequence \
+               ON sequence.community_id = $1 AND sequence.scope_kind = source.scope_kind \
+              AND sequence.scope_id = source.scope_id AND sequence.enabled \
+             JOIN whatsapp_follow_up_steps step \
+               ON step.community_id = sequence.community_id \
+              AND step.scope_kind = sequence.scope_kind AND step.scope_id = sequence.scope_id \
+              AND step.step = source.next_step \
+             LEFT JOIN whatsapp_settings settings ON settings.community_id = $1 \
+             JOIN whatsapp_contacts contact \
+               ON contact.community_id = $1 AND contact.wa_id = source.wa_id \
+             WHERE source.scope_kind IS NOT NULL \
+               AND NOT COALESCE(settings.send_paused, false) \
+               AND contact.opted_out_at IS NULL AND contact.paused_at IS NULL \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_suppressions suppression \
+                   WHERE suppression.community_id = $1 AND suppression.identity_kind = 'phone' \
+                     AND suppression.identity_value = source.wa_id AND suppression.undone_at IS NULL \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_business_stops stopped \
+                   WHERE stopped.community_id = $1 AND stopped.business_id = source.business_id \
+               ) \
+               AND NOT EXISTS ( \
+                   SELECT 1 FROM whatsapp_messages manual \
+                   LEFT JOIN whatsapp_contacts manual_contact \
+                     ON manual_contact.community_id = manual.community_id \
+                    AND manual_contact.wa_id = manual.wa_id \
+                   WHERE manual.community_id = $1 AND manual.id <> $2 \
+                     AND manual.direction = 'out' AND manual.batch_id IS NULL \
+                     AND manual.follow_up_scope_kind IS NULL AND manual.follow_up_due_id IS NULL \
+                     AND manual.state IN ('sending', 'sent', 'delivered', 'read', 'unconfirmed') \
+                     AND manual.sent_at IS NOT NULL \
+                     AND source.predecessor_sent_at IS NOT NULL \
+                     AND manual.sent_at >= source.predecessor_sent_at \
+                     AND (manual.wa_id = source.wa_id OR ( \
+                         source.business_id IS NOT NULL \
+                         AND manual_contact.lead_id = source.business_id \
+                     )) \
+               ) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(community.as_uuid())
+        .bind(message.id)
         .bind(now)
         .execute(&mut *tx)
         .await?;
@@ -2872,19 +3958,41 @@ impl Db {
         error_code: &str,
         error_text: &str,
     ) -> Result<bool> {
-        let result = sqlx::query(
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
             "UPDATE whatsapp_messages SET state = 'failed', error_code = $4, error_text = $5, \
                  lease_token = NULL, lease_until = NULL, updated_at = now() \
-             WHERE community_id = $1 AND id = $2 AND state = 'sending' AND lease_token = $3",
+             WHERE community_id = $1 AND id = $2 AND state = 'sending' AND lease_token = $3 \
+             RETURNING follow_up_due_id",
         )
         .bind(community.as_uuid())
         .bind(message_id)
         .bind(lease_token)
         .bind(error_code.chars().take(64).collect::<String>())
         .bind(error_text.chars().take(500).collect::<String>())
-        .execute(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        let follow_up_due_id: Option<Uuid> = row.try_get("follow_up_due_id")?;
+        if let Some(due_id) = follow_up_due_id {
+            sqlx::query(
+                "UPDATE whatsapp_follow_up_due SET state = 'held', reason = $3, updated_at = now() \
+                 WHERE community_id = $1 AND id = $2 AND state = 'sending'",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .bind(format!(
+                "WhatsApp refused this follow-up: {}",
+                error_text.chars().take(350).collect::<String>()
+            ))
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// Record a definite account-wide refusal and close the sender fence atomically. The message
@@ -2912,6 +4020,18 @@ impl Db {
             tx.commit().await?;
             return Ok(AccountFailureOutcome::default());
         }
+        sqlx::query(
+            "UPDATE whatsapp_follow_up_due d SET state = 'stopped', \
+                 reason = 'WhatsApp account failure stopped this follow-up', \
+                 updated_at = now() \
+             FROM whatsapp_messages m \
+             WHERE d.community_id = $1 AND m.community_id = d.community_id \
+               AND m.id = $2 AND m.follow_up_due_id = d.id AND d.state = 'sending'",
+        )
+        .bind(community.as_uuid())
+        .bind(failure.message_id)
+        .execute(&mut *tx)
+        .await?;
         let became_unhealthy = mark_account_unhealthy_in(
             &mut tx,
             community,
@@ -2919,6 +4039,12 @@ impl Db {
             failure.error_text,
             failure.pause_reason,
             failure.at,
+        )
+        .await?;
+        stop_follow_ups_for_pause_in(
+            &mut tx,
+            community,
+            "sending was paused after a WhatsApp account failure",
         )
         .await?;
         tx.commit().await?;
@@ -3363,16 +4489,42 @@ impl Db {
         message_id: Uuid,
         reason: &str,
     ) -> Result<bool> {
-        let result = sqlx::query(
+        let reason = reason.chars().take(300).collect::<String>();
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
             "UPDATE whatsapp_messages SET state = 'skipped', skip_reason = $3, updated_at = now() \
-             WHERE community_id = $1 AND id = $2 AND state IN ('queued', 'ready')",
+             WHERE community_id = $1 AND id = $2 AND state IN ('queued', 'ready') \
+             RETURNING follow_up_due_id",
         )
         .bind(community.as_uuid())
         .bind(message_id)
-        .bind(reason.chars().take(300).collect::<String>())
-        .execute(&self.pool)
+        .bind(&reason)
+        .fetch_optional(&mut *tx)
         .await?;
-        Ok(result.rows_affected() == 1)
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(false);
+        };
+        let follow_up_due_id: Option<Uuid> = row.try_get("follow_up_due_id")?;
+        if let Some(due_id) = follow_up_due_id {
+            let stopped = reason.starts_with("contact opted out")
+                || reason.starts_with("contact is paused")
+                || reason.starts_with("never-contact entry")
+                || reason.starts_with("outreach stopped for the whole business");
+            let state = if stopped { "stopped" } else { "held" };
+            sqlx::query(
+                "UPDATE whatsapp_follow_up_due SET state = $3, reason = $4, updated_at = now() \
+                 WHERE community_id = $1 AND id = $2 AND state IN ('ready', 'sending')",
+            )
+            .bind(community.as_uuid())
+            .bind(due_id)
+            .bind(state)
+            .bind(&reason)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// A send whose lease ran out never got a recorded answer. It is NEVER sent again:
@@ -3381,6 +4533,7 @@ impl Db {
         &self,
         now: DateTime<Utc>,
     ) -> Result<Vec<(CommunityId, WhatsappMessage)>> {
+        let mut tx = begin(&self.pool).await?;
         let rows = sqlx::query(
             "UPDATE whatsapp_messages SET state = 'unconfirmed', lease_token = NULL, \
                  lease_until = NULL, \
@@ -3392,8 +4545,18 @@ impl Db {
                  event_id, batch_id, batch_idx, new_chat, send_after, sender_pubkey, sent_at, created_at",
         )
         .bind(now)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        sqlx::query(
+            "UPDATE whatsapp_follow_up_due d SET state = 'held', \
+                 reason = 'relay lost the send result; owner review is required', updated_at = now() \
+             FROM whatsapp_messages m \
+             WHERE m.follow_up_due_id = d.id AND m.community_id = d.community_id \
+               AND m.state = 'unconfirmed' AND d.state = 'sending'",
+        )
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
         rows.iter()
             .map(|row| {
                 Ok((
@@ -3762,6 +4925,44 @@ impl Db {
         Ok(at)
     }
 
+    /// Outreach sends that consume the owner-controlled daily pace: a new conversation or a
+    /// relay-owned follow-up. Ordinary replies remain responsive and do not consume this pool.
+    /// An ambiguous provider result is counted conservatively because its `sent_at` records a
+    /// Graph lease that may already have reached the customer.
+    pub async fn whatsapp_count_paced_outreach_since(
+        &self,
+        community: CommunityId,
+        since: DateTime<Utc>,
+    ) -> Result<i64> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND sent_at >= $2 \
+               AND state <> 'failed' AND (new_chat OR follow_up_due_id IS NOT NULL)",
+        )
+        .bind(community.as_uuid())
+        .bind(since)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
+    /// Latest send that shares the outreach pacing lane. Follow-ups and new conversations use
+    /// this common timestamp so a dense due queue cannot turn into a burst.
+    pub async fn whatsapp_last_paced_outreach_at(
+        &self,
+        community: CommunityId,
+    ) -> Result<Option<DateTime<Utc>>> {
+        let at: Option<DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT max(sent_at) FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND sent_at IS NOT NULL \
+               AND (new_chat OR follow_up_due_id IS NOT NULL)",
+        )
+        .bind(community.as_uuid())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(at)
+    }
+
     /// Outbound messages to this contact that are drafted, approved or queued but not yet
     /// answered by Graph (counts toward the one-message-in-a-row rule).
     pub async fn whatsapp_count_pending_outbound(
@@ -3853,9 +5054,10 @@ impl Db {
         rows.iter().map(row_to_message).collect()
     }
 
-    /// Owner or admin decides one draft in a single statement: approve moves it to `queued`
-    /// (optionally with an edited body and parameters), reject moves it to `rejected`.
-    /// Only a `draft` can be decided, so a repeat decision changes nothing.
+    /// Owner or admin decides one draft atomically: approve moves it to `queued` (optionally
+    /// with an edited body and parameters), reject moves it to `rejected`. A linked follow-up
+    /// transitions with the message, so a sender cannot observe an approved message without its
+    /// matching due state. Only a `draft` can be decided, so a repeat changes nothing.
     pub async fn whatsapp_decide_draft(
         &self,
         community: CommunityId,
@@ -3868,19 +5070,45 @@ impl Db {
             Some((body, params)) if approve => (Some(body), Some(params)),
             _ => (None, None),
         };
-        let result = sqlx::query(
+        let mut tx = begin(&self.pool).await?;
+        let row = sqlx::query(
             "UPDATE whatsapp_messages SET state = $3, body = COALESCE($4, body), \
                  params = COALESCE($5, params), updated_at = now() \
-             WHERE community_id = $1 AND id = $2 AND direction = 'out' AND state = 'draft'",
+             WHERE community_id = $1 AND id = $2 AND direction = 'out' AND state = 'draft' \
+             RETURNING follow_up_due_id",
         )
         .bind(community.as_uuid())
         .bind(message_id)
         .bind(new_state)
         .bind(body)
         .bind(params)
-        .execute(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
-        if result.rows_affected() == 1 {
+        if let Some(row) = row {
+            let follow_up_due_id: Option<Uuid> = row.try_get("follow_up_due_id")?;
+            if let Some(due_id) = follow_up_due_id {
+                let due_state = if approve { "ready" } else { "done" };
+                let reason = if approve {
+                    None
+                } else {
+                    Some("follow-up draft rejected by owner")
+                };
+                let updated = sqlx::query(
+                    "UPDATE whatsapp_follow_up_due SET state = $3, reason = $4, updated_at = now() \
+                     WHERE community_id = $1 AND id = $2 AND state = 'draft'",
+                )
+                .bind(community.as_uuid())
+                .bind(due_id)
+                .bind(due_state)
+                .bind(reason)
+                .execute(&mut *tx)
+                .await?;
+                if updated.rows_affected() != 1 {
+                    tx.rollback().await?;
+                    return Ok(DraftDecisionOutcome::NotDraft);
+                }
+            }
+            tx.commit().await?;
             return Ok(if approve {
                 DraftDecisionOutcome::Approved
             } else {
@@ -3893,8 +5121,9 @@ impl Db {
         )
         .bind(community.as_uuid())
         .bind(message_id)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(if exists == 0 {
             DraftDecisionOutcome::NotFound
         } else {
@@ -3912,6 +5141,7 @@ impl Db {
         batch: &WhatsappBatch,
         request_event_id: &[u8],
         rows: &[NewOutboundMessage],
+        follow_up_scope: Option<&WhatsappFollowUpScope>,
     ) -> Result<bool> {
         let mut tx = begin(&self.pool).await?;
         let inserted = sqlx::query(
@@ -3939,8 +5169,8 @@ impl Db {
                 "INSERT INTO whatsapp_messages \
                  (community_id, id, wa_id, direction, kind, body, template_name, \
                   template_language, params, state, idempotency_key, batch_id, batch_idx, \
-                  new_chat, sender_pubkey) \
-                 VALUES ($1, $2, $3, 'out', $4, $5, $6, $7, $8, 'held', $9, $10, $11, $12, $13)",
+                  new_chat, sender_pubkey, follow_up_scope_kind, follow_up_scope_id) \
+                 VALUES ($1, $2, $3, 'out', $4, $5, $6, $7, $8, 'held', $9, $10, $11, $12, $13, $14, $15)",
             )
             .bind(community.as_uuid())
             .bind(row.id)
@@ -3955,6 +5185,8 @@ impl Db {
             .bind(row.batch_idx)
             .bind(row.new_chat)
             .bind(&row.sender_pubkey)
+            .bind(follow_up_scope.map(|scope| &scope.kind))
+            .bind(follow_up_scope.map(|scope| scope.id))
             .execute(&mut *tx)
             .await?;
         }

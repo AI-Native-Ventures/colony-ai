@@ -724,7 +724,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 68);
+        assert_eq!(migrations.len(), 69);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -770,6 +770,18 @@ mod postgres_tests {
         }
         assert_eq!(migrations[67].version, 68);
         assert!(migrations[67].sql.as_str().contains("lead_link_checked_at"));
+        assert_eq!(migrations[68].version, 69);
+        let follow_up_migration = migrations[68].sql.as_str();
+        for table in [
+            "CREATE TABLE whatsapp_follow_up_sequences",
+            "CREATE TABLE whatsapp_follow_up_steps",
+            "CREATE TABLE whatsapp_follow_up_due",
+        ] {
+            assert!(
+                follow_up_migration.contains(table),
+                "follow-up migration must create {table}"
+            );
+        }
         assert!(migrations[54]
             .sql
             .as_str()

@@ -19,8 +19,9 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use buzz_db::whatsapp::{
-    OutreachFlags, WhatsappBatch, WhatsappBusinessStop, WhatsappContact, WhatsappMedia,
-    WhatsappMessage, WhatsappSuppression, WhatsappTemplate,
+    OutreachFlags, WhatsappBatch, WhatsappBusinessStop, WhatsappContact, WhatsappFollowUpDue,
+    WhatsappFollowUpSequence, WhatsappMedia, WhatsappMessage, WhatsappSuppression,
+    WhatsappTemplate,
 };
 
 use super::{api_error, api_error_with_code, gifs, internal_error};
@@ -236,6 +237,42 @@ fn business_stop_view(stop: &WhatsappBusinessStop) -> Value {
 
 fn template_view(template: &WhatsappTemplate) -> Value {
     connect::template_json(template)
+}
+
+/// Follow-up timing is relay state, not a client timer. The view stays additive and uses only
+/// stable strings, allowing one- and two-version-old desktops to ignore this new query.
+fn follow_up_sequence_view(sequence: &WhatsappFollowUpSequence) -> Value {
+    json!({
+        "scope": {
+            "kind": sequence.scope.kind,
+            "id": sequence.scope.id.to_string(),
+        },
+        "enabled": sequence.enabled,
+        "steps": sequence.steps.iter().map(|step| json!({
+            "step": step.step,
+            "delayDays": step.delay_days,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn follow_up_due_view(due: &WhatsappFollowUpDue) -> Value {
+    json!({
+        "id": due.id.to_string(),
+        "scope": {
+            "kind": due.scope.kind,
+            "id": due.scope.id.to_string(),
+        },
+        "waId": due.wa_id,
+        "businessId": due.business_id,
+        "step": due.step,
+        "predecessorMessageId": due.predecessor_message_id.to_string(),
+        "draftMessageId": due.draft_message_id.map(|id| id.to_string()),
+        "dueAt": due.due_at.to_rfc3339(),
+        "state": due.state,
+        "reason": due.reason,
+        "createdAt": due.created_at.to_rfc3339(),
+        "updatedAt": due.updated_at.to_rfc3339(),
+    })
 }
 
 /// One word for where the contact stands, so a contact whose only row still waits for a
@@ -771,6 +808,23 @@ pub async fn query(
                 .collect::<Vec<_>>(),
             })))
         }
+        "follow_ups" => {
+            private(access)?;
+            let sequences = state
+                .db
+                .whatsapp_list_follow_up_sequences(community, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            let due = state
+                .db
+                .whatsapp_list_follow_up_due(community, now, limit_of(&request))
+                .await
+                .map_err(db_error)?;
+            Ok(Json(json!({
+                "sequences": sequences.iter().map(follow_up_sequence_view).collect::<Vec<_>>(),
+                "due": due.iter().map(follow_up_due_view).collect::<Vec<_>>(),
+            })))
+        }
         "safety_check" => {
             // Discovery agents may use this while saving candidates, even when they are not
             // Outreach members. The projection below only returns values the caller supplied,
@@ -903,7 +957,7 @@ pub async fn query(
         }
         _ => Err(api_error(
             StatusCode::BAD_REQUEST,
-            "unknown query: use status, templates, batches, batch, drafts, safety_check, suppressions, unknown_sends, contacts, inbox or thread",
+            "unknown query: use status, templates, batches, batch, drafts, follow_ups, safety_check, suppressions, unknown_sends, contacts, inbox or thread",
         )),
     }
 }

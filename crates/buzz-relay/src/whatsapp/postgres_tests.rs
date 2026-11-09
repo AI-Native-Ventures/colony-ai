@@ -29,8 +29,8 @@ use buzz_core::business_records::{
 use buzz_core::channel::MemberRole;
 use buzz_core::kind::{
     KIND_PROSPECT_HEAD, KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION,
-    KIND_WHATSAPP_CONTACT_UPDATE, KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST,
-    KIND_WHATSAPP_SETTINGS, KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
+    KIND_WHATSAPP_CONTACT_UPDATE, KIND_WHATSAPP_FOLLOW_UP, KIND_WHATSAPP_SAFETY_ACTION,
+    KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS, KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::whatsapp_stage::WhatsappStage;
@@ -1389,6 +1389,1226 @@ async fn a_reply_stops_its_whole_business_and_never_contact_blocks_every_send_fe
     .expect("never-contact undo audit entry");
     assert_eq!(action, "whatsapp_outreach_safety_changed");
     assert_eq!(detail["action"], "never_contact_undo");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn follow_up_send_time_stops_leave_every_blocked_recipient_at_zero_new_sends() {
+    // This binds the real signed command, durable due state, draft decision, inbound safety and
+    // sender claim seams. Removing any one stop path lets one of these queued follow-ups reach
+    // FakeGraph, so the test is falsifiable rather than a test-only policy mirror.
+    let fx = fixture().await;
+    let scope_id = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_FOLLOW_UP,
+        json!({
+            "v": 1,
+            "action": "configure",
+            "scope": {"kind": "campaign", "id": scope_id.to_string()},
+            "enabled": true,
+            "steps": [{"step": 1, "delayDays": 1}],
+        }),
+    )
+    .await
+    .expect("configure one-step follow-up sequence");
+
+    let replied = "+27821230101";
+    let opted_out = "+27821230102";
+    let never_contact = "+27821230103";
+    let business_stopped = "+27821230104";
+    let same_business_second_number = "+27821230107";
+    let paused = "+27821230105";
+    let already_followed_up = "+27821230106";
+    let business_id = "follow-up-business";
+    for wa_id in [
+        replied,
+        opted_out,
+        never_contact,
+        business_stopped,
+        same_business_second_number,
+        paused,
+        already_followed_up,
+    ] {
+        fx.state
+            .db
+            .whatsapp_ensure_contact(fx.community(), &wa_id[1..], Some("Thabo"))
+            .await
+            .expect("seed follow-up contact");
+        // Keep the opener inside a service window so the initial batch is not paced as a new
+        // chat. The safety events under test occur only after it has been accepted.
+        fx.state
+            .db
+            .whatsapp_touch_inbound(fx.community(), &wa_id[1..], Utc::now())
+            .await
+            .expect("open service window");
+    }
+    fx.state
+        .db
+        .whatsapp_set_lead(fx.community(), &business_stopped[1..], business_id)
+        .await
+        .expect("link business follow-up contact");
+
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH,
+        json!({
+            "v": 1,
+            "batchId": batch_id.to_string(),
+            "template": "intro",
+            "language": "en",
+            "followUpScope": {"kind": "campaign", "id": scope_id.to_string()},
+            "rows": [
+                {"to": replied, "params": ["Thabo"]},
+                {"to": opted_out, "params": ["Thabo"]},
+                {"to": never_contact, "params": ["Thabo"]},
+                {"to": business_stopped, "leadId": business_id, "params": ["Thabo"]},
+                {"to": same_business_second_number, "leadId": business_id, "params": ["Thabo"]},
+                {"to": paused, "params": ["Thabo"]},
+                {"to": already_followed_up, "params": ["Thabo"]}
+            ]
+        }),
+    )
+    .await
+    .expect("prepare scoped opener batch");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("approve scoped opener batch");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        7,
+        "every opener reached FakeGraph once"
+    );
+
+    // The sender's successful completion creates the due records. Make them due now without
+    // bypassing that production scheduling path.
+    sqlx::query(
+        "UPDATE whatsapp_follow_up_due SET due_at = now() - interval '1 minute' \
+         WHERE community_id = $1 AND scope_kind = 'campaign' AND scope_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(scope_id)
+    .execute(&fx.pool)
+    .await
+    .expect("make test due items eligible");
+    let due_by_wa = fx
+        .state
+        .db
+        .whatsapp_list_follow_up_due(fx.community(), Utc::now(), 20)
+        .await
+        .expect("list due follow-ups")
+        .into_iter()
+        .map(|due| (due.wa_id, due.id))
+        .collect::<HashMap<_, _>>();
+    assert_eq!(
+        due_by_wa.len(),
+        6,
+        "two phone numbers for one lead must share one durable follow-up item",
+    );
+    assert!(
+        !due_by_wa.contains_key(&same_business_second_number[1..]),
+        "the later opener for the same lead cannot create a second step-one due item",
+    );
+
+    // Every planned follow-up goes through the regular agent request and owner decision seam.
+    // Owner-authored follow-ups remain drafts, which prevents an automatic send shortcut.
+    for wa_id in [
+        replied,
+        opted_out,
+        never_contact,
+        business_stopped,
+        paused,
+        already_followed_up,
+    ] {
+        let canonical = &wa_id[1..];
+        let due_id = due_by_wa[canonical];
+        let drafted = fx
+            .command(
+                &fx.owner,
+                KIND_WHATSAPP_SEND_REQUEST,
+                json!({
+                    "v": 1,
+                    "requestId": Uuid::new_v4().to_string(),
+                    "followUpId": due_id.to_string(),
+                    "to": wa_id,
+                    "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+                }),
+            )
+            .await
+            .expect("follow-up creates an owner-review draft");
+        assert!(drafted
+            .message
+            .starts_with("follow-up draft pending approval"));
+        let draft_id = fx
+            .thread(canonical)
+            .await
+            .into_iter()
+            .find(|message| message.state == "draft")
+            .map(|message| message.id)
+            .expect("follow-up draft row");
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH_DECISION,
+            json!({"v": 1, "draftId": draft_id.to_string(), "decision": "approve"}),
+        )
+        .await
+        .expect("owner approves follow-up draft");
+    }
+
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(&replied[1..], "wamid.FOLLOW-REPLY", "Please call tomorrow.")
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(&opted_out[1..], "wamid.FOLLOW-STOP", "STOP")
+        )
+        .await,
+        StatusCode::OK
+    );
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SAFETY_ACTION,
+        json!({"v": 1, "action": "never_contact_add", "waId": never_contact, "reason": "privacy"}),
+    )
+    .await
+    .expect("owner adds never-contact stop");
+    assert_eq!(
+        fx.deliver(
+            APP_SECRET,
+            &inbound(
+                &business_stopped[1..],
+                "wamid.FOLLOW-BUSINESS",
+                "No thanks."
+            ),
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert!(fx
+        .state
+        .db
+        .whatsapp_pause_contact(fx.community(), &paused[1..], "owner pause", Utc::now())
+        .await
+        .expect("pause contact"),);
+
+    let opener_sends = fx.graph.send_count();
+    let follow_up_send_at = super::policy::next_window_start(Utc::now());
+    fx.run_sender(follow_up_send_at).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        opener_sends + 1,
+        "replied, opted-out, never-contact, business-stopped and paused recipients receive no follow-up",
+    );
+    for wa_id in [replied, opted_out, never_contact, business_stopped, paused] {
+        let due = fx
+            .state
+            .db
+            .whatsapp_get_follow_up_due(fx.community(), due_by_wa[&wa_id[1..]])
+            .await
+            .expect("read stopped follow-up")
+            .expect("due exists");
+        assert_eq!(due.state, "stopped", "{wa_id} must leave the sequence");
+    }
+
+    // The sixth recipient received its already-approved follow-up exactly once. A repeated
+    // request for the same durable due item cannot create another queue row or Graph call.
+    let duplicate = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "followUpId": due_by_wa[&already_followed_up[1..]].to_string(),
+                "to": already_followed_up,
+                "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+            }),
+        )
+        .await
+        .expect("repeat follow-up request is idempotent");
+    assert!(
+        duplicate.message.starts_with("duplicate:"),
+        "{}",
+        duplicate.message
+    );
+    fx.run_sender(follow_up_send_at).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        opener_sends + 1,
+        "an already-followed-up recipient receives no duplicate Graph send",
+    );
+
+    // A relay-level RED pause is also terminal for active sequence work. Resuming ordinary
+    // WhatsApp sending later must not revive a follow-up that was waiting for an owner review.
+    let quality_paused = "+27821230108";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), &quality_paused[1..], Some("Thabo"))
+        .await
+        .expect("seed quality-paused follow-up contact");
+    fx.state
+        .db
+        .whatsapp_touch_inbound(fx.community(), &quality_paused[1..], Utc::now())
+        .await
+        .expect("open quality-paused service window");
+    let quality_batch_id = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH,
+        json!({
+            "v": 1,
+            "batchId": quality_batch_id.to_string(),
+            "template": "intro",
+            "language": "en",
+            "followUpScope": {"kind": "campaign", "id": scope_id.to_string()},
+            "rows": [{"to": quality_paused, "params": ["Thabo"]}],
+        }),
+    )
+    .await
+    .expect("prepare quality-paused opener");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": quality_batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("approve quality-paused opener");
+    fx.run_sender(Utc::now()).await;
+    let sends_before_quality_pause = fx.graph.send_count();
+
+    sqlx::query(
+        "UPDATE whatsapp_follow_up_due SET due_at = now() - interval '1 minute' \
+         WHERE community_id = $1 AND wa_id = $2 AND state = 'scheduled'",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(&quality_paused[1..])
+    .execute(&fx.pool)
+    .await
+    .expect("make quality-paused due item eligible");
+    let quality_due = fx
+        .state
+        .db
+        .whatsapp_list_follow_up_due(fx.community(), Utc::now(), 20)
+        .await
+        .expect("list quality-paused due item")
+        .into_iter()
+        .find(|due| due.wa_id == quality_paused[1..])
+        .expect("quality-paused due item");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SEND_REQUEST,
+        json!({
+            "v": 1,
+            "requestId": Uuid::new_v4().to_string(),
+            "followUpId": quality_due.id.to_string(),
+            "to": quality_paused,
+            "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+        }),
+    )
+    .await
+    .expect("quality-paused follow-up creates a draft");
+    let quality_draft_id = fx
+        .thread(&quality_paused[1..])
+        .await
+        .into_iter()
+        .find(|message| message.state == "draft")
+        .map(|message| message.id)
+        .expect("quality-paused follow-up draft");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "draftId": quality_draft_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("approve quality-paused follow-up draft");
+    fx.state
+        .db
+        .whatsapp_set_quality_send_paused(fx.community(), true)
+        .await
+        .expect("quality RED stops active follow-ups");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        sends_before_quality_pause,
+        "quality RED prevents an approved follow-up from reaching FakeGraph",
+    );
+    let stopped_by_quality = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), quality_due.id)
+        .await
+        .expect("read quality-paused due item")
+        .expect("quality-paused due item exists");
+    assert_eq!(stopped_by_quality.state, "stopped");
+    fx.state
+        .db
+        .whatsapp_set_quality_send_paused(fx.community(), false)
+        .await
+        .expect("quality recovers");
+    fx.run_sender(Utc::now()).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        sends_before_quality_pause,
+        "resuming the sender does not revive a stopped follow-up",
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn follow_up_uses_the_existing_outreach_window_and_daily_cap() {
+    // A follow-up is not an ordinary reply just because its contact has an open service window.
+    // This binds the relay sender's shared pace and cap seam, rather than a desktop timer.
+    let fx = fixture().await;
+    let scope = buzz_db::whatsapp::WhatsappFollowUpScope {
+        kind: "campaign".to_string(),
+        id: Uuid::new_v4(),
+    };
+    fx.state
+        .db
+        .whatsapp_configure_follow_up_sequence(
+            fx.community(),
+            &scope,
+            true,
+            &[buzz_db::whatsapp::WhatsappFollowUpStep {
+                step: 1,
+                delay_days: 3,
+            }],
+            &fx.owner.public_key().to_bytes(),
+        )
+        .await
+        .expect("configure paced follow-up scope");
+    let wa_id = "27821230113";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Thabo"))
+        .await
+        .expect("seed paced follow-up contact");
+    fx.state
+        .db
+        .whatsapp_touch_inbound(fx.community(), wa_id, Utc::now())
+        .await
+        .expect("open service window");
+    let predecessor_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Initial hello', 'sent', $4)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(predecessor_id)
+    .bind(wa_id)
+    .bind(format!("paced-follow-up-predecessor:{predecessor_id}"))
+    .execute(&fx.pool)
+    .await
+    .expect("seed accepted predecessor");
+    let due_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_follow_up_due \
+         (community_id, id, scope_kind, scope_id, wa_id, step, predecessor_message_id, due_at, state) \
+         VALUES ($1, $2, 'campaign', $3, $4, 1, $5, now() - interval '1 minute', 'scheduled')",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(due_id)
+    .bind(scope.id)
+    .bind(wa_id)
+    .bind(predecessor_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed paced due item");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SEND_REQUEST,
+        json!({
+            "v": 1,
+            "requestId": Uuid::new_v4().to_string(),
+            "followUpId": due_id.to_string(),
+            "to": format!("+{wa_id}"),
+            "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+        }),
+    )
+    .await
+    .expect("prepare paced follow-up draft");
+    let draft_id = fx
+        .thread(wa_id)
+        .await
+        .into_iter()
+        .find(|message| message.state == "draft")
+        .map(|message| message.id)
+        .expect("paced follow-up draft");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "draftId": draft_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("approve paced follow-up draft");
+
+    let mut outside = Utc::now() + Duration::hours(1);
+    while super::policy::in_send_window(outside) {
+        outside += Duration::hours(1);
+    }
+    let in_window = super::policy::next_window_start(outside);
+    fx.run_sender(outside).await;
+    assert_eq!(fx.graph.send_count(), 0, "follow-up waits for send window");
+
+    fx.state
+        .db
+        .whatsapp_set_daily_cap(fx.community(), 0)
+        .await
+        .expect("close shared daily cap");
+    fx.run_sender(in_window).await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "follow-up respects shared daily cap"
+    );
+
+    fx.state
+        .db
+        .whatsapp_set_daily_cap(fx.community(), 1)
+        .await
+        .expect("open one shared daily slot");
+    fx.run_sender(in_window).await;
+    assert_eq!(fx.graph.send_count(), 1, "follow-up uses the released slot");
+    assert_eq!(
+        fx.state
+            .db
+            .whatsapp_count_paced_outreach_since(
+                fx.community(),
+                super::policy::sast_day_start(in_window),
+            )
+            .await
+            .expect("count shared paced outreach"),
+        1
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn retrying_a_definite_follow_up_failure_detaches_the_old_message_before_redrafting() {
+    // This binds the durable retry seam. A failed Graph refusal may be retried after an explicit
+    // owner action, but the old message must be detached first so the per-due uniqueness fence
+    // cannot turn the replacement into an accidental duplicate.
+    let fx = fixture().await;
+    let scope = buzz_db::whatsapp::WhatsappFollowUpScope {
+        kind: "campaign".to_string(),
+        id: Uuid::new_v4(),
+    };
+    fx.state
+        .db
+        .whatsapp_configure_follow_up_sequence(
+            fx.community(),
+            &scope,
+            true,
+            &[buzz_db::whatsapp::WhatsappFollowUpStep {
+                step: 1,
+                delay_days: 3,
+            }],
+            &fx.owner.public_key().to_bytes(),
+        )
+        .await
+        .expect("configure retryable follow-up scope");
+    let wa_id = "27821230109";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Thabo"))
+        .await
+        .expect("seed retryable contact");
+    let predecessor_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Initial hello', 'sent', $4)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(predecessor_id)
+    .bind(wa_id)
+    .bind(format!("retryable-predecessor:{predecessor_id}"))
+    .execute(&fx.pool)
+    .await
+    .expect("seed accepted predecessor");
+    let due_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_follow_up_due \
+         (community_id, id, scope_kind, scope_id, wa_id, step, predecessor_message_id, due_at, state) \
+         VALUES ($1, $2, 'campaign', $3, $4, 1, $5, now() - interval '1 minute', 'held')",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(due_id)
+    .bind(scope.id)
+    .bind(wa_id)
+    .bind(predecessor_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed held follow-up due item");
+    let failed_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, error_code, idempotency_key, follow_up_due_id) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Retryable follow-up', 'failed', '100', $4, $5)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(failed_id)
+    .bind(wa_id)
+    .bind(format!("retryable-failed:{failed_id}"))
+    .bind(due_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed definite follow-up failure");
+    sqlx::query(
+        "UPDATE whatsapp_follow_up_due SET draft_message_id = $3 \
+         WHERE community_id = $1 AND id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(due_id)
+    .bind(failed_id)
+    .execute(&fx.pool)
+    .await
+    .expect("link failed follow-up message");
+
+    assert!(fx
+        .state
+        .db
+        .whatsapp_retry_follow_up(fx.community(), due_id)
+        .await
+        .expect("retry held follow-up"),);
+    let detached: Option<Uuid> = sqlx::query_scalar(
+        "SELECT follow_up_due_id FROM whatsapp_messages \
+         WHERE community_id = $1 AND id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(failed_id)
+    .fetch_one(&fx.pool)
+    .await
+    .expect("read detached failed message");
+    assert_eq!(
+        detached, None,
+        "the historical refusal no longer owns the due item"
+    );
+    let due = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read reopened due item")
+        .expect("due item exists");
+    assert_eq!(due.state, "scheduled");
+    assert_eq!(due.draft_message_id, None);
+
+    let replacement = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: wa_id.to_string(),
+        kind: "template".to_string(),
+        body: "A fresh approved template".to_string(),
+        template_name: Some("intro".to_string()),
+        template_language: Some("en".to_string()),
+        params: json!(["Thabo"]),
+        state: "draft".to_string(),
+        idempotency_key: format!("retryable-replacement:{due_id}"),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    let outcome = fx
+        .state
+        .db
+        .whatsapp_prepare_follow_up_draft(fx.community(), due_id, &replacement, Utc::now())
+        .await
+        .expect("prepare replacement draft");
+    assert_eq!(
+        outcome,
+        buzz_db::whatsapp::FollowUpDraftOutcome::Prepared(replacement.id)
+    );
+
+    // A free-text draft can age out after an owner approved it. The sender marks that message
+    // skipped and holds the due item; an explicit retry must detach this historical row before
+    // Scout can prepare an approved template replacement.
+    assert_eq!(
+        fx.state
+            .db
+            .whatsapp_decide_draft(fx.community(), replacement.id, true, None)
+            .await
+            .expect("approve replacement draft"),
+        buzz_db::whatsapp::DraftDecisionOutcome::Approved
+    );
+    assert!(fx
+        .state
+        .db
+        .whatsapp_skip_message(
+            fx.community(),
+            replacement.id,
+            "the 24 hour window closed before the message was sent",
+        )
+        .await
+        .expect("hold expired approved follow-up"));
+    assert!(fx
+        .state
+        .db
+        .whatsapp_retry_follow_up(fx.community(), due_id)
+        .await
+        .expect("retry expired approved follow-up"));
+    let detached_expired: Option<Uuid> = sqlx::query_scalar(
+        "SELECT follow_up_due_id FROM whatsapp_messages \
+         WHERE community_id = $1 AND id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(replacement.id)
+    .fetch_one(&fx.pool)
+    .await
+    .expect("read detached expired message");
+    assert_eq!(detached_expired, None);
+    let reopened = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read retryable expired due item")
+        .expect("due item exists");
+    assert_eq!(reopened.state, "scheduled");
+    assert_eq!(reopened.draft_message_id, None);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn expired_free_text_follow_up_is_held_until_an_approved_template_is_requested() {
+    // The production signed command must not turn an expired text proposal into a hidden send or
+    // silently drop it. It stays visible as held until the owner deliberately requests a valid
+    // template replacement.
+    let fx = fixture().await;
+    let scope = buzz_db::whatsapp::WhatsappFollowUpScope {
+        kind: "campaign".to_string(),
+        id: Uuid::new_v4(),
+    };
+    fx.state
+        .db
+        .whatsapp_configure_follow_up_sequence(
+            fx.community(),
+            &scope,
+            true,
+            &[buzz_db::whatsapp::WhatsappFollowUpStep {
+                step: 1,
+                delay_days: 3,
+            }],
+            &fx.owner.public_key().to_bytes(),
+        )
+        .await
+        .expect("configure expired-window follow-up scope");
+    let wa_id = "27821230110";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Thabo"))
+        .await
+        .expect("seed expired-window contact");
+    fx.state
+        .db
+        .whatsapp_touch_inbound(fx.community(), wa_id, Utc::now() - Duration::hours(25))
+        .await
+        .expect("close the free-text service window");
+    let predecessor_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Initial hello', 'sent', $4)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(predecessor_id)
+    .bind(wa_id)
+    .bind(format!("expired-window-predecessor:{predecessor_id}"))
+    .execute(&fx.pool)
+    .await
+    .expect("seed accepted predecessor");
+    let due_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_follow_up_due \
+         (community_id, id, scope_kind, scope_id, wa_id, step, predecessor_message_id, due_at, state) \
+         VALUES ($1, $2, 'campaign', $3, $4, 1, $5, now() - interval '1 minute', 'scheduled')",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(due_id)
+    .bind(scope.id)
+    .bind(wa_id)
+    .bind(predecessor_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed due expired-window follow-up");
+
+    let held = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "followUpId": due_id.to_string(),
+                "to": format!("+{wa_id}"),
+                "text": "Just checking in.",
+            }),
+        )
+        .await
+        .expect("expired text request returns a visible hold");
+    assert!(
+        held.message.contains("follow-up held") && held.message.contains("24 hour window"),
+        "{}",
+        held.message
+    );
+    let due = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read held expired-window due item")
+        .expect("due item exists");
+    assert_eq!(due.state, "held");
+    assert!(
+        due.reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("approved template")),
+        "{:?}",
+        due.reason
+    );
+    assert!(
+        !fx.thread(wa_id)
+            .await
+            .iter()
+            .any(|message| { message.state == "draft" || message.body == "Just checking in." }),
+        "no free-text draft was saved"
+    );
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_FOLLOW_UP,
+        json!({"v": 1, "action": "retry", "dueId": due_id.to_string()}),
+    )
+    .await
+    .expect("owner explicitly reopens held item for a send-time text fence");
+    // The request path above cannot create expired text. Seed the state a concurrently stale
+    // worker could have listed just before the window closed, then bind the final SQL claim and
+    // sender preflight to the same production rows.
+    let expired_text_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key, follow_up_due_id) \
+         VALUES ($1, $2, $3, 'out', 'text', 'Just checking in.', 'queued', $4, $5)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(expired_text_id)
+    .bind(wa_id)
+    .bind(format!("expired-window-stale-text:{expired_text_id}"))
+    .bind(due_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed stale expired text follow-up");
+    sqlx::query(
+        "UPDATE whatsapp_follow_up_due SET state = 'ready', draft_message_id = $3 \
+         WHERE community_id = $1 AND id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(due_id)
+    .bind(expired_text_id)
+    .execute(&fx.pool)
+    .await
+    .expect("link stale expired text follow-up");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                expired_text_id,
+                Uuid::new_v4(),
+                Utc::now() + Duration::minutes(2),
+                Utc::now(),
+            )
+            .await
+            .expect("expired text claim result"),
+        "the final lease claim must reject a free-text follow-up after the service window closes"
+    );
+    fx.run_sender(super::policy::next_window_start(Utc::now()))
+        .await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "expired text never reaches FakeGraph"
+    );
+    let expired_text = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), expired_text_id)
+        .await
+        .expect("read skipped expired text")
+        .expect("expired text exists");
+    assert_eq!(expired_text.state, "skipped");
+    let due = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read held expired-text due item")
+        .expect("due item exists");
+    assert_eq!(due.state, "held");
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_FOLLOW_UP,
+        json!({"v": 1, "action": "retry", "dueId": due_id.to_string()}),
+    )
+    .await
+    .expect("owner explicitly reopens held item for a template");
+    let drafted = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "followUpId": due_id.to_string(),
+                "to": format!("+{wa_id}"),
+                "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+            }),
+        )
+        .await
+        .expect("approved template creates an owner-review draft");
+    assert!(drafted
+        .message
+        .starts_with("follow-up draft pending approval"));
+    let due = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read draft due item")
+        .expect("due item exists");
+    assert_eq!(due.state, "draft");
+    let template_draft_id = due.draft_message_id.expect("template draft id");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "draftId": template_draft_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("owner approves template follow-up draft");
+    sqlx::query(
+        "UPDATE whatsapp_templates SET status = 'PAUSED' \
+         WHERE community_id = $1 AND name = 'intro' AND language = 'en'",
+    )
+    .bind(fx.community().as_uuid())
+    .execute(&fx.pool)
+    .await
+    .expect("revoke template after owner approval");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                template_draft_id,
+                Uuid::new_v4(),
+                Utc::now() + Duration::minutes(2),
+                Utc::now(),
+            )
+            .await
+            .expect("revoked-template claim result"),
+        "the final lease claim must recheck template approval"
+    );
+    fx.run_sender(super::policy::next_window_start(Utc::now()))
+        .await;
+    assert_eq!(
+        fx.graph.send_count(),
+        0,
+        "a revoked follow-up template never reaches FakeGraph"
+    );
+    let due = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read held revoked-template due item")
+        .expect("due item exists");
+    assert_eq!(due.state, "held");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_manual_message_stops_pending_follow_ups_for_the_whole_business() {
+    // A teammate taking over on one number must stop the sequence for every number on the same
+    // business. This exercises the accepted-send completion seam, not a test-only projection.
+    let fx = fixture().await;
+    let scope = buzz_db::whatsapp::WhatsappFollowUpScope {
+        kind: "campaign".to_string(),
+        id: Uuid::new_v4(),
+    };
+    fx.state
+        .db
+        .whatsapp_configure_follow_up_sequence(
+            fx.community(),
+            &scope,
+            true,
+            &[buzz_db::whatsapp::WhatsappFollowUpStep {
+                step: 1,
+                delay_days: 3,
+            }],
+            &fx.owner.public_key().to_bytes(),
+        )
+        .await
+        .expect("configure manual-stop scope");
+    let business_id = "manual-message-business";
+    let manual_wa_id = "27821230111";
+    let follow_up_wa_id = "27821230112";
+    for wa_id in [manual_wa_id, follow_up_wa_id] {
+        fx.state
+            .db
+            .whatsapp_ensure_contact(fx.community(), wa_id, Some("Thabo"))
+            .await
+            .expect("seed manual-stop contact");
+        fx.state
+            .db
+            .whatsapp_set_lead(fx.community(), wa_id, business_id)
+            .await
+            .expect("link manual-stop business");
+    }
+    let predecessor_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Initial hello', 'sent', $4)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(predecessor_id)
+    .bind(follow_up_wa_id)
+    .bind(format!("manual-stop-predecessor:{predecessor_id}"))
+    .execute(&fx.pool)
+    .await
+    .expect("seed follow-up predecessor");
+    let due_id = Uuid::new_v4();
+    // This pending item was scheduled before the CRM link reached the relay. The current
+    // contact link, not a stale denormalized due value, must still make a teammate takeover
+    // stop it for the whole business.
+    sqlx::query(
+        "INSERT INTO whatsapp_follow_up_due \
+         (community_id, id, scope_kind, scope_id, wa_id, business_id, step, predecessor_message_id, due_at, state) \
+         VALUES ($1, $2, 'campaign', $3, $4, NULL, 1, $5, now(), 'ready')",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(due_id)
+    .bind(scope.id)
+    .bind(follow_up_wa_id)
+    .bind(predecessor_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed ready business follow-up");
+    let linked_draft_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key, follow_up_due_id) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Pending follow-up', 'queued', $4, $5)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(linked_draft_id)
+    .bind(follow_up_wa_id)
+    .bind(format!("manual-stop-follow-up:{linked_draft_id}"))
+    .bind(due_id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed queued follow-up");
+
+    let manual = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: manual_wa_id.to_string(),
+        kind: "text".to_string(),
+        body: "I will take it from here.".to_string(),
+        template_name: None,
+        template_language: None,
+        params: json!([]),
+        state: "queued".to_string(),
+        idempotency_key: format!("manual-stop-manual:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &manual)
+        .await
+        .expect("queue manual message");
+    let lease = Uuid::new_v4();
+    assert!(fx
+        .state
+        .db
+        .whatsapp_claim_message(
+            fx.community(),
+            manual.id,
+            lease,
+            Utc::now() + Duration::minutes(2),
+            Utc::now(),
+        )
+        .await
+        .expect("claim manual message"),);
+    let manual = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), manual.id)
+        .await
+        .expect("read manual message")
+        .expect("manual message exists");
+    assert!(fx
+        .state
+        .db
+        .whatsapp_complete_send(
+            fx.community(),
+            &manual,
+            lease,
+            "wamid.MANUAL-TAKEOVER",
+            Utc::now(),
+        )
+        .await
+        .expect("record accepted manual message"),);
+    let due = fx
+        .state
+        .db
+        .whatsapp_get_follow_up_due(fx.community(), due_id)
+        .await
+        .expect("read stopped business due item")
+        .expect("due item exists");
+    assert_eq!(due.state, "stopped");
+    let linked = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), linked_draft_id)
+        .await
+        .expect("read stopped linked message")
+        .expect("linked message exists");
+    assert_eq!(linked.state, "skipped");
+
+    // Graph can accept an opener before the relay records that acceptance. If a teammate takes
+    // over during that narrow interval, completion must not create a brand-new due item after
+    // the manual-send stop already swept the previous queue.
+    let opener_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO whatsapp_messages \
+         (community_id, id, wa_id, direction, kind, body, state, idempotency_key, \
+          follow_up_scope_kind, follow_up_scope_id) \
+         VALUES ($1, $2, $3, 'out', 'template', 'Late opener', 'queued', $4, 'campaign', $5)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(opener_id)
+    .bind(follow_up_wa_id)
+    .bind(format!("manual-stop-late-opener:{opener_id}"))
+    .bind(scope.id)
+    .execute(&fx.pool)
+    .await
+    .expect("seed opener awaiting its acceptance record");
+    let opener_started_at = Utc::now() - Duration::seconds(3);
+    let opener_lease = Uuid::new_v4();
+    assert!(fx
+        .state
+        .db
+        .whatsapp_claim_message(
+            fx.community(),
+            opener_id,
+            opener_lease,
+            opener_started_at + Duration::minutes(2),
+            opener_started_at,
+        )
+        .await
+        .expect("claim opener before the teammate takeover"));
+
+    let late_manual = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: manual_wa_id.to_string(),
+        kind: "text".to_string(),
+        body: "I have the next step too.".to_string(),
+        template_name: None,
+        template_language: None,
+        params: json!([]),
+        state: "queued".to_string(),
+        idempotency_key: format!("manual-stop-late-manual:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &late_manual)
+        .await
+        .expect("queue late manual takeover");
+    let late_manual_at = opener_started_at + Duration::seconds(1);
+    let late_manual_lease = Uuid::new_v4();
+    assert!(fx
+        .state
+        .db
+        .whatsapp_claim_message(
+            fx.community(),
+            late_manual.id,
+            late_manual_lease,
+            late_manual_at + Duration::minutes(2),
+            late_manual_at,
+        )
+        .await
+        .expect("claim late manual takeover"));
+    let late_manual = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), late_manual.id)
+        .await
+        .expect("read late manual takeover")
+        .expect("late manual takeover exists");
+    assert!(fx
+        .state
+        .db
+        .whatsapp_complete_send(
+            fx.community(),
+            &late_manual,
+            late_manual_lease,
+            "wamid.MANUAL-TAKEOVER-LATE",
+            late_manual_at,
+        )
+        .await
+        .expect("record accepted late manual takeover"));
+    let opener = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), opener_id)
+        .await
+        .expect("read late opener")
+        .expect("late opener exists");
+    assert!(fx
+        .state
+        .db
+        .whatsapp_complete_send(
+            fx.community(),
+            &opener,
+            opener_lease,
+            "wamid.LATE-OPENER",
+            opener_started_at + Duration::seconds(2),
+        )
+        .await
+        .expect("record late opener acceptance"));
+    let late_due_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM whatsapp_follow_up_due \
+         WHERE community_id = $1 AND predecessor_message_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(opener_id)
+    .fetch_one(&fx.pool)
+    .await
+    .expect("count late follow-up rows");
+    assert_eq!(
+        late_due_count, 0,
+        "a manual takeover between Graph acceptance and opener completion fences the next due item"
+    );
 }
 
 #[tokio::test]
@@ -3879,6 +5099,15 @@ async fn owner_pause_command_stops_ready_rows_and_never_replays_an_expired_lease
     assert_eq!(status["ownerPaused"], json!(true));
     assert_eq!(status["ownerPausedBy"], json!(hex::encode(owner_pubkey)));
     assert!(status["ownerPausedAt"].as_str().is_some());
+    assert_eq!(
+        status["dailyOutreachCap"],
+        json!(settings.daily_new_chat_cap),
+        "new relay consumers see the same owner-controlled cap for follow-ups"
+    );
+    assert!(
+        status["outreachSendsToday"].as_i64().is_some(),
+        "the additive shared-lane counter remains a strict integer"
+    );
     let (action, actor, detail): (String, Vec<u8>, Value) = sqlx::query_as(
         "SELECT action, actor_pubkey, detail FROM audit_log \
          WHERE community_id = $1 AND object_id = 'whatsapp-sending' \

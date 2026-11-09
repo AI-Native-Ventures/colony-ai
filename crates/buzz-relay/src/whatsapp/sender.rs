@@ -17,8 +17,8 @@ use uuid::Uuid;
 
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::whatsapp::{
-    NewOutboundMessage, WhatsappAccountFailure, WhatsappContact, WhatsappMessage,
-    WhatsappSendSafety, SEND_REQUEST_IDEMPOTENCY_PREFIX,
+    FollowUpDraftOutcome, NewOutboundMessage, WhatsappAccountFailure, WhatsappContact,
+    WhatsappMessage, WhatsappSendSafety, SEND_REQUEST_IDEMPOTENCY_PREFIX,
 };
 
 use super::connect::{note_token_expired, open_secrets, refresh_phone_info, sync_templates};
@@ -67,6 +67,9 @@ pub struct SendContext<'a> {
     pub is_owner_admin: bool,
     /// The message is a template (otherwise free text).
     pub is_template: bool,
+    /// A relay-owned follow-up draft. These intentionally bypass the ordinary one-message
+    /// guard, but retain every pause, suppression, window and send-time fence.
+    pub is_follow_up: bool,
     /// A durable direct or business-scoped safety fence for this recipient.
     pub safety: Option<&'a WhatsappSendSafety>,
 }
@@ -88,7 +91,8 @@ fn inbound_reply_stop_allows_owner_text(
     ctx: &SendContext<'_>,
     safety: &WhatsappSendSafety,
 ) -> bool {
-    ctx.is_owner_admin
+    !ctx.is_follow_up
+        && ctx.is_owner_admin
         && !ctx.is_template
         && safety.is_inbound_reply_business_stop()
         && window_open(
@@ -120,10 +124,10 @@ pub fn check_send(ctx: &SendContext<'_>) -> Result<SendPlan, String> {
                 contact.pause_reason.as_deref().unwrap_or("blocked by Meta")
             ));
         }
-        if contact.outbound_since_inbound >= 1 || ctx.pending_outbound > 0 {
+        if !ctx.is_follow_up && (contact.outbound_since_inbound >= 1 || ctx.pending_outbound > 0) {
             return Err("one message at a time: wait for a reply before sending another".into());
         }
-    } else if ctx.pending_outbound > 0 {
+    } else if !ctx.is_follow_up && ctx.pending_outbound > 0 {
         return Err("one message at a time: wait for a reply before sending another".into());
     }
     let open = window_open(ctx.contact.and_then(|c| c.last_inbound_at), ctx.now);
@@ -137,7 +141,7 @@ pub fn check_send(ctx: &SendContext<'_>) -> Result<SendPlan, String> {
         });
     }
     let new_chat = !open;
-    if new_chat && !ctx.is_owner_admin {
+    if new_chat && !ctx.is_owner_admin && !ctx.is_follow_up {
         return Err("new chats need an approved batch".into());
     }
     Ok(SendPlan {
@@ -182,6 +186,21 @@ pub enum Enqueued {
     Draft(Uuid),
     /// The same `requestId` was already queued: nothing new was created.
     Duplicate,
+}
+
+/// Result of preparing the single owner-review draft for a durable follow-up item.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FollowUpEnqueued {
+    /// The item now has one new owner-review draft.
+    Draft(Uuid),
+    /// A previous request already owns this item's draft.
+    Duplicate(Uuid),
+    /// The sequence remains safely held with this visible reason.
+    Held(String),
+    /// The scheduled time has not arrived.
+    NotDue,
+    /// A reply, opt-out or other terminal safety rule ended it.
+    Stopped(String),
 }
 
 /// Validate a send request and queue it durably. The worker sends it.
@@ -256,6 +275,7 @@ pub async fn enqueue_send(
         now,
         is_owner_admin: access.is_owner_admin(),
         is_template: command.template.is_some(),
+        is_follow_up: false,
         safety: safety.as_ref(),
     })?;
 
@@ -341,6 +361,190 @@ pub async fn enqueue_send(
         }
         Some(id) => Ok(Enqueued::Queued(id)),
         None => Ok(Enqueued::Duplicate),
+    }
+}
+
+/// Prepare the only allowed owner-review draft for a due follow-up. This deliberately does not
+/// call [`initial_state`]: even an owner requesting a follow-up gets a draft, never an automatic
+/// queue entry. The database locks and rechecks the due item immediately before insertion.
+pub async fn enqueue_follow_up_send(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    sender: &[u8],
+    due_id: Uuid,
+    command: &SendCommand,
+) -> Result<FollowUpEnqueued, String> {
+    let community = tenant.community();
+    let now = Utc::now();
+    if command.text.is_some() == command.template.is_some() {
+        return Err("send exactly one of text or template".into());
+    }
+    if command.to.is_some() == command.thread_root.is_some() {
+        return Err("name exactly one of to or threadRoot".into());
+    }
+    let due = state
+        .db
+        .whatsapp_get_follow_up_due(community, due_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "no such follow-up".to_string())?;
+    let requested_wa_id = match (&command.to, &command.thread_root) {
+        (Some(to), _) => {
+            normalize_wa_id(to).ok_or_else(|| "that is not a phone number".to_string())?
+        }
+        (None, Some(root)) => {
+            let root_bytes =
+                hex::decode(root).map_err(|_| "threadRoot must be a hex event id".to_string())?;
+            state
+                .db
+                .whatsapp_get_contact_by_thread(community, &root_bytes)
+                .await
+                .map_err(|error| error.to_string())?
+                .map(|contact| contact.wa_id)
+                .ok_or_else(|| "that thread is not a WhatsApp contact".to_string())?
+        }
+        (None, None) => return Err("name exactly one of to or threadRoot".into()),
+    };
+    if requested_wa_id != due.wa_id {
+        return Err("followUpId belongs to a different WhatsApp recipient".into());
+    }
+    if state
+        .db
+        .whatsapp_get_connection(community)
+        .await
+        .map_err(|error| error.to_string())?
+        .is_none()
+    {
+        let reason = "no WhatsApp number is connected";
+        let held = state
+            .db
+            .whatsapp_hold_follow_up(community, due_id, reason)
+            .await
+            .map_err(|error| error.to_string())?;
+        return Ok(FollowUpEnqueued::Held(
+            held.and_then(|item| item.reason)
+                .unwrap_or_else(|| reason.to_string()),
+        ));
+    }
+    let contact = state
+        .db
+        .whatsapp_get_contact(community, &due.wa_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let Some(contact) = contact else {
+        let reason = "the follow-up contact no longer exists";
+        let held = state
+            .db
+            .whatsapp_hold_follow_up(community, due_id, reason)
+            .await
+            .map_err(|error| error.to_string())?;
+        return Ok(FollowUpEnqueued::Held(
+            held.and_then(|item| item.reason)
+                .unwrap_or_else(|| reason.to_string()),
+        ));
+    };
+    let open = window_open(contact.last_inbound_at, now);
+    let (kind, body, template_name, template_language, params) =
+        match (&command.text, &command.template) {
+            (Some(text), None) => {
+                let text = text.trim();
+                if text.is_empty() || text.chars().count() > MAX_TEXT_CHARS {
+                    return Err(format!(
+                        "text must be 1 through {MAX_TEXT_CHARS} characters"
+                    ));
+                }
+                if !open {
+                    let reason = "the 24 hour window is closed; choose an approved template";
+                    let held = state
+                        .db
+                        .whatsapp_hold_follow_up(community, due_id, reason)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    return Ok(FollowUpEnqueued::Held(
+                        held.and_then(|item| item.reason)
+                            .unwrap_or_else(|| reason.to_string()),
+                    ));
+                }
+                ("text", text.to_string(), None, None, serde_json::json!([]))
+            }
+            (None, Some(template)) => {
+                let stored = state
+                    .db
+                    .whatsapp_find_template(community, &template.name, &template.language)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let Some(stored) =
+                    stored.filter(|template| template.status.eq_ignore_ascii_case("APPROVED"))
+                else {
+                    let reason = "an approved WhatsApp template is required for this follow-up";
+                    let held = state
+                        .db
+                        .whatsapp_hold_follow_up(community, due_id, reason)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    return Ok(FollowUpEnqueued::Held(
+                        held.and_then(|item| item.reason)
+                            .unwrap_or_else(|| reason.to_string()),
+                    ));
+                };
+                let body = render_template(&stored.body, &template.params)?;
+                (
+                    "template",
+                    body,
+                    Some(stored.name.clone()),
+                    Some(stored.language.clone()),
+                    serde_json::json!(template.params),
+                )
+            }
+            _ => return Err("send exactly one of text or template".into()),
+        };
+    let message = NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: due.wa_id.clone(),
+        kind: kind.to_string(),
+        body,
+        template_name,
+        template_language,
+        params,
+        state: "draft".to_string(),
+        // The due-row lock makes one live draft authoritative. Retried work after an owner has
+        // deliberately superseded a held draft needs a fresh row, so the request id remains in
+        // the database uniqueness key rather than reusing the retired draft's key.
+        idempotency_key: format!("follow-up:{due_id}:{}", command.request_id),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: !open,
+        sender_pubkey: sender.to_vec(),
+    };
+    match state
+        .db
+        .whatsapp_prepare_follow_up_draft(community, due_id, &message, now)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        FollowUpDraftOutcome::Prepared(id) => {
+            let settings = state
+                .db
+                .whatsapp_ensure_settings(community)
+                .await
+                .map_err(|error| error.to_string())?;
+            if let (Some(channel_id), Ok(Some(stored))) = (
+                settings.outreach_channel_id,
+                state.db.whatsapp_get_message(community, id).await,
+            ) {
+                if let Err(error) =
+                    channel::post_for_message(state, tenant, channel_id, &contact, &stored).await
+                {
+                    tracing::warn!(%community, "whatsapp follow-up draft post failed, will retry: {error}");
+                }
+            }
+            Ok(FollowUpEnqueued::Draft(id))
+        }
+        FollowUpDraftOutcome::Existing(id) => Ok(FollowUpEnqueued::Duplicate(id)),
+        FollowUpDraftOutcome::NotFound => Err("no such follow-up".into()),
+        FollowUpDraftOutcome::NotDue => Ok(FollowUpEnqueued::NotDue),
+        FollowUpDraftOutcome::Held(reason) => Ok(FollowUpEnqueued::Held(reason)),
+        FollowUpDraftOutcome::Stopped(reason) => Ok(FollowUpEnqueued::Stopped(reason)),
     }
 }
 
@@ -671,8 +875,17 @@ pub async fn process_community(
         .whatsapp_list_sendable(community, SENDABLE_PER_TICK)
         .await
         .map_err(|error| error.to_string())?;
-    let mut new_chat_blocked = false;
+    // New conversations and follow-ups share the capped, time-windowed outreach lane. Normal
+    // replies retain their existing immediate path, while `whatsapp_list_sendable` ensures due
+    // follow-ups are considered before new conversations.
+    let mut paced_outreach_blocked = false;
     for message in sendable {
+        let is_follow_up = state
+            .db
+            .whatsapp_follow_up_due_for_message(community, message.id)
+            .await
+            .map_err(|error| error.to_string())?
+            .is_some();
         let Some(contact) = state
             .db
             .whatsapp_get_contact(community, &message.wa_id)
@@ -702,7 +915,10 @@ pub async fn process_community(
             .await
             .map_err(|error| error.to_string())?;
         if let Some(safety) = safety.as_ref() {
-            let eligible_owner_reply = safety.is_inbound_reply_business_stop()
+            // The P0 owner-reply exception is deliberately unavailable to relay-owned follow-ups.
+            // Their durable due-item claim independently treats every business stop as terminal.
+            let eligible_owner_reply = !is_follow_up
+                && safety.is_inbound_reply_business_stop()
                 && state
                     .db
                     .whatsapp_is_open_owner_reply(community, message.id, now)
@@ -713,21 +929,59 @@ pub async fn process_community(
                 continue;
             }
         }
-        if message.new_chat {
+        if is_follow_up && message.kind == "text" && !window_open(contact.last_inbound_at, now) {
+            // Do this before the paced-window check. A free-text proposal that just became
+            // ineligible must become a visible owner hold now, not wait until tomorrow's send
+            // window merely because no Graph call could happen tonight.
+            skip(
+                state,
+                community,
+                &message,
+                "the 24 hour window closed before the follow-up was sent",
+            )
+            .await;
+            continue;
+        }
+        if is_follow_up && message.kind == "template" {
+            let template_is_approved = match (
+                message.template_name.as_deref(),
+                message.template_language.as_deref(),
+            ) {
+                (Some(name), Some(language)) => state
+                    .db
+                    .whatsapp_get_template(community, name, language)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .is_some_and(|template| template.status.eq_ignore_ascii_case("APPROVED")),
+                _ => false,
+            };
+            if !template_is_approved {
+                skip(
+                    state,
+                    community,
+                    &message,
+                    "the follow-up template is no longer approved",
+                )
+                .await;
+                continue;
+            }
+        }
+        if message.new_chat || is_follow_up {
             // A row the owner released with `send_now` skips the window and the gap, so an
-            // earlier paced send in this pass must not hold it back.
-            let released = message.send_after.is_some();
-            if new_chat_blocked && !released {
+            // earlier paced send in this pass must not hold it back. Follow-ups always keep the
+            // normal window and pace, even when their contact still has an open service window.
+            let released = message.new_chat && message.send_after.is_some();
+            if paced_outreach_blocked && !released {
                 continue;
             }
             let sent_today = state
                 .db
-                .whatsapp_count_new_chats_since(community, sast_day_start(now))
+                .whatsapp_count_paced_outreach_since(community, sast_day_start(now))
                 .await
                 .map_err(|error| error.to_string())?;
             let last = state
                 .db
-                .whatsapp_last_new_chat_at(community)
+                .whatsapp_last_paced_outreach_at(community)
                 .await
                 .map_err(|error| error.to_string())?;
             let decision = if released {
@@ -744,7 +998,7 @@ pub async fn process_community(
             match decision {
                 NewChatDecision::SendNow => {}
                 NewChatDecision::WaitUntil(_) | NewChatDecision::CapReached { .. } => {
-                    new_chat_blocked = true;
+                    paced_outreach_blocked = true;
                     continue;
                 }
             }
@@ -801,8 +1055,8 @@ pub async fn process_community(
                         tracing::error!(%community, message = %message.id, "whatsapp send record failed: {error}")
                     }
                 }
-                if message.new_chat {
-                    new_chat_blocked = true;
+                if message.new_chat || is_follow_up {
+                    paced_outreach_blocked = true;
                 }
             }
             Err(GraphError::Rejected {
@@ -1104,6 +1358,7 @@ mod tests {
             now: now(),
             is_owner_admin,
             is_template,
+            is_follow_up: false,
             safety: None,
         }
     }
@@ -1217,6 +1472,13 @@ mod tests {
             })
         );
 
+        // A relay-owned follow-up must not inherit the P0 owner-reply exception. Its own
+        // durable scheduling and send-time predicates treat every business reply as a stop.
+        let mut follow_up_owner_text = ctx(Some(&open), false, true);
+        follow_up_owner_text.is_follow_up = true;
+        follow_up_owner_text.safety = Some(&inbound_reply_stop);
+        assert!(check_send(&follow_up_owner_text).is_err());
+
         let mut owner_template = ctx(Some(&open), true, true);
         owner_template.safety = Some(&inbound_reply_stop);
         assert!(check_send(&owner_template).is_err());
@@ -1266,6 +1528,28 @@ mod tests {
         assert!(check_send(&queued)
             .unwrap_err()
             .contains("one message at a time"));
+    }
+
+    #[test]
+    fn relay_follow_up_bypasses_only_the_old_outbound_counter() {
+        let mut c = contact();
+        c.last_inbound_at = Some(now() - Duration::hours(1));
+        c.outbound_since_inbound = 1;
+        let mut follow_up = ctx(Some(&c), false, false);
+        follow_up.is_follow_up = true;
+        assert_eq!(
+            check_send(&follow_up),
+            Ok(SendPlan {
+                kind: "text",
+                new_chat: false,
+            })
+        );
+
+        // The exception is narrowly scoped: a sender pause still wins over the durable item.
+        follow_up.send_paused = true;
+        assert!(check_send(&follow_up)
+            .unwrap_err()
+            .contains("sending is paused"));
     }
 
     #[test]
