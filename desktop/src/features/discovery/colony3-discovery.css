@@ -19,6 +19,7 @@
   --c3d-idle: hsl(var(--colony-idle-bg));
   --c3d-accent: hsl(var(--colony-accent));
   --c3d-accent-ink: hsl(var(--colony-accent-ink));
+  --c3d-on-accent: var(--colony-accent-foreground);
   --c3d-accent-soft: hsl(var(--colony-accent-soft));
   --c3d-ok: hsl(var(--colony-success));
   --c3d-ok-bg: hsl(var(--colony-success-bg));
@@ -1899,7 +1900,7 @@ button.c3d-search-chip {
 .d4-type-select[aria-pressed="true"] {
   border-color: var(--c3d-accent);
   background: var(--c3d-accent);
-  color: var(--c3d-accent-ink);
+  color: var(--c3d-on-accent);
 }
 
 .d4-type-footer {
@@ -1945,7 +1946,7 @@ button.c3d-search-chip {
 .d4-type-footer .d4-find-button {
   padding-inline: 0.625rem;
   background: var(--c3d-accent);
-  color: var(--c3d-accent-ink);
+  color: var(--c3d-on-accent);
 }
 
 .d4-type-footer button:disabled,
@@ -2276,7 +2277,7 @@ button.c3d-search-chip {
 .d4-dialog-actions .d4-primary-button {
   border-color: var(--c3d-accent);
   background: var(--c3d-accent);
-  color: var(--c3d-accent-ink);
+  color: var(--c3d-on-accent);
 }
 
 .d4-selected-list {
