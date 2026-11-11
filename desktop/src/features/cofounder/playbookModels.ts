@@ -47,6 +47,7 @@ export type PlaybookJobModel = {
   version: number;
   status: "running" | "completed" | "cancelled";
   startedAtLabel: string;
+  startedToday: boolean;
   currentStepId: string;
   roundLabel: string | null;
   steps: PlaybookJobStepModel[];

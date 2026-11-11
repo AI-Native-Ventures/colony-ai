@@ -103,6 +103,16 @@ function colorsFor(color: AgentAntColor | string) {
   ] as const;
 }
 
+function functionNameForRole(role: string | AgentFunction | null | undefined) {
+  return role && role in FUNCTION_STYLE
+    ? (role as AgentFunction)
+    : agentFunctionFromRole(role);
+}
+
+function functionStyleForRole(role: string | AgentFunction | null | undefined) {
+  return FUNCTION_STYLE[functionNameForRole(role)];
+}
+
 function stableId(input: string) {
   let hash = 2166136261;
   for (const char of input)
@@ -152,10 +162,7 @@ export function agentAntAvatarDataUrl(
   role: string | AgentFunction | null | undefined,
   color?: AgentAntColor | string,
 ): string {
-  const functionName =
-    role && role in FUNCTION_STYLE
-      ? (role as AgentFunction)
-      : agentFunctionFromRole(role);
+  const functionName = functionNameForRole(role);
   const style = FUNCTION_STYLE[functionName];
   const selectedColor = color ?? style.color;
   const [top, base, deep] = colorsFor(selectedColor);
@@ -186,4 +193,11 @@ export function agentAntAvatarDataUrl(
 
 export function agentAntBackground(color?: AgentAntColor | string) {
   return colorsFor(color ?? "green")[3];
+}
+
+export function agentAntBackgroundForRole(
+  role: string | AgentFunction | null | undefined,
+  color?: AgentAntColor | string,
+) {
+  return colorsFor(color ?? functionStyleForRole(role).color)[3];
 }
