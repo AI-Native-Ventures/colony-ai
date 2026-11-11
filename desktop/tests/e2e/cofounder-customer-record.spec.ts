@@ -454,6 +454,14 @@ test.describe("co-founder customer records", () => {
             "position",
             viewport.width <= 480 ? "absolute" : "static",
           );
+          if (viewport.width <= 480) {
+            await expect(ownerLabels.nth(index)).toHaveCSS(
+              "clip-path",
+              "inset(50%)",
+            );
+            await expect(ownerLabels.nth(index)).toHaveCSS("width", "1px");
+            await expect(ownerLabels.nth(index)).toHaveCSS("height", "1px");
+          }
         }
         await waitForAnimations(flowPage);
         await flowPage.screenshot({
