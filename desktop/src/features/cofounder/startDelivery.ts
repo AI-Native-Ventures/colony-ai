@@ -30,7 +30,7 @@ export function startDeliveryOwnerStepNumbers(
 }
 
 function normalizedClientName(value: string): string {
-  return value.trim().toLowerCase();
+  return value.split(/\s+/).filter(Boolean).join(" ").toLowerCase();
 }
 
 /** Match running jobs the same way the relay links them to customer records. */

@@ -102,6 +102,6 @@ test("duplicate guard trims and compares names without case sensitivity", () => 
       [{ title: "Melville  Manor Guesthouse", status: "running" }],
       "Melville Manor Guesthouse",
     ),
-    false,
+    true,
   );
 });
