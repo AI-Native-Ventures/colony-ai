@@ -14,6 +14,10 @@ import {
   REFERENCE_CHANNEL_IDS,
   REFERENCE_PROSPECT_IDS,
 } from "../../src/testing/e2eReferenceWorkspace";
+import {
+  deliveryJobs,
+  deliveryPlaybook,
+} from "../../src/testing/cofounderPlaybookFixtures";
 import type {
   MockCompanyFunctionHead,
   MockManagedAgentSeed,
@@ -34,6 +38,9 @@ function customerFixture({
   managedAgents,
   customerActionErrors,
   manualMelville = false,
+  startDelivery = false,
+  clientMelville = false,
+  duplicateMelvilleJob = false,
 }: {
   enabled?: boolean;
   role?: "owner" | "admin" | "member";
@@ -42,6 +49,9 @@ function customerFixture({
   managedAgents?: MockManagedAgentSeed[];
   customerActionErrors?: string[];
   manualMelville?: boolean;
+  startDelivery?: boolean;
+  clientMelville?: boolean;
+  duplicateMelvilleJob?: boolean;
 } = {}) {
   const relaySecret = generateSecretKey();
   const input = {
@@ -74,6 +84,19 @@ function customerFixture({
   olive.displayName = "The Olive House";
   olive.clientId = REFERENCE_CHANNEL_IDS.oliveHouse;
   olive.stage = "client";
+  const clientRecordForMelville = clientMelville
+    ? {
+        ...structuredClone(planeTree),
+        partyId: MELVILLE_PARTY_ID,
+        leadId: MELVILLE_PARTY_ID,
+        displayName: "Melville Manor Guesthouse",
+        project: null,
+      }
+    : melville;
+  const startDeliveryInput = {
+    scoutPubkey: TEST_IDENTITIES.alice.pubkey,
+    ownerPubkey: OWNER_PUBKEY,
+  };
 
   return {
     relaySelf: getPublicKey(relaySecret),
@@ -94,8 +117,40 @@ function customerFixture({
       },
     },
     companyFunctionHeads,
-    managedAgents,
-    companyCustomerRecords: [planeTree, melville, olive],
+    managedAgents:
+      managedAgents ??
+      (startDelivery
+        ? [
+            {
+              pubkey: TEST_IDENTITIES.alice.pubkey,
+              name: "Scout",
+              personaId: "builtin:fizz",
+              status: "running" as const,
+              channelNames: ["general"],
+            },
+          ]
+        : undefined),
+    ...(startDelivery
+      ? {
+          searchProfiles: [
+            {
+              pubkey: TEST_IDENTITIES.alice.pubkey,
+              displayName: "Scout",
+              isAgent: true,
+            },
+          ],
+          companyPlaybooks: [deliveryPlaybook(startDeliveryInput)],
+          companyPlaybookJobs: duplicateMelvilleJob
+            ? [
+                {
+                  ...deliveryJobs(startDeliveryInput)[0],
+                  title: "  melville manor guesthouse ",
+                },
+              ]
+            : [],
+        }
+      : {}),
+    companyCustomerRecords: [planeTree, clientRecordForMelville, olive],
     ...(customerActionErrors ? { customerActionErrors } : {}),
   };
 }
@@ -106,17 +161,24 @@ async function openCustomerRecord(
   fixture = customerFixture(),
   theme?: "light" | "dark",
 ) {
-  await installMockBridge(page, fixture);
   if (theme) {
     await page.emulateMedia({ colorScheme: theme });
     await page.addInitScript(
       ({ selectedTheme, ownerPubkey }) => {
         const themeName = selectedTheme === "dark" ? "buzz-dark" : "buzz";
+        const appearancePrefixes = [
+          "colony.appearance.v1:",
+          "buzz-community-theme.v1:",
+          "buzz-community-theme-outbox.v1:",
+        ];
         for (const key of Object.keys(window.localStorage)) {
-          if (key.startsWith("colony.appearance.v1:")) {
+          if (appearancePrefixes.some((prefix) => key.startsWith(prefix))) {
             window.localStorage.removeItem(key);
           }
         }
+        window.localStorage.removeItem(
+          `buzz-community-theme-migrated.v1:${ownerPubkey}`,
+        );
         window.localStorage.removeItem("buzz-theme-cache");
         window.localStorage.setItem("buzz-theme", themeName);
         window.localStorage.setItem("buzz-follow-system", "false");
@@ -134,6 +196,7 @@ async function openCustomerRecord(
       { selectedTheme: theme, ownerPubkey: OWNER_PUBKEY },
     );
   }
+  await installMockBridge(page, fixture);
   await page.addInitScript((outreachChannelId) => {
     const testWindow = window as Window & {
       __BUZZ_E2E_WHATSAPP__?: (request: {
@@ -171,9 +234,252 @@ async function openCustomerRecord(
   }, REFERENCE_CHANNEL_IDS.sales);
   await page.goto(`/#/clients/record/${partyId}`);
   await expect(page.getByTestId("customer-record-screen")).toBeVisible();
+  if (theme) {
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.documentElement.classList.contains("dark"),
+        ),
+      )
+      .toBe(theme === "dark");
+  }
 }
 
 test.describe("co-founder customer records", () => {
+  test("owner is offered to start delivery after making a client", async ({
+    page,
+  }) => {
+    await openCustomerRecord(
+      page,
+      MELVILLE_PARTY_ID,
+      customerFixture({ startDelivery: true }),
+    );
+
+    await page.getByTestId("customer-record-make-client").click();
+    await expect(page.getByTestId("customer-record-make-client")).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Start work for Melville Manor Guesthouse?",
+      }),
+    ).toBeVisible();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Delivery playbook, 7 steps");
+    await expect(dialog).toContainText(
+      "Scout starts step 1. You are needed at steps 2, 4, and 7.",
+    );
+    await dialog.getByRole("button", { name: "Start", exact: true }).click();
+
+    await expect(page).toHaveURL(/\/company\/function\/operations$/);
+    await expect(page.getByTestId("cofounder-playbook-screen")).toBeVisible();
+    const startedJob = page
+      .locator('[data-testid^="playbook-job-"]')
+      .filter({ hasText: "Melville Manor Guesthouse" });
+    await expect(startedJob).toContainText("1 of 7");
+    await expect(startedJob).toContainText("Client brief and assets");
+  });
+
+  test("Not yet leaves a way to start delivery from the client record", async ({
+    page,
+  }) => {
+    await openCustomerRecord(
+      page,
+      MELVILLE_PARTY_ID,
+      customerFixture({ startDelivery: true }),
+    );
+
+    await page.getByTestId("customer-record-make-client").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Not yet" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await expect(
+      page.locator(".cf-customer-status-row .b3-pill-status"),
+    ).toContainText("Client");
+    const startDelivery = page.getByTestId("customer-record-start-delivery");
+    await expect(startDelivery).toBeVisible();
+    await startDelivery.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Start work for Melville Manor Guesthouse?",
+      }),
+    ).toBeVisible();
+  });
+
+  test("a member sales lead can convert without a delivery prompt or button", async ({
+    page,
+  }) => {
+    await installMockBridge(
+      page,
+      customerFixture({
+        role: "member",
+        startDelivery: true,
+        companyFunctionHeads: [
+          {
+            function: "sales",
+            state: "filled",
+            leadPubkey: OWNER_PUBKEY,
+          },
+        ],
+      }),
+    );
+    await page.goto("/#/leads");
+
+    const row = page
+      .getByRole("table", { name: "Leads" })
+      .getByRole("row")
+      .filter({ hasText: "Melville Manor Guesthouse" });
+    await row.getByRole("link", { name: "Review lead" }).click();
+    const detail = page.getByTestId("w10-prospect-page");
+    const convert = detail.getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`);
+    await convert.click();
+    await expect(convert).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await detail.getByRole("link", { name: "Customer record" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/clients/record/${MELVILLE_PARTY_ID}$`),
+    );
+    await expect(
+      page.getByTestId("customer-record-start-delivery"),
+    ).toHaveCount(0);
+  });
+
+  test("a client with a running delivery job has no start delivery button", async ({
+    page,
+  }) => {
+    await openCustomerRecord(
+      page,
+      MELVILLE_PARTY_ID,
+      customerFixture({
+        startDelivery: true,
+        clientMelville: true,
+        duplicateMelvilleJob: true,
+      }),
+    );
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByTestId("customer-record-start-delivery"),
+    ).toHaveCount(0);
+  });
+
+  test("lead detail offers to start delivery after making a client", async ({
+    page,
+  }) => {
+    await installMockBridge(page, customerFixture({ startDelivery: true }));
+    await page.goto("/#/leads");
+
+    const row = page
+      .getByRole("table", { name: "Leads" })
+      .getByRole("row")
+      .filter({ hasText: "Melville Manor Guesthouse" });
+    await row.getByRole("link", { name: "Review lead" }).click();
+    const detail = page.getByTestId("w10-prospect-page");
+    await detail.getByTestId(`lead-make-client-${MELVILLE_PARTY_ID}`).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Start", exact: true }).click();
+    await expect(page).toHaveURL(/\/company\/function\/operations$/);
+    const startedJob = page
+      .locator('[data-testid^="playbook-job-"]')
+      .filter({ hasText: "Melville Manor Guesthouse" });
+    await expect(startedJob).toContainText("1 of 7");
+  });
+
+  test("captures start delivery states at desktop and phone sizes in light and dark", async ({
+    page,
+  }) => {
+    test.skip(
+      process.env.COLONY_START_DELIVERY_CAPTURE !== "1",
+      "capture is requested for proof delivery",
+    );
+    const output = resolve("/private/tmp/colony-start-delivery/screenshots");
+    mkdirSync(output, { recursive: true });
+    const themes = ["light", "dark"] as const;
+    const viewports = [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ];
+
+    for (const theme of themes) {
+      for (const viewport of viewports) {
+        const size = `${viewport.width}x${viewport.height}`;
+        const clientPage = await page.context().newPage();
+        await clientPage.setViewportSize(viewport);
+        await openCustomerRecord(
+          clientPage,
+          MELVILLE_PARTY_ID,
+          customerFixture({ startDelivery: true, clientMelville: true }),
+          theme,
+        );
+        await expect(
+          clientPage.getByTestId("customer-record-start-delivery"),
+        ).toBeVisible();
+        await waitForAnimations(clientPage);
+        await clientPage.screenshot({
+          path: resolve(output, `client-record-${theme}-${size}.png`),
+        });
+        await clientPage.close();
+
+        const flowPage = await page.context().newPage();
+        await flowPage.setViewportSize(viewport);
+        await openCustomerRecord(
+          flowPage,
+          MELVILLE_PARTY_ID,
+          customerFixture({ startDelivery: true }),
+          theme,
+        );
+        await flowPage.getByTestId("customer-record-make-client").click();
+        const startDialog = flowPage.getByRole("dialog");
+        await expect(startDialog).toBeVisible();
+        const ownerLabels = startDialog.getByTestId(
+          "start-delivery-owner-label",
+        );
+        await expect(ownerLabels).toHaveText([
+          "Scout",
+          "You",
+          "Site Build worker",
+          "You",
+          "Customer Success",
+          "Revisions worker",
+          "Scout",
+        ]);
+        for (let index = 0; index < (await ownerLabels.count()); index += 1) {
+          await expect(ownerLabels.nth(index)).toHaveCSS(
+            "position",
+            viewport.width <= 480 ? "absolute" : "static",
+          );
+        }
+        await waitForAnimations(flowPage);
+        await flowPage.screenshot({
+          path: resolve(output, `start-dialog-${theme}-${size}.png`),
+        });
+        await startDialog
+          .getByRole("button", { name: "Start", exact: true })
+          .click();
+        await expect(flowPage).toHaveURL(/\/company\/function\/operations$/);
+        const jobsHeading = flowPage.getByRole("heading", {
+          name: "Jobs on this playbook",
+        });
+        await jobsHeading.scrollIntoViewIfNeeded();
+        const startedJob = flowPage
+          .locator('[data-testid^="playbook-job-"]')
+          .filter({ hasText: "Melville Manor Guesthouse" });
+        await expect(startedJob).toContainText("1 of 7");
+        await waitForAnimations(flowPage);
+        await flowPage.screenshot({
+          path: resolve(output, `playbook-after-start-${theme}-${size}.png`),
+        });
+        await flowPage.close();
+      }
+    }
+  });
+
   test("owner opens a client record from Today and returns to Clients", async ({
     page,
   }) => {

@@ -51,6 +51,7 @@ export function useCustomerRecordCapabilities() {
   return {
     enabled,
     settings,
+    canStartDelivery: ownerOrAdmin,
     canWrite: ownerOrAdmin || salesLead || customerSuccessLead || isScout,
     canConvert: ownerOrAdmin || salesLead,
   };
