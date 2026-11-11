@@ -7,6 +7,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { Channel } from "@/shared/api/types";
+import { getInitials } from "@/shared/lib/initials";
 
 import { FUNCTION_DETAILS } from "../functions";
 import type { FunctionId } from "../cofounderRecords";
@@ -34,7 +35,10 @@ import type {
 import { TeamPage, TeamPageTitle } from "../../company-team/ui/TeamPage";
 import { PlaybookScreen } from "./PlaybookScreen";
 
-type ProfileLookup = Record<string, { displayName: string | null }>;
+type ProfileLookup = Record<
+  string,
+  { avatarUrl?: string | null; displayName: string | null }
+>;
 
 function scoutChannel(
   channels: readonly Channel[],
@@ -120,10 +124,20 @@ function stepModel(
 ): PlaybookStepModel {
   const owner = step.owner;
   if (owner.kind === "owner") {
+    const ownerProfile = selfPubkey
+      ? profiles[selfPubkey.toLowerCase()]
+      : undefined;
+    const ownerName = ownerProfile?.displayName?.trim() || "You";
     return {
       id: step.stepId,
       title: step.title,
-      owner: { kind: "owner", label: "You" },
+      owner: {
+        kind: "owner",
+        label: "You",
+        avatarName: ownerName,
+        avatarUrl: ownerProfile?.avatarUrl?.trim() || null,
+        avatarInitials: getInitials(ownerName),
+      },
       detail: step.detail,
       inputs: step.inputs,
       outputs: step.outputs,
@@ -359,6 +373,7 @@ export function OperationsPlaybookScreen({
     const keys = [
       playbook.createdByPubkey,
       playbook.updatedByPubkey,
+      ...(membership.data?.pubkey ? [membership.data.pubkey] : []),
       ...(playbook.pending ? [playbook.pending.proposedByPubkey] : []),
       ...playbook.records.map((record) => record.actorPubkey),
       ...(playbook.current?.steps ?? [])
@@ -369,7 +384,7 @@ export function OperationsPlaybookScreen({
       0,
       200,
     );
-  }, [playbook]);
+  }, [membership.data?.pubkey, playbook]);
   const profilesQuery = useUsersBatchQuery(profilePubkeys, {
     enabled: profilePubkeys.length > 0,
   });
