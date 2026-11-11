@@ -370,13 +370,15 @@ function JobList({
             );
             const stepNumber = currentIndex < 0 ? 0 : currentIndex + 1;
             const isNew =
-              job.startedAtLabel === "today" &&
-              job.steps.every((step) => step.status !== "done");
+              job.startedToday &&
+              job.steps.every(
+                (step) => step.status !== "done" && step.status !== "skipped",
+              );
             return (
               <li key={job.id}>
                 <button
                   aria-label={`Open ${job.clientName}, step ${stepNumber} of ${job.steps.length}, ${currentStep?.title ?? "No current step"}`}
-                  className={`cf3-job-row${isNew ? " is-new" : ""}`}
+                  className="cf3-job-row"
                   data-testid={`playbook-job-${job.id}`}
                   onClick={() => onOpen(job.id)}
                   type="button"

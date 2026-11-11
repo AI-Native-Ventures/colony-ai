@@ -30,6 +30,12 @@ const MELVILLE_PARTY_ID = REFERENCE_PROSPECT_IDS["the-olive-house"];
 const PLANE_TREE_PARTY_ID = REFERENCE_PROSPECT_IDS["form-field"];
 const EMPTY_PARTY_ID = "5b2e2e1d-3308-4e4f-958e-9509070626d1";
 
+function localNoonTimestamp(): number {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  return Math.floor(date.getTime() / 1_000);
+}
+
 function deliveryPlaybookWithSteps(
   input: Parameters<typeof deliveryPlaybook>[0],
   stepCount: number,
@@ -317,6 +323,139 @@ test.describe("co-founder customer records", () => {
     await expect(startedJob).toContainText("Client brief and assets");
     await expect(startedJob).toContainText("New");
     await expect(startedJob).toContainText("Started today");
+  });
+
+  test("an approval made today still displays its UTC date", async ({
+    page,
+  }) => {
+    const fixture = customerFixture({ startDelivery: true });
+    const approvalTimestamp = localNoonTimestamp();
+    const approvedRecord = fixture.companyPlaybooks?.[0]?.records?.find(
+      (record) => record.version === 2,
+    );
+    if (!approvedRecord)
+      throw new Error("delivery approval fixture is missing");
+    approvedRecord.at = approvalTimestamp;
+    const approvalDate = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(new Date(approvalTimestamp * 1_000));
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await installMockBridge(page, fixture);
+    await page.goto("/#/company/function/operations");
+
+    const screen = page.getByTestId("cofounder-playbook-screen");
+    await expect(screen).toBeVisible();
+    const metadata = screen.locator(".cf3-playbook-meta");
+    await expect(metadata).toContainText(
+      `Last change approved by you on ${approvalDate}`,
+    );
+    await expect(metadata).not.toContainText(/on today/i);
+
+    const history = screen.getByTestId("playbook-version-history");
+    await history.locator("summary").click();
+    const approvedVersion = history.locator("li").filter({
+      hasText: "Version 2",
+    });
+    await expect(approvedVersion).toContainText(
+      `Approved by you on ${approvalDate}`,
+    );
+    await expect(approvedVersion).not.toContainText(/on today/i);
+  });
+
+  test("new owner-started job uses list typography and keeps both pills clear on phone", async ({
+    page,
+  }) => {
+    const fixture = customerFixture({ startDelivery: true });
+    const referenceJobs = fixture.companyPlaybookJobs;
+    const sourceJob = referenceJobs?.[0];
+    if (!sourceJob) throw new Error("delivery job fixture is missing");
+    const startedAt = localNoonTimestamp();
+    const ownerFirstStepJob = {
+      ...sourceJob,
+      jobId: "10000000-0000-4000-8000-000000000001",
+      title: "Melville Manor Guesthouse",
+      startedAt,
+      updatedAt: startedAt,
+      approvals: [],
+      steps: sourceJob.steps.map((step, index) => ({
+        ...step,
+        status: "pending" as const,
+        statusAt: startedAt + index,
+        ...(index === 0
+          ? {
+              owner: { kind: "owner" as const },
+              approvalPoint: {
+                kind: "other" as const,
+                prompt: "Owner approval required",
+              },
+            }
+          : {}),
+      })),
+    };
+    const skippedTodayJob = {
+      ...sourceJob,
+      jobId: "10000000-0000-4000-8000-000000000002",
+      title: "Skipped Step Guesthouse",
+      startedAt,
+      updatedAt: startedAt - 1,
+      approvals: [],
+      steps: sourceJob.steps.map((step, index) => ({
+        ...step,
+        status: index === 0 ? ("skipped" as const) : ("pending" as const),
+        statusAt: startedAt + index,
+      })),
+    };
+    fixture.companyPlaybookJobs = [
+      ownerFirstStepJob,
+      skippedTodayJob,
+      ...(referenceJobs ?? []),
+    ];
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installMockBridge(page, fixture);
+    await page.goto("/#/company/function/operations");
+
+    const screen = page.getByTestId("cofounder-playbook-screen");
+    await expect(screen).toBeVisible();
+    const rows = page.locator('[data-testid^="playbook-job-"]');
+    const firstRow = rows.nth(0);
+    const secondRow = rows.nth(1);
+    await expect(firstRow).toContainText("Melville Manor Guesthouse");
+    await expect(firstRow).toContainText("Client brief and assets");
+    await expect(firstRow).toContainText("New");
+    await expect(firstRow).toContainText("Needs you");
+    await expect(firstRow).toContainText("Started today");
+    await expect(
+      firstRow.locator(".cf3-job-current .cf3-need-pill"),
+    ).toHaveCount(2);
+    await expect(secondRow).toContainText("Skipped Step Guesthouse");
+    await expect(secondRow).not.toContainText("New");
+
+    for (const selector of [
+      ".cf3-job-client strong",
+      ".cf3-job-current",
+      ".cf3-job-started",
+    ]) {
+      const weights = await Promise.all(
+        [firstRow, secondRow].map((row) =>
+          row.locator(selector).evaluate((element) => {
+            const style = getComputedStyle(element);
+            return { fontSize: style.fontSize, fontWeight: style.fontWeight };
+          }),
+        ),
+      );
+      expect(weights[0]).toEqual(weights[1]);
+    }
+
+    const pillLine = await firstRow.locator(".cf3-job-current").boundingBox();
+    const startedLine = await firstRow
+      .locator(".cf3-job-started")
+      .boundingBox();
+    if (!pillLine || !startedLine) throw new Error("job row text is missing");
+    expect(startedLine.y).toBeGreaterThanOrEqual(pillLine.y + pillLine.height);
   });
 
   test("start delivery dialog matches the sketch at desktop and phone sizes", async ({
@@ -928,6 +1067,24 @@ test.describe("co-founder customer records", () => {
         await flowPage.screenshot({
           path: resolve(output, `playbook-after-start-${theme}-${size}.png`),
         });
+        if (theme === "light" && viewport.width === 1440) {
+          const jobsCard = jobsHeading.locator("xpath=ancestor::section[1]");
+          const jobsCardBox = await jobsCard.boundingBox();
+          if (!jobsCardBox) throw new Error("playbook jobs card is missing");
+          const visibleHeight = viewport.height - jobsCardBox.y;
+          if (visibleHeight <= 0) {
+            throw new Error("playbook jobs card is outside the viewport");
+          }
+          await flowPage.screenshot({
+            path: resolve(compareOutput, "jobs-built-crop.png"),
+            clip: {
+              x: jobsCardBox.x,
+              y: jobsCardBox.y,
+              width: jobsCardBox.width,
+              height: Math.min(382, visibleHeight),
+            },
+          });
+        }
         await flowPage.close();
       }
     }

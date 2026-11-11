@@ -60,19 +60,35 @@ function scoutChannel(
 
 function formatDate(timestamp: number | null): string {
   if (timestamp === null) return "Date unavailable";
-  const startedAt = new Date(timestamp * 1_000);
-  const now = new Date();
-  if (
-    startedAt.getFullYear() === now.getFullYear() &&
-    startedAt.getMonth() === now.getMonth() &&
-    startedAt.getDate() === now.getDate()
-  ) {
-    return "today";
-  }
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
-  }).format(startedAt);
+    timeZone: "UTC",
+  }).format(new Date(timestamp * 1_000));
+}
+
+function formatJobStart(timestamp: number | null): {
+  label: string;
+  startedToday: boolean;
+} {
+  if (timestamp === null) {
+    return { label: "Date unavailable", startedToday: false };
+  }
+  const startedAt = new Date(timestamp * 1_000);
+  const now = new Date();
+  const startedToday =
+    startedAt.getFullYear() === now.getFullYear() &&
+    startedAt.getMonth() === now.getMonth() &&
+    startedAt.getDate() === now.getDate();
+  return {
+    label: startedToday
+      ? "today"
+      : new Intl.DateTimeFormat("en-GB", {
+          day: "numeric",
+          month: "short",
+        }).format(startedAt),
+    startedToday,
+  };
 }
 
 function titleCaseIdentifier(value: string): string {
@@ -172,12 +188,14 @@ function jobModel(
   selfPubkey: string | undefined,
 ): PlaybookJobModel {
   const progress = jobProgress(job);
+  const started = formatJobStart(job.startedAt);
   return {
     id: job.jobId,
     clientName: job.title,
     version: job.playbookVersion,
     status: job.status,
-    startedAtLabel: formatDate(job.startedAt),
+    startedAtLabel: started.label,
+    startedToday: started.startedToday,
     currentStepId: job.currentStepId ?? "",
     roundLabel: progress.currentStep?.progressLabel ?? null,
     steps: job.steps.map((step) => ({

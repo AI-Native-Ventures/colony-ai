@@ -382,57 +382,6 @@
   font-weight: 600;
 }
 
-.cf3-job-row.is-new {
-  height: 124px;
-  gap: 0;
-  padding: 16px 18px;
-}
-
-.cf3-job-row.is-new .cf3-job-client {
-  height: 20px;
-  align-items: baseline;
-}
-
-.cf3-job-row.is-new .cf3-job-client strong {
-  font-size: calc(16 * var(--colony-px));
-  font-weight: 800;
-  line-height: 20px;
-}
-
-.cf3-job-row.is-new .cf3-job-client > span {
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.cf3-job-row.is-new .cf3-job-progress {
-  gap: 4px;
-  margin-top: 11px;
-}
-
-.cf3-job-row.is-new .cf3-job-progress > span {
-  height: 6px;
-}
-
-.cf3-job-row.is-new .cf3-job-current {
-  height: 24px;
-  gap: 8px;
-  margin-top: 9px;
-  font-size: calc(14.5 * var(--colony-px));
-  font-weight: 500;
-}
-
-.cf3-job-row.is-new .cf3-need-pill {
-  height: 24px;
-  padding: 0 9px;
-  font-size: calc(12.5 * var(--colony-px));
-}
-
-.cf3-job-row.is-new .cf3-job-started {
-  margin-top: 5px;
-  font-size: calc(13.5 * var(--colony-px));
-  font-weight: 400;
-}
-
 .cf3-side-empty,
 .cf3-owner-only {
   margin: 0.875rem 0 0;
