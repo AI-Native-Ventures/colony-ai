@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { useManagedAgentsQuery } from "@/features/agents/hooks";
+import { agentAntBackgroundForRole } from "@/features/agents/ui/agentAntAvatar";
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { Button } from "@/shared/ui/button";
+import { getInitials } from "@/shared/lib/initials";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
 
@@ -19,9 +19,17 @@ import type { FunctionId } from "../cofounderRecords";
 import { playbookJobActions } from "../playbookActions";
 import { usePlaybookJobAction } from "../playbookHooks";
 import type { PlaybookStepView, PlaybookView } from "../playbookRecords";
-import { startDeliveryOwnerStepNumbers } from "../startDelivery";
+import {
+  startDeliverySentence,
+  startDeliveryOwnerStepNumbers,
+} from "../startDelivery";
+import { StartDeliveryStepRail } from "./StartDeliveryStepRail";
+import "./StartDeliveryDialog.css";
 
-type ProfileLookup = Record<string, { displayName: string | null }>;
+type ProfileLookup = Record<
+  string,
+  { avatarUrl?: string | null; displayName: string | null }
+>;
 
 function titleCaseIdentifier(value: string): string {
   return value
@@ -65,12 +73,6 @@ function stepOwnerLabel(
   return personLabel(owner.agentPubkey, profiles, agents, selfPubkey);
 }
 
-function stepNumberList(numbers: readonly number[]): string {
-  if (numbers.length < 2) return String(numbers[0] ?? "");
-  const last = numbers[numbers.length - 1];
-  return `${numbers.slice(0, -1).join(", ")}, and ${last}`;
-}
-
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
   return "The delivery could not be started. Try again.";
@@ -99,27 +101,22 @@ export function StartDeliveryDialog({
     playbooks.find((item) => item.playbookId === selectedPlaybookId) ??
     playbooks[0] ??
     null;
-  const profilePubkeys = useMemo(
-    () =>
-      [
-        ...new Set(
-          (selectedPlaybook?.current?.steps ?? [])
-            .map((step) => step.owner.agentPubkey)
-            .filter((pubkey): pubkey is string => pubkey !== null)
-            .map((pubkey) => pubkey.toLowerCase()),
-        ),
-      ].slice(0, 200),
-    [selectedPlaybook],
-  );
+  const profilePubkeys = useMemo(() => {
+    const pubkeys = (selectedPlaybook?.current?.steps ?? [])
+      .map((step) => step.owner.agentPubkey)
+      .filter((pubkey): pubkey is string => pubkey !== null)
+      .map((pubkey) => pubkey.toLowerCase());
+    if (membership.data?.pubkey) {
+      pubkeys.push(membership.data.pubkey.toLowerCase());
+    }
+    return [...new Set(pubkeys)].slice(0, 200);
+  }, [membership.data?.pubkey, selectedPlaybook]);
   const agentsQuery = useManagedAgentsQuery({ enabled: open });
   const profilesQuery = useUsersBatchQuery(profilePubkeys, {
     enabled: open && profilePubkeys.length > 0,
   });
   const profiles: ProfileLookup = profilesQuery.data?.profiles ?? {};
-  const agents = (agentsQuery.data ?? []).map((agent) => ({
-    pubkey: agent.pubkey,
-    name: agent.name,
-  }));
+  const agents = agentsQuery.data ?? [];
 
   useEffect(() => {
     if (
@@ -144,8 +141,22 @@ export function StartDeliveryDialog({
     agents,
     membership.data?.pubkey,
   );
-  const firstStepSentence =
-    firstOwner === "You" ? "You start step 1." : `${firstOwner} starts step 1.`;
+  const deliverySentence = startDeliverySentence(firstOwner, ownerSteps);
+  const workflowName =
+    selectedPlaybook.current.title.replace(/\s+playbook$/iu, "").trim() ||
+    selectedPlaybook.current.title;
+  const selfPubkey = membership.data?.pubkey?.toLowerCase();
+  const ownerInitials = getInitials(
+    profiles[selfPubkey ?? ""]?.displayName?.trim() || "You",
+  );
+  const scout =
+    agents.find((agent) => agent.name.trim().toLowerCase() === "scout") ??
+    agents.find((agent) => agent.personaId === "builtin:fizz") ??
+    null;
+  const scoutProfileAvatar = scout
+    ? profiles[scout.pubkey.toLowerCase()]?.avatarUrl?.trim()
+    : undefined;
+  const scoutHasPhoto = Boolean(scoutProfileAvatar || scout?.avatarUrl?.trim());
 
   async function startDelivery() {
     if (!selectedPlaybook || saving) return;
@@ -184,124 +195,106 @@ export function StartDeliveryDialog({
       open={open}
     >
       <DialogContent
-        className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto"
+        className="start-delivery-dialog"
         data-testid="start-delivery-dialog"
-        showCloseButton={!saving}
+        showCloseButton={false}
       >
-        <DialogHeader>
-          <DialogTitle>Start work for {clientName}?</DialogTitle>
-          <DialogDescription>
-            {selectedPlaybook.current.title}, {steps.length} steps
-          </DialogDescription>
-        </DialogHeader>
-        {playbooks.length > 1 ? (
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-semibold">Choose a playbook</legend>
-            <div className="grid gap-2">
-              {playbooks.map((playbook) => (
-                <label
-                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-colony-border px-3 py-2 text-sm"
-                  key={playbook.playbookId}
-                >
-                  <input
-                    checked={
-                      selectedPlaybook.playbookId === playbook.playbookId
+        <div className={`start-delivery-heading${scout ? " has-scout" : ""}`}>
+          {scout ? (
+            <span
+              className="start-delivery-scout-avatar"
+              data-testid="start-delivery-scout-avatar"
+              style={
+                scoutHasPhoto
+                  ? undefined
+                  : {
+                      backgroundColor: agentAntBackgroundForRole(
+                        "Other",
+                        "green",
+                      ),
                     }
-                    name="start-delivery-playbook"
-                    onChange={() => {
-                      setSelectedPlaybookId(playbook.playbookId);
-                      setError(null);
-                    }}
-                    type="radio"
-                    value={playbook.playbookId}
-                  />
-                  <span>{playbook.current?.title ?? playbook.title}</span>
-                </label>
-              ))}
-            </div>
+              }
+            >
+              <EmployeeAvatar
+                className={`start-delivery-scout-art${scoutHasPhoto ? " is-photo" : " is-ant"}`}
+                name={scout.name}
+                profile={scoutProfileAvatar}
+                personaId={scout.personaId}
+                pubkey={scout.pubkey}
+              />
+            </span>
+          ) : null}
+          <div className="start-delivery-heading-copy">
+            <DialogDescription className="start-delivery-description">
+              {clientName} is a client now.
+            </DialogDescription>
+            <DialogTitle className="start-delivery-title">
+              Start {workflowName}?
+            </DialogTitle>
+          </div>
+        </div>
+        {playbooks.length > 1 ? (
+          <fieldset className="start-delivery-playbook-choice">
+            <legend>Choose a playbook</legend>
+            {playbooks.map((playbook) => (
+              <label
+                className="start-delivery-playbook-option"
+                key={playbook.playbookId}
+              >
+                <input
+                  checked={selectedPlaybook.playbookId === playbook.playbookId}
+                  name="start-delivery-playbook"
+                  onChange={() => {
+                    setSelectedPlaybookId(playbook.playbookId);
+                    setError(null);
+                  }}
+                  type="radio"
+                  value={playbook.playbookId}
+                />
+                <span>{playbook.current?.title ?? playbook.title}</span>
+              </label>
+            ))}
           </fieldset>
         ) : null}
-        <ol
-          aria-label="Delivery steps"
-          className="flex w-full items-start justify-between gap-1 py-1"
-        >
-          {steps.map((step, index) => {
-            const isOwnerStep = step.owner.kind === "owner";
-            const owner = stepOwnerLabel(
-              step,
-              profiles,
-              agents,
-              membership.data?.pubkey,
-            );
-            return (
-              <li
-                className="flex w-9 shrink-0 flex-col items-center gap-1 text-center"
-                data-testid={`start-delivery-step-${step.stepId}`}
-                key={step.stepId}
-              >
-                <span
-                  className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
-                    isOwnerStep
-                      ? "border-colony-fg bg-colony-fg text-colony-pop"
-                      : step.approvalPoint
-                        ? "border-colony-accent bg-colony-accent/10 text-colony-accent"
-                        : "border-colony-border bg-colony-track text-colony-fg-secondary"
-                  }`}
-                >
-                  {index + 1}
-                </span>
-                <span className="flex min-w-0 flex-col items-center gap-0.5">
-                  <span
-                    className="break-words text-2xs leading-tight text-colony-fg-secondary max-[30rem]:sr-only"
-                    data-testid="start-delivery-owner-label"
-                  >
-                    {owner}
-                  </span>
-                  {step.approvalPoint ? (
-                    <span className="rounded-full bg-colony-accent/10 px-1 text-3xs font-semibold text-colony-accent">
-                      Your OK
-                    </span>
-                  ) : null}
-                </span>
-                <span className="sr-only">{step.title}</span>
-              </li>
-            );
-          })}
-        </ol>
-        <p className="text-sm text-colony-fg-secondary">
-          {firstStepSentence}
-          {ownerSteps.length > 0
-            ? ` You are needed at steps ${stepNumberList(ownerSteps)}.`
-            : ""}
-        </p>
+        <StartDeliveryStepRail
+          agents={agents}
+          getOwnerLabel={(step) =>
+            stepOwnerLabel(step, profiles, agents, membership.data?.pubkey)
+          }
+          ownerInitials={ownerInitials}
+          profiles={profiles}
+          steps={steps}
+        />
+        <p className="start-delivery-sentence">{deliverySentence}</p>
         {error ? (
           <p
             aria-live="assertive"
-            className="text-sm text-destructive"
+            className="start-delivery-error"
             role="alert"
           >
             {error}
           </p>
         ) : null}
-        <DialogFooter>
-          <Button
-            className="w-full sm:w-auto"
-            disabled={saving}
-            onClick={() => onOpenChange(false)}
-            type="button"
-            variant="outline"
-          >
-            Not yet
-          </Button>
-          <Button
-            className="w-full sm:w-auto"
+        <div className="start-delivery-actions">
+          <button
+            className="start-delivery-action start-delivery-action-primary"
+            data-testid="start-delivery-start"
             disabled={saving}
             onClick={() => void startDelivery()}
             type="button"
           >
-            {saving ? "Starting..." : "Start"}
-          </Button>
-        </DialogFooter>
+            {saving ? "Starting..." : `Start ${workflowName}`}
+          </button>
+          <button
+            className="start-delivery-action start-delivery-action-secondary"
+            data-testid="start-delivery-not-yet"
+            disabled={saving}
+            onClick={() => onOpenChange(false)}
+            type="button"
+          >
+            Not yet
+          </button>
+        </div>
       </DialogContent>
     </Dialog>
   );

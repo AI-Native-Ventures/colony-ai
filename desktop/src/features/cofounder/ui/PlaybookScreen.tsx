@@ -369,11 +369,14 @@ function JobList({
               (step) => step.id === job.currentStepId,
             );
             const stepNumber = currentIndex < 0 ? 0 : currentIndex + 1;
+            const isNew =
+              job.startedAtLabel === "today" &&
+              job.steps.every((step) => step.status !== "done");
             return (
               <li key={job.id}>
                 <button
                   aria-label={`Open ${job.clientName}, step ${stepNumber} of ${job.steps.length}, ${currentStep?.title ?? "No current step"}`}
-                  className="cf3-job-row"
+                  className={`cf3-job-row${isNew ? " is-new" : ""}`}
                   data-testid={`playbook-job-${job.id}`}
                   onClick={() => onOpen(job.id)}
                   type="button"
@@ -405,6 +408,7 @@ function JobList({
                   </span>
                   <span className="cf3-job-current">
                     {currentStep?.title ?? "No current step"}
+                    {isNew ? <span className="cf3-need-pill">New</span> : null}
                     {currentStep && stepNeedsOwnerApproval(currentStep) ? (
                       <span className="cf3-need-pill">Needs you</span>
                     ) : null}

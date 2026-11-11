@@ -29,6 +29,27 @@ export function startDeliveryOwnerStepNumbers(
   );
 }
 
+/** Build the summary shown above the Start delivery actions. */
+export function startDeliverySentence(
+  firstStepOwner: string,
+  numbers: readonly number[],
+): string {
+  const firstStepSentence =
+    firstStepOwner === "You"
+      ? "You start step 1 today."
+      : `${firstStepOwner} starts step 1 today.`;
+  if (numbers.length === 0) return firstStepSentence;
+  if (numbers.length === 1) {
+    return `${firstStepSentence} You are needed at step ${numbers[0]}.`;
+  }
+  const last = numbers[numbers.length - 1];
+  const list =
+    numbers.length === 2
+      ? `${numbers[0]} and ${last}`
+      : `${numbers.slice(0, -1).join(", ")} and ${last}`;
+  return `${firstStepSentence} You are needed at ${list}.`;
+}
+
 function normalizedClientName(value: string): string {
   return value.split(/\s+/).filter(Boolean).join(" ").toLowerCase();
 }

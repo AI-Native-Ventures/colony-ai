@@ -60,11 +60,19 @@ function scoutChannel(
 
 function formatDate(timestamp: number | null): string {
   if (timestamp === null) return "Date unavailable";
+  const startedAt = new Date(timestamp * 1_000);
+  const now = new Date();
+  if (
+    startedAt.getFullYear() === now.getFullYear() &&
+    startedAt.getMonth() === now.getMonth() &&
+    startedAt.getDate() === now.getDate()
+  ) {
+    return "today";
+  }
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
-    timeZone: "UTC",
-  }).format(new Date(timestamp * 1_000));
+  }).format(startedAt);
 }
 
 function titleCaseIdentifier(value: string): string {

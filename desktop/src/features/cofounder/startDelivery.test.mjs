@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   eligibleStartDeliveryPlaybooks,
   hasRunningJobForClient,
+  startDeliverySentence,
   startDeliveryOwnerStepNumbers,
 } from "./startDelivery.ts";
 
@@ -85,6 +86,41 @@ test("owner steps and approval points are listed once in playbook order", () => 
   assert.deepEqual(
     startDeliveryOwnerStepNumbers(playbook({ id: "no-owner-steps" })),
     [],
+  );
+});
+
+test("delivery sentence leaves out the owner clause when no steps need them", () => {
+  assert.equal(
+    startDeliverySentence("Scout", []),
+    "Scout starts step 1 today.",
+  );
+});
+
+test("delivery sentence uses singular grammar for one owner step", () => {
+  assert.equal(
+    startDeliverySentence("Scout", [3]),
+    "Scout starts step 1 today. You are needed at step 3.",
+  );
+});
+
+test("delivery sentence joins two owner steps without an Oxford comma", () => {
+  assert.equal(
+    startDeliverySentence("Scout", [2, 4]),
+    "Scout starts step 1 today. You are needed at 2 and 4.",
+  );
+});
+
+test("delivery sentence joins three owner steps without an Oxford comma", () => {
+  assert.equal(
+    startDeliverySentence("Scout", [2, 4, 7]),
+    "Scout starts step 1 today. You are needed at 2, 4 and 7.",
+  );
+});
+
+test("delivery sentence uses owner grammar when they start the first step", () => {
+  assert.equal(
+    startDeliverySentence("You", [2]),
+    "You start step 1 today. You are needed at step 2.",
   );
 });
 
