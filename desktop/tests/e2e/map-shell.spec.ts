@@ -15,6 +15,7 @@ import {
 } from "../../src/testing/e2eReferenceWorkspace";
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
+const SEARCH_USER_PUBKEY = "feedface".repeat(8);
 const CAPTURE_DIR = process.env.MAP_SHELL_CAPTURE_DIR;
 const APPROVAL_SWITCHES = {
   approveEveryHire: false,
@@ -89,6 +90,11 @@ function mapShellFixture(cofounderEnabled = true) {
         pubkey: TEST_IDENTITIES.bob.pubkey,
         displayName: "Scout",
         isAgent: true,
+      },
+      {
+        pubkey: SEARCH_USER_PUBKEY,
+        displayName: "Nandi",
+        isAgent: false,
       },
     ],
     relayAgents: [
@@ -629,7 +635,13 @@ test("desktop shell matches the board and keeps the app journeys reachable", asy
   await expect.poll(() => pathname(page.url())).toBe("/team");
   await page.getByTestId("open-search").click();
   await expect(page.getByTestId("search-results")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByTestId("search-dialog-input").fill("Nandi");
+  const userResult = page.getByTestId(
+    `search-result-user-${SEARCH_USER_PUBKEY}`,
+  );
+  await expect(userResult).toBeVisible();
+  await userResult.click();
+  await expect.poll(() => pathname(page.url())).toMatch(/^\/channels\//);
   await page.getByTestId("map-shell-activity").click();
   await expect.poll(() => pathname(page.url())).toBe("/activity");
   await expect(page.getByTestId("home-inbox")).toBeVisible();

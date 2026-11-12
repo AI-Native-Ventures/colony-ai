@@ -1143,8 +1143,9 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity?.pubkey,
     );
   }
-  // Default to opting every preview feature in. Specs that exercise the
-  // Experiments toggle UI itself pass `seedPreviewFeatures: false`.
+  // Seed preview-feature overrides for E2E by default. Manifest-default-off
+  // features remain off unless a spec explicitly enables them. Specs that
+  // exercise the Experiments toggle UI itself pass `seedPreviewFeatures: false`.
   if (options.seedPreviewFeatures !== false) {
     await seedPreviewFeaturesEnabled(page, options.previewFeatureOverrides);
   }

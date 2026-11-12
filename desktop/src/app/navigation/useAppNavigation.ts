@@ -147,6 +147,18 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goActivityProfile = React.useCallback(
+    (pubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/activity",
+          search: { profile: pubkey },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goTeam = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation({ to: "/team" }, behavior),
@@ -465,6 +477,7 @@ export function useAppNavigation() {
   return {
     closeSettings,
     goActivity,
+    goActivityProfile,
     goAgents,
     goAgentProfile,
     goAskDetail,
