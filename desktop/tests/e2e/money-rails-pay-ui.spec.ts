@@ -680,24 +680,50 @@ test("Needs you edit makes the old approval unavailable and sends the new head",
   await installMoneyRailsMock(page, "light");
   await page.goto("/#/today/needs-you");
   await expect(page.getByTestId("cofounder-needs-you-screen")).toBeVisible();
+  const row = page.locator(`[data-row-id="payment-link:${APPROVAL_CARD_ID}"]`);
+  await expect(row).toContainText("R3,750");
 
-  const card = page.getByTestId(`money-rail-card-${APPROVAL_CARD_ID}`);
-  await expect(card).toBeVisible();
-  await card.getByTestId(`money-rail-edit-${APPROVAL_CARD_ID}`).click();
-  await card.getByRole("textbox", { name: "Payment amount" }).fill("3900");
-  await expect(
-    card.getByTestId(`money-rail-approve-${APPROVAL_CARD_ID}`),
-  ).toBeDisabled();
-  await card.getByTestId(`money-rail-save-edit-${APPROVAL_CARD_ID}`).click();
-  await expect(card).toHaveAttribute(
-    "data-head-event-id",
-    "money-link-head-v2",
+  const oldHeadEventId = await page.evaluate(async (linkId) => {
+    const bridge = (window as MoneyRailsWindow).__BUZZ_E2E_MONEY_RAILS__;
+    const card = bridge
+      ?.getSnapshot()
+      .paymentLinks.find((item) => item.id === linkId);
+    if (!bridge || !card) throw new Error("The payment link is unavailable.");
+    await bridge.execute({
+      type: "edit",
+      linkId,
+      headEventId: card.headEventId,
+      card,
+      changes: { amountMinor: 390_000 },
+    });
+    return card.headEventId;
+  }, APPROVAL_CARD_ID);
+
+  await expect(row).toContainText("R3,900");
+  const staleApprovalError = await page.evaluate(
+    async ({ linkId, headEventId }) => {
+      const bridge = (window as MoneyRailsWindow).__BUZZ_E2E_MONEY_RAILS__;
+      const card = bridge
+        ?.getSnapshot()
+        .paymentLinks.find((item) => item.id === linkId);
+      if (!bridge || !card) throw new Error("The payment link is unavailable.");
+      try {
+        await bridge.execute({ type: "approve", linkId, headEventId, card });
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    },
+    { linkId: APPROVAL_CARD_ID, headEventId: oldHeadEventId },
   );
-  await expect(
-    card.getByTestId(`money-rail-approve-${APPROVAL_CARD_ID}`),
-  ).toBeEnabled();
-  await card.getByTestId(`money-rail-approve-${APPROVAL_CARD_ID}`).click();
-  await expect(card).toHaveCount(0);
+  expect(staleApprovalError).toBe(
+    "This payment link changed. Review the latest version.",
+  );
+
+  await row
+    .getByTestId(`needs-you-action-yes-payment-link:${APPROVAL_CARD_ID}`)
+    .click();
+  await expect(row).toHaveCount(0);
   const updatedCard = await page.evaluate(
     (linkId) =>
       (window as MoneyRailsWindow).__BUZZ_E2E_MONEY_RAILS__
@@ -716,6 +742,11 @@ test("Needs you edit makes the old approval unavailable and sends the new head",
       linkId: APPROVAL_CARD_ID,
       headEventId: "money-link-head-v1",
       changes: expect.objectContaining({ amountMinor: 390_000 }),
+    },
+    {
+      type: "approve",
+      linkId: APPROVAL_CARD_ID,
+      headEventId: "money-link-head-v1",
     },
     {
       type: "approve",

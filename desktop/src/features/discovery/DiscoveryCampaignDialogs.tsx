@@ -19,15 +19,8 @@ import {
 } from "@/shared/ui/dialog";
 import { ArrowRightGlyph } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
-import {
-  BUDGET_USD_PER_PROSPECT,
-  PAGE_BUDGET_USD,
-} from "./discoveryCampaignContinuation";
-import {
-  customerPriceFromProviderCost,
-  formatCustomerPrice,
-  providerCostFromCustomerPrice,
-} from "./discoveryCustomerPricing";
+import { BUDGET_USD_PER_PROSPECT } from "./discoveryCampaignContinuation";
+import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import {
   attachNearbyLocations,
   readRecentDiscoveryLocations,
@@ -37,9 +30,7 @@ import {
 import { searchDiscoveryLocations } from "./discoveryLocationClient";
 import { SALES_NOT_ALLOWED_MESSAGE } from "./salesChannel";
 import type {
-  DiscoveryCampaign,
   DiscoveryCampaignInput,
-  DiscoveryContinuation,
   DiscoveryRunner,
 } from "./discoveryProvider";
 import {
@@ -88,10 +79,6 @@ function discoveryActionFailure(error: unknown): ActionFailure {
   });
   logActionFailure(failure);
   return failure;
-}
-
-function startFailureMessage(error: unknown): string {
-  return discoveryActionFailure(error).message;
 }
 
 function activeRelayUrl(): string | null {
@@ -625,7 +612,7 @@ export function DiscoveryCampaignDialog({
               <small>
                 {simulatedCosts
                   ? "Example pricing · Actual results and costs are simulated."
-                  : `About ${formatCustomerPrice(PAGE_BUDGET_USD)} per 20 results. ${formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per prospect. Website check adds no cost. This is the maximum you approve.`}
+                  : `${formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per new prospect. Businesses already in your Leads are not charged. Website check adds no cost. This is the maximum you approve.`}
               </small>
             </span>
             <span className="c3d-budget-amount">
@@ -685,178 +672,6 @@ export function DiscoveryCampaignDialog({
             >
               Approve &amp; {continuationSourceCampaign ? "start new" : "start"}{" "}
               <ArrowRightGlyph size={16} />
-            </button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** Approval for an in-place continuation after a campaign used its budget. */
-export function DiscoveryContinuationDialog({
-  campaign,
-  continuation,
-  onOpenChange,
-  onSubmit,
-  open,
-}: {
-  campaign: DiscoveryCampaign;
-  continuation: DiscoveryContinuation | null;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (additionalBudgetUsd: number) => Promise<void>;
-  open: boolean;
-}) {
-  const [additionalBudget, setAdditionalBudget] = React.useState("0");
-  const [approved, setApproved] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [submitting, setSubmitting] = React.useState(false);
-  const approvedBudget = continuation?.approvedBudgetUsd ?? campaign.budgetUsd;
-  const spent = continuation?.spentUsd ?? campaign.spentUsd ?? 0;
-  const remainingTarget = continuation?.remainingTarget ?? 0;
-  const estimatedPages = continuation?.estimatedPages ?? 0;
-  const pagesAtProviderCeiling = continuation?.pagesAtProviderCeiling ?? 0;
-  const estimatedCost = continuation?.estimatedCostUsd ?? 0;
-  const minimum = continuation?.minimumAdditionalBudgetUsd ?? 0;
-  const minimumCustomerPrice = customerPriceFromProviderCost(minimum);
-
-  React.useEffect(() => {
-    if (!open || !continuation) return;
-    setAdditionalBudget(
-      customerPriceFromProviderCost(
-        continuation.recommendedAdditionalBudgetUsd,
-      ).toFixed(2),
-    );
-    setApproved(false);
-    setError("");
-  }, [continuation, open]);
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const customerAmount = Number(additionalBudget);
-    const providerAmount = providerCostFromCustomerPrice(customerAmount);
-    if (
-      !Number.isFinite(customerAmount) ||
-      customerAmount < minimumCustomerPrice ||
-      !approved
-    ) {
-      setError(
-        `Approve at least ${formatCustomerPrice(minimum)} more to cover the next provider page.`,
-      );
-      return;
-    }
-    setSubmitting(true);
-    setError("");
-    try {
-      await onSubmit(providerAmount);
-      onOpenChange(false);
-    } catch (continueError) {
-      setError(startFailureMessage(continueError));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="c3d-dialog c3d-dialog--form"
-        data-testid="discovery-continuation-dialog"
-        showCloseButton={false}
-      >
-        <div className="c3d-dialog-head">
-          <p className="c3d-eyebrow">Continue this campaign</p>
-          <DialogTitle className="c3d-dialog-title">
-            Approve more search budget.
-          </DialogTitle>
-          <DialogDescription className="c3d-dialog-sub">
-            {campaign.name} · {remainingTarget} new prospects remaining
-          </DialogDescription>
-        </div>
-        <form
-          className="contents"
-          noValidate
-          onSubmit={(event) => void submit(event)}
-        >
-          <dl className="c3d-facts">
-            <dt>Campaign</dt>
-            <dd>{campaign.name}</dd>
-            <dt>Spent</dt>
-            <dd>
-              {formatCustomerPrice(spent)} of{" "}
-              {formatCustomerPrice(approvedBudget)} approved
-            </dd>
-            <dt>Target</dt>
-            <dd>
-              {campaign.count} new saved · {remainingTarget} remaining
-            </dd>
-          </dl>
-          <div className="c3d-field">
-            <label htmlFor="w10-continuation-budget">
-              Additional budget to approve
-            </label>
-            <input
-              id="w10-continuation-budget"
-              min={minimumCustomerPrice.toFixed(2)}
-              onChange={(event) =>
-                setAdditionalBudget(event.currentTarget.value)
-              }
-              required
-              step="0.01"
-              type="number"
-              value={additionalBudget}
-            />
-          </div>
-          <div className="c3d-budget">
-            <span>
-              <strong>What this estimate covers</strong>
-              <small>
-                At {formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per prospect,{" "}
-                {remainingTarget} new prospects need at least {estimatedPages}{" "}
-                {estimatedPages === 1 ? "page" : "pages"} and{" "}
-                {formatCustomerPrice(estimatedCost)}. Results already in your
-                Leads are skipped, so it may take more pages. This query can use
-                up to {pagesAtProviderCeiling}{" "}
-                {pagesAtProviderCeiling === 1 ? "page" : "pages"} before the
-                400-record provider ceiling.
-              </small>
-            </span>
-            <span className="c3d-budget-amount">
-              {formatCustomerPrice(
-                providerCostFromCustomerPrice(
-                  Math.max(0, Number(additionalBudget) || 0),
-                ),
-              )}
-            </span>
-          </div>
-          <label className="c3d-approval">
-            <input
-              checked={approved}
-              onChange={(event) => setApproved(event.currentTarget.checked)}
-              type="checkbox"
-            />
-            I approve this additional search budget for the same campaign.
-          </label>
-          {error ? (
-            <p className="c3d-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <div className="c3d-dialog-actions c3d-form-actions">
-            <button
-              className="c3d-btn c3d-btn--outline c3d-btn--lg c3d-btn--px20"
-              disabled={submitting}
-              onClick={() => onOpenChange(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="c3d-btn c3d-btn--ink c3d-btn--lg c3d-btn--px22"
-              disabled={submitting || !continuation}
-              type="submit"
-            >
-              Approve &amp; continue <ArrowRightGlyph size={16} />
             </button>
           </div>
         </form>

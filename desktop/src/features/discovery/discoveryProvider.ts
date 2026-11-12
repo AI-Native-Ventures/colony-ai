@@ -54,7 +54,7 @@ export type DiscoveryPageLog = {
 /** What Find more can safely do without starting a separate campaign. */
 export type DiscoveryContinuation = {
   campaignId: string;
-  state: "ready" | "approval_required" | "unavailable";
+  state: "ready" | "unavailable";
   /** Plain-language reason when a query genuinely cannot continue. */
   message: string | null;
   remainingTarget: number;
