@@ -11,6 +11,7 @@ import {
   SearchGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import { newProspectsCostUsd } from "./discoveryCampaignContinuation";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import type { DiscoveryLocation } from "./discoveryLocation";
 import type { DiscoveryCampaign } from "./discoveryProvider";
@@ -190,8 +191,9 @@ export function CampaignRunPanel({
           </span>
           <span>{campaign.count} prospects</span>
           <span>
-            Search cost · {formatCustomerPrice(campaign.spentUsd ?? 0)} of{" "}
-            {formatCustomerPrice(campaign.budgetUsd)} approved
+            Search cost ·{" "}
+            {formatCustomerPrice(newProspectsCostUsd(campaign.count))} of{" "}
+            {formatCustomerPrice(newProspectsCostUsd(campaign.target))} approved
           </span>
           <button
             className="c3d-text-link"

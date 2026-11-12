@@ -16,6 +16,7 @@ import {
 } from "./campaignsCatalog";
 import { ChevronRightGlyph, SearchGlyph } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import { newProspectsCostUsd } from "./discoveryCampaignContinuation";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import {
   getDiscoveryCampaignProvider,
@@ -77,9 +78,9 @@ function formatDate(createdAt: number | undefined): string {
   }).format(new Date(createdAt * 1_000));
 }
 
+/** New prospects only: results already in Leads are never charged. */
 function formatSpend(campaign: DiscoveryCampaign): string {
-  const spend = campaign.spentUsd ?? campaign.budgetUsd;
-  return formatCustomerPrice(spend);
+  return formatCustomerPrice(newProspectsCostUsd(campaign.count));
 }
 
 function statusTone(campaign: DiscoveryCampaign): string {

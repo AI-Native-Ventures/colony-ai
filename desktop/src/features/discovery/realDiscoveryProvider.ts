@@ -853,17 +853,19 @@ export function createDiscoveryController(
     if (continuation.state === "unavailable") {
       throw new Error(continuation.message ?? GENERIC_STOP_REASON);
     }
+    // Without an amount the page allowance grows by what the remaining target
+    // needs. It is provider cost the owner is not charged for.
     const requestedAdditional =
-      additionalBudgetUsd === undefined ? 0 : additionalBudgetUsd;
+      additionalBudgetUsd === undefined
+        ? continuation.recommendedAdditionalBudgetUsd
+        : additionalBudgetUsd;
     if (
       !Number.isFinite(requestedAdditional) ||
-      requestedAdditional < 0 ||
-      (continuation.state === "approval_required" &&
-        requestedAdditional + BUDGET_EPSILON_USD <
-          continuation.minimumAdditionalBudgetUsd)
+      requestedAdditional + BUDGET_EPSILON_USD <
+        continuation.minimumAdditionalBudgetUsd
     ) {
       throw new Error(
-        `Approve at least ${continuation.minimumAdditionalBudgetUsd.toFixed(2)} more to cover the next provider page.`,
+        "This campaign cannot continue with less than one more provider page.",
       );
     }
     const context = await deps.resolveContext();
