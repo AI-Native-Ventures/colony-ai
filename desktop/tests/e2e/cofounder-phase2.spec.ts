@@ -2038,10 +2038,34 @@ test.describe("Co-founder mode Phase 2", () => {
         document.querySelectorAll<HTMLElement>(".needs-you-row-actions button"),
         (button) => button.getBoundingClientRect().height,
       ),
+      titles: Array.from(
+        document.querySelectorAll<HTMLElement>(".needs-you-row-copy strong"),
+        (title) => {
+          const style = getComputedStyle(title);
+          return {
+            clientWidth: title.clientWidth,
+            scrollWidth: title.scrollWidth,
+            textOverflow: style.textOverflow,
+            whiteSpace: style.whiteSpace,
+          };
+        },
+      ),
     }));
     expect(mobile.documentWidth).toBe(mobile.viewportWidth);
     expect(mobile.actionHeights.length).toBeGreaterThan(0);
     expect(mobile.actionHeights.every((height) => height >= 44)).toBe(true);
+    expect(mobile.titles.length).toBeGreaterThan(0);
+    expect(
+      mobile.titles.every(
+        ({ clientWidth, scrollWidth }) => scrollWidth === clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      mobile.titles.every(({ textOverflow }) => textOverflow !== "ellipsis"),
+    ).toBe(true);
+    expect(
+      mobile.titles.every(({ whiteSpace }) => whiteSpace === "normal"),
+    ).toBe(true);
     const mobileActions = page.locator(".needs-you-row-actions button");
     for (let index = 0; index < (await mobileActions.count()); index += 1) {
       const action = mobileActions.nth(index);

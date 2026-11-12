@@ -223,7 +223,7 @@
   line-height: 1.4;
 }
 
-@media (max-width: 40rem) {
+@media (max-width: 47.999rem) {
   .needs-you-page {
     width: 100%;
     padding: 1.375rem 1rem 2rem;
@@ -264,6 +264,23 @@
 
   .needs-you-row-error {
     margin: 0;
+  }
+
+  .needs-you-row-copy strong {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .needs-you-row-copy small {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    text-overflow: clip;
+    white-space: normal;
   }
 }
 
