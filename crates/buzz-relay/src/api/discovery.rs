@@ -53,6 +53,10 @@ const MAX_SKIP: u32 = 1_000;
 /// for twice. The relay refuses any other skip so no client can burn credits
 /// that way.
 const SKIP_STEP: u32 = 20;
+/// The provider's wire name for the page offset. Its client libraries call the
+/// argument `skip`, but the HTTP API only reads `skipPlaces`: a plain `skip` is
+/// ignored, so every page came back as the first page and was paid for again.
+const SKIP_PARAM: &str = "skipPlaces";
 /// Google Maps gives no more than 400 places for one query. A page that ends at
 /// or past this has no next page, so clients stop instead of paying for empty
 /// or repeated pages.
@@ -418,7 +422,7 @@ fn search_url(base: &str, request: &ValidatedSearch) -> Result<url::Url, Provide
         pairs.append_pair("query", &request.query);
         pairs.append_pair("limit", &limit);
         pairs.append_pair("organizationsPerQueryLimit", &limit);
-        pairs.append_pair("skip", &request.skip.to_string());
+        pairs.append_pair(SKIP_PARAM, &request.skip.to_string());
         pairs.append_pair("language", &request.language);
         if let Some(region) = request.region.as_deref() {
             pairs.append_pair("region", region);
@@ -1422,7 +1426,13 @@ mod tests {
         assert_eq!(params["query"], "cafes, Durban");
         assert_eq!(params["limit"], "20");
         assert_eq!(params["organizationsPerQueryLimit"], "20");
-        assert_eq!(params["skip"], "40");
+        // Regression: the provider ignores `skip` and repeats page one. The
+        // offset must travel under the name its HTTP API reads.
+        assert_eq!(params["skipPlaces"], "40");
+        assert!(
+            !params.contains_key("skip"),
+            "a plain skip is ignored by the provider"
+        );
         assert_eq!(params["language"], "en");
         assert_eq!(params["region"], "za");
         assert_eq!(params["coordinates"], "@-29.858700,31.021800,12z");
