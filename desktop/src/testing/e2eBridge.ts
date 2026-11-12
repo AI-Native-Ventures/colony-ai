@@ -17117,10 +17117,7 @@ async function handleGetFeed(
       feed,
       meta: {
         since: args.since ?? now - 7 * 24 * 60 * 60,
-        total: Object.values(feed).reduce(
-          (sum, list) => sum + list.length,
-          0,
-        ),
+        total: Object.values(feed).reduce((sum, list) => sum + list.length, 0),
         generated_at: now,
       },
       visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
