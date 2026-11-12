@@ -3,7 +3,10 @@ import test from "node:test";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
 import { buildNeedsYou } from "./needsYou.ts";
-import { buildNeedsYouSummary } from "./needsYouSummary.ts";
+import {
+  buildNeedsYouSummary,
+  hasNeedsYouSummaryError,
+} from "./needsYouSummary.ts";
 import { parsePlanHead } from "./planRecords.ts";
 import { AGENT, headContent, signHead, step } from "./planFixtures.mjs";
 
@@ -94,6 +97,26 @@ function gap(gapId, state, category, text = "") {
 function contact(waId, stage) {
   return { waId, stage };
 }
+
+test("reports every failed count source", () => {
+  const complete = {
+    hasNeedsYouError: false,
+    hasWhatsAppError: false,
+    hasCompanyAccessError: false,
+    moneyRailsAvailability: "ready",
+  };
+  const cases = [
+    ["complete sources", complete, false],
+    ["core needs-you data", { ...complete, hasNeedsYouError: true }, true],
+    ["WhatsApp data", { ...complete, hasWhatsAppError: true }, true],
+    ["company access gaps", { ...complete, hasCompanyAccessError: true }, true],
+    ["money rails", { ...complete, moneyRailsAvailability: "error" }, true],
+  ];
+
+  for (const [source, status, expected] of cases) {
+    assert.equal(hasNeedsYouSummaryError(status), expected, source);
+  }
+});
 
 test("counts all visible rows once, including money links, gaps and call requests", () => {
   const summary = buildNeedsYouSummary({

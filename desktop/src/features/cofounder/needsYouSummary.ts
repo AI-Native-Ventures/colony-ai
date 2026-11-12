@@ -5,7 +5,7 @@ import { buildGapNeedsYouItems } from "./accessRecords";
 import type { CapabilityGapHead } from "./accessRecords";
 import { useCompanyAccessQuery } from "./accessHooks";
 import { useMoneyRailsSnapshot } from "./moneyRailsBridge";
-import type { MoneyLinkCard } from "./moneyRails";
+import type { MoneyLinkCard, MoneyRailsSnapshot } from "./moneyRails";
 import { FUNCTION_DETAILS, FUNCTION_ORDER } from "./functions";
 import type { FunctionId } from "./cofounderRecords";
 import type { NeedsYouItem, NeedsYouModel } from "./needsYou";
@@ -25,6 +25,26 @@ export type NeedsYouSummarySources = {
   capabilityGaps?: readonly CapabilityGapHead[];
   whatsappContacts?: readonly WhatsAppContact[];
 };
+
+/** Load status for every source counted by the Needs you summary. */
+export type NeedsYouSummarySourceStatus = {
+  hasNeedsYouError: boolean;
+  hasWhatsAppError: boolean;
+  hasCompanyAccessError: boolean;
+  moneyRailsAvailability: MoneyRailsSnapshot["availability"];
+};
+
+/** Reports whether a count source failed after its empty fallback was applied. */
+export function hasNeedsYouSummaryError(
+  status: NeedsYouSummarySourceStatus,
+): boolean {
+  return (
+    status.hasNeedsYouError ||
+    status.hasWhatsAppError ||
+    status.hasCompanyAccessError ||
+    status.moneyRailsAvailability === "error"
+  );
+}
 
 function normalizedWords(value: string): string {
   return value
@@ -166,6 +186,7 @@ export function buildNeedsYouSummary(
 export function useNeedsYouSummary(): {
   data: NeedsYouSummary | undefined;
   isPending: boolean;
+  isError: boolean;
 } {
   const { activeCommunity } = useCommunities();
   const needsYou = useNeedsYouQuery();
@@ -177,6 +198,12 @@ export function useNeedsYouSummary(): {
     needsYou.whatsappSummaryIsPending ||
     (hasCommunity && access.isPending) ||
     (hasCommunity && moneyRails.availability === "loading");
+  const isError = hasNeedsYouSummaryError({
+    hasNeedsYouError: Boolean(needsYou.summaryError),
+    hasWhatsAppError: Boolean(needsYou.whatsappError),
+    hasCompanyAccessError: hasCommunity && access.isError,
+    moneyRailsAvailability: moneyRails.availability,
+  });
   const data = useMemo(
     () =>
       isPending
@@ -196,5 +223,5 @@ export function useNeedsYouSummary(): {
     ],
   );
 
-  return { data, isPending };
+  return { data, isPending, isError };
 }

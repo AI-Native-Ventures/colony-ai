@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { expect, test as baseTest, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
@@ -51,36 +51,6 @@ import type {
   MoneyLinkCard,
   MoneyRailsSnapshot,
 } from "../../src/features/cofounder/moneyRails";
-
-const test = baseTest.extend({
-  browser: [
-    async ({ playwright }, use) => {
-      const browserProfile = process.env.BROWSER_PROFILE;
-      if (!browserProfile) {
-        throw new Error("BROWSER_PROFILE must come from browser-lock.sh.");
-      }
-      const profileContext = await playwright.chromium.launchPersistentContext(
-        browserProfile,
-        {
-          channel: "chrome",
-          headless: true,
-          args: ["--use-mock-keychain", "--password-store=basic"],
-        },
-      );
-      const browser = profileContext.browser();
-      if (!browser) {
-        await profileContext.close();
-        throw new Error("The locked headless Chrome profile did not launch.");
-      }
-      try {
-        await use(browser);
-      } finally {
-        await profileContext.close();
-      }
-    },
-    { scope: "worker" },
-  ],
-});
 
 const APPROVAL_SWITCHES = {
   approveEveryHire: true,

@@ -80,7 +80,10 @@ export function useNeedsYouQuery() {
   const whatsappError = canApprove
     ? (whatsappStatus.error ??
       (outreachConnected
-        ? (batches.error ?? drafts.error ?? contacts.error)
+        ? (batches.error ??
+          batchDetails.error ??
+          drafts.error ??
+          contacts.error)
         : null))
     : null;
   const whatsappPending =
@@ -106,6 +109,15 @@ export function useNeedsYouQuery() {
     whatsappSummaryIsPending: whatsappPending,
     isPending: needsMe.isPending || plans.isPending || playbooks.isPending,
     error: needsMe.asksError ?? plans.error ?? playbooks.error ?? null,
+    summaryError:
+      needsMe.asksError ??
+      membership.error ??
+      cofounder.error ??
+      (cofounder.data?.exists === true
+        ? (plans.error ?? playbooks.error)
+        : null) ??
+      (cofounderOn && canApprove ? numbers.error : null) ??
+      null,
     whatsappError,
     refetch: () =>
       Promise.all([needsMe.refetch(), plans.refetch(), playbooks.refetch()]),
