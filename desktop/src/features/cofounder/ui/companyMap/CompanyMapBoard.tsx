@@ -268,6 +268,7 @@ function FunctionLink({
 }) {
   return (
     <Link
+      className="company-map-primary-action"
       data-testid={`cofounder-map-open-${functionId}`}
       params={{ function: functionId }}
       to="/company/function/$function"
@@ -666,9 +667,7 @@ function ActionCard({
         {count > 0 ? ` ${partCountSentence(count)}` : ""}
       </p>
       <div className="company-map-card-actions">
-        <FunctionLink functionId={activePart}>
-          <span className="company-map-primary-action">Open {detail.name}</span>
-        </FunctionLink>
+        <FunctionLink functionId={activePart}>Open {detail.name}</FunctionLink>
         {slot.state === "empty" && activePart !== "operations" ? (
           <Link className="company-map-secondary-action" to="/hire/roles">
             Hire a {detail.suggestedHire}

@@ -337,9 +337,7 @@ test.describe("co-founder mode desktop", () => {
           '[data-testid="cofounder-map-job-sales-lead-finding"] .company-map-job-disc',
         ),
         highlight: bounds(".company-map-highlight"),
-        openAction: bounds(
-          '[data-testid="cofounder-map-open-sales"] .company-map-primary-action',
-        ),
+        openAction: bounds('[data-testid="cofounder-map-open-sales"]'),
         closeAction: bounds('[data-testid="cofounder-map-part-card"] button'),
       };
     });
@@ -370,7 +368,11 @@ test.describe("co-founder mode desktop", () => {
       width: 100,
       height: 100,
     });
-    expect(measured.openAction?.height).toBe(44);
+    expect(measured.openAction).toMatchObject({
+      width: 327,
+      height: 44,
+      padding: "0px 16px",
+    });
     expect(measured.closeAction?.height).toBe(44);
   });
 
