@@ -17,6 +17,11 @@ export const BUDGET_USD_PER_PROSPECT = 0.003;
 export const PAGE_BUDGET_USD = SEARCH_PAGE_SIZE * BUDGET_USD_PER_PROSPECT;
 export const BUDGET_EPSILON_USD = 0.0001;
 
+/** What the owner is charged: new prospects only, never results they own. */
+export function newProspectsCostUsd(count: number): number {
+  return roundUsd(Math.max(0, count) * BUDGET_USD_PER_PROSPECT);
+}
+
 export function roundUsd(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }
@@ -45,7 +50,8 @@ export function buildEndNote(
     | "location"
     | "pickedTags"
     | "endReason"
-  >,
+  > &
+    Partial<Pick<StoredCampaign, "skippedDuplicates">>,
 ): string | null {
   if (campaign.count >= campaign.target) return null;
   const what = inSentence(campaign.verticalName) || "results";
@@ -61,14 +67,35 @@ export function buildEndNote(
         : `The relay returned nextSkip null after ${campaign.pagesFetched} pages for ${what} in ${campaign.location}. The provider did not offer another page. Search a nearby area or use another tag.`;
     }
     case "approved_budget":
-      return `The approved search budget was used after ${campaign.pagesFetched} pages. Find more asks you to approve more before this campaign continues from its next saved page.`;
+      return approvedResultsUsedNote(campaign);
     case "target_reached":
       return null;
     default:
       return campaign.exhausted
         ? `This saved campaign stopped before reaching its target, but it has no provider end reason. Find more to continue from its cursor or search a nearby area.`
-        : `The approved search budget was used after ${campaign.pagesFetched} pages. Find more asks you to approve more before this campaign continues from its next saved page.`;
+        : approvedResultsUsedNote(campaign);
   }
+}
+
+/**
+ * The owner pays for new prospects only. When the results they approved are
+ * used up and some were already theirs, the run stops and asks before it
+ * fetches more; continuing costs them nothing extra.
+ */
+function approvedResultsUsedNote(
+  campaign: Pick<StoredCampaign, "count" | "target" | "pagesFetched"> &
+    Partial<Pick<StoredCampaign, "skippedDuplicates">>,
+): string {
+  if (campaign.pagesFetched >= MAX_PAGES) {
+    return `This search reached its limit of ${MAX_PAGES} pages. Search a nearby area or use another business type.`;
+  }
+  const remaining = Math.max(0, campaign.target - campaign.count);
+  const owned = campaign.skippedDuplicates ?? 0;
+  const ownedNote =
+    owned > 0
+      ? ` ${owned} ${owned === 1 ? "was" : "were"} already in your Leads and ${owned === 1 ? "is" : "are"} not charged.`
+      : "";
+  return `The results you approved were used after ${campaign.pagesFetched} ${campaign.pagesFetched === 1 ? "page" : "pages"}.${ownedNote} Keep searching for the other ${remaining}? Find more continues this search at no extra cost.`;
 }
 
 function cappedCursor(cursor: number): number {
@@ -243,12 +270,9 @@ export function continuationFor(
   ) {
     return null;
   }
-  return {
-    ...base,
-    state:
-      minimumAdditionalBudgetUsd > BUDGET_EPSILON_USD
-        ? "approval_required"
-        : "ready",
-    message: null,
-  };
+  // The owner pays for new prospects only, so continuing towards the same
+  // target never needs a new approval: `continueCurrent` extends the provider
+  // page allowance by itself. The run still stops and asks before each
+  // extension, and the page cap and provider ceiling above still end it.
+  return { ...base, state: "ready", message: null };
 }

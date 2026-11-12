@@ -853,17 +853,19 @@ export function createDiscoveryController(
     if (continuation.state === "unavailable") {
       throw new Error(continuation.message ?? GENERIC_STOP_REASON);
     }
+    // Without an amount the page allowance grows by what the remaining target
+    // needs. It is provider cost the owner is not charged for.
     const requestedAdditional =
-      additionalBudgetUsd === undefined ? 0 : additionalBudgetUsd;
+      additionalBudgetUsd === undefined
+        ? continuation.recommendedAdditionalBudgetUsd
+        : additionalBudgetUsd;
     if (
       !Number.isFinite(requestedAdditional) ||
-      requestedAdditional < 0 ||
-      (continuation.state === "approval_required" &&
-        requestedAdditional + BUDGET_EPSILON_USD <
-          continuation.minimumAdditionalBudgetUsd)
+      requestedAdditional + BUDGET_EPSILON_USD <
+        continuation.minimumAdditionalBudgetUsd
     ) {
       throw new Error(
-        `Approve at least ${continuation.minimumAdditionalBudgetUsd.toFixed(2)} more to cover the next provider page.`,
+        "This campaign cannot continue with less than one more provider page.",
       );
     }
     const context = await deps.resolveContext();
@@ -945,10 +947,14 @@ export function createDiscoveryController(
 
   /**
    * A fresh campaign for an identical structured provider query starts after
-   * every page this device durably saved. Each tag has its own cursor.
+   * every page this device durably saved. Each tag has its own cursor. Only
+   * campaigns with trusted coverage count: older ones recorded pages the
+   * provider never served, and following them made a new search for the same
+   * type and place finish at once with nothing found.
    */
   function coveredQuery(queryKey: string): DiscoveryCoverage {
     const coverage = state.campaigns
+      .filter((campaign) => campaign.trustedCoverage)
       .map((campaign) => campaign.coverage)
       .reduce<DiscoveryCoverage>(
         (current, entries) => {
@@ -1095,6 +1101,7 @@ export function createDiscoveryController(
               ?.terminalReason ?? "provider_ceiling"),
         pageLog: [],
         coverage: initialCoverage,
+        trustedCoverage: true,
         skip: initialSkip,
         tagCursors: initialTagCursors,
         pendingTagCursors: first?.tagCursors ?? null,

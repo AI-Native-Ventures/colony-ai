@@ -15,6 +15,7 @@ import {
   NoticeGlyph,
 } from "./DiscoveryIcons";
 import { RunnerAvatar } from "./DiscoveryRunner";
+import { newProspectsCostUsd } from "./discoveryCampaignContinuation";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import type { DiscoveryCampaign, DiscoveryPageLog } from "./discoveryProvider";
 
@@ -88,7 +89,7 @@ function pageStopReason(entry: DiscoveryPageLog): string {
     case "provider_repeat":
       return "Stopped because every provider place id on this page had already appeared in this campaign. No further paid page was requested.";
     case "approved_budget":
-      return "Stopped because the approved budget did not cover another full provider page.";
+      return "Stopped to ask before searching further: the results you approved were used. Find more continues at no extra cost.";
     default:
       return "The relay offered another page after this one.";
   }
@@ -112,7 +113,9 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
               <span>
                 {entry.placesReturned}{" "}
                 {entry.placesReturned === 1 ? "place" : "places"} returned ·{" "}
-                {formatCustomerPrice(entry.costUsd)}
+                {formatCustomerPrice(
+                  newProspectsCostUsd(entry.newProspectsSaved),
+                )}
               </span>
             </div>
             <dl>
@@ -265,7 +268,8 @@ export function CampaignDialog({
               </dd>
               <dt>Budget</dt>
               <dd>
-                Up to {formatCustomerPrice(campaign.budgetUsd)}
+                Up to{" "}
+                {formatCustomerPrice(newProspectsCostUsd(campaign.target))}
                 {campaign.simulated ? <span> · Example</span> : null}
               </dd>
             </dl>

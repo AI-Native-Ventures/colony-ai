@@ -30,7 +30,6 @@ import {
 import { CampaignDialog, type CampaignDialogMode } from "./CampaignDialogs";
 import {
   DiscoveryCampaignDialog,
-  DiscoveryContinuationDialog,
   type CampaignFormInput,
   type PendingCampaign,
 } from "./DiscoveryCampaignDialogs";
@@ -43,10 +42,7 @@ import {
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
 import { CampaignQualificationPanel } from "./CampaignQualificationPanel";
 import type { DiscoveryLocation } from "./discoveryLocation";
-import {
-  type DiscoveryContinuation,
-  useDiscoveryCampaign,
-} from "./discoveryProvider";
+import { useDiscoveryCampaign } from "./discoveryProvider";
 import {
   DiscoveryTypeDetailsDialog,
   RelatedVerticalOptions,
@@ -138,9 +134,6 @@ export function CampaignScreen(context: CampaignContext) {
   const [widenSourceCampaign, setWidenSourceCampaign] = React.useState<
     string | null
   >(null);
-  const [continuation, setContinuation] =
-    React.useState<DiscoveryContinuation | null>(null);
-  const [continuationOpen, setContinuationOpen] = React.useState(false);
   const [, setTagsReady] = React.useState(false);
   const [progress, setProgress] = React.useState<BulkAcceptProgress | null>(
     null,
@@ -614,12 +607,12 @@ export function CampaignScreen(context: CampaignContext) {
     await navigate({ to: "/campaign" });
   }
 
-  async function continueCampaign(additionalBudgetUsd?: number) {
+  async function continueCampaign() {
     if (!provider) return;
     try {
       setError("");
       setNotice("");
-      await provider.continueCampaign(additionalBudgetUsd);
+      await provider.continueCampaign();
     } catch (continueError) {
       setError(errorMessage(continueError));
     }
@@ -636,11 +629,6 @@ export function CampaignScreen(context: CampaignContext) {
     }
     if (next.state === "unavailable") {
       setError(next.message ?? "This provider query has no next page.");
-      return;
-    }
-    if (next.state === "approval_required") {
-      setContinuation(next);
-      setContinuationOpen(true);
       return;
     }
     await continueCampaign();
@@ -918,16 +906,6 @@ export function CampaignScreen(context: CampaignContext) {
         onMinimumFitChange={setMinimumFit}
         onOpenChange={setBatchDialogOpen}
         open={batchDialogOpen}
-      />
-      <DiscoveryContinuationDialog
-        campaign={campaign}
-        continuation={continuation}
-        onOpenChange={(open) => {
-          setContinuationOpen(open);
-          if (!open) setContinuation(null);
-        }}
-        onSubmit={continueCampaign}
-        open={continuationOpen}
       />
     </>
   );

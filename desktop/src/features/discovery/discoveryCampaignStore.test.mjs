@@ -46,6 +46,7 @@ function campaign(id, overrides = {}) {
     endReason: null,
     pageLog: [],
     coverage: [],
+    trustedCoverage: false,
     skip: 20,
     tagCursors: [],
     pendingTagCursors: null,
@@ -193,6 +194,32 @@ test("a version-two provider-repeat campaign keeps its resumable cursor", () => 
     "provider_repeat",
   );
   assert.deepEqual(restored.campaigns[0].pageLog, []);
+});
+
+test("trusted coverage survives a restart and is off for campaigns saved without it", () => {
+  const { trustedCoverage, ...older } = campaign("older");
+  assert.equal(trustedCoverage, false);
+  const restored = parseStoredState(
+    JSON.stringify({
+      version: 4,
+      ownerPubkey: "owner",
+      currentId: null,
+      campaigns: [
+        older,
+        campaign("newer", { createdAt: 2_000, trustedCoverage: true }),
+        campaign("odd", { createdAt: 500, trustedCoverage: "yes" }),
+      ],
+    }),
+  ).campaigns;
+
+  assert.deepEqual(
+    restored.map((entry) => [entry.id, entry.trustedCoverage]),
+    [
+      ["newer", true],
+      ["older", false],
+      ["odd", false],
+    ],
+  );
 });
 
 test("the end note survives a restart", () => {

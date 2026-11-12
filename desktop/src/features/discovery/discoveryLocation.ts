@@ -22,6 +22,9 @@ export type DiscoveryLocation = {
 export const LOCATION_RECENTS_KEY = "colony:discovery-recent-locations:v1";
 const MAX_RECENT_LOCATIONS = 8;
 const MAX_NEARBY_LOCATIONS = 6;
+/** A suburb further than this from the selected place is not "nearby". */
+const NEARBY_RADIUS_KM = 60;
+const EARTH_RADIUS_KM = 6_371;
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -126,6 +129,24 @@ export function discoveryLocationKey(
   ].join("|");
 }
 
+/** Great-circle distance between two places, in kilometres. */
+function distanceKm(from: DiscoveryLocation, to: DiscoveryLocation): number {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitude = radians(to.latitude - from.latitude);
+  const longitude = radians(to.longitude - from.longitude);
+  const a =
+    Math.sin(latitude / 2) ** 2 +
+    Math.cos(radians(from.latitude)) *
+      Math.cos(radians(to.latitude)) *
+      Math.sin(longitude / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * The suggestion list also holds recently used places, so a suburb in the
+ * same country can be a thousand kilometres away. Only suburbs within
+ * `NEARBY_RADIUS_KM` of the selected place are offered as nearby areas.
+ */
 export function attachNearbyLocations(
   selected: DiscoveryLocation,
   suggestions: DiscoveryLocation[],
@@ -134,6 +155,7 @@ export function attachNearbyLocations(
   const nearby = suggestions
     .filter((candidate) => candidate.kind === "suburb")
     .filter((candidate) => candidate.countryCode === selected.countryCode)
+    .filter((candidate) => distanceKm(selected, candidate) <= NEARBY_RADIUS_KM)
     .filter((candidate) => discoveryLocationKey(candidate) !== selectedKey)
     .filter(
       (candidate, index, all) =>
@@ -144,7 +166,9 @@ export function attachNearbyLocations(
     )
     .slice(0, MAX_NEARBY_LOCATIONS)
     .map((candidate) => ({ ...candidate }));
-  return nearby.length ? { ...selected, nearby } : { ...selected };
+  // A recently used place carries the list it was given before; never keep it.
+  const { nearby: _previous, ...place } = selected;
+  return nearby.length ? { ...place, nearby } : place;
 }
 
 export type LocationStorage = {
