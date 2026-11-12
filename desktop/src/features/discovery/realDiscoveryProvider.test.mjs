@@ -718,6 +718,62 @@ test("a new local session starts after this device's durable coverage", async ()
   assert.equal(resumed.controller.getCurrent().count, 3);
 });
 
+test("owner incident: coverage saved while the relay ignored the page offset does not block a new search", async () => {
+  // Until 12 Nov 2026 the relay sent the provider an offset it ignored, so
+  // every page was page one again. Campaigns saved then recorded pages 20 to
+  // 160 as covered and the query as ended, although none was ever fetched. A
+  // new search for the same type and place was born finished with 0 found.
+  const storageMap = new Map();
+  const before = harness({ storageMap });
+  await before.controller.start({ ...INPUT, target: 40 });
+  await before.controller.whenIdle();
+  before.controller.dispose();
+
+  const saved = JSON.parse(storageMap.get("test-key"));
+  const legacy = saved.campaigns[0];
+  delete legacy.trustedCoverage;
+  legacy.pagesFetched = 9;
+  legacy.skip = 180;
+  legacy.exhausted = true;
+  legacy.endReason = "provider_repeat";
+  legacy.coverage = [
+    {
+      queryKey: discoveryCoverageKey({
+        verticalId: INPUT.verticalId,
+        tag: null,
+        location: INPUT.location,
+        locationSelection: INPUT.locationSelection,
+      }),
+      nextSkip: 180,
+      terminalReason: "provider_repeat",
+    },
+  ];
+  storageMap.set("test-key", JSON.stringify(saved));
+
+  const { controller, log } = harness({
+    storageMap,
+    // The 20 places of the old page one are already Leads.
+    existing: Array.from({ length: 20 }, (_, index) => `id-p${index + 1}`),
+    pages: (request) => {
+      if (request.skip === 0) return page(1, 20, 20);
+      if (request.skip === 20) return page(101, 20, 40);
+      if (request.skip === 40) return page(121, 5, null);
+      return page(0, 0, null);
+    },
+  });
+  await controller.start({ ...INPUT, name: "Same search again", target: 100 });
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40],
+    "the new search pages from the start instead of trusting the old record",
+  );
+  const current = controller.getCurrent();
+  assert.equal(current.count, 25);
+  assert.equal(current.endReason, "provider_end");
+});
+
 test("a query that is used up at the provider's 400 places ends honestly with 20 pages", async () => {
   // Like the relay: full pages with a next skip until skip 380, then none.
   const { controller, log } = harness({

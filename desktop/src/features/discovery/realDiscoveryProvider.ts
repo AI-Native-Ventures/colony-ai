@@ -945,10 +945,14 @@ export function createDiscoveryController(
 
   /**
    * A fresh campaign for an identical structured provider query starts after
-   * every page this device durably saved. Each tag has its own cursor.
+   * every page this device durably saved. Each tag has its own cursor. Only
+   * campaigns with trusted coverage count: older ones recorded pages the
+   * provider never served, and following them made a new search for the same
+   * type and place finish at once with nothing found.
    */
   function coveredQuery(queryKey: string): DiscoveryCoverage {
     const coverage = state.campaigns
+      .filter((campaign) => campaign.trustedCoverage)
       .map((campaign) => campaign.coverage)
       .reduce<DiscoveryCoverage>(
         (current, entries) => {
@@ -1095,6 +1099,7 @@ export function createDiscoveryController(
               ?.terminalReason ?? "provider_ceiling"),
         pageLog: [],
         coverage: initialCoverage,
+        trustedCoverage: true,
         skip: initialSkip,
         tagCursors: initialTagCursors,
         pendingTagCursors: first?.tagCursors ?? null,
