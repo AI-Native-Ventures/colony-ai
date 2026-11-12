@@ -369,6 +369,11 @@ function JobList({
               (step) => step.id === job.currentStepId,
             );
             const stepNumber = currentIndex < 0 ? 0 : currentIndex + 1;
+            const isNew =
+              job.startedToday &&
+              job.steps.every(
+                (step) => step.status !== "done" && step.status !== "skipped",
+              );
             return (
               <li key={job.id}>
                 <button
@@ -405,6 +410,7 @@ function JobList({
                   </span>
                   <span className="cf3-job-current">
                     {currentStep?.title ?? "No current step"}
+                    {isNew ? <span className="cf3-need-pill">New</span> : null}
                     {currentStep && stepNeedsOwnerApproval(currentStep) ? (
                       <span className="cf3-need-pill">Needs you</span>
                     ) : null}

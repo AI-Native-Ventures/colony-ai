@@ -44,11 +44,13 @@ import type {
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
 import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
 import { useMoneyRailsSnapshot } from "@/features/cofounder/moneyRailsBridge";
+import { useStartDelivery } from "@/features/cofounder/startDeliveryHooks";
 import {
   moneyLabel as paymentMoneyLabel,
   MONEY_LINK_STATE_LABEL,
 } from "@/features/cofounder/moneyRails";
 
+import { StartDeliveryDialog } from "./StartDeliveryDialog";
 import "./cofounderCustomerRecord.css";
 import "./moneyRails.css";
 
@@ -155,6 +157,10 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
   const moneyRails = useMoneyRailsSnapshot(partyId);
   const name =
     record?.displayName ?? prospect?.party.displayName ?? "Customer record";
+  const startDelivery = useStartDelivery(
+    name,
+    access.enabled && access.canStartDelivery,
+  );
   const paymentLinks = moneyRails.paymentLinks;
   const confirmedPayment = paymentLinks.find((link) => link.state === "paid");
   const location = prospect?.location?.trim() || "Location not set";
@@ -219,6 +225,12 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
       params: { channelId },
       search: { whatsappContactWaId: wa.waId },
     });
+  }
+
+  async function makeClient() {
+    if (!record) return;
+    const saved = await applyAction(customerActions.convertToClient(record));
+    if (saved) startDelivery.requestAfterConversion();
   }
 
   async function recordMilestone(event: React.FormEvent<HTMLFormElement>) {
@@ -396,12 +408,22 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
                   className="b3-btn"
                   data-testid="customer-record-make-client"
                   disabled={recordAction.isPending}
-                  onClick={() =>
-                    void applyAction(customerActions.convertToClient(record))
-                  }
+                  onClick={() => void makeClient()}
                   type="button"
                 >
                   Make client
+                </button>
+              ) : null}
+              {record.stage === "client" &&
+              record.project === null &&
+              startDelivery.canOffer ? (
+                <button
+                  className="b3-btn"
+                  data-testid="customer-record-start-delivery"
+                  onClick={() => startDelivery.setIsOpen(true)}
+                  type="button"
+                >
+                  Start delivery
                 </button>
               ) : null}
               {wa ? (
@@ -874,6 +896,12 @@ export function CustomerRecordScreen({ partyId }: { partyId: string }) {
           </section>
         </aside>
       </div>
+      <StartDeliveryDialog
+        clientName={record.displayName}
+        onOpenChange={startDelivery.setIsOpen}
+        open={startDelivery.isOpen}
+        playbooks={startDelivery.eligiblePlaybooks}
+      />
     </ClientWorkspace>
   );
 }
