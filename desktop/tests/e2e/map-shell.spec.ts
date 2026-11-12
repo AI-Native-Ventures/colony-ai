@@ -224,21 +224,39 @@ async function seedUnreadChat(page: Page) {
       ),
     )
     .toBe(true);
-  const messageId = await page.evaluate(
-    ({ pubkey, createdAt }) =>
-      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+  const seededActivity = await page.evaluate(
+    ({ pubkey, createdAt, ownerPubkey }) => {
+      const message = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
         channelName: "Scout",
         content: "A new message for the shell preview.",
         pubkey,
         kind: 9,
         createdAt,
-      }).id,
+        mentionPubkeys: [ownerPubkey],
+      });
+      const pushFeedItem = window.__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__;
+      if (!message || !pushFeedItem) return null;
+      pushFeedItem({
+        category: "mention",
+        channel_id: null,
+        channel_name: "Scout",
+        content: message.content,
+        created_at: message.created_at,
+        id: message.id,
+        kind: message.kind,
+        pubkey: message.pubkey,
+        tags: message.tags,
+      });
+      return { messageId: message.id, activitySeeded: true };
+    },
     {
       pubkey: REFERENCE_AGENTS.scout.pubkey,
+      ownerPubkey: OWNER_PUBKEY,
       createdAt: Math.floor(Date.now() / 1_000) + 60,
     },
   );
-  expect(messageId).toBeTruthy();
+  expect(seededActivity?.messageId).toBeTruthy();
+  expect(seededActivity?.activitySeeded).toBe(true);
   const isDesktop = await page.evaluate(() => window.innerWidth >= 768);
   if (isDesktop) {
     await expect(page.locator(".map-shell-chat-dot")).toBeVisible();
