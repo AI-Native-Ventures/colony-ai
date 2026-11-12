@@ -17069,26 +17069,6 @@ async function handleGetFeed(
   if (!isRelayMode(config) && referenceWorkspaceActive) {
     const now = Math.floor(Date.now() / 1000);
     const extraFeed = config?.mock?.colony3Extras?.feed;
-    if (extraFeed) {
-      const feed = {
-        mentions: extraFeed.mentions ?? [],
-        needs_action: extraFeed.needs_action ?? [],
-        activity: extraFeed.activity ?? [],
-        agent_activity: extraFeed.agent_activity ?? [],
-      };
-      return {
-        feed,
-        meta: {
-          since: args.since ?? now - 7 * 24 * 60 * 60,
-          total: Object.values(feed).reduce(
-            (sum, list) => sum + list.length,
-            0,
-          ),
-          generated_at: now,
-        },
-        visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
-      };
-    }
     const unreadItems =
       config?.mock?.referenceSidebarShell === true ||
       config?.mock?.referenceWorkspaceOutreachBoard === true ||
@@ -17098,16 +17078,49 @@ async function handleGetFeed(
         : referenceHomeInboxItems({
             colony3: config?.mock?.colony3Sidebar === true,
           });
+    const defaultFeed: RawHomeFeedResponse["feed"] = extraFeed
+      ? {
+          mentions: extraFeed.mentions ?? [],
+          needs_action: extraFeed.needs_action ?? [],
+          activity: extraFeed.activity ?? [],
+          agent_activity: extraFeed.agent_activity ?? [],
+        }
+      : {
+          mentions: [],
+          needs_action: unreadItems,
+          activity: [],
+          agent_activity: [],
+        };
+    const limit = args.limit ?? 50;
+    const wantedTypes =
+      args.types
+        ?.split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0) ?? [];
+    const includeType = (type: string) =>
+      wantedTypes.length === 0 || wantedTypes.includes(type);
+    const mergeFeedCategory = (
+      category: keyof RawHomeFeedResponse["feed"],
+    ): RawFeedItem[] =>
+      includeType(category)
+        ? [...mockFeedOverrides[category], ...defaultFeed[category]]
+            .sort((left, right) => right.created_at - left.created_at)
+            .slice(0, limit)
+        : [];
+    const feed = {
+      mentions: mergeFeedCategory("mentions"),
+      needs_action: mergeFeedCategory("needs_action"),
+      activity: mergeFeedCategory("activity"),
+      agent_activity: mergeFeedCategory("agent_activity"),
+    };
     return {
-      feed: {
-        mentions: [],
-        needs_action: unreadItems,
-        activity: [],
-        agent_activity: [],
-      },
+      feed,
       meta: {
         since: args.since ?? now - 7 * 24 * 60 * 60,
-        total: unreadItems.length,
+        total: Object.values(feed).reduce(
+          (sum, list) => sum + list.length,
+          0,
+        ),
         generated_at: now,
       },
       visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,

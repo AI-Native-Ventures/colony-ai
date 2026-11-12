@@ -4,6 +4,7 @@ import { ChevronDown, LogOut, Menu, Power, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { mapShellTrailForPath } from "@/app/topBarBreadcrumbs";
+import { useNeedsYouSummary } from "@/features/cofounder/needsYouSummary";
 import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import { WorkspaceSwitcherMenu } from "@/features/communities/ui/WorkspaceSwitcherMenu";
 import type { Community } from "@/features/communities/types";
@@ -44,7 +45,6 @@ type MapShellProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
   homeBadgeCount: number;
-  needsYouTotal?: number;
   onActivity: () => void;
   onBrowseChannels: () => void;
   onClients: () => void;
@@ -324,7 +324,6 @@ export function MapShell({
   currentPubkey,
   fallbackDisplayName,
   homeBadgeCount,
-  needsYouTotal,
   onActivity,
   onBrowseChannels,
   onClients,
@@ -360,6 +359,8 @@ export function MapShell({
   workspaces,
 }: MapShellProps) {
   const location = useLocation();
+  const { data: needsYouSummary } = useNeedsYouSummary();
+  const needsYouTotal = needsYouSummary?.total;
   const isHome =
     location.pathname === "/" || location.pathname === "/company/map";
   const activeChannel = channels.find(
@@ -612,7 +613,17 @@ export function MapShell({
             </nav>
             <h2 className="map-shell-group-heading">Chats</h2>
             <div className="map-shell-mobile-chats">
-              <ChatsMenuContent {...chatProps} />
+              <ChatsMenuContent
+                {...chatProps}
+                onOpenChannel={(channelId) => {
+                  setMobileMenuOpen(false);
+                  onOpenChannel(channelId);
+                }}
+                onOpenWhatsAppContact={(channelId, waId) => {
+                  setMobileMenuOpen(false);
+                  onOpenWhatsAppContact(channelId, waId);
+                }}
+              />
             </div>
             <div className="map-shell-mobile-account">{profileMenu}</div>
           </SheetContent>

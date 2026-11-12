@@ -103,7 +103,11 @@ import { useRelayAutoHeal } from "@/shared/api/useRelayAutoHeal";
 import { useDeferredStartup } from "@/shared/hooks/useDeferredStartup";
 import { useWebviewScrollBoundaryLock } from "@/shared/hooks/useWebviewScrollBoundaryLock";
 import { joinChannel } from "@/shared/api/tauri";
-import type { ChannelVisibility, SearchHit } from "@/shared/api/types";
+import type {
+  ChannelVisibility,
+  SearchHit,
+  UserSearchResult,
+} from "@/shared/api/types";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { ChannelNavigationProvider } from "@/shared/context/ChannelNavigationContext";
 import { useAppDeepLinks } from "@/shared/useAppDeepLinks";
@@ -529,12 +533,12 @@ export function AppShell() {
   );
 
   const createChannelMutation = useCreateChannelMutation();
-  const openDmMutation = useOpenDmMutation();
+  const { mutateAsync: openDm } = useOpenDmMutation();
   const hideDmMutation = useHideDmMutation();
   useDmResurfaceFromMessages({
     pubkey: identityQuery.data?.pubkey,
     relayUrl: communitiesHook.activeCommunity?.relayUrl,
-    reopen: openDmMutation.mutateAsync,
+    reopen: openDm,
   });
   const {
     browseDialogType,
@@ -652,6 +656,15 @@ export function AppShell() {
     },
     [goChannel],
   );
+  const handleOpenUser = React.useCallback(
+    async (user: UserSearchResult) => {
+      const directMessage = await openDm({
+        pubkeys: [user.pubkey],
+      });
+      await goChannel(directMessage.id);
+    },
+    [goChannel, openDm],
+  );
   const mapShell = (
     <MapShell
       activeWorkspace={communitiesHook.activeCommunity}
@@ -680,6 +693,7 @@ export function AppShell() {
       onOpenResult={handleOpenSearchResult}
       onOpenSearch={handleOpenSearch}
       onOpenSettings={handleOpenSettings}
+      onOpenUser={handleOpenUser}
       onOpenWhatsAppContact={handleOpenWhatsAppContact}
       onOpenWorkspaceSettings={openWorkspaceSettings}
       onPower={() => void goPower()}
@@ -915,10 +929,7 @@ export function AppShell() {
                         onMarkChannelUnread={markChannelUnread}
                         onBrowseChannels={handleOpenBrowseChannels}
                         onOpenDm={async ({ pubkeys }) => {
-                          const directMessage =
-                            await openDmMutation.mutateAsync({
-                              pubkeys,
-                            });
+                          const directMessage = await openDm({ pubkeys });
                           await goChannel(directMessage.id);
                         }}
                         onSelectToday={() => void goToday()}

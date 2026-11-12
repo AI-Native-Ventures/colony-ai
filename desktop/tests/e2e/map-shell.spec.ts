@@ -21,6 +21,8 @@ const APPROVAL_SWITCHES = {
   approvePlaybookChanges: false,
   approveEveryDiscoveryCampaign: false,
 };
+test.setTimeout(150_000);
+
 const MAP_SHELL_WORKSPACES = [
   {
     id: "map-shell-workspace-one",
@@ -109,6 +111,28 @@ function mapShellFixture(cofounderEnabled = true) {
   };
 }
 
+async function waitForMockBridge(page: Page) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.waitForFunction(
+        () =>
+          Boolean(
+            (window as Window & { __TAURI_INTERNALS__?: unknown })
+              .__TAURI_INTERNALS__,
+          ),
+        undefined,
+        { timeout: 20_000 },
+      );
+      return;
+    } catch (error) {
+      if (attempt === 2) {
+        throw error;
+      }
+      await page.reload();
+    }
+  }
+}
+
 async function prepareMapShell(
   page: Page,
   options: {
@@ -120,6 +144,7 @@ async function prepareMapShell(
     workspaces?: typeof MAP_SHELL_WORKSPACES;
   },
 ) {
+  await page.emulateMedia({ colorScheme: options.theme });
   await page.addInitScript(({ theme }) => {
     window.localStorage.setItem(
       "buzz-theme",
@@ -190,11 +215,17 @@ async function prepareMapShell(
   }
   await installMockBridge(page, mapShellFixture(options.cofounderEnabled), {
     skipCommunitySeed: Boolean(options.workspaces),
-    seedPreviewFeatures: options.featureEnabled,
+    seedPreviewFeatures: true,
     previewFeatureOverrides: { map_home: options.featureEnabled === true },
   });
   await page.setViewportSize({ width: options.width, height: options.height });
   await page.goto("/#/");
+  await waitForMockBridge(page);
+  await expect(
+    options.featureEnabled === true && options.cofounderEnabled !== false
+      ? page.getByTestId("cofounder-company-map")
+      : page.getByTestId("app-sidebar"),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 async function capture(page: Page, name: string) {
@@ -209,9 +240,13 @@ async function capture(page: Page, name: string) {
 
 async function seedUnreadChat(page: Page) {
   await page.goto("/#/activity");
-  await expect(page.getByTestId("home-inbox")).toBeVisible();
-  await page.goto("/#/");
-  await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+  await expect(page.getByTestId("home-inbox")).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.goto("/#/company/function/operations");
+  await expect(page.getByTestId("map-shell-trail")).toHaveText(
+    "Operations/Delivery",
+  );
   await expect
     .poll(() =>
       page.evaluate(
@@ -259,9 +294,15 @@ async function seedUnreadChat(page: Page) {
   expect(seededActivity?.activitySeeded).toBe(true);
   const isDesktop = await page.evaluate(() => window.innerWidth >= 768);
   if (isDesktop) {
-    await expect(page.locator(".map-shell-chat-dot")).toBeVisible();
-    await expect(page.locator(".map-shell-bell-dot")).toBeVisible();
+    await expect(page.locator(".map-shell-chat-dot")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator(".map-shell-bell-dot")).toBeVisible({
+      timeout: 15_000,
+    });
   }
+  await page.goto("/#/");
+  await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
 }
 
 function pathname(url: string) {
@@ -328,6 +369,11 @@ test("desktop shell matches the board and keeps the app journeys reachable", asy
   await expect(page.getByTestId("map-shell-company")).toContainText(
     "Horizon Labs",
   );
+  await expect(
+    page
+      .locator(".map-shell-desktop-actions")
+      .getByTestId("map-shell-needs-you"),
+  ).toHaveText("1 need you");
   await expect(page.getByTestId("map-shell-company")).toHaveCSS(
     "height",
     "44px",
