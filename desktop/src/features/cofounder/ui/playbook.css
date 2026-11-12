@@ -567,6 +567,12 @@
   font-size: calc(13 * var(--colony-px));
 }
 
+.cf3-job-step-copy > .cf3-owner-label {
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 400;
+}
+
 .cf3-job-step-copy .cf3-step-details {
   border-top: 0;
   padding-top: 0;
