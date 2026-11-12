@@ -217,7 +217,7 @@ test("a run saves each business, posts the best fits in Sales and stops at the a
   const lines = log.posts[0].split("\n");
   assert.equal(
     lines[0],
-    'Found 20 prospects for "Independent brands" (Home Decor & Gift Shops · South Africa). The approved search budget was used after 1 pages. Find more asks you to approve more before this campaign continues from its next saved page. Best fits:',
+    'Found 20 prospects for "Independent brands" (Home Decor & Gift Shops · South Africa). The results you approved were used after 1 page. Keep searching for the other 5? Find more continues this search at no extra cost. Best fits:',
   );
   assert.equal(lines.length, 6);
   assert.match(lines[1], /^- \[Shop 1\]\(buzz:\/\/lead\/id-p1\)$/);
@@ -585,7 +585,7 @@ test("a legacy provider-repeat campaign resumes in place from its consumed curso
   ]);
 });
 
-test("Find more approves budget and keeps the same campaign instead of creating one", async () => {
+test("Find more needs no new approval and keeps the same campaign instead of creating one", async () => {
   const existing = Array.from(
     { length: 100 },
     (_, index) => `id-p${index + 1}`,
@@ -606,11 +606,16 @@ test("Find more approves budget and keeps the same campaign instead of creating 
   assert.equal(exhausted.id, started.id);
   assert.equal(exhausted.count, 0);
   assert.equal(exhausted.endReason, "approved_budget");
+  assert.equal(
+    exhausted.endNote,
+    "The results you approved were used after 5 pages. 100 were already in your Leads and are not charged. Keep searching for the other 100? Find more continues this search at no extra cost.",
+  );
   const continuation = controller.getContinuation();
-  assert.equal(continuation.state, "approval_required");
-  assert.equal(continuation.minimumAdditionalBudgetUsd, 0.06);
+  // Results the owner already has are not charged, so continuing towards the
+  // same target is never a new approval.
+  assert.equal(continuation.state, "ready");
 
-  await controller.continueCampaign(0.06);
+  await controller.continueCampaign();
   await controller.whenIdle();
 
   assert.deepEqual(
@@ -621,8 +626,62 @@ test("Find more approves budget and keeps the same campaign instead of creating 
   const resumed = controller.getCurrent();
   assert.equal(resumed.id, started.id);
   assert.equal(resumed.count, 5);
-  assert.equal(resumed.budgetUsd, 0.36);
   assert.equal(resumed.endReason, "provider_end");
+});
+
+test("owner incident: 100 requested where 41 results are already Leads stops to ask, then continues free to the target", async () => {
+  // Johannesburg, 12 Nov 2026: 100 results paid for, 41 already in Leads and 9
+  // repeats, so 50 new. The owner: results he already has must not use his
+  // budget, and the search must ask before it goes on.
+  const existing = Array.from({ length: 41 }, (_, index) => `id-p${index + 1}`);
+  const { controller, log } = harness({
+    existing,
+    pages: (request) => {
+      // The fourth page repeats nine new places the third page already gave.
+      if (request.skip === 60) {
+        return {
+          ...page(61, 20, 80),
+          places: [...page(42, 9, 0).places, ...page(61, 11, 0).places],
+        };
+      }
+      if (request.skip < 400) {
+        return page(request.skip + 1, 20, request.skip + 20);
+      }
+      return page(0, 0, null);
+    },
+  });
+  const started = await controller.start({ ...INPUT, target: 100 });
+  await controller.whenIdle();
+
+  const asked = controller.getCurrent();
+  assert.equal(asked.status, "complete");
+  assert.equal(asked.count, 50);
+  assert.equal(asked.skippedDuplicates, 41);
+  assert.equal(asked.endReason, "approved_budget");
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60, 80],
+    "the run stops after the 100 results that were approved",
+  );
+  assert.equal(
+    asked.endNote,
+    "The results you approved were used after 5 pages. 41 were already in your Leads and are not charged. Keep searching for the other 50? Find more continues this search at no extra cost.",
+  );
+  assert.equal(controller.getContinuation().state, "ready");
+
+  await controller.continueCampaign();
+  await controller.whenIdle();
+
+  const done = controller.getCurrent();
+  assert.equal(done.id, started.id);
+  assert.equal(controller.getCampaigns().length, 1);
+  assert.equal(done.count, 100);
+  assert.equal(done.endReason, "target_reached");
+  assert.equal(done.endNote, null);
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60, 80, 100, 120, 140],
+  );
 });
 
 test("owner incident: 24 existing leads keep paging and never claim Google has no more", async () => {
@@ -718,6 +777,62 @@ test("a new local session starts after this device's durable coverage", async ()
   assert.equal(resumed.controller.getCurrent().count, 3);
 });
 
+test("owner incident: coverage saved while the relay ignored the page offset does not block a new search", async () => {
+  // Until 12 Nov 2026 the relay sent the provider an offset it ignored, so
+  // every page was page one again. Campaigns saved then recorded pages 20 to
+  // 160 as covered and the query as ended, although none was ever fetched. A
+  // new search for the same type and place was born finished with 0 found.
+  const storageMap = new Map();
+  const before = harness({ storageMap });
+  await before.controller.start({ ...INPUT, target: 40 });
+  await before.controller.whenIdle();
+  before.controller.dispose();
+
+  const saved = JSON.parse(storageMap.get("test-key"));
+  const legacy = saved.campaigns[0];
+  delete legacy.trustedCoverage;
+  legacy.pagesFetched = 9;
+  legacy.skip = 180;
+  legacy.exhausted = true;
+  legacy.endReason = "provider_repeat";
+  legacy.coverage = [
+    {
+      queryKey: discoveryCoverageKey({
+        verticalId: INPUT.verticalId,
+        tag: null,
+        location: INPUT.location,
+        locationSelection: INPUT.locationSelection,
+      }),
+      nextSkip: 180,
+      terminalReason: "provider_repeat",
+    },
+  ];
+  storageMap.set("test-key", JSON.stringify(saved));
+
+  const { controller, log } = harness({
+    storageMap,
+    // The 20 places of the old page one are already Leads.
+    existing: Array.from({ length: 20 }, (_, index) => `id-p${index + 1}`),
+    pages: (request) => {
+      if (request.skip === 0) return page(1, 20, 20);
+      if (request.skip === 20) return page(101, 20, 40);
+      if (request.skip === 40) return page(121, 5, null);
+      return page(0, 0, null);
+    },
+  });
+  await controller.start({ ...INPUT, name: "Same search again", target: 100 });
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40],
+    "the new search pages from the start instead of trusting the old record",
+  );
+  const current = controller.getCurrent();
+  assert.equal(current.count, 25);
+  assert.equal(current.endReason, "provider_end");
+});
+
 test("a query that is used up at the provider's 400 places ends honestly with 20 pages", async () => {
   // Like the relay: full pages with a next skip until skip 380, then none.
   const { controller, log } = harness({
@@ -810,7 +925,30 @@ test("the end note tells why a run finished short, and is empty when the target 
       endReason: "approved_budget",
       pagesFetched: MAX_PAGES,
     }),
-    `The approved search budget was used after ${MAX_PAGES} pages. Find more asks you to approve more before this campaign continues from its next saved page.`,
+    `This search reached its limit of ${MAX_PAGES} pages. Search a nearby area or use another business type.`,
+  );
+  assert.equal(
+    buildEndNote({
+      ...base,
+      count: 50,
+      endReason: "approved_budget",
+      skippedDuplicates: 41,
+    }),
+    "The results you approved were used after 5 pages. 41 were already in your Leads and are not charged. Keep searching for the other 50? Find more continues this search at no extra cost.",
+  );
+  assert.equal(
+    buildEndNote({
+      ...base,
+      count: 99,
+      endReason: "approved_budget",
+      pagesFetched: 1,
+      skippedDuplicates: 1,
+    }),
+    "The results you approved were used after 1 page. 1 was already in your Leads and is not charged. Keep searching for the other 1? Find more continues this search at no extra cost.",
+  );
+  assert.equal(
+    buildEndNote({ ...base, count: 80, endReason: "approved_budget" }),
+    "The results you approved were used after 5 pages. Keep searching for the other 20? Find more continues this search at no extra cost.",
   );
   for (const note of [
     buildEndNote(base),
@@ -1184,10 +1322,11 @@ test("a run never goes past the page cap or approved budget", async () => {
   assert.equal(done.status, "complete");
   assert.equal(done.count, 19 * MAX_PAGES);
   assert.equal(done.endReason, "approved_budget");
-  assert.match(
+  assert.equal(
     done.endNote,
-    /^The approved search budget was used after 25 pages/,
+    "This search reached its limit of 25 pages. Search a nearby area or use another business type.",
   );
+  assert.equal(controller.getContinuation().state, "unavailable");
   assert.ok(log.posts[0].includes(done.endNote));
 });
 

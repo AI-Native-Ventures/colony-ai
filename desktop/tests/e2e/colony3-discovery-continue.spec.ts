@@ -229,7 +229,7 @@ test.beforeEach(async ({ page }) => {
   await installDiscoveryImageMocks(page);
 });
 
-test("Find more approves extra budget and resumes the same campaign in place", async ({
+test("results already in Leads are not charged, and Find more continues the same campaign without a new approval", async ({
   page,
 }) => {
   await openDiscovery(page);
@@ -238,9 +238,12 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   await expect(firstDialog.getByText("Maximum search budget")).toBeVisible();
   await expect(firstDialog.getByText("US$3.00", { exact: true })).toBeVisible();
   await expect(
-    firstDialog.getByText(/About US\$0\.60 per 20 results\./),
+    firstDialog.getByText(/US\$0\.03 per new prospect\./),
   ).toBeVisible();
-  await expect(firstDialog.getByText(/US\$0\.03 per prospect\./)).toBeVisible();
+  await expect(
+    firstDialog.getByText(/Businesses already in your Leads are not charged\./),
+  ).toBeVisible();
+  await expect(firstDialog).not.toContainText("per 20 results");
   await expect(firstDialog).not.toContainText("US$0.30");
   await approve(firstDialog);
 
@@ -248,9 +251,33 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
     timeout: 20_000,
   });
+  // 100 results were approved and used. 89 of them were already Leads, so
+  // the run stops and asks before it searches further.
   await expect(
-    page.getByText(/approved search budget was used after 5 pages/i),
+    page.getByText(/results you approved were used after 5 pages/i),
   ).toBeVisible();
+  await expect(
+    page.getByText(/89 were already in your Leads and are not charged/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Keep searching for the other 89\?/),
+  ).toBeVisible();
+  // Only the 11 new prospects are charged.
+  await expect(
+    page.getByText(/Search cost.*US\$0\.33.*US\$3\.00 approved/),
+  ).toBeVisible();
+  mkdirSync(PROOF_DIR, { recursive: true });
+  await waitForAnimations(page);
+  await page.screenshot({
+    path: path.join(PROOF_DIR, "budget-ask-1440.png"),
+  });
+  const desktopSize = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await waitForAnimations(page);
+  await page.screenshot({
+    path: path.join(PROOF_DIR, "budget-ask-390.png"),
+  });
+  if (desktopSize) await page.setViewportSize(desktopSize);
   await expect(
     page.getByText("Search nearby areas", { exact: true }),
   ).toBeVisible();
@@ -271,24 +298,11 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   expect(beforeFindMore?.campaigns[0]?.budgetUsd).toBe(0.3);
   expect(beforeFindMore?.campaigns[0]?.spentUsd).toBe(0.3);
 
+  // Continuing asks for no money: there is no approval dialog any more.
   await page.getByRole("button", { name: /Find more/ }).click();
-  const moreDialog = page.getByTestId("discovery-continuation-dialog");
-  await expect(moreDialog).toBeVisible();
-  await expect(
-    moreDialog.getByRole("heading", { name: "Approve more search budget." }),
-  ).toBeVisible();
-  await expect(
-    moreDialog.getByText(/US\$3\.00 of US\$3\.00 approved/),
-  ).toBeVisible();
-  await expect(
-    moreDialog.getByLabel("Additional budget to approve"),
-  ).toHaveValue("3.00");
-  await moreDialog
-    .getByRole("checkbox", {
-      name: "I approve this additional search budget for the same campaign.",
-    })
-    .check();
-  await moreDialog.getByRole("button", { name: /Approve & continue/ }).click();
+  await expect(page.getByTestId("discovery-continuation-dialog")).toHaveCount(
+    0,
+  );
 
   await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
     timeout: 20_000,
@@ -303,7 +317,7 @@ test("Find more approves extra budget and resumes the same campaign in place", a
   expect(afterFindMore?.campaigns[0]?.budgetUsd).toBe(0.6);
   expect(afterFindMore?.campaigns[0]?.spentUsd).toBe(0.36);
   await expect(
-    page.getByText(/Search cost.*US\$3\.60.*US\$6\.00 approved/),
+    page.getByText(/Search cost.*US\$0\.42.*US\$3\.00 approved/),
   ).toBeVisible();
 });
 
