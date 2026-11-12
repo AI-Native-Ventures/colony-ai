@@ -6,6 +6,8 @@ export type PlaybookStepModel = {
     kind: "agent" | "worker" | "owner" | "function";
     label: string;
     avatarName?: string;
+    avatarUrl?: string | null;
+    avatarInitials?: string;
   };
   detail: string | null;
   inputs: string[];

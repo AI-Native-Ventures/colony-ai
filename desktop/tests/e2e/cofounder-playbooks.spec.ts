@@ -62,6 +62,7 @@ function fixture({
       },
     ],
     searchProfiles: [
+      { pubkey: OWNER_PUBKEY, displayName: "Lerato Molefe" },
       { pubkey: SCOUT_PUBKEY, displayName: "Scout", isAgent: true },
     ],
     companyPlaybooks: [
@@ -186,6 +187,31 @@ test.describe("co-founder playbooks", () => {
     await expect(dialog).toContainText("Current step: Present to client.");
   });
 
+  test("owner steps use the signed-in profile in Operations and job detail", async ({
+    page,
+  }) => {
+    await openOperations(page);
+
+    for (const stepId of ["logins", "approval"]) {
+      const avatar = page
+        .getByTestId(`playbook-step-${stepId}`)
+        .getByTestId("playbook-owner-avatar");
+      await expect(avatar).toHaveText("LM");
+      await expect(avatar).not.toContainText("BP");
+    }
+
+    await page.getByTestId(`playbook-job-${PLANE_TREE_JOB_ID}`).click();
+    const dialog = page.getByTestId("playbook-job-detail");
+    await expect(dialog).toBeVisible();
+    for (const stepId of ["logins", "approval"]) {
+      const avatar = dialog
+        .getByTestId(`playbook-job-step-${stepId}`)
+        .getByTestId("playbook-owner-avatar");
+      await expect(avatar).toHaveText("LM");
+      await expect(avatar).not.toContainText("BP");
+    }
+  });
+
   test("playbook approvals stay hidden when co-founder mode is off", async ({
     page,
   }) => {
@@ -222,17 +248,16 @@ test.describe("co-founder playbooks", () => {
     const outputDir = join(process.cwd(), "test-results", "cofounder-playbook");
     mkdirSync(outputDir, { recursive: true });
 
-    await page.setViewportSize({ width: 1440, height: 1200 });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await waitForAnimations(page);
     await page.screenshot({
-      fullPage: true,
       path: join(outputDir, `${theme}-1440.png`),
     });
 
-    await page.setViewportSize({ width: 390, height: 3200 });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByTestId("playbook-step-logins").scrollIntoViewIfNeeded();
     await waitForAnimations(page);
     await page.screenshot({
-      fullPage: true,
       path: join(outputDir, `${theme}-390.png`),
     });
   });

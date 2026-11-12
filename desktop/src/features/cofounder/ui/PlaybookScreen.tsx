@@ -67,8 +67,19 @@ function StepOwner({ step }: { step: PlaybookStepModel }) {
       <span
         aria-hidden="true"
         className={`cf3-owner-avatar is-${step.owner.kind}`}
+        data-testid="playbook-owner-avatar"
       >
-        {step.owner.kind === "agent" || step.owner.avatarName ? (
+        {step.owner.kind === "owner" ? (
+          step.owner.avatarUrl ? (
+            <EmployeeAvatar
+              className="size-full rounded-full"
+              name={step.owner.avatarName ?? step.owner.label}
+              profile={step.owner.avatarUrl}
+            />
+          ) : (
+            (step.owner.avatarInitials ?? initials)
+          )
+        ) : step.owner.kind === "agent" || step.owner.avatarName ? (
           <EmployeeAvatar
             className="size-full rounded-lg"
             name={step.owner.avatarName ?? step.owner.label}
@@ -94,8 +105,6 @@ function StepOwner({ step }: { step: PlaybookStepModel }) {
               strokeWidth="1.8"
             />
           </svg>
-        ) : step.owner.kind === "owner" ? (
-          "BP"
         ) : (
           initials
         )}
@@ -258,6 +267,7 @@ function JobDetailDialog({
                   <li
                     className={`cf3-job-step${isCurrent ? " is-current" : ""}`}
                     data-status={step.status}
+                    data-testid={`playbook-job-step-${step.id}`}
                     key={step.id}
                   >
                     <span aria-hidden="true" className="cf3-job-step-state">
@@ -276,7 +286,7 @@ function JobDetailDialog({
                             : step.status.replaceAll("_", " ")}
                         </span>
                       </div>
-                      <p>{step.owner.label}</p>
+                      <StepOwner step={step} />
                       <StepDetails step={step} />
                       {isCurrent &&
                       stepNeedsOwnerApproval(step) &&
