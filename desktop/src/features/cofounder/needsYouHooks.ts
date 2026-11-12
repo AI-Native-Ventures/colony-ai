@@ -4,7 +4,9 @@ import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useNeedsMeQuery } from "@/features/home/needsMeHooks";
 import {
   useWhatsAppBatchesQuery,
+  useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
+  useWhatsAppPendingBatchDetailsQuery,
   useWhatsAppStatusQuery,
 } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { useCommunities } from "@/features/communities/useCommunities";
@@ -37,7 +39,11 @@ export function useNeedsYouQuery() {
     "pending",
     canApprove && outreachConnected,
   );
+  const batchDetails = useWhatsAppPendingBatchDetailsQuery(
+    canApprove && outreachConnected,
+  );
   const drafts = useWhatsAppDraftsQuery(canApprove && outreachConnected);
+  const contacts = useWhatsAppContactsQuery(canApprove && outreachConnected);
 
   const model = useMemo(
     () =>
@@ -53,6 +59,7 @@ export function useNeedsYouQuery() {
         ),
         playbookJobs: playbooks.data?.jobs ?? [],
         whatsappBatches: batches.data ?? [],
+        whatsappBatchDetails: batchDetails.data ?? [],
         whatsappDrafts: drafts.data ?? [],
         goals: cofounderOn ? (numbers.data?.goals ?? []) : [],
         reviews: cofounderOn ? (numbers.data?.reviews ?? []) : [],
@@ -64,6 +71,7 @@ export function useNeedsYouQuery() {
       plans.data,
       playbooks.data,
       batches.data,
+      batchDetails.data,
       drafts.data,
       numbers.data,
     ],
@@ -73,9 +81,21 @@ export function useNeedsYouQuery() {
     ? (whatsappStatus.error ??
       (outreachConnected ? (batches.error ?? drafts.error) : null))
     : null;
+  const whatsappPending =
+    canApprove &&
+    Boolean(activeCommunity?.relayUrl) &&
+    (whatsappStatus.isPending ||
+      (outreachConnected &&
+        (batches.isPending ||
+          batchDetails.isPending ||
+          drafts.isPending ||
+          contacts.isPending)));
 
   return {
     model,
+    whatsappBatchDetails: batchDetails.data ?? [],
+    whatsappContacts: contacts.data ?? [],
+    whatsappSummaryIsPending: whatsappPending,
     isPending: needsMe.isPending || plans.isPending || playbooks.isPending,
     error: needsMe.asksError ?? plans.error ?? playbooks.error ?? null,
     whatsappError,

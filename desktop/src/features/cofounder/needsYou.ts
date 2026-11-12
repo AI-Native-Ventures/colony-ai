@@ -1,14 +1,17 @@
 import type {
   AskCategory,
   AskHeadRecord,
+  AskRecord,
   AskType,
 } from "@/features/company-asks/askRecords";
 import type {
+  WhatsAppBatchDetail,
   WhatsAppBatchSummary,
   WhatsAppDraft,
 } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 
-import { FUNCTION_DETAILS } from "./functions";
+import { FUNCTION_DETAILS, FUNCTION_ORDER } from "./functions";
+import type { FunctionId } from "./cofounderRecords";
 import { METRIC_DETAILS, formatMetricValue } from "./numbersRecords";
 import type { GoalView, ReviewView } from "./numbersRecords";
 import {
@@ -88,6 +91,10 @@ export type NeedsYouItem = {
   createdAt: number;
   /** Unix seconds, when the asker wants an answer by. */
   decideBy: number | null;
+  /** Company part that owns this decision, or null when it is company-wide. */
+  functionId: FunctionId | null;
+  /** A canonical sub-function name when the item's owner is specific enough. */
+  jobName: string | null;
   /** For plan steps: what the approval point asks about. */
   approvalKind: PlanApprovalKind | null;
   /** Number of things the item stands for (rows in a batch, drafts waiting). */
@@ -116,6 +123,8 @@ export type NeedsYouSources = {
   playbookJobs?: readonly JobView[];
   /** Pending WhatsApp batches. Pass `[]` for anyone who cannot see them. */
   whatsappBatches: readonly WhatsAppBatchSummary[];
+  /** Optional details identify follow-up batches without changing the relay shape. */
+  whatsappBatchDetails?: readonly WhatsAppBatchDetail[];
   /** Agent drafts waiting for the owner. */
   whatsappDrafts: readonly WhatsAppDraft[];
   /** Goals Scout proposed for the functions. Leave out for a viewer who cannot see them. */
@@ -176,8 +185,128 @@ function askActions(section: NeedsYouSection): NeedsYouAction[] {
   return [{ id: "answer", label: "Answer", tone: "primary" }];
 }
 
+function canonicalJobName(
+  functionId: FunctionId | null,
+  candidate: string | null | undefined,
+): string | null {
+  if (!functionId || !candidate?.trim()) return null;
+  return (
+    FUNCTION_DETAILS[functionId].subFunctions.find(
+      (name) =>
+        name.toLocaleLowerCase() === candidate.trim().toLocaleLowerCase(),
+    ) ?? null
+  );
+}
+
+function normalizedWords(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, " ")
+    .trim();
+}
+
+function hasPhrase(text: string, phrase: string): boolean {
+  return ` ${text} `.includes(` ${phrase} `);
+}
+
+function inferFunctionId(value: string): FunctionId | null {
+  const normalized = normalizedWords(value);
+  const matches = FUNCTION_ORDER.filter((functionId) => {
+    const functionName = normalizedWords(FUNCTION_DETAILS[functionId].name);
+    return (
+      hasPhrase(normalized, functionName) ||
+      FUNCTION_DETAILS[functionId].subFunctions.some((job) => {
+        const jobName = normalizedWords(job);
+        const singular = jobName.endsWith("s") ? jobName.slice(0, -1) : jobName;
+        return (
+          hasPhrase(normalized, jobName) || hasPhrase(normalized, singular)
+        );
+      })
+    );
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function askFunctionId(
+  ask: AskRecord,
+  goals: readonly GoalView[],
+): FunctionId | null {
+  if (ask.subject?.kind === "goal") {
+    const goalFunction = goals.find(
+      (goal) => goal.goalId === ask.subject?.id,
+    )?.functionId;
+    if (goalFunction) return goalFunction;
+  }
+  if (ask.subject?.kind === "workflowRun" || ask.subject?.kind === "workItem") {
+    return "operations";
+  }
+  if (ask.category === "money") return "finance";
+
+  const role = [
+    ask.title,
+    ask.body ?? "",
+    ask.hireProposal?.title ?? "",
+    ask.hireProposal?.rolePack.job ?? "",
+  ].join(" ");
+  const normalized = normalizedWords(role);
+  if (hasPhrase(normalized, "customer success")) return "customer_success";
+  if (hasPhrase(normalized, "bookkeeper") || hasPhrase(normalized, "finance"))
+    return "finance";
+  if (
+    hasPhrase(normalized, "business development") ||
+    hasPhrase(normalized, "sales")
+  )
+    return "sales";
+  if (hasPhrase(normalized, "brand") || hasPhrase(normalized, "content"))
+    return "brand";
+  if (hasPhrase(normalized, "delivery") || hasPhrase(normalized, "operations"))
+    return "operations";
+  return inferFunctionId(normalized);
+}
+
+function askJobName(
+  ask: AskRecord,
+  functionId: FunctionId | null,
+): string | null {
+  if (!functionId) return null;
+  const text = normalizedWords(`${ask.title} ${ask.body ?? ""}`).replace(
+    /follow up(?!s)/gu,
+    "follow ups",
+  );
+  const job = FUNCTION_DETAILS[functionId].subFunctions.find((name) => {
+    const normalizedName = normalizedWords(name);
+    const singular = normalizedName.endsWith("s")
+      ? normalizedName.slice(0, -1)
+      : normalizedName;
+    return hasPhrase(text, normalizedName) || hasPhrase(text, singular);
+  });
+  if (job) return job;
+  return ask.category === "money" && functionId === "finance" ? "Costs" : null;
+}
+
+function playbookJobName(title: string, functionId: FunctionId): string | null {
+  const candidate = title
+    .replace(/^new playbook:\s*/iu, "")
+    .replace(/^change to\s*/iu, "")
+    .replace(/\s+playbook$/iu, "")
+    .trim();
+  return canonicalJobName(functionId, candidate);
+}
+
+function isFollowUpBatch(
+  batch: WhatsAppBatchSummary,
+  details: readonly WhatsAppBatchDetail[],
+): boolean {
+  const detail = details.find((item) => item.batchId === batch.batchId);
+  return /follow[ -]?up/iu.test(
+    `${detail?.note ?? ""} ${detail?.template ?? batch.template}`,
+  );
+}
+
 function functionName(plan: PlanView): string | null {
-  return plan.functionId ? FUNCTION_DETAILS[plan.functionId].name : null;
+  const functionId =
+    plan.functionId ?? inferFunctionId(`${plan.title} ${plan.summary}`);
+  return functionId ? FUNCTION_DETAILS[functionId].name : null;
 }
 
 function planSubtitle(plan: PlanView): string {
@@ -247,6 +376,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
       fromPubkey: askerPubkey,
       createdAt: seconds(createdAt),
       decideBy: ask.decideBy ? seconds(ask.decideBy) || null : null,
+      functionId: askFunctionId(ask, sources.goals ?? []),
+      jobName: askJobName(ask, askFunctionId(ask, sources.goals ?? [])),
       approvalKind: null,
       count: null,
       details: [],
@@ -256,6 +387,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
   }
 
   for (const plan of sources.plans) {
+    const functionId =
+      plan.functionId ?? inferFunctionId(`${plan.title} ${plan.summary}`);
     if (plan.status === "proposed" && sources.canApprove) {
       items.push({
         id: `plan:${plan.planId}`,
@@ -266,6 +399,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: plan.proposedByPubkey,
         createdAt: plan.proposedAt,
         decideBy: plan.decideBy,
+        functionId,
+        jobName: null,
         approvalKind: null,
         count: plan.steps.length,
         details: [],
@@ -285,6 +420,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: plan.proposedByPubkey,
         createdAt: plan.updatedAt,
         decideBy: null,
+        functionId,
+        jobName: null,
         approvalKind: step.approvalPoint.kind,
         count: null,
         details: [],
@@ -305,6 +442,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: plan.proposedByPubkey,
         createdAt: plan.updatedAt,
         decideBy: null,
+        functionId,
+        jobName: null,
         approvalKind: null,
         count: null,
         details: [],
@@ -336,6 +475,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: pending.proposedByPubkey,
         createdAt: pending.proposedAt,
         decideBy: null,
+        functionId: "operations",
+        jobName: playbookJobName(pending.content.title, "operations"),
         approvalKind: null,
         count: pending.content.steps.length,
         details: [],
@@ -355,6 +496,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
           fromPubkey: step.owner.agentPubkey ?? job.startedByPubkey,
           createdAt: step.statusAt,
           decideBy: null,
+          functionId: "operations",
+          jobName: playbookJobName(job.playbookTitle, "operations"),
           approvalKind: step.approvalPoint.kind,
           count: null,
           details: [],
@@ -379,6 +522,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
           fromPubkey: job.startedByPubkey,
           createdAt: step.statusAt,
           decideBy: null,
+          functionId: "operations",
+          jobName: playbookJobName(job.playbookTitle, "operations"),
           approvalKind: null,
           count: null,
           details: [],
@@ -402,6 +547,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: goal.proposedByPubkey,
         createdAt: goal.proposedAt,
         decideBy: null,
+        functionId: goal.functionId,
+        jobName: null,
         approvalKind: null,
         count: null,
         details: goal.reason
@@ -426,6 +573,10 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
           fromPubkey: review.annotatedByPubkey,
           createdAt: review.annotatedAt ?? review.createdAt,
           decideBy: null,
+          functionId:
+            decision.functionId ??
+            inferFunctionId(`${decision.title} ${decision.detail}`),
+          jobName: null,
           approvalKind: null,
           count: null,
           details: [],
@@ -453,6 +604,10 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: batch.createdBy || null,
         createdAt: seconds(batch.createdAt),
         decideBy: null,
+        functionId: "sales",
+        jobName: isFollowUpBatch(batch, sources.whatsappBatchDetails ?? [])
+          ? "Follow-ups"
+          : "Outreach",
         approvalKind: "outreach",
         count: batch.rows.total,
         details: [],
@@ -482,6 +637,8 @@ export function buildNeedsYou(sources: NeedsYouSources): NeedsYouModel {
         fromPubkey: sender || null,
         createdAt: newest,
         decideBy: null,
+        functionId: "sales",
+        jobName: "Follow-ups",
         approvalKind: "outreach",
         count: drafts.length,
         details: drafts.map((draft) => ({
