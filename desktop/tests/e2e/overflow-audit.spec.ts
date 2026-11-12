@@ -1474,6 +1474,7 @@ test("all screens, widths and important states", async ({ page, browser }) => {
           await page.getByTestId("message-thread-summary").first().waitFor({
             state: "visible",
           });
+          await waitForAnimations(page);
           await page.getByTestId("message-thread-summary").first().click();
           await page
             .getByTestId("message-thread-panel")
