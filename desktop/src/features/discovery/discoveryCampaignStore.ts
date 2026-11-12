@@ -61,6 +61,13 @@ export type CampaignInternals = {
   pageLog: DiscoveryPageLog[];
   /** The furthest cursor this device durably saved for each exact provider query. */
   coverage: DiscoveryCoverage[];
+  /**
+   * True for campaigns started by a build whose relay pages by a real offset.
+   * Campaigns saved before 12 Nov 2026 lack it: the relay then sent an offset
+   * the provider ignored, so their coverage counts pages that were never
+   * fetched. Such coverage must not decide where a new search starts.
+   */
+  trustedCoverage: boolean;
   /** The results message still has to be posted in the Sales channel. */
   pendingPost: boolean;
   /** "sending" is written before the post so a crash can never post twice. */
@@ -390,6 +397,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
         : null,
     pageLog: parsePageLog(value.pageLog),
     coverage: parseCoverage(value.coverage),
+    trustedCoverage: value.trustedCoverage === true,
     skip: nonNegativeInt(value.skip),
     tagCursors: parseTagCursors(value.tagCursors, pickedTags.length),
     pendingTagCursors: Array.isArray(value.pendingTagCursors)
