@@ -48,7 +48,15 @@ function ask(overrides = {}) {
 
 function model(items = []) {
   return {
-    approve: items,
+    approve: items.map((item, index) => ({
+      ...item,
+      source: item.source ?? {
+        kind: "plan",
+        planId: `summary-test-${index}`,
+        stepId: null,
+      },
+      details: item.details ?? [],
+    })),
     do: [],
     decide: [],
     total: items.length,
@@ -125,6 +133,32 @@ test("counts all visible rows once, including money links, gaps and call request
     "operations:Delivery": 1,
     "finance:Deposits": 1,
   });
+});
+
+test("counts each reply draft as a row in the shared total and function badge", () => {
+  const summary = buildNeedsYouSummary({
+    model: {
+      approve: [
+        {
+          functionId: "sales",
+          jobName: "Follow-ups",
+          source: { kind: "whatsapp_drafts", senderPubkey: AGENT },
+          details: [
+            { id: "draft-1", label: "A", text: "First reply" },
+            { id: "draft-2", label: "B", text: "Second reply" },
+            { id: "draft-3", label: "C", text: "Third reply" },
+          ],
+        },
+      ],
+      do: [],
+      decide: [],
+      total: 1,
+    },
+  });
+
+  assert.equal(summary.total, 3);
+  assert.equal(summary.byPart.sales, 3);
+  assert.equal(summary.byJob["sales:Follow-ups"], 3);
 });
 
 test("capability gaps map only when their part is clear", () => {

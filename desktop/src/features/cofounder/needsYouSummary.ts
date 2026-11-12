@@ -37,7 +37,9 @@ function hasPhrase(text: string, phrase: string): boolean {
   return ` ${text} `.includes(` ${phrase} `);
 }
 
-function capabilityGapFunctionId(head: CapabilityGapHead): FunctionId | null {
+export function capabilityGapFunctionId(
+  head: CapabilityGapHead,
+): FunctionId | null {
   const category = head.gap.access.category;
   if (category === "payment_link") return "finance";
   if (category === "whatsapp" || category === "discovery") return "sales";
@@ -92,17 +94,18 @@ function capabilityGapFunctionId(head: CapabilityGapHead): FunctionId | null {
 function addItem(
   summary: NeedsYouSummary,
   item: Pick<NeedsYouItem, "functionId" | "jobName">,
+  count = 1,
 ): void {
-  summary.total += 1;
+  summary.total += count;
   if (!item.functionId) return;
 
-  summary.byPart[item.functionId] += 1;
+  summary.byPart[item.functionId] += count;
   const canonicalJob = FUNCTION_DETAILS[item.functionId].subFunctions.find(
     (name) => name === item.jobName,
   );
   if (!canonicalJob) return;
   const key = `${item.functionId}:${canonicalJob}`;
-  summary.byJob[key] = (summary.byJob[key] ?? 0) + 1;
+  summary.byJob[key] = (summary.byJob[key] ?? 0) + count;
 }
 
 /** Counts exactly the rows assembled for the Needs you page and its extra lanes. */
@@ -122,7 +125,13 @@ export function buildNeedsYouSummary(
     ...sources.model.do,
     ...sources.model.decide,
   ];
-  for (const item of items) addItem(summary, item);
+  for (const item of items) {
+    addItem(
+      summary,
+      item,
+      item.source.kind === "whatsapp_drafts" ? item.details.length : 1,
+    );
+  }
 
   for (const card of sources.paymentLinks ?? []) {
     if (card.state === "needs_you") {

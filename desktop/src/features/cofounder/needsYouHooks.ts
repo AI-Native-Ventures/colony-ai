@@ -79,7 +79,9 @@ export function useNeedsYouQuery() {
 
   const whatsappError = canApprove
     ? (whatsappStatus.error ??
-      (outreachConnected ? (batches.error ?? drafts.error) : null))
+      (outreachConnected
+        ? (batches.error ?? drafts.error ?? contacts.error)
+        : null))
     : null;
   const whatsappPending =
     canApprove &&
@@ -93,8 +95,14 @@ export function useNeedsYouQuery() {
 
   return {
     model,
+    livePlaybooks: playbooks.data?.playbooks ?? [],
+    livePlaybookJobs: playbooks.data?.jobs ?? [],
+    liveGoals: cofounderOn ? (numbers.data?.goals ?? []) : [],
+    liveReviews: cofounderOn ? (numbers.data?.reviews ?? []) : [],
+    whatsappOutreachChannelId: whatsappStatus.data?.outreachChannelId ?? null,
     whatsappBatchDetails: batchDetails.data ?? [],
     whatsappContacts: contacts.data ?? [],
+    whatsappDrafts: drafts.data ?? [],
     whatsappSummaryIsPending: whatsappPending,
     isPending: needsMe.isPending || plans.isPending || playbooks.isPending,
     error: needsMe.asksError ?? plans.error ?? playbooks.error ?? null,
