@@ -642,7 +642,7 @@ function ActionCard({
   const leadName = lead ? fullName(lead, profiles) : null;
   const summaryLine =
     slot.state === "covered_by_scout"
-      ? `Scout runs ${detail.name} until you hire someone.${activePart === "operations" ? " Each circle is one workflow. Tap it to see its steps." : ""}`
+      ? `Scout runs ${detail.name} until you hire someone.${activePart === "operations" ? " Each circle is one workflow. Tap it to see its steps. Tap + to add a workflow." : ""}`
       : leadName
         ? `${leadName} runs ${detail.name}.`
         : activePart === "operations"

@@ -6,6 +6,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
+import { useNeedsYouSummary } from "../needsYouSummary";
 import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
@@ -17,6 +18,7 @@ export function CompanyMapScreen() {
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
   const profileQuery = useProfileQuery(Boolean(activeCommunity));
   const identityQuery = useIdentityQuery();
+  const needsYouSummary = useNeedsYouSummary();
   const enabled = settingsQuery.data?.settings.enabled === true;
   const whatsappStatus = useWhatsAppStatusQuery(enabled);
   const members = teamQuery.data?.members ?? [];
@@ -96,7 +98,7 @@ export function CompanyMapScreen() {
       relayUrl={activeCommunity?.relayUrl}
       scoutPubkey={scout?.pubkey}
       slots={slots}
-      summary={undefined}
+      summary={needsYouSummary.data}
       whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
     />
   );

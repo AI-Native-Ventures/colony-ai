@@ -551,7 +551,7 @@
   padding: 0 16px;
   border: 0;
   border-radius: 12px;
-  background: hsl(var(--colony-soft-track));
+  background: var(--colony-soft-track);
   color: hsl(var(--colony-fg));
   cursor: pointer;
   font-size: calc(15 * var(--colony-px));
@@ -735,7 +735,7 @@
   flex: none;
   place-items: center;
   border-radius: 50%;
-  background: hsl(var(--colony-soft-track));
+  background: var(--colony-soft-track);
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(18 * var(--colony-px));
   font-weight: 600;

@@ -256,6 +256,41 @@ export async function seedCompanyMapBusiness(
   }, "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='28' fill='%2324212a'/%3E%3Cpath d='M31 65c13-28 33-28 57-8' fill='none' stroke='%23f2ca72' stroke-linecap='round' stroke-width='12'/%3E%3Ccircle cx='84' cy='38' r='9' fill='%23e989b4'/%3E%3C/svg%3E");
 }
 
+/** Makes the shared Needs you summary settle without adding a money approval. */
+export async function seedCompanyMapMoneyRails(
+  page: import("@playwright/test").Page,
+) {
+  await page.addInitScript(() => {
+    const listeners = new Set<() => void>();
+    const snapshot = {
+      paymentLinks: [],
+      connections: [],
+      availability: "ready" as const,
+      errorMessage: null,
+    };
+    const testWindow = window as Window & {
+      __BUZZ_E2E_MONEY_RAILS__?: {
+        getSnapshot: () => {
+          paymentLinks: [];
+          connections: [];
+          availability: "ready";
+          errorMessage: null;
+        };
+        subscribe: (listener: () => void) => () => void;
+        execute: () => Promise<undefined>;
+      };
+    };
+    testWindow.__BUZZ_E2E_MONEY_RAILS__ = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      execute: async () => undefined,
+    };
+  });
+}
+
 export async function seedCompanyMapWhatsApp(
   page: import("@playwright/test").Page,
   outreachChannelId: string | null,

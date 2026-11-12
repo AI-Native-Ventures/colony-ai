@@ -16,6 +16,7 @@ import {
   openMapPart,
   seedCofounderTheme,
   seedCompanyMapBusiness,
+  seedCompanyMapMoneyRails,
   seedCompanyMapWhatsApp,
   selectMapPart,
   workerRun,
@@ -245,6 +246,29 @@ test.describe("co-founder mode desktop", () => {
     await expect(page.getByRole("button", { name: "Zoom in" })).toHaveText("+");
   });
 
+  test("shared Needs you summary drives map part and job badges", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await seedCompanyMapMoneyRails(page);
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+
+    await expect(page.getByTestId("cofounder-map-home-card")).toContainText(
+      "2 things need your yes.",
+    );
+    await expect(page.getByTestId("cofounder-map-part-needs-sales")).toHaveText(
+      "1",
+    );
+    await expect(
+      page.getByTestId("cofounder-map-part-needs-customer_success"),
+    ).toHaveText("1");
+    await expect(
+      page.getByTestId("cofounder-map-job-needs-sales-calls"),
+    ).toHaveText("1");
+  });
+
   test("each part reveals its current app jobs and closes with Escape", async ({
     page,
   }) => {
@@ -271,6 +295,11 @@ test.describe("co-founder mode desktop", () => {
       await expect(
         page.getByTestId(`cofounder-map-${functionId}`),
       ).toHaveAttribute("aria-expanded", "true");
+      if (functionId === "operations") {
+        await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+          "Each circle is one workflow. Tap it to see its steps. Tap + to add a workflow.",
+        );
+      }
       await page.keyboard.press("Escape");
       await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
         "data-active-part",
@@ -321,6 +350,7 @@ test.describe("co-founder mode desktop", () => {
           height: Math.round(rect.height),
           padding: style.padding,
           radius: style.borderRadius,
+          background: style.backgroundColor,
           right: Math.round(stageBounds.right - rect.right),
           bottom: Math.round(stageBounds.bottom - rect.bottom),
         };
@@ -373,7 +403,10 @@ test.describe("co-founder mode desktop", () => {
       height: 44,
       padding: "0px 16px",
     });
-    expect(measured.closeAction?.height).toBe(44);
+    expect(measured.closeAction).toMatchObject({
+      height: 44,
+      background: "rgb(243, 239, 244)",
+    });
   });
 
   test("an empty part keeps its dashed circle and plus", async ({ page }) => {
@@ -848,6 +881,7 @@ test.describe("co-founder mode desktop", () => {
       await seedCofounderTheme(capturePage, theme);
       await installMockBridge(capturePage, fixture({ includeScout: true }));
       await seedCompanyMapBusiness(capturePage);
+      await seedCompanyMapMoneyRails(capturePage);
       await seedCompanyMapWhatsApp(capturePage, MAP_CHANNEL_ID);
       await capturePage.emulateMedia({ colorScheme: theme });
       await capturePage.setViewportSize({ width: 1440, height: 900 });
@@ -861,6 +895,9 @@ test.describe("co-founder mode desktop", () => {
       await expect(
         capturePage.getByRole("heading", { name: "Company map" }),
       ).toBeVisible();
+      await expect(
+        capturePage.getByTestId("cofounder-map-home-card"),
+      ).toContainText("2 things need your yes.");
       await expect
         .poll(() =>
           capturePage.evaluate(() =>
