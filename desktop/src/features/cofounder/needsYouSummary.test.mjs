@@ -3,7 +3,10 @@ import test from "node:test";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
 import { buildNeedsYou } from "./needsYou.ts";
-import { buildNeedsYouSummary } from "./needsYouSummary.ts";
+import {
+  buildNeedsYouSummary,
+  hasNeedsYouSummaryError,
+} from "./needsYouSummary.ts";
 import { parsePlanHead } from "./planRecords.ts";
 import { AGENT, headContent, signHead, step } from "./planFixtures.mjs";
 
@@ -48,7 +51,15 @@ function ask(overrides = {}) {
 
 function model(items = []) {
   return {
-    approve: items,
+    approve: items.map((item, index) => ({
+      ...item,
+      source: item.source ?? {
+        kind: "plan",
+        planId: `summary-test-${index}`,
+        stepId: null,
+      },
+      details: item.details ?? [],
+    })),
     do: [],
     decide: [],
     total: items.length,
@@ -86,6 +97,26 @@ function gap(gapId, state, category, text = "") {
 function contact(waId, stage) {
   return { waId, stage };
 }
+
+test("reports every failed count source", () => {
+  const complete = {
+    hasNeedsYouError: false,
+    hasWhatsAppError: false,
+    hasCompanyAccessError: false,
+    moneyRailsAvailability: "ready",
+  };
+  const cases = [
+    ["complete sources", complete, false],
+    ["core needs-you data", { ...complete, hasNeedsYouError: true }, true],
+    ["WhatsApp data", { ...complete, hasWhatsAppError: true }, true],
+    ["company access gaps", { ...complete, hasCompanyAccessError: true }, true],
+    ["money rails", { ...complete, moneyRailsAvailability: "error" }, true],
+  ];
+
+  for (const [source, status, expected] of cases) {
+    assert.equal(hasNeedsYouSummaryError(status), expected, source);
+  }
+});
 
 test("counts all visible rows once, including money links, gaps and call requests", () => {
   const summary = buildNeedsYouSummary({
@@ -125,6 +156,32 @@ test("counts all visible rows once, including money links, gaps and call request
     "operations:Delivery": 1,
     "finance:Deposits": 1,
   });
+});
+
+test("counts each reply draft as a row in the shared total and function badge", () => {
+  const summary = buildNeedsYouSummary({
+    model: {
+      approve: [
+        {
+          functionId: "sales",
+          jobName: "Follow-ups",
+          source: { kind: "whatsapp_drafts", senderPubkey: AGENT },
+          details: [
+            { id: "draft-1", label: "A", text: "First reply" },
+            { id: "draft-2", label: "B", text: "Second reply" },
+            { id: "draft-3", label: "C", text: "Third reply" },
+          ],
+        },
+      ],
+      do: [],
+      decide: [],
+      total: 1,
+    },
+  });
+
+  assert.equal(summary.total, 3);
+  assert.equal(summary.byPart.sales, 3);
+  assert.equal(summary.byJob["sales:Follow-ups"], 3);
 });
 
 test("capability gaps map only when their part is clear", () => {

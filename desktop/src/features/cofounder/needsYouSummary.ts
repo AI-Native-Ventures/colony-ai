@@ -5,7 +5,7 @@ import { buildGapNeedsYouItems } from "./accessRecords";
 import type { CapabilityGapHead } from "./accessRecords";
 import { useCompanyAccessQuery } from "./accessHooks";
 import { useMoneyRailsSnapshot } from "./moneyRailsBridge";
-import type { MoneyLinkCard } from "./moneyRails";
+import type { MoneyLinkCard, MoneyRailsSnapshot } from "./moneyRails";
 import { FUNCTION_DETAILS, FUNCTION_ORDER } from "./functions";
 import type { FunctionId } from "./cofounderRecords";
 import type { NeedsYouItem, NeedsYouModel } from "./needsYou";
@@ -26,6 +26,26 @@ export type NeedsYouSummarySources = {
   whatsappContacts?: readonly WhatsAppContact[];
 };
 
+/** Load status for every source counted by the Needs you summary. */
+export type NeedsYouSummarySourceStatus = {
+  hasNeedsYouError: boolean;
+  hasWhatsAppError: boolean;
+  hasCompanyAccessError: boolean;
+  moneyRailsAvailability: MoneyRailsSnapshot["availability"];
+};
+
+/** Reports whether a count source failed after its empty fallback was applied. */
+export function hasNeedsYouSummaryError(
+  status: NeedsYouSummarySourceStatus,
+): boolean {
+  return (
+    status.hasNeedsYouError ||
+    status.hasWhatsAppError ||
+    status.hasCompanyAccessError ||
+    status.moneyRailsAvailability === "error"
+  );
+}
+
 function normalizedWords(value: string): string {
   return value
     .toLowerCase()
@@ -37,7 +57,9 @@ function hasPhrase(text: string, phrase: string): boolean {
   return ` ${text} `.includes(` ${phrase} `);
 }
 
-function capabilityGapFunctionId(head: CapabilityGapHead): FunctionId | null {
+export function capabilityGapFunctionId(
+  head: CapabilityGapHead,
+): FunctionId | null {
   const category = head.gap.access.category;
   if (category === "payment_link") return "finance";
   if (category === "whatsapp" || category === "discovery") return "sales";
@@ -92,17 +114,18 @@ function capabilityGapFunctionId(head: CapabilityGapHead): FunctionId | null {
 function addItem(
   summary: NeedsYouSummary,
   item: Pick<NeedsYouItem, "functionId" | "jobName">,
+  count = 1,
 ): void {
-  summary.total += 1;
+  summary.total += count;
   if (!item.functionId) return;
 
-  summary.byPart[item.functionId] += 1;
+  summary.byPart[item.functionId] += count;
   const canonicalJob = FUNCTION_DETAILS[item.functionId].subFunctions.find(
     (name) => name === item.jobName,
   );
   if (!canonicalJob) return;
   const key = `${item.functionId}:${canonicalJob}`;
-  summary.byJob[key] = (summary.byJob[key] ?? 0) + 1;
+  summary.byJob[key] = (summary.byJob[key] ?? 0) + count;
 }
 
 /** Counts exactly the rows assembled for the Needs you page and its extra lanes. */
@@ -122,7 +145,13 @@ export function buildNeedsYouSummary(
     ...sources.model.do,
     ...sources.model.decide,
   ];
-  for (const item of items) addItem(summary, item);
+  for (const item of items) {
+    addItem(
+      summary,
+      item,
+      item.source.kind === "whatsapp_drafts" ? item.details.length : 1,
+    );
+  }
 
   for (const card of sources.paymentLinks ?? []) {
     if (card.state === "needs_you") {
@@ -157,6 +186,7 @@ export function buildNeedsYouSummary(
 export function useNeedsYouSummary(): {
   data: NeedsYouSummary | undefined;
   isPending: boolean;
+  isError: boolean;
 } {
   const { activeCommunity } = useCommunities();
   const needsYou = useNeedsYouQuery();
@@ -168,6 +198,12 @@ export function useNeedsYouSummary(): {
     needsYou.whatsappSummaryIsPending ||
     (hasCommunity && access.isPending) ||
     (hasCommunity && moneyRails.availability === "loading");
+  const isError = hasNeedsYouSummaryError({
+    hasNeedsYouError: Boolean(needsYou.summaryError),
+    hasWhatsAppError: Boolean(needsYou.whatsappError),
+    hasCompanyAccessError: hasCommunity && access.isError,
+    moneyRailsAvailability: moneyRails.availability,
+  });
   const data = useMemo(
     () =>
       isPending
@@ -187,5 +223,5 @@ export function useNeedsYouSummary(): {
     ],
   );
 
-  return { data, isPending };
+  return { data, isPending, isError };
 }
