@@ -6,6 +6,10 @@ import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 import { waitForAnimations } from "../helpers/animations";
 
+// A finished run is titled "Search complete", or "Found N of M" when it
+// ended short of the target.
+const RUN_FINISHED_TITLE = /^(Search complete|Found \d+ of \d+)$/;
+
 const PROOF_DIR =
   process.env.COLONY3_DISCOVERY_TAGS_PROOF_DIR ??
   "test-results/colony3-discovery-tags-proof";
@@ -339,9 +343,7 @@ for (const [width, height] of [
 
       const campaign = page.getByTestId("w10-campaign-page");
       await expect(campaign).toBeVisible();
-      await expect(
-        page.getByText("Search complete", { exact: true }),
-      ).toBeVisible({
+      await expect(page.getByText(RUN_FINISHED_TITLE)).toBeVisible({
         timeout: 15_000,
       });
       await expect(campaign.getByLabel("Picked search tags")).toContainText(

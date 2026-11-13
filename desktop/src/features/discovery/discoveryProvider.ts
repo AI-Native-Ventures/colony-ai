@@ -49,6 +49,8 @@ export type DiscoveryPageLog = {
   costUsd: number;
   /** The evidence-backed reason this page ended the run, if it did. */
   stopReason: DiscoveryEndReason | null;
+  /** The area this page searched. Pages saved before areas existed omit it. */
+  area?: string;
 };
 
 /** What Find more can safely do without starting a separate campaign. */
@@ -71,6 +73,11 @@ export type DiscoveryContinuation = {
   estimatedPages: number;
   /** Provider cost of those minimum pages. */
   estimatedCostUsd: number;
+  /**
+   * Set when continuing means searching nearby areas, because the areas
+   * searched so far have no more results. Nearest first.
+   */
+  nearbyAreas?: string[];
 };
 
 /**
@@ -136,6 +143,10 @@ export type DiscoveryCampaign = {
   runLog?: DiscoveryPageLog[];
   /** Pages saved so far, including pages from any in-place continuation. */
   pagesFetched?: number;
+  /** Every area this campaign has searched, the chosen place first. */
+  areasSearched?: string[];
+  /** Nearby areas not searched yet, nearest first. Searched only after a yes. */
+  nearbyAreasLeft?: string[];
   /** Device-local optional website-check settings. Legacy campaigns omit it. */
   qualification?: CampaignQualificationSettings;
 };

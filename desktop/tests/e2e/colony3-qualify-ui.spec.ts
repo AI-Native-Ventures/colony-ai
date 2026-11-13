@@ -11,6 +11,10 @@ import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 import { waitForAnimations } from "../helpers/animations";
 
+// A finished run is titled "Search complete", or "Found N of M" when it
+// ended short of the target.
+const RUN_FINISHED_TITLE = /^(Search complete|Found \d+ of \d+)$/;
+
 const REAL_RUNNER = {
   referenceWorkspace: true,
   referenceWorkspaceDiscoveryStandIn: false,
@@ -237,9 +241,9 @@ async function startCampaign(page: Page) {
   await page.getByRole("button", { name: /Approve & start/ }).click();
   const campaign = page.getByTestId("w10-campaign-page");
   await expect(campaign).toBeVisible();
-  await expect(
-    campaign.getByText("Search complete", { exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(campaign.getByText(RUN_FINISHED_TITLE)).toBeVisible({
+    timeout: 15_000,
+  });
   return campaign;
 }
 

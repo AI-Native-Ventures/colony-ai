@@ -123,9 +123,10 @@ test.describe("Business records use the relay's business id", () => {
     await installMockBridge(page, REAL_RUNNER);
     await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
     await startCampaign(page);
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 15_000 });
+    // Two businesses were all there were, so the card says what was found.
+    await expect(page.getByText(/^Found 2 of \d+$/)).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(
       page.getByTestId("w10-campaign-page").locator("tbody tr"),
     ).toHaveCount(2);

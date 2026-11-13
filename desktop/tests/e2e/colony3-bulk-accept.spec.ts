@@ -3,6 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
+// A finished run is titled "Search complete", or "Found N of M" when it
+// ended short of the target.
+const RUN_FINISHED_TITLE = /^(Search complete|Found \d+ of \d+)$/;
+
 /**
  * Accept as lead from the campaign's selection bar works for any number of
  * selected rows (the owner hit a greyed button at 13), says what it will skip,
@@ -70,7 +74,7 @@ async function runSearch(page: Page, count: number) {
   await dialog.getByRole("button", { name: /Approve & start/ }).click();
   const campaign = page.getByTestId("w10-campaign-page");
   await expect(campaign).toBeVisible();
-  await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
+  await expect(page.getByText(RUN_FINISHED_TITLE)).toBeVisible({
     timeout: 20_000,
   });
   await expect(campaign.locator("tbody tr")).toHaveCount(count);
