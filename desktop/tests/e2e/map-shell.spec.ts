@@ -684,6 +684,11 @@ test("dark desktop bar keeps its measured layout", async ({ page }) => {
       .locator(".map-shell-desktop-actions")
       .getByTestId("map-shell-needs-you"),
   ).toBeVisible();
+  await expect(
+    page
+      .locator(".map-shell-desktop-actions")
+      .getByTestId("map-shell-needs-you"),
+  ).toHaveText("1 need you");
   await capture(page, "dark-1440-home");
   await page.goto("/#/company/function/operations");
   await expect(page.getByTestId("map-shell-trail")).toHaveText(
@@ -742,6 +747,11 @@ test("phone bar and sheet stay in bounds and keep every action reachable", async
       ),
     )
     .toBe(true);
+  await expect(
+    page
+      .locator(".map-shell-mobile-actions")
+      .getByTestId("map-shell-needs-you"),
+  ).toHaveText("1 need you");
   await capture(page, "light-390-phone-bar");
 
   await page.getByTestId("map-shell-mobile-menu-button").click();
@@ -800,6 +810,11 @@ test("dark phone bar and sheet stay in bounds", async ({ page }) => {
   });
   await seedUnreadChat(page);
   await expect(page.getByTestId("map-shell-bar")).toHaveCSS("height", "56px");
+  await expect(
+    page
+      .locator(".map-shell-mobile-actions")
+      .getByTestId("map-shell-needs-you"),
+  ).toHaveText("1 need you");
   await capture(page, "dark-390-phone-bar");
   await page.getByTestId("map-shell-mobile-menu-button").click();
   const sheet = page.getByTestId("map-shell-mobile-sheet");
@@ -877,4 +892,133 @@ test("cofounder mode off keeps the current sidebar with map_home enabled", async
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await expect(page.getByTestId("map-shell-bar")).toHaveCount(0);
   await expect(page.getByTestId("home-inbox")).toBeVisible();
+});
+
+test("top bar actions open their dialogs without the sidebar", async ({
+  page,
+}) => {
+  await prepareMapShell(page, {
+    theme: "light",
+    width: 1440,
+    height: 900,
+    featureEnabled: true,
+  });
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+
+  await page.getByTestId("map-shell-company").click();
+  await page
+    .getByTestId("workspace-switcher-menu")
+    .getByTestId("workspace-create-action")
+    .click();
+  const workspaceDialog = page.getByTestId("workspace-action-dialog");
+  await expect(workspaceDialog).toBeVisible();
+  await workspaceDialog.getByTestId("workspace-dialog-close").click();
+  await expect(workspaceDialog).toHaveCount(0);
+
+  await page.getByTestId("map-shell-company").click();
+  await page
+    .getByTestId("workspace-switcher-menu")
+    .getByTestId("workspace-join-action")
+    .click();
+  await expect(page.getByTestId("workspace-join-form")).toBeVisible();
+  await page.getByTestId("workspace-dialog-close").click();
+  await expect(page.getByTestId("workspace-action-dialog")).toHaveCount(0);
+
+  await page.getByTestId("open-search").click();
+  await page.getByTestId("search-result-action-create-channel").click();
+  const channelDialog = page.getByTestId("create-channel-dialog");
+  await expect(channelDialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(channelDialog).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+Shift+N");
+  await expect(channelDialog).toBeVisible();
+  await channelDialog.getByTestId("create-channel-name").fill("map-shell-room");
+  await channelDialog.getByTestId("create-channel-submit").click();
+  await expect.poll(() => pathname(page.url())).toMatch(/^\/channels\//);
+  await expect(channelDialog).toHaveCount(0);
+  await expect(page.getByTestId("map-shell-bar")).toBeVisible();
+});
+
+test("the need-you count stays on screen while a failed source retries", async ({
+  page,
+}) => {
+  await prepareMapShell(page, {
+    theme: "light",
+    width: 1440,
+    height: 900,
+    featureEnabled: true,
+  });
+  const pill = page
+    .locator(".map-shell-desktop-actions")
+    .getByTestId("map-shell-needs-you");
+  await expect(pill).toHaveText("1 need you");
+
+  // WhatsApp status cannot be read in this workspace, so that count source
+  // holds an error and no data. Each retry reports it as loading again.
+  const statusState = () =>
+    page.evaluate(() => {
+      const client = window.__BUZZ_E2E_QUERY_CLIENT__ as unknown as {
+        getQueryCache: () => {
+          findAll: (filters: { queryKey: readonly unknown[] }) => Array<{
+            queryKey: readonly unknown[];
+            state: {
+              errorUpdateCount: number;
+              fetchStatus: string;
+              status: string;
+            };
+          }>;
+        };
+      };
+      const query = client
+        .getQueryCache()
+        .findAll({ queryKey: ["whatsapp-outreach"] })
+        .find((candidate) => candidate.queryKey.at(-1) === "status");
+      return query
+        ? {
+            errors: query.state.errorUpdateCount,
+            fetchStatus: query.state.fetchStatus,
+            status: query.state.status,
+          }
+        : null;
+    });
+  await expect
+    .poll(statusState)
+    .toMatchObject({ fetchStatus: "idle", status: "error" });
+  const before = await statusState();
+
+  await pill.evaluate((element) => {
+    const seen: string[] = [];
+    (
+      window as unknown as { __NEEDS_YOU_TEXTS__: string[] }
+    ).__NEEDS_YOU_TEXTS__ = seen;
+    new MutationObserver(() => seen.push(element.textContent ?? "")).observe(
+      element,
+      { characterData: true, childList: true, subtree: true },
+    );
+  });
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
+      queryKey: ["whatsapp-outreach"],
+    }),
+  );
+  await expect
+    .poll(async () => {
+      const state = await statusState();
+      return (
+        state !== null &&
+        state.errors > (before?.errors ?? 0) &&
+        state.fetchStatus === "idle"
+      );
+    })
+    .toBe(true);
+
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __NEEDS_YOU_TEXTS__: string[] })
+          .__NEEDS_YOU_TEXTS__,
+    ),
+  ).toEqual([]);
+  await expect(pill).toHaveText("1 need you");
 });

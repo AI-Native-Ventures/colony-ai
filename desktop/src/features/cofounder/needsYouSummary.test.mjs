@@ -6,6 +6,7 @@ import { buildNeedsYou } from "./needsYou.ts";
 import {
   buildNeedsYouSummary,
   hasNeedsYouSummaryError,
+  holdSettledNeedsYouSummary,
 } from "./needsYouSummary.ts";
 import { parsePlanHead } from "./planRecords.ts";
 import { AGENT, headContent, signHead, step } from "./planFixtures.mjs";
@@ -456,4 +457,45 @@ test("every needs-you source receives its part and any canonical job", () => {
   assert.equal(byId.get("wa-batch:outreach").jobName, "Outreach");
   assert.equal(byId.get("wa-batch:follow-up").jobName, "Follow-ups");
   assert.equal(byId.get(`wa-drafts:${AGENT}`).jobName, "Follow-ups");
+});
+
+test("the last settled count stays while a source loads again", () => {
+  const counted = buildNeedsYouSummary({ model: buildNeedsYou(NONE) });
+  const settled = { communityId: "one", data: counted, isError: true };
+  const loadingAgain = { data: undefined, isPending: true, isError: false };
+
+  assert.deepEqual(
+    holdSettledNeedsYouSummary(loadingAgain, settled, "one"),
+    { data: counted, isPending: false, isError: true },
+    "a retry keeps the count and the failed-source note it settled with",
+  );
+  assert.equal(
+    holdSettledNeedsYouSummary(loadingAgain, null, "one"),
+    loadingAgain,
+    "the first load has nothing to keep",
+  );
+  assert.equal(
+    holdSettledNeedsYouSummary(loadingAgain, settled, "two"),
+    loadingAgain,
+    "a count from another workspace is never shown",
+  );
+});
+
+test("a fresh count replaces the one that was kept", () => {
+  const kept = buildNeedsYouSummary({ model: buildNeedsYou(NONE) });
+  const fresh = buildNeedsYouSummary({
+    model: buildNeedsYou(NONE),
+    whatsappContacts: [contact("27820000001", "wants_call")],
+  });
+  const current = { data: fresh, isPending: false, isError: false };
+
+  assert.equal(
+    holdSettledNeedsYouSummary(
+      current,
+      { communityId: "one", data: kept, isError: true },
+      "one",
+    ),
+    current,
+  );
+  assert.equal(fresh.total, 1);
 });
