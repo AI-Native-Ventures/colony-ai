@@ -77,23 +77,32 @@ fn assert_metric(
     bucket: &str,
     count: u64,
 ) {
+    assert_metrics(recorder, &[(transport, reason, bucket, count)]);
+}
+
+/// Checks several rejection counters from one snapshot. Taking a snapshot
+/// resets the recorder's counters, so a test that expects more than one
+/// bucket must read them together.
+fn assert_metrics(recorder: &DebuggingRecorder, expected: &[(&str, &str, &str, u64)]) {
     let snapshot = recorder.snapshotter().snapshot().into_vec();
-    let labels = [
-        ("transport", transport),
-        ("reason", reason),
-        ("bucket", bucket),
-    ];
-    let actual = snapshot.iter().find_map(|(key, _, _, value)| {
-        (key.key().name() == "buzz_admission_rejections_total"
-            && labels
-                .iter()
-                .all(|(k, v)| key.key().labels().any(|l| l.key() == *k && l.value() == *v)))
-        .then(|| match value {
-            DebugValue::Counter(value) => *value,
-            _ => panic!("expected counter"),
-        })
-    });
-    assert_eq!(actual, Some(count));
+    for (transport, reason, bucket, count) in expected {
+        let labels = [
+            ("transport", *transport),
+            ("reason", *reason),
+            ("bucket", *bucket),
+        ];
+        let actual = snapshot.iter().find_map(|(key, _, _, value)| {
+            (key.key().name() == "buzz_admission_rejections_total"
+                && labels
+                    .iter()
+                    .all(|(k, v)| key.key().labels().any(|l| l.key() == *k && l.value() == *v)))
+            .then(|| match value {
+                DebugValue::Counter(value) => *value,
+                _ => panic!("expected counter"),
+            })
+        });
+        assert_eq!(actual, Some(*count), "rejections in bucket {bucket}");
+    }
 }
 
 fn assert_quota_frame(frame: &serde_json::Value, msg: &ClientMessage, max_retry: u64) {
@@ -216,8 +225,13 @@ async fn human_record_commands_draw_on_their_own_allowance() {
     assert_eq!(counter(&state, &agent, LimitType::RecordWrites).await, None);
     assert_eq!(counter(&state, &agent, LimitType::Messages).await, Some(3));
 
-    assert_metric(&recorder, "websocket", "quota", "record_writes", 1);
-    assert_metric(&recorder, "websocket", "quota", "messages", 2);
+    assert_metrics(
+        &recorder,
+        &[
+            ("websocket", "quota", "record_writes", 1),
+            ("websocket", "quota", "messages", 2),
+        ],
+    );
 }
 
 #[tokio::test]
