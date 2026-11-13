@@ -4,6 +4,7 @@ import { ChevronDown, LogOut, Menu, Power, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { mapShellTrailForPath } from "@/app/topBarBreadcrumbs";
+import { companyMapWindowJobForRoute } from "@/features/cofounder/companyMapJobRoutes";
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { useNeedsYouSummary } from "@/features/cofounder/needsYouSummary";
 import {
@@ -369,12 +370,20 @@ export function MapShell({
   const mapHomeRoute =
     location.pathname === "/" || location.pathname === "/company/map";
   const openMapPart = useCompanyMapOpenPart();
+  const mapWindowJob = companyMapWindowJobForRoute(
+    location.pathname,
+    location.search as Record<string, unknown>,
+  );
   const isHome = mapHomeRoute && openMapPart === null;
   const activeChannel = channels.find(
     (channel) => channel.id === currentChannelId,
   );
-  const trail =
-    mapHomeRoute && openMapPart
+  const trail = mapWindowJob
+    ? {
+        part: FUNCTION_DETAILS[mapWindowJob.functionId].name,
+        job: mapWindowJob.jobName,
+      }
+    : mapHomeRoute && openMapPart
       ? {
           part: FUNCTION_DETAILS[openMapPart].name,
           job: `All of ${FUNCTION_DETAILS[openMapPart].name}`,

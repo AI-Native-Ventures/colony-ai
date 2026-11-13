@@ -17,6 +17,7 @@ export const Route = createFileRoute("/$workSurface")({
   component: WorkRouteComponent,
   validateSearch: (search: Record<string, unknown>) => ({
     ...(typeof search.client === "string" ? { client: search.client } : {}),
+    ...(typeof search.mapJob === "string" ? { mapJob: search.mapJob } : {}),
   }),
 });
 

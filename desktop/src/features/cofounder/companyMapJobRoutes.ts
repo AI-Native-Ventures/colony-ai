@@ -16,6 +16,12 @@ export type CompanyMapJobRoute =
   | { kind: "whatsapp"; tab: "chats" | "pipeline" }
   | { kind: "part"; functionId: FunctionId };
 
+/** A screen-backed job that can open in the persistent map canvas window. */
+export type CompanyMapWindowJob = {
+  functionId: Extract<FunctionId, "sales" | "finance">;
+  jobName: string;
+};
+
 const ROUTES: Record<string, CompanyMapJobRoute> = {
   "sales:Lead finding": { kind: "app", to: "/discovery" },
   "sales:Outreach": { kind: "app", to: "/leads" },
@@ -55,6 +61,19 @@ const ROUTES: Record<string, CompanyMapJobRoute> = {
   "brand:Marketing": { kind: "part", functionId: "brand" },
 };
 
+const MAP_WINDOW_JOBS: readonly CompanyMapWindowJob[] = [
+  { functionId: "sales", jobName: "Lead finding" },
+  { functionId: "sales", jobName: "Outreach" },
+  { functionId: "sales", jobName: "Follow-ups" },
+  { functionId: "sales", jobName: "Quotes" },
+  { functionId: "sales", jobName: "Closing" },
+  { functionId: "finance", jobName: "Quotes" },
+  { functionId: "finance", jobName: "Invoices" },
+  { functionId: "finance", jobName: "Deposits" },
+  { functionId: "finance", jobName: "Chasing payments" },
+  { functionId: "finance", jobName: "Costs" },
+];
+
 /** Resolve a job to an existing screen, the WhatsApp desk, or its part page. */
 export function getCompanyMapJobRoute(
   functionId: FunctionId,
@@ -87,6 +106,90 @@ export function companyMapJobKey(
   jobName: string,
 ): string {
   return `${functionId}:${jobName}`;
+}
+
+/**
+ * A map-origin marker disambiguates shared routes and preserves the intent of
+ * jobs that must stay on their current full-page surface. Unmarked deep links
+ * still resolve to the documented default map job for that route.
+ */
+export function companyMapWindowSearch(
+  functionId: FunctionId,
+  jobName: string,
+): { mapJob: string } | undefined {
+  const key = companyMapJobKey(functionId, jobName);
+  return Object.hasOwn(ROUTES, key) ? { mapJob: key } : undefined;
+}
+
+function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
+  if (typeof value !== "string") return null;
+  return (
+    MAP_WINDOW_JOBS.find(
+      (job) => companyMapJobKey(job.functionId, job.jobName) === value,
+    ) ?? null
+  );
+}
+
+function windowJobMatchesRoute(
+  job: CompanyMapWindowJob,
+  pathname: string,
+  search: Record<string, unknown>,
+): boolean {
+  const route = getCompanyMapJobRoute(job.functionId, job.jobName);
+  if (route.kind === "app") return pathname === route.to;
+  return (
+    route.kind === "whatsapp" &&
+    pathname.startsWith("/channels/") &&
+    search.whatsappDeskTab === route.tab
+  );
+}
+
+function defaultWindowJobForRoute(
+  pathname: string,
+  search: Record<string, unknown>,
+): CompanyMapWindowJob | null {
+  if (pathname === "/discovery") {
+    return { functionId: "sales", jobName: "Lead finding" };
+  }
+  if (pathname === "/leads") {
+    return { functionId: "sales", jobName: "Outreach" };
+  }
+  if (pathname === "/clients") {
+    return { functionId: "sales", jobName: "Quotes" };
+  }
+  if (pathname === "/money/invoices") {
+    return { functionId: "finance", jobName: "Invoices" };
+  }
+  if (pathname === "/money") {
+    return { functionId: "finance", jobName: "Chasing payments" };
+  }
+  if (pathname === "/company/access") {
+    return { functionId: "finance", jobName: "Costs" };
+  }
+  if (pathname.startsWith("/channels/") && search.whatsappDeskTab === "chats") {
+    return { functionId: "sales", jobName: "Follow-ups" };
+  }
+  if (
+    pathname.startsWith("/channels/") &&
+    search.whatsappDeskTab === "pipeline"
+  ) {
+    return { functionId: "sales", jobName: "Closing" };
+  }
+  return null;
+}
+
+/** Resolve a supported map-window job from a real route and its search state. */
+export function companyMapWindowJobForRoute(
+  pathname: string,
+  search: Record<string, unknown> = {},
+): CompanyMapWindowJob | null {
+  if (typeof search.mapJob === "string") {
+    const markedJob = windowJobFromKey(search.mapJob);
+    return markedJob && windowJobMatchesRoute(markedJob, pathname, search)
+      ? markedJob
+      : null;
+  }
+  return defaultWindowJobForRoute(pathname, search);
 }
 
 export function isCompanyMapJobFallback(

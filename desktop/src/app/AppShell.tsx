@@ -7,11 +7,12 @@ import { useTerminalContext } from "@/app/useTerminalContext";
 import { AppShellProvider } from "@/app/AppShellContext";
 import { AppShellOverlays, TerminalBootstrap } from "@/app/AppShellOverlays";
 import { AppShellChannelSurface } from "@/app/AppShellChannelSurface";
+import { MapCanvasRouteSurface } from "@/app/MapCanvasRouteSurface";
 import { AppShellFrame } from "@/app/AppShellFrame";
 import { AppTopChrome } from "@/app/AppTopChrome";
 import { EditCommunityDialog } from "@/features/communities/ui/EditCommunityDialog";
 import { MobileWorkspaceHeader } from "@/features/communities/ui/MobileWorkspaceHeader";
-import { useIsMobile } from "@/shared/hooks/use-mobile";
+import { useIsMobile, useMediaBreakpoint } from "@/shared/hooks/use-mobile";
 import {
   type TerminalContextOverride,
   TerminalContextOverrideProvider,
@@ -125,6 +126,7 @@ export function AppShell() {
   const communitiesHook = useCommunities();
   const location = useLocation();
   const isNarrowWindow = useIsMobile();
+  const isMapCanvasNarrow = useMediaBreakpoint(701);
   const mapShellEnabled = useMapShellEnabled();
   const { selectedChannelId, selectedView } = React.useMemo(
     () => deriveShellRoute(location.pathname),
@@ -1035,7 +1037,11 @@ export function AppShell() {
                           <TerminalBootstrap {...effectiveTerminalContext} />
                         }
                       >
-                        <Outlet />
+                        <MapCanvasRouteSurface
+                          enabled={mapShellEnabled && !isMapCanvasNarrow}
+                        >
+                          <Outlet />
+                        </MapCanvasRouteSurface>
                       </AppShellChannelSurface>
                     </TerminalContextOverrideProvider>
                     <EditCommunityDialog
