@@ -15,11 +15,24 @@ import {
 import type { GapNeedsYouItem } from "@/features/cofounder/accessRecords";
 import { useCofounderSettingsQuery } from "@/features/cofounder/hooks";
 import { useNeedsYouQuery } from "@/features/cofounder/needsYouHooks";
-import type {
-  NeedsYouActionId,
-  NeedsYouItem,
-} from "@/features/cofounder/needsYou";
+import { useNeedsYouSummary } from "@/features/cofounder/needsYouSummary";
+import {
+  useMoneyRailsActions,
+  useMoneyRailsSnapshot,
+} from "@/features/cofounder/moneyRailsBridge";
+import { numbersActions } from "@/features/cofounder/numbersActions";
+import { useNumbersAction } from "@/features/cofounder/numbersHooks";
+import {
+  playbookActions,
+  playbookJobActions,
+} from "@/features/cofounder/playbookActions";
+import {
+  usePlaybookAction,
+  usePlaybookJobAction,
+} from "@/features/cofounder/playbookHooks";
 import { useWhatsAppCommand } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import { openWorkArea } from "@/features/workarea/dock/workAreaStore";
+import { clearMoneyLinkTaskContext } from "@/features/workarea/browser/agentBrowserAccess";
 import { planActions } from "@/features/cofounder/planActions";
 import { usePlanAction, usePlansQuery } from "@/features/cofounder/planHooks";
 import { openCapabilityGapBrowser } from "@/features/cofounder/openCapabilityGapBrowser";
@@ -27,6 +40,12 @@ import { KIND_WHATSAPP_BATCH_DECISION } from "@/shared/constants/kinds";
 
 import { CofounderAccessScreen } from "./CofounderAccessScreen";
 import { CofounderNeedsYouScreen } from "./CofounderNeedsYouScreen";
+import type { NeedsYouRowDecision } from "./CofounderNeedsYouScreen";
+import type { NeedsYouRow } from "./needsYou/needsYouRows";
+import {
+  buildNeedsYouRows,
+  describeNeedsYouAction,
+} from "./needsYou/needsYouRows";
 import "./cofounderPhase2.css";
 
 function CofounderModeGate({ children }: { children: ReactNode }) {
@@ -73,8 +92,14 @@ export function CofounderNeedsYouRoute() {
   const plansQuery = usePlansQuery(cofounderOn);
   const needsYouQuery = useNeedsYouQuery();
   const companyAccessQuery = useCompanyAccessQuery(communityId);
+  const summary = useNeedsYouSummary();
+  const moneyRails = useMoneyRailsSnapshot();
   const planAction = usePlanAction();
   const accessAction = usePublishAccessAction();
+  const playbookAction = usePlaybookAction();
+  const playbookJobAction = usePlaybookJobAction();
+  const numbersAction = useNumbersAction();
+  const moneyAction = useMoneyRailsActions();
   const whatsappCommand = useWhatsAppCommand();
   const channelsQuery = useChannelsQuery({ enabled: cofounderOn });
   const scoutChannel = channelsQuery.data?.find(
@@ -87,40 +112,26 @@ export function CofounderNeedsYouRoute() {
     [companyAccessQuery.data],
   );
   const plans = plansQuery.data ?? [];
+  const rows = useMemo(
+    () =>
+      buildNeedsYouRows({
+        model: needsYouQuery.model,
+        paymentLinks: moneyRails.paymentLinks,
+        capabilityGaps,
+        capabilityGapHeads: companyAccessQuery.data?.gaps ?? [],
+        whatsappContacts: needsYouQuery.whatsappContacts,
+        whatsappDrafts: needsYouQuery.whatsappDrafts,
+      }),
+    [
+      capabilityGaps,
+      companyAccessQuery.data?.gaps,
+      moneyRails.paymentLinks,
+      needsYouQuery.model,
+      needsYouQuery.whatsappContacts,
+      needsYouQuery.whatsappDrafts,
+    ],
+  );
   const { goAskDetail, goChannel } = useAppNavigation();
-
-  async function applyPlanStepAction(
-    item: NeedsYouItem,
-    action: NeedsYouActionId,
-  ) {
-    if (item.source.kind !== "plan" || !item.source.stepId) return;
-    const source = item.source;
-    const stepId = source.stepId;
-    if (!stepId) return;
-    const plan = plans.find((candidate) => candidate.planId === source.planId);
-    if (!plan) throw new Error("This plan changed. Refresh and try again.");
-    const input =
-      action === "approve"
-        ? planActions.approveStep(plan, stepId)
-        : action === "reject"
-          ? planActions.rejectStep(plan, stepId)
-          : action === "done"
-            ? planActions.markDone(plan, stepId)
-            : null;
-    if (!input) return;
-    await planAction.mutateAsync(input);
-  }
-
-  async function applyCapabilityGapAction(
-    item: GapNeedsYouItem,
-    op: "gap_approve" | "gap_decline" | "gap_done",
-  ) {
-    await accessAction.mutateAsync({
-      op,
-      gapId: item.gapId,
-      expectedHeadEventId: item.headEventId,
-    });
-  }
 
   async function openBrowser(url: string, channelId?: string) {
     const refreshedChannels = channelId ? null : await channelsQuery.refetch();
@@ -141,39 +152,212 @@ export function CofounderNeedsYouRoute() {
     }
   }
 
-  async function openNeedsYouItem(item: NeedsYouItem) {
-    if (item.source.kind === "ask") {
-      await goAskDetail(item.source.channelId, item.source.askId);
+  async function openWhatsAppChat(contactWaId: string) {
+    const channelId = needsYouQuery.whatsappOutreachChannelId;
+    if (!channelId) throw new Error("WhatsApp chats are not available yet.");
+    await goChannel(channelId);
+    openWorkArea(channelId, "whatsapp", "whatsapp", { contactWaId });
+  }
+
+  async function openNeedsYouRow(row: NeedsYouRow) {
+    if (row.kind === "draft") {
+      const contactWaId = row.draft?.waId ?? row.contact?.waId;
+      if (!contactWaId) throw new Error("This reply is no longer available.");
+      await openWhatsAppChat(contactWaId);
       return;
     }
-    if (item.source.kind === "whatsapp_batch") {
+    if (row.kind === "call_request") {
+      await openWhatsAppChat(row.contact.waId);
+      return;
+    }
+    if (row.kind === "payment_link") {
       await navigate({
-        to: "/whatsapp/batches/$batchId",
-        params: { batchId: item.source.batchId },
+        to: "/clients/record/$partyId",
+        params: { partyId: row.card.customerPartyId },
       });
       return;
     }
-    throw new Error("This item is no longer available. Refresh and try again.");
+    if (row.kind === "capability_gap") {
+      if (row.item.group === "do" && row.item.pageUrl) {
+        await openBrowser(row.item.pageUrl);
+        return;
+      }
+      await navigate({ to: "/company/access" });
+      return;
+    }
+    const { item } = row;
+    switch (item.source.kind) {
+      case "ask":
+        await goAskDetail(item.source.channelId, item.source.askId);
+        return;
+      case "whatsapp_batch":
+        await navigate({
+          to: "/whatsapp/batches/$batchId",
+          params: { batchId: item.source.batchId },
+        });
+        return;
+      case "review_decision":
+        await navigate({ to: "/company/weekly-review" });
+        return;
+      case "playbook":
+      case "playbook_job":
+        await navigate({
+          to: "/company/function/$function",
+          params: { function: "operations" },
+        });
+        return;
+      case "plan":
+      case "goal":
+        if (item.functionId) {
+          await navigate({
+            to: "/company/function/$function",
+            params: { function: item.functionId },
+          });
+        } else {
+          await navigate({ to: "/company/map" });
+        }
+        return;
+      case "whatsapp_drafts":
+        throw new Error("This reply is no longer available.");
+    }
   }
 
-  async function applyWhatsAppDraftAction(
-    draftId: string,
-    decision: "approve" | "reject",
-    text?: string,
+  async function applyNeedsYouAction(
+    row: NeedsYouRow,
+    decision: NeedsYouRowDecision,
   ) {
-    await whatsappCommand(KIND_WHATSAPP_BATCH_DECISION, {
-      v: 1,
-      draftId,
-      decision,
-      ...(text ? { text } : {}),
-    });
+    const command = describeNeedsYouAction(row, decision);
+    if (!command) throw new Error("This action is not available.");
+    switch (command.kind) {
+      case "open":
+        await openNeedsYouRow(command.row);
+        return;
+      case "payment_link":
+        await moneyAction.execute({
+          type: command.decision,
+          linkId: command.card.id,
+          headEventId: command.card.headEventId,
+          card: command.card,
+          ...(command.decision === "reject"
+            ? { reason: "Rejected by the owner." }
+            : {}),
+        });
+        if (command.decision === "reject") {
+          clearMoneyLinkTaskContext(command.card.id);
+        }
+        return;
+      case "capability_gap":
+        if (command.operation === "open_page") {
+          if (!command.item.pageUrl) {
+            throw new Error("This page is no longer available.");
+          }
+          await openBrowser(command.item.pageUrl);
+          return;
+        }
+        await accessAction.mutateAsync({
+          op: command.operation,
+          gapId: command.item.gapId,
+          expectedHeadEventId: command.item.headEventId,
+        });
+        if (command.operation === "gap_approve" && command.item.pageUrl) {
+          await openBrowser(command.item.pageUrl);
+        }
+        return;
+      case "whatsapp_batch":
+        await whatsappCommand(KIND_WHATSAPP_BATCH_DECISION, {
+          v: 1,
+          batchId: command.batchId,
+          decision: command.decision,
+          dropRows: [],
+          editRows: [],
+        });
+        return;
+      case "whatsapp_draft":
+        await whatsappCommand(KIND_WHATSAPP_BATCH_DECISION, {
+          v: 1,
+          draftId: command.draftId,
+          decision: command.decision,
+        });
+        return;
+      case "plan": {
+        const plan = plans.find(
+          (candidate) => candidate.planId === command.planId,
+        );
+        if (!plan) throw new Error("This plan changed. Refresh and try again.");
+        const input = command.stepId
+          ? command.operation === "done"
+            ? planActions.markDone(plan, command.stepId)
+            : command.operation === "approve"
+              ? planActions.approveStep(plan, command.stepId)
+              : planActions.rejectStep(plan, command.stepId)
+          : command.operation === "approve"
+            ? planActions.approve(plan)
+            : planActions.reject(plan);
+        await planAction.mutateAsync(input);
+        return;
+      }
+      case "playbook": {
+        const playbook = needsYouQuery.livePlaybooks.find(
+          (candidate) => candidate.playbookId === command.playbookId,
+        );
+        if (!playbook) {
+          throw new Error("This playbook changed. Refresh and try again.");
+        }
+        await playbookAction.mutateAsync(
+          command.decision === "approve"
+            ? playbookActions.approve(playbook)
+            : playbookActions.reject(playbook),
+        );
+        return;
+      }
+      case "playbook_job": {
+        const job = needsYouQuery.livePlaybookJobs.find(
+          (candidate) => candidate.jobId === command.jobId,
+        );
+        if (!job) throw new Error("This work changed. Refresh and try again.");
+        const input =
+          command.operation === "done"
+            ? playbookJobActions.markDone(job, command.stepId)
+            : command.operation === "approve"
+              ? playbookJobActions.approveStep(job, command.stepId)
+              : playbookJobActions.rejectStep(job, command.stepId);
+        await playbookJobAction.mutateAsync(input);
+        return;
+      }
+      case "goal": {
+        const goal = needsYouQuery.liveGoals.find(
+          (candidate) => candidate.goalId === command.goalId,
+        );
+        if (!goal) throw new Error("This goal changed. Refresh and try again.");
+        await numbersAction.mutateAsync(
+          command.decision === "approve"
+            ? numbersActions.approveGoal(goal)
+            : numbersActions.rejectGoal(goal),
+        );
+        return;
+      }
+      case "review_decision": {
+        const review = needsYouQuery.liveReviews.find(
+          (candidate) => candidate.reviewDate === command.reviewDate,
+        );
+        if (!review) {
+          throw new Error("This review changed. Refresh and try again.");
+        }
+        await numbersAction.mutateAsync(
+          numbersActions.decide(review, command.decisionId, command.decision),
+        );
+        return;
+      }
+    }
   }
 
   return (
     <CofounderModeGate>
       {needsYouQuery.isPending ||
       plansQuery.isPending ||
-      companyAccessQuery.isPending ? (
+      companyAccessQuery.isPending ||
+      needsYouQuery.whatsappSummaryIsPending ||
+      summary.isPending ? (
         <Phase2Unavailable />
       ) : needsYouQuery.error ||
         plansQuery.error ||
@@ -183,15 +367,17 @@ export function CofounderNeedsYouRoute() {
         </div>
       ) : (
         <CofounderNeedsYouScreen
-          liveNeedsYou={needsYouQuery.model}
-          livePlans={plans}
-          liveCapabilityGaps={capabilityGaps}
-          whatsappError={needsYouQuery.whatsappError}
-          onPlanStepAction={applyPlanStepAction}
-          onCapabilityGapAction={applyCapabilityGapAction}
-          onOpenItem={openNeedsYouItem}
-          onWhatsAppDraftAction={applyWhatsAppDraftAction}
-          onOpenCapabilityGapBrowser={(url) => openBrowser(url)}
+          rows={rows}
+          sharedTotal={summary.data?.total ?? rows.length}
+          statusMessage={
+            needsYouQuery.whatsappError
+              ? "Some WhatsApp items could not be loaded. Refresh to try again."
+              : moneyRails.availability === "error"
+                ? "Payment approvals could not be loaded. Refresh to try again."
+                : null
+          }
+          onAction={applyNeedsYouAction}
+          onOpenRow={openNeedsYouRow}
         />
       )}
     </CofounderModeGate>

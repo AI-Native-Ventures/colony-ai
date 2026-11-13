@@ -15,6 +15,7 @@ interface FeatureDefinition {
   name: string;
   description: string;
   platforms?: string[];
+  defaultEnabled?: boolean;
 }
 
 interface FeaturesManifest {
@@ -27,6 +28,15 @@ const manifest = featuresManifest as FeaturesManifest;
 /** IDs of every preview feature on desktop. */
 export const PREVIEW_FEATURE_IDS: string[] = manifest.features
   .filter((f) => !f.platforms || f.platforms.includes("desktop"))
+  .map((f) => f.id);
+
+/** Default-off preview features stay off in unrelated E2E specs. */
+export const PREVIEW_FEATURE_DEFAULT_OFF_IDS: string[] = manifest.features
+  .filter(
+    (f) =>
+      f.defaultEnabled === false &&
+      (!f.platforms || f.platforms.includes("desktop")),
+  )
   .map((f) => f.id);
 
 /**

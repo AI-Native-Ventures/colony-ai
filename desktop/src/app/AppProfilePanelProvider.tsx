@@ -1,17 +1,19 @@
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import { ProfilePanelProvider } from "@/shared/context/ProfilePanelContext";
 
 export function AppProfilePanelProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { goProfile } = useAppNavigation();
+  const { goActivityProfile, goProfile } = useAppNavigation();
+  const mapShellEnabled = useMapShellEnabled();
   const handleOpenProfilePanel = React.useCallback(
     (pubkey: string) => {
-      void goProfile(pubkey);
+      void (mapShellEnabled ? goActivityProfile(pubkey) : goProfile(pubkey));
     },
-    [goProfile],
+    [goActivityProfile, goProfile, mapShellEnabled],
   );
 
   return (

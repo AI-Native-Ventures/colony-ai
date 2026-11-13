@@ -27,7 +27,11 @@ import type {
 import type { MockCompanyAccessRecord } from "../../src/testing/mockCompanyAccess";
 import type { MockCustomerRecord } from "../../src/testing/mockCustomerRecords";
 import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
-import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
+import {
+  FEATURE_OVERRIDES_STORAGE_KEY,
+  PREVIEW_FEATURE_DEFAULT_OFF_IDS,
+  PREVIEW_FEATURE_IDS,
+} from "./features";
 
 export const TEST_IDENTITIES = {
   tyler: {
@@ -941,12 +945,13 @@ type BridgeOptions = {
   skipOnboardingSeed?: boolean;
   skipCommunitySeed?: boolean;
   /**
-   * When true (default), seed every preview feature in preview-features.json as
-   * enabled in localStorage so E2E tests can interact with gated UI without
-   * clicking through the Experiments settings panel. Set to false in specs
-   * that exercise the Experiments toggle UI itself.
+   * When true (default), seed preview features as enabled in localStorage so
+   * E2E tests can use gated UI without clicking through Experiments. Explicit
+   * default-off features stay off unless previewFeatureOverrides enables them.
+   * Set to false in specs that exercise the Experiments toggle UI itself.
    */
   seedPreviewFeatures?: boolean;
+  previewFeatureOverrides?: Record<string, boolean>;
   user?: keyof typeof TEST_IDENTITIES;
   identity?: RelayBridgeIdentity;
   relayAuthMode?: "http-header" | "nip42";
@@ -1049,14 +1054,23 @@ async function seedDefaultCommunity(
   );
 }
 
-async function seedPreviewFeaturesEnabled(page: Page) {
+async function seedPreviewFeaturesEnabled(
+  page: Page,
+  featureOverrides: Record<string, boolean> = {},
+) {
   await page.addInitScript(
-    ({ key, ids }) => {
+    ({ key, ids, defaultOffIds, featureOverrides: explicitOverrides }) => {
       const overrides: Record<string, boolean> = {};
-      for (const id of ids) overrides[id] = true;
+      for (const id of ids) overrides[id] = !defaultOffIds.includes(id);
+      Object.assign(overrides, explicitOverrides);
       window.localStorage.setItem(key, JSON.stringify(overrides));
     },
-    { key: FEATURE_OVERRIDES_STORAGE_KEY, ids: PREVIEW_FEATURE_IDS },
+    {
+      key: FEATURE_OVERRIDES_STORAGE_KEY,
+      ids: PREVIEW_FEATURE_IDS,
+      defaultOffIds: PREVIEW_FEATURE_DEFAULT_OFF_IDS,
+      featureOverrides,
+    },
   );
 }
 
@@ -1113,7 +1127,8 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       page,
       activePubkey,
       options.relayWsUrl,
-      options.mock?.visualFixture?.businessName,
+      options.mock?.visualFixture?.businessName ??
+        options.mock?.referenceWorkspaceBusinessName,
     );
   }
   await installMockTenantDirectory(
@@ -1128,10 +1143,11 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity?.pubkey,
     );
   }
-  // Default to opting every preview feature in. Specs that exercise the
-  // Experiments toggle UI itself pass `seedPreviewFeatures: false`.
+  // Seed preview-feature overrides for E2E by default. Manifest-default-off
+  // features remain off unless a spec explicitly enables them. Specs that
+  // exercise the Experiments toggle UI itself pass `seedPreviewFeatures: false`.
   if (options.seedPreviewFeatures !== false) {
-    await seedPreviewFeaturesEnabled(page);
+    await seedPreviewFeaturesEnabled(page, options.previewFeatureOverrides);
   }
 
   await page.addInitScript(
@@ -1249,6 +1265,7 @@ export async function installMockBridge(
     skipOnboardingSeed?: boolean;
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
+    previewFeatureOverrides?: Record<string, boolean>;
     forceRelayPacing?: boolean;
     identity?: RelayBridgeIdentity;
   },
@@ -1351,6 +1368,7 @@ export async function installMockBridge(
     skipOnboardingSeed: options?.skipOnboardingSeed,
     skipCommunitySeed: options?.skipCommunitySeed,
     seedPreviewFeatures: options?.seedPreviewFeatures,
+    previewFeatureOverrides: options?.previewFeatureOverrides,
   });
 }
 

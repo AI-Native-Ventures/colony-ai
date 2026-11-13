@@ -45,6 +45,7 @@
       "company-team.spec.ts",
       "company-hiring.spec.ts",
       "cofounder-map.spec.ts",
+      "map-shell.spec.ts",
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
       "harness-model-list.spec.ts",
@@ -134,6 +135,10 @@
     {
       "paths": ["desktop/src/features/home/**"],
       "specs": ["cofounder-playbooks.spec.ts"]
+    },
+    {
+      "paths": ["desktop/src/features/map-shell/**"],
+      "specs": ["map-shell.spec.ts"]
     },
     {
       "paths": [

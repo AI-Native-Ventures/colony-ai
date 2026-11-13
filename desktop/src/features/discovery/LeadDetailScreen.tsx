@@ -25,6 +25,8 @@ import {
   useCustomerRecords,
 } from "@/features/cofounder/customerHooks";
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
+import { useStartDelivery } from "@/features/cofounder/startDeliveryHooks";
+import { StartDeliveryDialog } from "@/features/cofounder/ui/StartDeliveryDialog";
 import { CloseOpportunityDialog } from "./LeadDialogs";
 import { BusinessLogoMark } from "./BusinessLogoMark";
 import { AddToOutreachListDialog } from "./AddToOutreachListDialog";
@@ -257,6 +259,17 @@ export function LeadDetailScreen({
   const customerAccess = useCustomerRecordCapabilities();
   const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
   const customerAction = useCustomerRecordAction();
+  const deliveryClientName =
+    customerRecordsQuery.data?.find(
+      (candidate) =>
+        candidate.partyId === (prospect?.record.prospect.party.partyId ?? ""),
+    )?.displayName ??
+    prospect?.record.prospect.party.displayName ??
+    "";
+  const startDelivery = useStartDelivery(
+    deliveryClientName,
+    customerAccess.enabled && customerAccess.canStartDelivery,
+  );
   const whatsappContact = prospect
     ? findWhatsAppContactForLead(
         prospect.record.prospectId,
@@ -404,6 +417,7 @@ export function LeadDetailScreen({
       await customerAction.mutateAsync(
         customerActions.convertToClient(customerRecord),
       );
+      startDelivery.requestAfterConversion();
     } catch (convertError) {
       setConversionError(
         convertError instanceof Error && convertError.message.trim()
@@ -1044,6 +1058,12 @@ export function LeadDetailScreen({
         listName={name}
         onOpenChange={setBatchOpen}
         open={batchOpen}
+      />
+      <StartDeliveryDialog
+        clientName={customerRecord?.displayName ?? name}
+        onOpenChange={startDelivery.setIsOpen}
+        open={startDelivery.isOpen}
+        playbooks={startDelivery.eligiblePlaybooks}
       />
       <Dialog
         onOpenChange={(open) => {

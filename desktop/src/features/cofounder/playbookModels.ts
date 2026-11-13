@@ -6,6 +6,8 @@ export type PlaybookStepModel = {
     kind: "agent" | "worker" | "owner" | "function";
     label: string;
     avatarName?: string;
+    avatarUrl?: string | null;
+    avatarInitials?: string;
   };
   detail: string | null;
   inputs: string[];
@@ -47,6 +49,7 @@ export type PlaybookJobModel = {
   version: number;
   status: "running" | "completed" | "cancelled";
   startedAtLabel: string;
+  startedToday: boolean;
   currentStepId: string;
   roundLabel: string | null;
   steps: PlaybookJobStepModel[];

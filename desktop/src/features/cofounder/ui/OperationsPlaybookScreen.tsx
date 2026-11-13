@@ -7,6 +7,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import type { Channel } from "@/shared/api/types";
+import { getInitials } from "@/shared/lib/initials";
 
 import { FUNCTION_DETAILS } from "../functions";
 import type { FunctionId } from "../cofounderRecords";
@@ -34,7 +35,10 @@ import type {
 import { TeamPage, TeamPageTitle } from "../../company-team/ui/TeamPage";
 import { PlaybookScreen } from "./PlaybookScreen";
 
-type ProfileLookup = Record<string, { displayName: string | null }>;
+type ProfileLookup = Record<
+  string,
+  { avatarUrl?: string | null; displayName: string | null }
+>;
 
 function scoutChannel(
   channels: readonly Channel[],
@@ -67,6 +71,30 @@ function formatDate(timestamp: number | null): string {
   }).format(new Date(timestamp * 1_000));
 }
 
+function formatJobStart(timestamp: number | null): {
+  label: string;
+  startedToday: boolean;
+} {
+  if (timestamp === null) {
+    return { label: "Date unavailable", startedToday: false };
+  }
+  const startedAt = new Date(timestamp * 1_000);
+  const now = new Date();
+  const startedToday =
+    startedAt.getFullYear() === now.getFullYear() &&
+    startedAt.getMonth() === now.getMonth() &&
+    startedAt.getDate() === now.getDate();
+  return {
+    label: startedToday
+      ? "today"
+      : new Intl.DateTimeFormat("en-GB", {
+          day: "numeric",
+          month: "short",
+        }).format(startedAt),
+    startedToday,
+  };
+}
+
 function titleCaseIdentifier(value: string): string {
   return value
     .replaceAll(/[_-]+/gu, " ")
@@ -96,10 +124,20 @@ function stepModel(
 ): PlaybookStepModel {
   const owner = step.owner;
   if (owner.kind === "owner") {
+    const ownerProfile = selfPubkey
+      ? profiles[selfPubkey.toLowerCase()]
+      : undefined;
+    const ownerName = ownerProfile?.displayName?.trim() || "You";
     return {
       id: step.stepId,
       title: step.title,
-      owner: { kind: "owner", label: "You" },
+      owner: {
+        kind: "owner",
+        label: "You",
+        avatarName: ownerName,
+        avatarUrl: ownerProfile?.avatarUrl?.trim() || null,
+        avatarInitials: getInitials(ownerName),
+      },
       detail: step.detail,
       inputs: step.inputs,
       outputs: step.outputs,
@@ -164,12 +202,14 @@ function jobModel(
   selfPubkey: string | undefined,
 ): PlaybookJobModel {
   const progress = jobProgress(job);
+  const started = formatJobStart(job.startedAt);
   return {
     id: job.jobId,
     clientName: job.title,
     version: job.playbookVersion,
     status: job.status,
-    startedAtLabel: formatDate(job.startedAt),
+    startedAtLabel: started.label,
+    startedToday: started.startedToday,
     currentStepId: job.currentStepId ?? "",
     roundLabel: progress.currentStep?.progressLabel ?? null,
     steps: job.steps.map((step) => ({
@@ -333,6 +373,7 @@ export function OperationsPlaybookScreen({
     const keys = [
       playbook.createdByPubkey,
       playbook.updatedByPubkey,
+      ...(membership.data?.pubkey ? [membership.data.pubkey] : []),
       ...(playbook.pending ? [playbook.pending.proposedByPubkey] : []),
       ...playbook.records.map((record) => record.actorPubkey),
       ...(playbook.current?.steps ?? [])
@@ -343,7 +384,7 @@ export function OperationsPlaybookScreen({
       0,
       200,
     );
-  }, [playbook]);
+  }, [membership.data?.pubkey, playbook]);
   const profilesQuery = useUsersBatchQuery(profilePubkeys, {
     enabled: profilePubkeys.length > 0,
   });

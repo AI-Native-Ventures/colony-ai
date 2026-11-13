@@ -28,6 +28,9 @@ import { useAppShellDesktopNotifications } from "@/app/useAppShellDesktopNotific
 import { useAppShellLifecycleEffects } from "@/app/useAppShellLifecycleEffects";
 import { useChannelActivityProjection } from "@/app/useChannelActivityProjection";
 import { useTauriWindowDrag } from "@/app/useTauriWindowDrag";
+import { MapShell } from "@/features/map-shell/MapShell";
+import { MapShellDialogs } from "@/features/map-shell/MapShellDialogs";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import { useWebviewZoomShortcuts } from "@/app/useWebviewZoomShortcuts";
 import {
   channelsQueryKey,
@@ -101,7 +104,11 @@ import { useRelayAutoHeal } from "@/shared/api/useRelayAutoHeal";
 import { useDeferredStartup } from "@/shared/hooks/useDeferredStartup";
 import { useWebviewScrollBoundaryLock } from "@/shared/hooks/useWebviewScrollBoundaryLock";
 import { joinChannel } from "@/shared/api/tauri";
-import type { ChannelVisibility, SearchHit } from "@/shared/api/types";
+import type {
+  ChannelVisibility,
+  SearchHit,
+  UserSearchResult,
+} from "@/shared/api/types";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { ChannelNavigationProvider } from "@/shared/context/ChannelNavigationContext";
 import { useAppDeepLinks } from "@/shared/useAppDeepLinks";
@@ -118,12 +125,15 @@ export function AppShell() {
   const communitiesHook = useCommunities();
   const location = useLocation();
   const isNarrowWindow = useIsMobile();
+  const mapShellEnabled = useMapShellEnabled();
   const { selectedChannelId, selectedView } = React.useMemo(
     () => deriveShellRoute(location.pathname),
     [location.pathname],
   );
   const hasCommunityRail =
-    communitiesHook.communities.length > 1 && !isNarrowWindow;
+    !mapShellEnabled &&
+    communitiesHook.communities.length > 1 &&
+    !isNarrowWindow;
   const addCommunityDialog = useAddCommunityDialogState();
   const [workspaceDialogMode, setWorkspaceDialogMode] = React.useState<
     "add-community" | "create" | "join"
@@ -159,6 +169,7 @@ export function AppShell() {
   const {
     goChannel,
     goHome,
+    goActivity,
     goPower,
     goNewMessage,
     goAgents,
@@ -166,6 +177,7 @@ export function AppShell() {
     goClients,
     goWork,
     goToday,
+    goNeedsYou,
     goSettings,
     closeSettings,
     openSearchHit,
@@ -475,7 +487,9 @@ export function AppShell() {
       notificationSettings.settings,
       notificationSettings.setDesktopEnabled,
       true,
-      selectedView === "home" && !settingsOpen,
+      mapShellEnabled
+        ? location.pathname === "/activity"
+        : selectedView === "home" && !settingsOpen,
       getChannelReadAt,
       readStateVersion,
       highPriorityUnreadChannelIds,
@@ -520,12 +534,12 @@ export function AppShell() {
   );
 
   const createChannelMutation = useCreateChannelMutation();
-  const openDmMutation = useOpenDmMutation();
+  const { mutateAsync: openDm } = useOpenDmMutation();
   const hideDmMutation = useHideDmMutation();
   useDmResurfaceFromMessages({
     pubkey: identityQuery.data?.pubkey,
     relayUrl: communitiesHook.activeCommunity?.relayUrl,
-    reopen: openDmMutation.mutateAsync,
+    reopen: openDm,
   });
   const {
     browseDialogType,
@@ -633,6 +647,109 @@ export function AppShell() {
       void openSearchHit(hit, { query });
     },
     [openSearchHit],
+  );
+  const handleOpenWhatsAppContact = React.useCallback(
+    (channelId: string, waId: string) => {
+      void goChannel(channelId, {
+        ...(waId ? { whatsappContactWaId: waId } : {}),
+        whatsappDeskTab: "chats",
+      });
+    },
+    [goChannel],
+  );
+  const handleOpenUser = React.useCallback(
+    async (user: UserSearchResult) => {
+      const directMessage = await openDm({
+        pubkeys: [user.pubkey],
+      });
+      await goChannel(directMessage.id);
+    },
+    [goChannel, openDm],
+  );
+  const mapShell = (
+    <MapShell
+      activeWorkspace={communitiesHook.activeCommunity}
+      channels={sidebarChannels}
+      currentChannelId={selectedChannelId}
+      currentPubkey={identityQuery.data?.pubkey}
+      fallbackDisplayName={identityQuery.data?.displayName}
+      homeBadgeCount={homeBadgeCount}
+      onActivity={() => void goActivity()}
+      onBrowseChannels={handleOpenBrowseChannels}
+      onClients={() => void goClients()}
+      onCopyWorkspaceLink={() => {
+        const workspace = communitiesHook.activeCommunity;
+        if (workspace) {
+          copyTextToClipboard(workspace.relayUrl, "Workspace link copied.");
+        }
+      }}
+      onCreateAgent={() => requestOpenCreateAgent()}
+      onCreateChannel={() => setIsCreateChannelOpen(true)}
+      onCreateWorkspace={() => openWorkspaceDialog("create")}
+      onGoHome={() => void goHome()}
+      onInvitePeople={() => handleOpenSettings("community-members")}
+      onJoinWorkspace={() => openWorkspaceDialog("join")}
+      onNeedsYou={() => void goNeedsYou()}
+      onOpenChannel={handleSidebarChannelSelect}
+      onOpenResult={handleOpenSearchResult}
+      onOpenSearch={handleOpenSearch}
+      onOpenSettings={handleOpenSettings}
+      onOpenUser={handleOpenUser}
+      onOpenWhatsAppContact={handleOpenWhatsAppContact}
+      onOpenWorkspaceSettings={openWorkspaceSettings}
+      onPower={() => void goPower()}
+      onSendFeedback={() => setIsSendFeedbackOpen(true)}
+      onSetPresenceStatus={(status) => presenceSession.setStatus(status)}
+      onSetUserStatus={setUserStatusMutation.mutate}
+      onClearUserStatus={() =>
+        setUserStatusMutation.mutate({ text: "", emoji: "" })
+      }
+      onSwitchWorkspace={handleSwitchCommunity}
+      onTeam={() => void goTeam()}
+      presenceStatus={presenceSession.currentStatus}
+      isPresencePending={presenceSession.isPending}
+      profile={profileQuery.data}
+      searchFocusRequest={searchFocusRequest}
+      selfUserStatus={
+        deferredPubkey
+          ? (visibleUserStatus(
+              selfStatusQuery.data?.[deferredPubkey.toLowerCase()],
+            ) ?? undefined)
+          : undefined
+      }
+      unreadChannelIds={unreadChannelIds}
+      unreadChannelCounts={unreadChannelCounts}
+      workspaces={communitiesHook.communities}
+    />
+  );
+  const settingsContent = (
+    <React.Suspense fallback={null}>
+      <LazySettingsScreen
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        currentPubkey={identityQuery.data?.pubkey}
+        fallbackDisplayName={identityQuery.data?.displayName}
+        isUpdatingDesktopNotifications={
+          notificationSettings.isUpdatingDesktopEnabled
+        }
+        notificationErrorMessage={notificationSettings.errorMessage}
+        notificationPermission={notificationSettings.permission}
+        notificationSettings={notificationSettings.settings}
+        onClose={handleCloseSettings}
+        onGoBack={goBack}
+        onGoForward={goForward}
+        onSectionChange={handleSettingsSectionChange}
+        onSetDesktopNotificationsEnabled={
+          notificationSettings.setDesktopEnabled
+        }
+        onSetHomeBadgeEnabled={notificationSettings.setHomeBadgeEnabled}
+        onSetSlotAlertsEnabled={notificationSettings.setSlotAlertsEnabled}
+        onSetNotifyWhileViewing={notificationSettings.setNotifyWhileViewing}
+        onSetAllSlotAlertsEnabled={notificationSettings.setAllSlotAlertsEnabled}
+        onSetSoundForSlot={notificationSettings.setSoundForSlot}
+        section={settingsSection}
+      />
+    </React.Suspense>
   );
   useAppShellLifecycleEffects({
     desktopBadgeEnabled: true,
@@ -743,162 +860,140 @@ export function AppShell() {
                   ? "true"
                   : undefined
               }
-              data-testid="app-sidebar-layer"
+              data-testid={mapShellEnabled ? undefined : "app-sidebar-layer"}
             >
               <AppProfilePanelProvider>
                 {settingsOpen ? (
-                  <div className="flex min-h-0 flex-1 overflow-hidden">
-                    <React.Suspense fallback={null}>
-                      <LazySettingsScreen
-                        canGoBack={canGoBack}
-                        canGoForward={canGoForward}
-                        currentPubkey={identityQuery.data?.pubkey}
-                        fallbackDisplayName={identityQuery.data?.displayName}
-                        isUpdatingDesktopNotifications={
-                          notificationSettings.isUpdatingDesktopEnabled
-                        }
-                        notificationErrorMessage={
-                          notificationSettings.errorMessage
-                        }
-                        notificationPermission={notificationSettings.permission}
-                        notificationSettings={notificationSettings.settings}
-                        onClose={handleCloseSettings}
-                        onGoBack={goBack}
-                        onGoForward={goForward}
-                        onSectionChange={handleSettingsSectionChange}
-                        onSetDesktopNotificationsEnabled={
-                          notificationSettings.setDesktopEnabled
-                        }
-                        onSetHomeBadgeEnabled={
-                          notificationSettings.setHomeBadgeEnabled
-                        }
-                        onSetSlotAlertsEnabled={
-                          notificationSettings.setSlotAlertsEnabled
-                        }
-                        onSetNotifyWhileViewing={
-                          notificationSettings.setNotifyWhileViewing
-                        }
-                        onSetAllSlotAlertsEnabled={
-                          notificationSettings.setAllSlotAlertsEnabled
-                        }
-                        onSetSoundForSlot={notificationSettings.setSoundForSlot}
-                        section={settingsSection}
-                      />
-                    </React.Suspense>
+                  <div
+                    className={
+                      "flex min-h-0 flex-1 overflow-hidden" +
+                      (mapShellEnabled ? " flex-col" : "")
+                    }
+                  >
+                    {mapShellEnabled ? mapShell : null}
+                    {mapShellEnabled ? (
+                      <div className="flex min-h-0 flex-1 overflow-hidden">
+                        {settingsContent}
+                      </div>
+                    ) : (
+                      settingsContent
+                    )}
                   </div>
                 ) : (
                   <div
                     className="relative flex min-h-0 flex-1 overflow-visible"
                     data-colony-workspace-frame-content
                   >
-                    <AppSidebar
-                      activeCommunity={communitiesHook.activeCommunity}
-                      channels={sidebarChannels}
-                      currentPubkey={identityQuery.data?.pubkey}
-                      errorMessage={channelsErrorDisplay}
-                      fallbackDisplayName={identityQuery.data?.displayName}
-                      homeBadgeCount={homeBadgeCount}
-                      isPowerActive={location.pathname === "/power"}
-                      addCommunityPrefill={addCommunityDialog.prefill}
-                      isAddCommunityOpen={addCommunityDialog.open}
-                      workspaceDialogMode={workspaceDialogMode}
-                      relayConnectionCard={relayConnectionCard}
-                      isCreatingChannel={createChannelMutation.isPending}
-                      isLoading={channelsQuery.isLoading}
-                      isCreateChannelOpen={isCreateChannelOpen}
-                      isPresencePending={presenceSession.isPending}
-                      onAddCommunity={(community) => {
-                        const id = communitiesHook.addCommunity({
-                          ...community,
-                          pubkey:
-                            community.pubkey ?? identityQuery.data?.pubkey,
-                        });
-                        handleSwitchCommunity(id);
-                      }}
-                      onAddCommunityOpenChange={
-                        handleAddCommunityDialogOpenChange
-                      }
-                      onNewMessage={goNewMessage}
-                      onBackgroundClick={requestFocusedThreadClose}
-                      onCreateChannelOpenChange={setIsCreateChannelOpen}
-                      onOpenWorkspaceDialog={openWorkspaceDialog}
-                      onOpenWorkspaceSettings={openWorkspaceSettings}
-                      onSendFeedback={() => setIsSendFeedbackOpen(true)}
-                      onSwitchCommunity={handleSwitchCommunity}
-                      onRemoveWorkspace={handleRemoveCommunity}
-                      onCreateAgent={() => requestOpenCreateAgent()}
-                      selfPresenceStatus={presenceSession.currentStatus}
-                      communities={communitiesHook.communities}
-                      onCreateChannel={handleCreateChannel}
-                      onHideDm={handleHideDm}
-                      onMarkAllChannelsRead={markAllChannelsRead}
-                      onMarkChannelRead={markChannelRead}
-                      onMarkChannelUnread={markChannelUnread}
-                      onBrowseChannels={handleOpenBrowseChannels}
-                      onOpenDm={async ({ pubkeys }) => {
-                        const directMessage = await openDmMutation.mutateAsync({
-                          pubkeys,
-                        });
-                        await goChannel(directMessage.id);
-                      }}
-                      onSelectToday={() => void goToday()}
-                      onSelectPower={() => void goPower()}
-                      onSelectChannel={handleSidebarChannelSelect}
-                      onOpenSearchResult={handleOpenSearchResult}
-                      searchChannels={channels}
-                      searchFocusRequests={[
-                        searchFocusRequest,
-                        scopeSearchFocusRequest,
-                      ]}
-                      onSelectHome={() => void goHome()}
-                      onSelectAgents={() => void goAgents()}
-                      onSelectTeam={() => void goTeam()}
-                      onSelectClients={() => void goClients()}
-                      onSelectWork={() => void goWork()}
-                      onSelectSettings={handleOpenSettings}
-                      onSetPresenceStatus={(status) =>
-                        presenceSession.setStatus(status)
-                      }
-                      onSetUserStatus={setUserStatusMutation.mutate}
-                      onClearUserStatus={() =>
-                        setUserStatusMutation.mutate({
-                          text: "",
-                          emoji: "",
-                        })
-                      }
-                      profile={profileQuery.data}
-                      showSidebarCollapseButton
-                      suppressTodaySelection={location.pathname.startsWith(
-                        "/navigation/",
-                      )}
-                      selfUserStatus={
-                        deferredPubkey
-                          ? (visibleUserStatus(
-                              selfStatusQuery.data?.[
-                                deferredPubkey.toLowerCase()
-                              ],
-                            ) ?? undefined)
-                          : undefined
-                      }
-                      selectedChannelId={selectedChannelId}
-                      selectedView={selectedView}
-                      unreadChannelIds={unreadChannelIds}
-                      {...{ highPriorityUnreadChannelIds }}
-                      previewActivityChannelIds={unreadThreadChannelIds}
-                      unreadChannelCounts={unreadChannelCounts}
-                      mutedChannelIds={mutedChannelIds}
-                      onMuteChannel={muteChannel}
-                      onUnmuteChannel={unmuteChannel}
-                      starredChannelIds={starredChannelIds}
-                      onStarChannel={starChannel}
-                      onUnstarChannel={unstarChannel}
-                    />
+                    {!mapShellEnabled ? (
+                      <AppSidebar
+                        activeCommunity={communitiesHook.activeCommunity}
+                        channels={sidebarChannels}
+                        currentPubkey={identityQuery.data?.pubkey}
+                        errorMessage={channelsErrorDisplay}
+                        fallbackDisplayName={identityQuery.data?.displayName}
+                        homeBadgeCount={homeBadgeCount}
+                        isPowerActive={location.pathname === "/power"}
+                        addCommunityPrefill={addCommunityDialog.prefill}
+                        isAddCommunityOpen={addCommunityDialog.open}
+                        workspaceDialogMode={workspaceDialogMode}
+                        relayConnectionCard={relayConnectionCard}
+                        isCreatingChannel={createChannelMutation.isPending}
+                        isLoading={channelsQuery.isLoading}
+                        isCreateChannelOpen={isCreateChannelOpen}
+                        isPresencePending={presenceSession.isPending}
+                        onAddCommunity={(community) => {
+                          const id = communitiesHook.addCommunity({
+                            ...community,
+                            pubkey:
+                              community.pubkey ?? identityQuery.data?.pubkey,
+                          });
+                          handleSwitchCommunity(id);
+                        }}
+                        onAddCommunityOpenChange={
+                          handleAddCommunityDialogOpenChange
+                        }
+                        onNewMessage={goNewMessage}
+                        onBackgroundClick={requestFocusedThreadClose}
+                        onCreateChannelOpenChange={setIsCreateChannelOpen}
+                        onOpenWorkspaceDialog={openWorkspaceDialog}
+                        onOpenWorkspaceSettings={openWorkspaceSettings}
+                        onSendFeedback={() => setIsSendFeedbackOpen(true)}
+                        onSwitchCommunity={handleSwitchCommunity}
+                        onRemoveWorkspace={handleRemoveCommunity}
+                        onCreateAgent={() => requestOpenCreateAgent()}
+                        selfPresenceStatus={presenceSession.currentStatus}
+                        communities={communitiesHook.communities}
+                        onCreateChannel={handleCreateChannel}
+                        onHideDm={handleHideDm}
+                        onMarkAllChannelsRead={markAllChannelsRead}
+                        onMarkChannelRead={markChannelRead}
+                        onMarkChannelUnread={markChannelUnread}
+                        onBrowseChannels={handleOpenBrowseChannels}
+                        onOpenDm={async ({ pubkeys }) => {
+                          const directMessage = await openDm({ pubkeys });
+                          await goChannel(directMessage.id);
+                        }}
+                        onSelectToday={() => void goToday()}
+                        onSelectPower={() => void goPower()}
+                        onSelectChannel={handleSidebarChannelSelect}
+                        onOpenSearchResult={handleOpenSearchResult}
+                        searchChannels={channels}
+                        searchFocusRequests={[
+                          searchFocusRequest,
+                          scopeSearchFocusRequest,
+                        ]}
+                        onSelectHome={() => void goHome()}
+                        onSelectAgents={() => void goAgents()}
+                        onSelectTeam={() => void goTeam()}
+                        onSelectClients={() => void goClients()}
+                        onSelectWork={() => void goWork()}
+                        onSelectSettings={handleOpenSettings}
+                        onSetPresenceStatus={(status) =>
+                          presenceSession.setStatus(status)
+                        }
+                        onSetUserStatus={setUserStatusMutation.mutate}
+                        onClearUserStatus={() =>
+                          setUserStatusMutation.mutate({
+                            text: "",
+                            emoji: "",
+                          })
+                        }
+                        profile={profileQuery.data}
+                        showSidebarCollapseButton
+                        suppressTodaySelection={location.pathname.startsWith(
+                          "/navigation/",
+                        )}
+                        selfUserStatus={
+                          deferredPubkey
+                            ? (visibleUserStatus(
+                                selfStatusQuery.data?.[
+                                  deferredPubkey.toLowerCase()
+                                ],
+                              ) ?? undefined)
+                            : undefined
+                        }
+                        selectedChannelId={selectedChannelId}
+                        selectedView={selectedView}
+                        unreadChannelIds={unreadChannelIds}
+                        {...{ highPriorityUnreadChannelIds }}
+                        previewActivityChannelIds={unreadThreadChannelIds}
+                        unreadChannelCounts={unreadChannelCounts}
+                        mutedChannelIds={mutedChannelIds}
+                        onMuteChannel={muteChannel}
+                        onUnmuteChannel={unmuteChannel}
+                        starredChannelIds={starredChannelIds}
+                        onStarChannel={starChannel}
+                        onUnstarChannel={unstarChannel}
+                      />
+                    ) : null}
                     <TerminalContextOverrideProvider
                       onChange={setTerminalContextOverride}
                     >
                       <AppShellChannelSurface
                         topChrome={
-                          isNarrowWindow ? (
+                          mapShellEnabled ? (
+                            mapShell
+                          ) : isNarrowWindow ? (
                             <MobileWorkspaceHeader
                               activeWorkspace={communitiesHook.activeCommunity}
                               workspaces={communitiesHook.communities}
@@ -962,6 +1057,21 @@ export function AppShell() {
                     />
                   </div>
                 )}
+                {mapShellEnabled ? (
+                  <MapShellDialogs
+                    addWorkspacePrefill={addCommunityDialog.prefill}
+                    isAddWorkspaceOpen={addCommunityDialog.open}
+                    isCreateChannelOpen={isCreateChannelOpen}
+                    isCreatingChannel={createChannelMutation.isPending}
+                    onAddWorkspaceOpenChange={
+                      handleAddCommunityDialogOpenChange
+                    }
+                    onCreateChannel={handleCreateChannel}
+                    onCreateChannelOpenChange={setIsCreateChannelOpen}
+                    onOpenWorkspaceDialog={openWorkspaceDialog}
+                    workspaceDialogMode={workspaceDialogMode}
+                  />
+                ) : null}
                 <RequestedAgentCreateDialogs />
                 <AgentManagementDialogs />
                 <AppShellOverlays
