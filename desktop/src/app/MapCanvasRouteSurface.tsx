@@ -167,6 +167,9 @@ function routerHrefForEmbeddedDeskTab(
   )?.[1];
   if (!tab) return null;
   const destination = new URL(sourceHref, window.location.href);
+  // The tab's real route determines its fresh-load default. The current map
+  // root remains in persisted history state instead of leaking into this URL.
+  destination.searchParams.delete("mapJob");
   destination.searchParams.set("whatsappDeskTab", tab);
   return `${destination.pathname}${destination.search}${destination.hash}`;
 }

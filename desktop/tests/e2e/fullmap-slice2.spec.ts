@@ -414,6 +414,7 @@ test.describe("full map canvas slice 2", () => {
     await expect
       .poll(() => currentRoute(page))
       .toContain("whatsappDeskTab=chats");
+    await expect.poll(() => currentRoute(page)).not.toContain("mapJob=");
     await expect(page.getByTestId("channel-view-tab-chats")).toHaveAttribute(
       "aria-current",
       "page",
