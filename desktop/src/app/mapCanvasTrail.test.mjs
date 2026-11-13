@@ -12,10 +12,10 @@ import {
 const root = { functionId: "sales", jobName: "Closing" };
 
 test("appends a deep route with the captured departing screen", () => {
-  const trail = createMapCanvasTrail(root, "/channels/outreach?tab=pipeline", 4);
+  const trail = createMapCanvasTrail(root, "/discovery", 4);
   const result = planMapCanvasTrailNavigation({
     historyIndex: 4,
-    href: "/channels/outreach?tab=chats",
+    href: "/discovery/campaigns",
     scroll: [{ index: 3, left: 0, top: 240 }],
     snapshot: { height: 699, html: "<div>pipeline</div>", width: 1204 },
     trail,
@@ -25,13 +25,13 @@ test("appends a deep route with the captured departing screen", () => {
   assert.deepEqual(result.trail.entries, [
     {
       historyIndex: 4,
-      href: "/channels/outreach?tab=pipeline",
+      href: "/discovery",
       scroll: [{ index: 3, left: 0, top: 240 }],
       snapshot: { height: 699, html: "<div>pipeline</div>", width: 1204 },
     },
     {
       historyIndex: 5,
-      href: "/channels/outreach?tab=chats",
+      href: "/discovery/campaigns",
       scroll: [],
       snapshot: null,
     },
