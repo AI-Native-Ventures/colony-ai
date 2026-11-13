@@ -603,11 +603,16 @@ test.describe("co-founder mode desktop", () => {
     );
   });
 
-  test("every job link follows its route table entry", async ({ page }) => {
-    await installMockBridge(page, fixture());
+  test("every map-home job link follows its route table entry", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
     await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/#/company/map");
+    await page.goto("/#/");
+    await expect(page.getByTestId("map-shell-bar")).toBeVisible();
     for (const functionId of FUNCTION_ORDER) {
       await selectMapPart(page, functionId, FUNCTION_DETAILS[functionId].name);
       for (const jobName of FUNCTION_DETAILS[functionId].subFunctions) {
@@ -989,13 +994,16 @@ test.describe("co-founder mode desktop", () => {
     for (const theme of ["light", "dark"] as const) {
       const capturePage = await browser.newPage();
       await seedCofounderTheme(capturePage, theme);
-      await installMockBridge(capturePage, fixture({ includeScout: true }));
+      await installMockBridge(capturePage, fixture({ includeScout: true }), {
+        previewFeatureOverrides: { map_home: true },
+      });
       await seedCompanyMapBusiness(capturePage);
       await seedCompanyMapMoneyRails(capturePage);
       await seedCompanyMapWhatsApp(capturePage, MAP_CHANNEL_ID);
       await capturePage.emulateMedia({ colorScheme: theme });
       await capturePage.setViewportSize({ width: 1440, height: 900 });
-      await capturePage.goto("/#/company/map");
+      await capturePage.goto("/#/");
+      await expect(capturePage.getByTestId("map-shell-bar")).toBeVisible();
       await expect(
         capturePage.getByTestId("cofounder-map-stage"),
       ).toBeVisible();
