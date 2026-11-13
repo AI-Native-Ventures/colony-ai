@@ -35,6 +35,7 @@ import {
   PAGE_BUDGET_USD,
   roundUsd,
 } from "./discoveryCampaignContinuation";
+import { createFetchAhead } from "./discoveryFetchAhead";
 import { fitScore, leadNameKey, mapPlaceToProspect } from "./discoveryMapping";
 import {
   fetchCampaignPage,
@@ -273,6 +274,8 @@ export function createDiscoveryController(
   let disposed = false;
   let flushing = false;
   const inflight = new Set<Promise<void>>();
+  // Later approved pages are asked for while earlier ones are being saved.
+  const ahead = createFetchAhead(deps);
   const flushAttempted = new Set<string>();
   const listeners = new Set<(campaign: DiscoveryCampaign | null) => void>();
 
@@ -310,6 +313,7 @@ export function createDiscoveryController(
       return;
     }
     stopActive("paused");
+    ahead.stop();
     commit(emptyState(pubkey));
   }
 
@@ -593,10 +597,14 @@ export function createDiscoveryController(
           await finish(run, context);
           return;
         }
+        ahead.drop(campaign.id, campaign.skip);
+        ahead.start(campaign, pending !== null);
         const page =
           pending ??
-          (await fetchCampaignPage(campaign, run.abort.signal, (request) =>
-            searchPage(run, request),
+          (await ahead.pageAt(campaign, run.abort.signal, () =>
+            fetchCampaignPage(campaign, run.abort.signal, (request) =>
+              searchPage(run, request),
+            ),
           ));
         pending = null;
         if (!isLive(run)) {
@@ -1154,6 +1162,7 @@ export function createDiscoveryController(
       if (active?.campaignId === target.id) stopActive("cancelled");
       else
         patch(target.id, (campaign) => ({ ...campaign, status: "cancelled" }));
+      ahead.stop(target.id); // A cancelled campaign is never resumed.
     },
 
     dispose() {
@@ -1162,6 +1171,7 @@ export function createDiscoveryController(
       active?.abort.abort();
       active = null;
       listeners.clear();
+      ahead.stop();
     },
 
     whenIdle: async () => {
