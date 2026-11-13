@@ -371,7 +371,11 @@ export function MapShell({
   const mapHomeRoute =
     location.pathname === "/" || location.pathname === "/company/map";
   const openMapPart = useCompanyMapOpenPart();
-  const mapCanvasTrail = mapCanvasTrailForHref(location.state, location.href);
+  const mapCanvasTrail = mapCanvasTrailForHref(
+    location.state,
+    location.href,
+    activeWorkspace?.id ?? "no-active-community",
+  );
   const mapWindowJob =
     mapCanvasTrail?.root ??
     companyMapWindowJobForRoute(

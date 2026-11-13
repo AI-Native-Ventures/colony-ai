@@ -10,9 +10,10 @@ import {
 } from "./mapCanvasTrail.ts";
 
 const root = { functionId: "sales", jobName: "Closing" };
+const communityId = "fullmap-workspace-one";
 
 test("appends a deep route with the captured departing screen", () => {
-  const trail = createMapCanvasTrail(root, "/discovery", 4);
+  const trail = createMapCanvasTrail(root, "/discovery", 4, communityId);
   const result = planMapCanvasTrailNavigation({
     historyIndex: 4,
     href: "/discovery/campaigns",
@@ -39,7 +40,7 @@ test("appends a deep route with the captured departing screen", () => {
 });
 
 test("swaps same-route tabs without growing the trail", () => {
-  const trail = createMapCanvasTrail(root, "/leads?tab=queue", 2);
+  const trail = createMapCanvasTrail(root, "/leads?tab=queue", 2, communityId);
   const result = planMapCanvasTrailNavigation({
     historyIndex: 2,
     href: "/leads?tab=sent",
@@ -54,7 +55,7 @@ test("swaps same-route tabs without growing the trail", () => {
 });
 
 test("returns to an existing trail screen instead of copying it", () => {
-  const first = createMapCanvasTrail(root, "/discovery", 7);
+  const first = createMapCanvasTrail(root, "/discovery", 7, communityId);
   const second = planMapCanvasTrailNavigation({
     historyIndex: 7,
     href: "/discovery/campaigns",
@@ -78,7 +79,12 @@ test("returns to an existing trail screen instead of copying it", () => {
 });
 
 test("returns through a map-job launch route with its screen identity", () => {
-  const trail = createMapCanvasTrail(root, "/money?mapJob=finance%3AQuotes", 4);
+  const trail = createMapCanvasTrail(
+    root,
+    "/money?mapJob=finance%3AQuotes",
+    4,
+    communityId,
+  );
   const result = planMapCanvasTrailNavigation({
     historyIndex: 5,
     href: "/money",
@@ -103,9 +109,9 @@ test("returns through a map-job launch route with its screen identity", () => {
 });
 
 test("rejects mismatched or unbounded persisted trails", () => {
-  const trail = createMapCanvasTrail(root, "/pipeline", 1);
+  const trail = createMapCanvasTrail(root, "/pipeline", 1, communityId);
   assert.equal(
-    mapCanvasTrailForHref({ mapCanvasTrail: trail }, "/leads"),
+    mapCanvasTrailForHref({ mapCanvasTrail: trail }, "/leads", communityId),
     null,
   );
   assert.equal(
@@ -120,6 +126,19 @@ test("rejects mismatched or unbounded persisted trails", () => {
         },
       },
       "/pipeline",
+      communityId,
+    ),
+    null,
+  );
+});
+
+test("rejects a persisted trail owned by another community", () => {
+  const trail = createMapCanvasTrail(root, "/pipeline", 1, communityId);
+  assert.equal(
+    mapCanvasTrailForHref(
+      { mapCanvasTrail: trail },
+      "/pipeline",
+      "fullmap-workspace-two",
     ),
     null,
   );

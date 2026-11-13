@@ -2,10 +2,11 @@ import type { CompanyMapWindowJob } from "@/features/cofounder/companyMapJobRout
 
 export const MAP_CANVAS_TRAIL_STATE_KEY = "mapCanvasTrail";
 
-const MAP_CANVAS_TRAIL_VERSION = 1;
+const MAP_CANVAS_TRAIL_VERSION = 2;
 export const MAX_MAP_CANVAS_TRAIL_ENTRIES = 12;
 export const MAX_MAP_CANVAS_SNAPSHOT_CHARS = 256 * 1024;
 const MAX_MAP_CANVAS_SCROLL_POSITIONS = 32;
+const MAX_MAP_CANVAS_COMMUNITY_ID_CHARS = 512;
 
 export type MapCanvasScrollPosition = {
   index: number;
@@ -27,6 +28,7 @@ export type MapCanvasTrailEntry = {
 };
 
 export type MapCanvasTrail = {
+  communityId: string;
   entries: readonly MapCanvasTrailEntry[];
   root: CompanyMapWindowJob;
   version: typeof MAP_CANVAS_TRAIL_VERSION;
@@ -67,6 +69,14 @@ function isMapCanvasRoot(value: unknown): value is CompanyMapWindowJob {
     typeof value.jobName === "string" &&
     value.jobName.length > 0 &&
     value.jobName.length <= 160
+  );
+}
+
+function isCommunityId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_MAP_CANVAS_COMMUNITY_ID_CHARS
   );
 }
 
@@ -140,6 +150,7 @@ export function mapCanvasTrailFromState(state: unknown): MapCanvasTrail | null {
   if (
     !isRecord(candidate) ||
     candidate.version !== MAP_CANVAS_TRAIL_VERSION ||
+    !isCommunityId(candidate.communityId) ||
     !isMapCanvasRoot(candidate.root) ||
     !Array.isArray(candidate.entries) ||
     candidate.entries.length === 0 ||
@@ -150,6 +161,7 @@ export function mapCanvasTrailFromState(state: unknown): MapCanvasTrail | null {
   const entries = candidate.entries.map(parseEntry);
   if (entries.some((entry) => entry === null)) return null;
   return {
+    communityId: candidate.communityId,
     entries: entries as MapCanvasTrailEntry[],
     root: candidate.root,
     version: MAP_CANVAS_TRAIL_VERSION,
@@ -160,9 +172,13 @@ export function mapCanvasTrailFromState(state: unknown): MapCanvasTrail | null {
 export function mapCanvasTrailForHref(
   state: unknown,
   href: string,
+  communityId: string,
 ): MapCanvasTrail | null {
   const trail = mapCanvasTrailFromState(state);
-  return trail?.entries.at(-1)?.href === href ? trail : null;
+  return trail?.communityId === communityId &&
+    trail.entries.at(-1)?.href === href
+    ? trail
+    : null;
 }
 
 export function mapCanvasHistoryIndex(state: unknown): number | null {
@@ -176,8 +192,10 @@ export function createMapCanvasTrail(
   root: CompanyMapWindowJob,
   href: string,
   historyIndex: number | null,
+  communityId: string,
 ): MapCanvasTrail {
   return {
+    communityId,
     entries: [{ historyIndex, href, scroll: [], snapshot: null }],
     root,
     version: MAP_CANVAS_TRAIL_VERSION,
@@ -231,12 +249,14 @@ export function setMapCanvasTrailLatestHistoryIndex(
 export function planMapCanvasTrailNavigation({
   href,
   historyIndex,
+  samePathNavigation = "replace",
   snapshot,
   scroll,
   trail,
 }: {
   href: string;
   historyIndex: number | null;
+  samePathNavigation?: "append" | "replace";
   snapshot: MapCanvasSnapshot | null;
   scroll: readonly MapCanvasScrollPosition[];
   trail: MapCanvasTrail;
@@ -264,7 +284,10 @@ export function planMapCanvasTrailNavigation({
     snapshot: null,
   };
 
-  if (mapCanvasPathname(latest.href) === mapCanvasPathname(href)) {
+  if (
+    samePathNavigation === "replace" &&
+    mapCanvasPathname(latest.href) === mapCanvasPathname(href)
+  ) {
     return {
       kind: "replace",
       trail: withLatestEntry(trail, {

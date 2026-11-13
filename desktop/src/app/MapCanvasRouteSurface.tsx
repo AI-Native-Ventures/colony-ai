@@ -8,9 +8,11 @@ import {
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { CompanyMapScreen } from "@/features/cofounder/ui/CompanyMapScreen";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
+import { useCommunities } from "@/features/communities/useCommunities";
 
 import {
   MAP_CANVAS_TRAIL_STATE_KEY,
+  MAX_MAP_CANVAS_TRAIL_ENTRIES,
   MAX_MAP_CANVAS_SNAPSHOT_CHARS,
   captureMapCanvasTrailLatest,
   createMapCanvasTrail,
@@ -35,6 +37,7 @@ type MapCanvasRouteSurfaceProps = {
 type PendingEmbeddedNavigation = {
   historyIndex: number | null;
   observedAt: number;
+  samePathNavigation: "append" | "replace";
   sourceHref: string;
   trail: MapCanvasTrail;
 };
@@ -102,7 +105,9 @@ function restoreScrollPositions(
 
 function sanitizeSnapshotNodes(root: ParentNode) {
   root
-    .querySelectorAll("audio, canvas, iframe, script, template, video")
+    .querySelectorAll(
+      "audio, base, canvas, embed, iframe, link, meta, object, script, template, video",
+    )
     .forEach((element) => {
       element.remove();
     });
@@ -112,7 +117,15 @@ function sanitizeSnapshotNodes(root: ParentNode) {
   });
   root.querySelectorAll("*").forEach((element) => {
     for (const attribute of element.getAttributeNames()) {
-      if (attribute.toLowerCase().startsWith("on")) {
+      const attributeName = attribute.toLowerCase();
+      const attributeValue = element.getAttribute(attribute) ?? "";
+      if (
+        attributeName.startsWith("on") ||
+        (attributeName === "style" &&
+          /(?:^|;)\s*position\s*:\s*fixed(?:\s*!important)?\s*(?:;|$)/iu.test(
+            attributeValue,
+          ))
+      ) {
         element.removeAttribute(attribute);
       }
     }
@@ -132,13 +145,50 @@ function captureSnapshot(root: HTMLElement | null): MapCanvasSnapshot | null {
   const clone = root.cloneNode(true) as HTMLElement;
   sanitizeSnapshotNodes(clone);
   const html = clone.innerHTML;
-  if (!html || html.length > MAX_MAP_CANVAS_SNAPSHOT_CHARS) return null;
+  if (!html) return null;
   const bounds = root.getBoundingClientRect();
   return {
     height: Math.max(1, Math.round(bounds.height)),
     html,
     width: Math.max(1, Math.round(bounds.width)),
   };
+}
+
+function snapshotForHistory(
+  snapshot: MapCanvasSnapshot | null,
+): MapCanvasSnapshot | null {
+  return snapshot && snapshot.html.length <= MAX_MAP_CANVAS_SNAPSHOT_CHARS
+    ? snapshot
+    : null;
+}
+
+function snapshotCacheKey(entry: MapCanvasTrailEntry): string {
+  return `${entry.historyIndex ?? "none"}:${entry.href}`;
+}
+
+function rememberLiveSnapshot(
+  cache: Map<string, MapCanvasSnapshot>,
+  entry: MapCanvasTrailEntry,
+  snapshot: MapCanvasSnapshot,
+) {
+  cache.set(snapshotCacheKey(entry), snapshot);
+  while (cache.size > MAX_MAP_CANVAS_TRAIL_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (typeof oldestKey !== "string") return;
+    cache.delete(oldestKey);
+  }
+}
+
+function trailEntryLabel(
+  entry: MapCanvasTrailEntry,
+  root: CompanyMapWindowJob,
+): string {
+  const destination = new URL(entry.href, "https://map-canvas.invalid");
+  const search = Object.fromEntries(destination.searchParams.entries());
+  return (
+    companyMapWindowJobForRoute(destination.pathname, search)?.jobName ??
+    root.jobName
+  );
 }
 
 function anchorForEventTarget(
@@ -174,14 +224,38 @@ function routerHrefForEmbeddedDeskTab(
   return `${destination.pathname}${destination.search}${destination.hash}`;
 }
 
+function routerHrefForEmbeddedDeskAction(
+  target: EventTarget | null,
+  sourceHref: string,
+): string | null {
+  if (!(target instanceof Element)) return null;
+  const action = target.closest(".c3wa-pipeline-open-chat");
+  if (action?.textContent?.trim() !== "Open chat") return null;
+  const cardTestId = action?.closest<HTMLElement>(
+    "[data-testid^='outreach-pipeline-card-']",
+  )?.dataset.testid;
+  if (!cardTestId) return null;
+  const contactWaId = cardTestId.slice("outreach-pipeline-card-".length);
+  if (!contactWaId) return null;
+  const destination = new URL(sourceHref, window.location.href);
+  destination.searchParams.delete("mapJob");
+  destination.searchParams.set("whatsappContactWaId", contactWaId);
+  destination.searchParams.set("whatsappDeskTab", "chats");
+  return `${destination.pathname}${destination.search}${destination.hash}`;
+}
+
 function MapCanvasTrailPeek({
   entry,
+  fallbackLabel,
+  liveSnapshot,
   onBack,
 }: {
   entry: MapCanvasTrailEntry;
+  fallbackLabel: string;
+  liveSnapshot: MapCanvasSnapshot | null;
   onBack: () => void;
 }) {
-  const snapshot = entry.snapshot;
+  const snapshot = liveSnapshot ?? entry.snapshot;
   const snapshotHtml = React.useMemo(
     () => (snapshot ? sanitizedSnapshotHtml(snapshot.html) : null),
     [snapshot],
@@ -194,21 +268,25 @@ function MapCanvasTrailPeek({
       className="map-canvas-route-peek"
       data-testid="fullmap-window-peek"
     >
-      <div aria-hidden="true" className="map-canvas-route-peek-clip" inert>
-        {snapshotHtml ? (
-          <div
-            className="map-canvas-route-peek-snapshot"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: a bounded, sanitized clone of the current same-origin route is inert in the peek.
-            dangerouslySetInnerHTML={{ __html: snapshotHtml }}
-            style={{
-              height,
-              transform: `translateX(-${Math.max(0, width - 124)}px)`,
-              width,
-            }}
-          />
-        ) : (
-          <div className="map-canvas-route-peek-fallback" />
-        )}
+      <div className="map-canvas-route-peek-shell">
+        <div aria-hidden="true" className="map-canvas-route-peek-clip" inert>
+          {snapshotHtml ? (
+            <div
+              className="map-canvas-route-peek-snapshot"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: a sanitized clone of the current same-origin route is inert in the peek.
+              dangerouslySetInnerHTML={{ __html: snapshotHtml }}
+              style={{
+                height,
+                transform: `translateX(-${Math.max(0, width - 124)}px)`,
+                width,
+              }}
+            />
+          ) : (
+            <div className="map-canvas-route-peek-fallback">
+              <span>{fallbackLabel}</span>
+            </div>
+          )}
+        </div>
       </div>
       <button
         aria-label="Back to previous map screen"
@@ -307,14 +385,16 @@ export function MapCanvasRouteSurface({
   children,
   enabled,
 }: MapCanvasRouteSurfaceProps) {
+  const { activeCommunity } = useCommunities();
   const location = useLocation();
   const router = useRouter();
+  const communityId = activeCommunity?.id ?? "no-active-community";
   const search = location.search as Record<string, unknown>;
   const directJob = enabled
     ? companyMapWindowJobForRoute(location.pathname, search)
     : null;
   const persistedTrail = enabled
-    ? mapCanvasTrailForHref(location.state, location.href)
+    ? mapCanvasTrailForHref(location.state, location.href, communityId)
     : null;
   const trail =
     persistedTrail ??
@@ -323,6 +403,7 @@ export function MapCanvasRouteSurface({
           directJob,
           location.href,
           mapCanvasHistoryIndex(location.state),
+          communityId,
         )
       : null);
   const job = trail?.root ?? directJob;
@@ -333,10 +414,16 @@ export function MapCanvasRouteSurface({
   const pendingNavigationRef = React.useRef<PendingEmbeddedNavigation | null>(
     null,
   );
+  const liveSnapshotsRef = React.useRef(new Map<string, MapCanvasSnapshot>());
+  const snapshotCommunityRef = React.useRef(communityId);
   const previousHrefRef = React.useRef(location.href);
   const restoredScrollKeyRef = React.useRef<string | null>(null);
   locationRef.current = location;
   trailRef.current = trail;
+  if (snapshotCommunityRef.current !== communityId) {
+    liveSnapshotsRef.current.clear();
+    snapshotCommunityRef.current = communityId;
+  }
 
   const closeWholeTrail = React.useCallback(() => {
     router.history.replace("/", withoutTrailState(locationRef.current.state));
@@ -377,17 +464,28 @@ export function MapCanvasRouteSurface({
     closeWholeTrail();
   }, [closeWholeTrail, goToTrailEntry]);
 
-  const captureCurrentTrail =
-    React.useCallback((): PendingEmbeddedNavigation | null => {
+  const captureCurrentTrail = React.useCallback(
+    (
+      samePathNavigation: PendingEmbeddedNavigation["samePathNavigation"] = "replace",
+    ): PendingEmbeddedNavigation | null => {
       const currentTrail = trailRef.current;
       if (!currentTrail) return null;
       const currentLocation = locationRef.current;
       const historyIndex = mapCanvasHistoryIndex(currentLocation.state);
+      const liveSnapshot = captureSnapshot(contentRef.current);
       const capturedTrail = captureMapCanvasTrailLatest(currentTrail, {
         historyIndex,
         scroll: captureScrollPositions(contentRef.current),
-        snapshot: captureSnapshot(contentRef.current),
+        snapshot: snapshotForHistory(liveSnapshot),
       });
+      const capturedEntry = capturedTrail.entries.at(-1);
+      if (liveSnapshot && capturedEntry) {
+        rememberLiveSnapshot(
+          liveSnapshotsRef.current,
+          capturedEntry,
+          liveSnapshot,
+        );
+      }
       router.history.replace(
         currentLocation.href,
         withTrailState(currentLocation.state, capturedTrail),
@@ -396,20 +494,25 @@ export function MapCanvasRouteSurface({
       const pending = {
         historyIndex,
         observedAt: Date.now(),
+        samePathNavigation,
         sourceHref: currentLocation.href,
         trail: capturedTrail,
       };
       pendingNavigationRef.current = pending;
       return pending;
-    }, [router.history]);
+    },
+    [router.history],
+  );
 
   const commitAnchorNavigation = React.useCallback(
     (href: string, pending: PendingEmbeddedNavigation) => {
+      const departingEntry = pending.trail.entries.at(-1);
       const navigation = planMapCanvasTrailNavigation({
         historyIndex: pending.historyIndex,
         href,
-        scroll: [],
-        snapshot: null,
+        samePathNavigation: pending.samePathNavigation,
+        scroll: departingEntry?.scroll ?? [],
+        snapshot: departingEntry?.snapshot ?? null,
         trail: pending.trail,
       });
       pendingNavigationRef.current = null;
@@ -442,17 +545,27 @@ export function MapCanvasRouteSurface({
     [goToTrailEntry, router.history],
   );
 
-  const markEmbeddedNavigation = React.useCallback(() => {
-    captureCurrentTrail();
-  }, [captureCurrentTrail]);
-
   const handleContentKeyDownCapture = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key === "Enter" || event.key === " ") {
-        markEmbeddedNavigation();
+        const sourceHref = locationRef.current.href;
+        const actionHref = routerHrefForEmbeddedDeskAction(
+          event.target,
+          sourceHref,
+        );
+        if (actionHref) {
+          const pending = captureCurrentTrail("append");
+          if (pending) {
+            event.preventDefault();
+            event.stopPropagation();
+            commitAnchorNavigation(actionHref, pending);
+          }
+          return;
+        }
+        captureCurrentTrail("replace");
       }
     },
-    [markEmbeddedNavigation],
+    [captureCurrentTrail, commitAnchorNavigation],
   );
 
   const handleContentClickCapture = React.useCallback(
@@ -466,15 +579,19 @@ export function MapCanvasRouteSurface({
       ) {
         return;
       }
-      const pending = captureCurrentTrail();
       const anchor = anchorForEventTarget(event.target);
+      const sourceHref = locationRef.current.href;
+      const tabHref = routerHrefForEmbeddedDeskTab(event.target, sourceHref);
+      const actionHref = routerHrefForEmbeddedDeskAction(
+        event.target,
+        sourceHref,
+      );
+      const pending = captureCurrentTrail(actionHref ? "append" : "replace");
       const href = anchor
         ? routerHrefForAnchor(anchor)
-        : pending
-          ? routerHrefForEmbeddedDeskTab(event.target, pending.sourceHref)
-          : null;
+        : (tabHref ?? actionHref);
       if (!pending || !href || href === pending.sourceHref) return;
-      if (anchor) {
+      if (anchor || tabHref || actionHref) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -493,13 +610,14 @@ export function MapCanvasRouteSurface({
       !pending ||
       Date.now() - pending.observedAt > EMBEDDED_NAVIGATION_WINDOW_MS ||
       isMapHome(location.pathname) ||
-      mapCanvasTrailForHref(location.state, location.href)
+      mapCanvasTrailForHref(location.state, location.href, communityId)
     ) {
       return;
     }
     const navigation = planMapCanvasTrailNavigation({
       historyIndex: pending.historyIndex,
       href: location.href,
+      samePathNavigation: pending.samePathNavigation,
       scroll: [],
       snapshot: null,
       trail: pending.trail,
@@ -523,7 +641,13 @@ export function MapCanvasRouteSurface({
       location.href,
       withTrailState(location.state, alignedTrail),
     );
-  }, [location.href, location.pathname, location.state, router.history]);
+  }, [
+    communityId,
+    location.href,
+    location.pathname,
+    location.state,
+    router.history,
+  ]);
 
   React.useEffect(() => {
     const currentEntry = trail?.entries.at(-1);
@@ -586,6 +710,11 @@ export function MapCanvasRouteSurface({
           {previousEntry ? (
             <MapCanvasTrailPeek
               entry={previousEntry}
+              fallbackLabel={trailEntryLabel(previousEntry, job)}
+              liveSnapshot={
+                liveSnapshotsRef.current.get(snapshotCacheKey(previousEntry)) ??
+                null
+              }
               onBack={closeLatestWindow}
             />
           ) : null}

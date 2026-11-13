@@ -45,16 +45,24 @@
   width: 124px;
   height: max(699px, calc(100% - 137px));
   min-height: 0;
+  overflow: visible;
+  opacity: 0.8;
+}
+
+.map-canvas-route-peek-shell {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   border-radius: 0 20px 20px 0;
-  opacity: 0.8;
+  background: hsl(var(--colony-surface));
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border-strong)),
+    0 30px 60px -34px rgb(40 20 60 / 50%);
 }
 
 .map-canvas-route-peek-clip {
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  background: hsl(var(--colony-surface));
   pointer-events: none;
 }
 
@@ -73,10 +81,17 @@
 }
 
 .map-canvas-route-peek-fallback {
+  display: flex;
   width: 100%;
   height: 100%;
+  align-items: flex-start;
+  padding: 4.5rem 0.75rem;
   background: hsl(var(--colony-surface));
-  box-shadow: 0 1.25rem 3.5rem rgb(19 26 36 / 18%);
+  color: hsl(var(--colony-fg-secondary));
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .map-canvas-route-peek-back {
@@ -112,7 +127,9 @@
   overflow: hidden;
   border-radius: 20px;
   background: hsl(var(--colony-surface));
-  box-shadow: 0 1.25rem 3.5rem rgb(19 26 36 / 18%);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border-strong)),
+    0 30px 60px -34px rgb(40 20 60 / 50%);
 }
 
 .map-canvas-route-window-content > * {
@@ -154,7 +171,7 @@
   left: -52px;
   width: 52px;
   height: 2px;
-  background: hsl(var(--colony-border-strong));
+  background: hsl(var(--colony-fg-secondary));
 }
 
 .map-canvas-route-trail-connector {
@@ -164,7 +181,7 @@
   left: -56px;
   width: 56px;
   height: 2px;
-  background: hsl(var(--colony-border-strong));
+  background: hsl(var(--colony-fg-secondary));
 }
 
 .map-canvas-route-trail-port {
@@ -175,7 +192,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: hsl(var(--colony-border-strong));
+  background: hsl(var(--colony-fg-secondary));
   box-shadow: 0 0 0 4px hsl(var(--colony-canvas));
 }
 

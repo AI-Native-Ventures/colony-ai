@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
+import UPNG from "upng-js";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
@@ -45,7 +46,6 @@ const MAP_WORKSPACES: WorkspaceSeed[] = [
 const FINANCE_MONEY = "/money?mapJob=finance%3AChasing+payments";
 const FINANCE_INVOICES = "/money/invoices";
 const FINANCE_REVENUE = "/money/revenue";
-const SALES_CLIENTS = "/clients?mapJob=sales%3AQuotes";
 const SALES_CLOSING = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AClosing&whatsappDeskTab=pipeline`;
 const primedPages = new WeakSet<Page>();
 const SURFACE_BOOT_TIMEOUT_MS = 40_000;
@@ -182,13 +182,14 @@ async function openRevenue(page: Page) {
   await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
 }
 
-async function openSalesClientRecord(page: Page) {
-  await openRoute(page, SALES_CLIENTS);
-  await windowContent(page)
-    .getByRole("link", { exact: true, name: "Plane Tree Guesthouse" })
-    .click();
+async function openSalesChat(page: Page) {
+  await openRoute(page, SALES_CLOSING);
+  await expect(page.getByTestId("outreach-desk-pipeline")).toBeVisible();
+  await windowContent(page).getByRole("button", { name: "Open chat" }).click();
   await expectMapWindow(page, 1);
-  await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
+  await expect(page.getByTestId("whatsapp-outreach")).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 async function waitForTheme(page: Page, theme: Theme) {
@@ -246,6 +247,100 @@ function deepGeometry() {
     window: box(".map-canvas-route-window-content"),
     windowDuration: windowStyle.animationDuration,
     windowTiming: windowStyle.animationTimingFunction,
+  };
+}
+
+type PeekEvidence = {
+  paintColours: number;
+  peekBounds: string | null;
+  sourceAttached: boolean;
+  sourceBounds: string | null;
+  sourceIntersectsPeek: boolean;
+  snapshotPresent: boolean;
+};
+
+function boundsLabel(
+  bounds: { height: number; width: number; x: number; y: number } | null,
+): string | null {
+  return bounds
+    ? `${Math.round(bounds.x)},${Math.round(bounds.y)} ${Math.round(bounds.width)}x${Math.round(bounds.height)}`
+    : null;
+}
+
+function paintedColourCount(png: Buffer): number {
+  const pngBuffer = png.buffer.slice(
+    png.byteOffset,
+    png.byteOffset + png.byteLength,
+  );
+  const decoded = UPNG.decode(pngBuffer);
+  const pixels = new Uint8Array(UPNG.toRGBA8(decoded)[0]);
+  const colours = new Set<string>();
+  for (let index = 0; index < pixels.length; index += 4) {
+    if (pixels[index + 3] === 0) continue;
+    colours.add(`${pixels[index]},${pixels[index + 1]},${pixels[index + 2]}`);
+  }
+  return colours.size;
+}
+
+function peekInteriorClip(bounds: {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+}) {
+  const inset = 4;
+  return {
+    height: Math.max(1, bounds.height - inset * 2),
+    width: Math.max(1, bounds.width - inset * 2),
+    x: bounds.x + inset,
+    y: bounds.y + inset,
+  };
+}
+
+async function peekEvidence(
+  page: Page,
+  sourceTestId: string,
+): Promise<PeekEvidence> {
+  const peek = page.getByTestId("fullmap-window-peek");
+  if ((await peek.count()) === 0) {
+    return {
+      paintColours: 0,
+      peekBounds: null,
+      snapshotPresent: false,
+      sourceAttached: false,
+      sourceBounds: null,
+      sourceIntersectsPeek: false,
+    };
+  }
+  const source = peek.getByTestId(sourceTestId);
+  const sourceAttached = (await source.count()) > 0;
+  const [peekBox, sourceBox, snapshotPresent] = await Promise.all([
+    peek.boundingBox(),
+    sourceAttached ? source.boundingBox() : null,
+    peek.locator(".map-canvas-route-peek-snapshot").count(),
+  ]);
+  const sourceIntersectsPeek = Boolean(
+    peekBox &&
+      sourceBox &&
+      sourceBox.x + sourceBox.width > peekBox.x &&
+      sourceBox.x < peekBox.x + peekBox.width &&
+      sourceBox.y + sourceBox.height > peekBox.y &&
+      sourceBox.y < peekBox.y + peekBox.height,
+  );
+  const paintColours = peekBox
+    ? paintedColourCount(
+        await page.screenshot({
+          clip: peekInteriorClip(peekBox),
+        }),
+      )
+    : 0;
+  return {
+    paintColours,
+    peekBounds: boundsLabel(peekBox),
+    snapshotPresent: snapshotPresent > 0,
+    sourceAttached,
+    sourceBounds: boundsLabel(sourceBox),
+    sourceIntersectsPeek,
   };
 }
 
@@ -314,6 +409,81 @@ test.describe("full map canvas slice 2", () => {
     await expect(page.locator(".map-shell-trail-job")).toHaveText("Invoices");
   });
 
+  for (const theme of ["light", "dark"] as const) {
+    test(`uses the ink-2 connector and port in ${theme}`, async ({ page }) => {
+      await installFullMap(page, theme);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openMoney(page);
+      await openInvoices(page);
+      await waitForAnimations(page);
+
+      const colours = await page.evaluate(() => {
+        const connector = document.querySelector<HTMLElement>(
+          ".map-canvas-route-trail-connector",
+        );
+        const port = document.querySelector<HTMLElement>(
+          ".map-canvas-route-trail-port",
+        );
+        if (!connector || !port) {
+          throw new Error("Expected the visible trail connector and port");
+        }
+        const tokenProbe = document.createElement("span");
+        tokenProbe.style.backgroundColor = "hsl(var(--colony-fg-secondary))";
+        document.body.append(tokenProbe);
+        const ink2 = getComputedStyle(tokenProbe).backgroundColor;
+        tokenProbe.remove();
+        return {
+          connector: getComputedStyle(connector).backgroundColor,
+          ink2,
+          port: getComputedStyle(port).backgroundColor,
+        };
+      });
+      expect(colours.connector).toBe(colours.ink2);
+      expect(colours.port).toBe(colours.ink2);
+    });
+  }
+
+  test("keeps painted predecessor content in Finance and Outreach peeks", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await openMoney(page);
+    await openInvoices(page);
+    await waitForAnimations(page);
+    const finance = await peekEvidence(page, "money-overview");
+
+    await openSalesChat(page);
+    await waitForAnimations(page);
+    const outreach = await peekEvidence(page, "outreach-desk-pipeline");
+
+    for (const [screen, evidence] of [
+      ["Finance", finance],
+      ["Outreach", outreach],
+    ] as const) {
+      expect
+        .soft(
+          evidence,
+          `${screen} peek retains its first-screen element: ${JSON.stringify(evidence)}`,
+        )
+        .toMatchObject({
+          snapshotPresent: true,
+          sourceAttached: true,
+          sourceIntersectsPeek: true,
+        });
+      expect
+        .soft(
+          evidence.paintColours,
+          `${screen} peek is not a flat-colour strip`,
+        )
+        .toBeGreaterThan(6);
+    }
+    expect
+      .soft(currentRoute(page), "Open chat creates the Chats canvas route")
+      .toContain("whatsappDeskTab=chats");
+  });
+
   test("opens by keyboard, supports a three-screen trail, and returns to a known screen", async ({
     page,
   }) => {
@@ -368,6 +538,9 @@ test.describe("full map canvas slice 2", () => {
     await page.reload();
     await expectMapWindow(page, 1);
     await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
+    await expect(
+      page.getByTestId("fullmap-window-peek").getByTestId("money-overview"),
+    ).toBeVisible();
 
     await page.getByTestId("fullmap-window-peek").click();
     await expectMapWindow(page, 0);
@@ -381,6 +554,125 @@ test.describe("full map canvas slice 2", () => {
     await expectMapWindow(page, 1);
     await page.getByRole("button", { name: "Zoom out" }).click();
     await expectMapWindow(page, 0);
+  });
+
+  test("sanitizes unsafe peek markup and leaves the remaining markup inert", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openMoney(page);
+    await windowContent(page).evaluate((root) => {
+      const probe = document.createElement("div");
+      probe.dataset.testid = "snapshot-sanitizer-probe";
+      probe.style.cssText =
+        "position: absolute; right: 0; top: 0; width: 112px; height: 32px";
+      probe.innerHTML = [
+        '<a data-testid="snapshot-sanitizer-anchor" href="#/clients">Archived link</a>',
+        '<form data-testid="snapshot-sanitizer-form"><button type="submit">Archived form</button></form>',
+        '<object data-testid="snapshot-sanitizer-object"></object>',
+        '<embed data-testid="snapshot-sanitizer-embed">',
+        '<link data-testid="snapshot-sanitizer-link" rel="stylesheet">',
+        '<meta data-testid="snapshot-sanitizer-meta">',
+        '<base data-testid="snapshot-sanitizer-base">',
+        '<div data-testid="snapshot-sanitizer-fixed" style="position: fixed; top: 0">Fixed</div>',
+      ].join("");
+      root.append(probe);
+    });
+    await openInvoices(page);
+
+    const peek = page.getByTestId("fullmap-window-peek");
+    await expect(peek.getByTestId("snapshot-sanitizer-probe")).toHaveCount(1);
+    await expect(peek.locator("object, embed, link, meta, base")).toHaveCount(
+      0,
+    );
+    const fixed = peek.getByTestId("snapshot-sanitizer-fixed");
+    await expect(fixed).toHaveCount(1);
+    expect(await fixed.getAttribute("style")).toBeNull();
+
+    const safety = await page.evaluate(() => {
+      const clip = document.querySelector<HTMLElement>(
+        ".map-canvas-route-peek-clip",
+      );
+      const anchor = document.querySelector<HTMLElement>(
+        '[data-testid="snapshot-sanitizer-anchor"]',
+      );
+      if (!clip || !anchor) throw new Error("Expected snapshot safety probes");
+      anchor.focus();
+      const bounds = anchor.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2,
+      );
+      return {
+        focusedAnchor: document.activeElement === anchor,
+        inert: clip.hasAttribute("inert"),
+        pointerEvents: getComputedStyle(clip).pointerEvents,
+        coveredByBackButton: Boolean(
+          hit?.closest(".map-canvas-route-peek-back"),
+        ),
+      };
+    });
+    expect(safety).toEqual({
+      coveredByBackButton: true,
+      focusedAnchor: false,
+      inert: true,
+      pointerEvents: "none",
+    });
+  });
+
+  test("keeps an oversize live predecessor and restores a labelled window fallback after reload", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openMoney(page);
+    await windowContent(page).evaluate((root) => {
+      const marker = document.createElement("div");
+      marker.dataset.testid = "snapshot-over-cap";
+      marker.dataset.payload = "x".repeat(256 * 1024 + 1);
+      root.append(marker);
+    });
+    await openInvoices(page);
+
+    const peek = page.getByTestId("fullmap-window-peek");
+    await expect(peek.getByTestId("snapshot-over-cap")).toHaveCount(1);
+    const persistedSnapshot = await page.evaluate(() => {
+      const state = window.history.state as {
+        mapCanvasTrail?: { entries?: Array<{ snapshot?: unknown }> };
+      };
+      return state.mapCanvasTrail?.entries?.at(-2)?.snapshot;
+    });
+    expect(persistedSnapshot).toBeNull();
+
+    await page.reload();
+    await expectMapWindow(page, 1);
+    const fallback = page.locator(".map-canvas-route-peek-fallback");
+    await expect(fallback).toHaveText("Chasing payments");
+    await expect(peek.locator(".map-canvas-route-peek-snapshot")).toHaveCount(
+      0,
+    );
+    const appearance = await fallback.evaluate((node) => {
+      const peekNode = node.closest<HTMLElement>(
+        '[data-testid="fullmap-window-peek"]',
+      );
+      const shell = peekNode?.querySelector<HTMLElement>(
+        ".map-canvas-route-peek-shell",
+      );
+      if (!peekNode || !shell)
+        throw new Error("Expected fallback window shell");
+      return {
+        outerOverflow: getComputedStyle(peekNode).overflow,
+        shellBoxShadow: getComputedStyle(shell).boxShadow,
+        shellOverflow: getComputedStyle(shell).overflow,
+        shellRadius: getComputedStyle(shell).borderRadius,
+      };
+    });
+    expect(appearance.outerOverflow).toBe("visible");
+    expect(appearance.shellOverflow).toBe("hidden");
+    expect(appearance.shellRadius).toBe("0px 20px 20px 0px");
+    expect(appearance.shellBoxShadow).toContain("0px 0px 0px 1px");
+    expect(appearance.shellBoxShadow).toContain("0px 30px 60px -34px");
   });
 
   test("Fit closes the complete trail and returns to the whole map", async ({
@@ -513,6 +805,49 @@ test.describe("full map canvas slice 2", () => {
     await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
   });
 
+  test("does not peek a trail captured in another community after Back", async ({
+    page,
+  }) => {
+    await installFullMap(page, "light", { workspaces: MAP_WORKSPACES });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openMoney(page);
+    await openInvoices(page);
+    await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
+    const firstCommunityState = await page.evaluate(() => window.history.state);
+
+    await dispatchPrimaryWorkspaceShortcut(page, "2");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.localStorage.getItem("buzz-active-community-id"),
+        ),
+      )
+      .toBe("fullmap-workspace-two");
+    await expectRoute(page, "/");
+    const secondCommunityState = await page.evaluate(
+      () => window.history.state,
+    );
+
+    await page.evaluate(
+      ({ firstState, secondState, targetHref }) => {
+        window.history.pushState(firstState, "", `#${targetHref}`);
+        window.history.pushState(secondState, "", "#/");
+      },
+      {
+        firstState: firstCommunityState,
+        secondState: secondCommunityState,
+        targetHref: FINANCE_INVOICES,
+      },
+    );
+
+    await page.goBack();
+    await expectRoute(page, FINANCE_INVOICES);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(
+      page.getByTestId("fullmap-window-peek").getByTestId("money-overview"),
+    ).toHaveCount(0);
+  });
+
   test("leaves map-home-off routes on their existing sidebar surface", async ({
     page,
   }) => {
@@ -546,7 +881,7 @@ test.describe("full map canvas slice 2", () => {
         { height: 1228, label: "2000", width: 2000 },
       ]) {
         await page.setViewportSize(viewport);
-        await openSalesClientRecord(page);
+        await openSalesChat(page);
         await waitForTheme(page, theme);
         await waitForAnimations(page);
         await page.screenshot({
