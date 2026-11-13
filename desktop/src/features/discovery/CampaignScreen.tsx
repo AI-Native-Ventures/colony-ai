@@ -628,7 +628,7 @@ export function CampaignScreen(context: CampaignContext) {
       return;
     }
     if (next.state === "unavailable") {
-      setError(next.message ?? "This provider query has no next page.");
+      setError(next.message ?? "This search has no next page.");
       return;
     }
     await continueCampaign();

@@ -32,7 +32,18 @@ function inSentence(name: string): string {
   if (trimmed.length > 1 && trimmed[1] === trimmed[1]?.toLocaleUpperCase()) {
     return trimmed;
   }
+  // A name written in title case ("Real Estate Agents and Brokers") reads as
+  // a mistake with only its first letter lowered, so it is left as written.
+  const laterWordIsCapitalised = trimmed
+    .split(/\s+/)
+    .slice(1)
+    .some((word) => /^\p{Lu}/u.test(word));
+  if (laterWordIsCapitalised) return trimmed;
   return `${trimmed.charAt(0).toLocaleLowerCase()}${trimmed.slice(1)}`;
+}
+
+function pages(count: number): string {
+  return `${count} ${count === 1 ? "page" : "pages"}`;
 }
 
 /**
@@ -57,14 +68,12 @@ export function buildEndNote(
   const what = inSentence(campaign.verticalName) || "results";
   switch (campaign.endReason) {
     case "provider_repeat":
-      return `The provider returned only places already seen in this campaign on page ${campaign.pagesFetched}. The search stopped before another paid request. Find more retries this campaign from its next saved page, or search a nearby area.`;
+      return `Page ${campaign.pagesFetched} repeated businesses this search had already found, so it stopped before paying for more. Find more tries again from the next page, or search a nearby area.`;
     case "provider_ceiling":
-      return `The relay offered no next page after ${campaign.pagesFetched} pages because this query reached the provider's 400-place ceiling in ${campaign.location}. Search a nearby area or use another tag.`;
+      return `This search reached the 400 businesses Maps returns for one search in ${campaign.location}. Search a nearby area or use another tag.`;
     case "provider_end": {
       const tagged = (campaign.pickedTags ?? []).length > 0;
-      return tagged
-        ? `The relay returned nextSkip null after ${campaign.pagesFetched} pages for ${what} with these tags in ${campaign.location}. The provider did not offer another page. Search a nearby area or use another tag.`
-        : `The relay returned nextSkip null after ${campaign.pagesFetched} pages for ${what} in ${campaign.location}. The provider did not offer another page. Search a nearby area or use another tag.`;
+      return `Maps returned no more results after ${pages(campaign.pagesFetched)} for ${what}${tagged ? " with these tags" : ""} in ${campaign.location}. Search a nearby area or use another tag.`;
     }
     case "approved_budget":
       return approvedResultsUsedNote(campaign);
@@ -72,7 +81,7 @@ export function buildEndNote(
       return null;
     default:
       return campaign.exhausted
-        ? `This saved campaign stopped before reaching its target, but it has no provider end reason. Find more to continue from its cursor or search a nearby area.`
+        ? "This saved search stopped before its target and did not record why. Find more continues from where it stopped, or search a nearby area."
         : approvedResultsUsedNote(campaign);
   }
 }
@@ -250,7 +259,8 @@ export function continuationFor(
     return {
       ...base,
       state: "unavailable",
-      message: `The relay returned nextSkip null after ${campaign.pagesFetched} pages, so this provider query has no next page. Search a nearby area starts a new campaign.`,
+      message:
+        "Maps returned no more results for this search. Search a nearby area starts a new campaign.",
     };
   }
   if (
@@ -261,7 +271,7 @@ export function continuationFor(
       ...base,
       state: "unavailable",
       message:
-        "This query has reached the relay's 400-place provider ceiling. Search a nearby area starts a new campaign.",
+        "This search reached the 400 businesses Maps returns for one search. Search a nearby area starts a new campaign.",
     };
   }
   if (

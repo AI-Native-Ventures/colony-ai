@@ -81,17 +81,17 @@ function runSteps(campaign: DiscoveryCampaign): Array<{
 function pageStopReason(entry: DiscoveryPageLog): string {
   switch (entry.stopReason) {
     case "target_reached":
-      return "Stopped because the requested new-prospect target was reached.";
+      return "Stopped here: the number of new prospects you asked for was reached.";
     case "provider_end":
-      return "Stopped because the relay returned nextSkip null, so the provider offered no next page.";
+      return "Stopped here: Maps returned no more results.";
     case "provider_ceiling":
-      return "Stopped at the relay's 400-record provider ceiling.";
+      return "Stopped here: 400 businesses is the most Maps returns for one search.";
     case "provider_repeat":
-      return "Stopped because every provider place id on this page had already appeared in this campaign. No further paid page was requested.";
+      return "Stopped here: every business on this page had already been found by this search. No further page was paid for.";
     case "approved_budget":
       return "Stopped to ask before searching further: the results you approved were used. Find more continues at no extra cost.";
     default:
-      return "The relay offered another page after this one.";
+      return "More pages were available after this one.";
   }
 }
 

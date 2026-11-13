@@ -347,7 +347,7 @@ for (const [width, height] of [
         campaign.getByText("Search complete", { exact: true }),
       ).toBeVisible({ timeout: 15_000 });
       await expect(
-        campaign.getByText(/The relay returned nextSkip null after 3 pages/),
+        campaign.getByText(/Maps returned no more results after 3 pages/),
       ).toBeVisible();
       await capture(
         page,
@@ -363,9 +363,7 @@ for (const [width, height] of [
         details.getByText("Repeated in campaign").first(),
       ).toBeVisible();
       await expect(
-        details.getByText(
-          "Stopped because the relay returned nextSkip null, so the provider offered no next page.",
-        ),
+        details.getByText("Stopped here: Maps returned no more results."),
       ).toBeVisible();
       await capture(page, details, `run-details-${suffix}.png`);
     });

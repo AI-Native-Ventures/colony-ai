@@ -332,7 +332,7 @@ test("owner incident: a provider that repeats its results with three tags stops 
   assert.equal(done.count, 20);
   assert.equal(
     done.endNote,
-    "The provider returned only places already seen in this campaign on page 4. The search stopped before another paid request. Find more retries this campaign from its next saved page, or search a nearby area.",
+    "Page 4 repeated businesses this search had already found, so it stopped before paying for more. Find more tries again from the next page, or search a nearby area.",
   );
   assert.match(log.posts[0], /^Found 20 prospects /);
   assert.ok(log.posts[0].includes(done.endNote), "the Sales message says why");
@@ -365,7 +365,7 @@ test("an all-repeat provider page ends without a further paid request", async ()
   assert.equal(done.count, 20);
   assert.equal(
     done.endNote,
-    "The provider returned only places already seen in this campaign on page 2. The search stopped before another paid request. Find more retries this campaign from its next saved page, or search a nearby area.",
+    "Page 2 repeated businesses this search had already found, so it stopped before paying for more. Find more tries again from the next page, or search a nearby area.",
   );
   assert.equal(done.runLog.at(-1).repeatedInCampaign, 20);
   assert.equal(done.runLog.at(-1).stopReason, "provider_repeat");
@@ -729,7 +729,7 @@ test("owner incident: 24 existing leads keep paging and never claim Google has n
   assert.equal(current.endReason, "provider_end");
   assert.match(
     current.endNote,
-    /^The relay returned nextSkip null after 3 pages /,
+    /^Maps returned no more results after 3 pages /,
   );
   assert.ok(!current.endNote.includes("Google has no more"));
 });
@@ -881,7 +881,7 @@ test("a query that is used up at the provider's 400 places ends honestly with 20
   assert.equal(done.status, "complete");
   assert.match(
     done.endNote,
-    /^The relay offered no next page after 20 pages because this query reached the provider's 400-place ceiling in Johannesburg\./,
+    /^This search reached the 400 businesses Maps returns for one search in Johannesburg\./,
   );
   assert.ok(log.posts[0].includes(done.endNote));
 });
@@ -931,16 +931,27 @@ test("the end note tells why a run finished short, and is empty when the target 
   };
   assert.equal(
     buildEndNote(base),
-    "The relay returned nextSkip null after 5 pages for restaurants with these tags in Johannesburg. The provider did not offer another page. Search a nearby area or use another tag.",
+    "Maps returned no more results after 5 pages for restaurants with these tags in Johannesburg. Search a nearby area or use another tag.",
   );
   assert.equal(
     buildEndNote({ ...base, pickedTags: [] }),
-    "The relay returned nextSkip null after 5 pages for restaurants in Johannesburg. The provider did not offer another page. Search a nearby area or use another tag.",
+    "Maps returned no more results after 5 pages for restaurants in Johannesburg. Search a nearby area or use another tag.",
   );
   assert.equal(buildEndNote({ ...base, count: 100 }), null);
   assert.equal(
     buildEndNote({ ...base, verticalName: "IT support" }),
-    "The relay returned nextSkip null after 5 pages for IT support with these tags in Johannesburg. The provider did not offer another page. Search a nearby area or use another tag.",
+    "Maps returned no more results after 5 pages for IT support with these tags in Johannesburg. Search a nearby area or use another tag.",
+  );
+  // The owner's Durban search read "for real Estate Agents and Brokers": a
+  // title-case name keeps its capitals, and one page is not "1 pages".
+  assert.equal(
+    buildEndNote({
+      ...base,
+      verticalName: "Real Estate Agents and Brokers",
+      pickedTags: [],
+      pagesFetched: 1,
+    }),
+    "Maps returned no more results after 1 page for Real Estate Agents and Brokers in Johannesburg. Search a nearby area or use another tag.",
   );
   assert.equal(
     buildEndNote({
@@ -988,10 +999,7 @@ test("the end note is stored with the campaign and read back", async () => {
   await controller.start({ ...INPUT, target: 100 });
   await controller.whenIdle();
   const saved = stored(storageMap).campaigns[0];
-  assert.match(
-    saved.endNote,
-    /^The relay returned nextSkip null after 1 pages /,
-  );
+  assert.match(saved.endNote, /^Maps returned no more results after 1 page /);
   assert.equal(controller.getCurrent().endNote, saved.endNote);
 });
 
