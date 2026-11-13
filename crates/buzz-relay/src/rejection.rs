@@ -79,26 +79,46 @@ pub(crate) async fn enforce_ws_admission(
         return false;
     }
 
-    if matches!(msg, ClientMessage::Event(event) if !buzz_core::kind::is_ephemeral(event.kind.as_u16() as u32))
-    {
-        let message_limit = if is_agent {
-            limits.agent_standard_messages_per_min
-        } else {
-            limits.human_messages_per_min
-        };
-        let message_result = crate::admission::check_principal(
-            state.admission_rate_limiter.as_ref(),
-            &conn.tenant,
-            &pubkey,
-            LimitType::Messages,
-            60,
-            message_limit,
-        )
-        .await;
-        // Only persistable EVENT attempts consume the minute quota. Ephemeral activity
-        // still passes the shared WS flood limit above and normal event auth.
-        if !send_admission_result(conn, message_result, msg, "messages") {
-            return false;
+    if let ClientMessage::Event(event) = msg {
+        let kind = event.kind.as_u16() as u32;
+        if !buzz_core::kind::is_ephemeral(kind) {
+            // A business record command is a saved lead, client or invoice, not
+            // chat. A human saving a batch draws on the record allowance, so the
+            // chat allowance neither paces the batch nor is spent by it.
+            let (limit_type, limit, bucket) = if is_agent {
+                (
+                    LimitType::Messages,
+                    limits.agent_standard_messages_per_min,
+                    "messages",
+                )
+            } else if buzz_core::kind::is_business_command_kind(kind) {
+                (
+                    LimitType::RecordWrites,
+                    limits.human_record_writes_per_min,
+                    "record_writes",
+                )
+            } else {
+                (
+                    LimitType::Messages,
+                    limits.human_messages_per_min,
+                    "messages",
+                )
+            };
+            let result = crate::admission::check_principal(
+                state.admission_rate_limiter.as_ref(),
+                &conn.tenant,
+                &pubkey,
+                limit_type,
+                60,
+                limit,
+            )
+            .await;
+            // Only persistable EVENT attempts consume a minute quota. Ephemeral
+            // activity still passes the shared WS flood limit above and normal
+            // event auth.
+            if !send_admission_result(conn, result, msg, bucket) {
+                return false;
+            }
         }
     }
 

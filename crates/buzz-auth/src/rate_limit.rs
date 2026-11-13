@@ -58,6 +58,10 @@ impl RateLimitResult {
 pub enum LimitType {
     /// Nostr message events (kind:1 etc.) sent via WebSocket.
     Messages,
+    /// Business record commands (leads, clients, invoices and the like) a
+    /// human member sends via WebSocket. Counted apart from `Messages` so a
+    /// batch of records is not held to the pace of chat.
+    RecordWrites,
     /// HTTP REST API calls.
     ApiCalls,
     /// Relay-proxied GIF metadata searches.
@@ -75,6 +79,7 @@ impl LimitType {
     pub fn key_suffix(&self) -> &'static str {
         match self {
             Self::Messages => "msg",
+            Self::RecordWrites => "rec",
             Self::ApiCalls => "api",
             Self::GifSearches => "gif",
             Self::DiscoverySearches => "disc",
@@ -121,6 +126,11 @@ pub struct RateLimitConfig {
     /// Maximum messages per minute for human users. Default: 60.
     #[serde(default = "default_human_msg")]
     pub human_messages_per_min: u64,
+    /// Maximum business record commands per minute for human users. A saved
+    /// lead, client or invoice is one command, so this bounds how fast a
+    /// member can save a batch of records. Default: 600.
+    #[serde(default = "default_human_record_writes")]
+    pub human_record_writes_per_min: u64,
     /// Maximum relay-proxied GIF searches per minute for each pubkey.
     /// Default: 30.
     #[serde(default = "default_gif_searches")]
@@ -152,6 +162,9 @@ pub struct RateLimitConfig {
 fn default_human_msg() -> u64 {
     60
 }
+fn default_human_record_writes() -> u64 {
+    600
+}
 fn default_gif_searches() -> u64 {
     30
 }
@@ -181,6 +194,7 @@ impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
             human_messages_per_min: default_human_msg(),
+            human_record_writes_per_min: default_human_record_writes(),
             gif_searches_per_min: default_gif_searches(),
             discovery_searches_per_min: default_discovery_searches(),
             human_api_calls_per_min: default_human_api(),
