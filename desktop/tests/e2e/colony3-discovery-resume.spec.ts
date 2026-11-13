@@ -226,6 +226,10 @@ async function installDiscoveryFixture(page: Page, scenario: Scenario) {
             null,
           );
         }
+        // Once page two shows the provider moving forward, the remaining
+        // approved pages are asked for together. Past the provider's end they
+        // come back empty, as the real provider does.
+        if (skip === 60 || skip === 80) return response([], null);
         throw new Error(`Unexpected discovery skip ${String(skip)}.`);
       };
     },
@@ -327,7 +331,7 @@ for (const [width, height] of [
       await installDiscoveryFixture(page, "partial-overlap");
       await startPartialOverlapCampaign(page);
 
-      await expect.poll(() => searchSkips(page)).toEqual([0, 20, 40]);
+      await expect.poll(() => searchSkips(page)).toEqual([0, 20, 40, 60, 80]);
       const campaign = page.getByTestId("w10-campaign-page");
       await expect(
         campaign.getByText("Finding prospects", { exact: true }),

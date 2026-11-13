@@ -135,6 +135,15 @@ async function installDiscoveryFixture(page: Page) {
           nextSkip: skip + 20,
         };
       }
+      // The provider ends at skip 100. Pages asked ahead past it are empty.
+      if (skip > 100) {
+        return {
+          provider: "outscraper",
+          places: [],
+          estimatedCostUsd: 0,
+          nextSkip: null,
+        };
+      }
       return {
         provider: "outscraper",
         places: [
@@ -308,8 +317,9 @@ test("results already in Leads are not charged, and Find more continues the same
     timeout: 20_000,
   });
   await expect(page.getByRole("link", { name: "Prospects 14" })).toBeVisible();
+  // The five continued pages are asked for together, not one by one.
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
-    0, 20, 40, 60, 80, 100,
+    0, 20, 40, 60, 80, 100, 120, 140, 160, 180,
   ]);
   const afterFindMore = await campaignStorage(page);
   expect(afterFindMore?.campaigns).toHaveLength(1);
