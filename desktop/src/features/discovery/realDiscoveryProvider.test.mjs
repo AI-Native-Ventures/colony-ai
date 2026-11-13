@@ -430,6 +430,9 @@ test("owner incident: partial provider overlap keeps paging, saves each new pros
         };
       }
       if (request.skip === 40) return page(39, 20, null);
+      if (request.skip === 60 || request.skip === 80) {
+        return { ...page(0, 0, null), estimatedCostUsd: 0 };
+      }
       assert.fail(`unexpected provider request at skip ${request.skip}`);
     },
   });
@@ -438,10 +441,14 @@ test("owner incident: partial provider overlap keeps paging, saves each new pros
   await controller.whenIdle();
 
   assert.deepEqual(
+    // Once the second page shows the provider moving forward, the remaining
+    // approved pages are asked for together. The ones past the provider's
+    // end come back empty: nothing is saved from them and nothing is charged.
     log.searches.map((request) => request.skip),
-    [0, 20, 40],
+    [0, 20, 40, 60, 80],
   );
   const done = controller.getCurrent();
+  assert.equal(done.spentUsd, 0.18);
   assert.equal(done.count, 39);
   assert.equal(done.skippedDuplicates, 19);
   assert.equal(done.endReason, "provider_end");
@@ -596,6 +603,9 @@ test("Find more needs no new approval and keeps the same campaign instead of cre
       if (request.skip < 100)
         return page(request.skip + 1, 20, request.skip + 20);
       if (request.skip === 100) return page(101, 5, null);
+      if (request.skip > 100 && request.skip <= 180) {
+        return { ...page(0, 0, null), estimatedCostUsd: 0 };
+      }
       assert.fail(`unexpected provider request at skip ${request.skip}`);
     },
   });
@@ -619,12 +629,16 @@ test("Find more needs no new approval and keeps the same campaign instead of cre
   await controller.whenIdle();
 
   assert.deepEqual(
+    // The five continued pages are asked for together; the provider ends at
+    // skip 100 and the four pages past it come back empty and free.
     log.searches.map((request) => request.skip),
-    [0, 20, 40, 60, 80, 100],
+    [0, 20, 40, 60, 80, 100, 120, 140, 160, 180],
   );
   assert.equal(controller.getCampaigns().length, 1);
   const resumed = controller.getCurrent();
   assert.equal(resumed.id, started.id);
+  assert.equal(resumed.pagesFetched, 6);
+  assert.equal(resumed.spentUsd, 0.36);
   assert.equal(resumed.count, 5);
   assert.equal(resumed.endReason, "provider_end");
 });
@@ -692,16 +706,23 @@ test("owner incident: 24 existing leads keep paging and never claim Google has n
         ? page(1, 20, 20)
         : request.skip === 20
           ? page(21, 20, 40)
-          : page(41, 3, null),
+          : request.skip === 40
+            ? page(41, 3, null)
+            : { ...page(0, 0, null), estimatedCostUsd: 0 },
   });
   await controller.start({ ...INPUT, target: 100 });
   await controller.whenIdle();
 
   assert.deepEqual(
+    // Once the second page shows the provider moving forward, the remaining
+    // approved pages are asked for together. The ones past the provider's
+    // end come back empty: nothing is saved from them and nothing is charged.
     log.searches.map((request) => request.skip),
-    [0, 20, 40],
+    [0, 20, 40, 60, 80],
   );
   const current = controller.getCurrent();
+  assert.equal(current.pagesFetched, 3);
+  assert.equal(current.spentUsd, 0.18);
   assert.equal(current.count, 19);
   assert.equal(current.skippedDuplicates, 24);
   assert.equal(current.endReason, "provider_end");
@@ -824,11 +845,12 @@ test("owner incident: coverage saved while the relay ignored the page offset doe
   await controller.whenIdle();
 
   assert.deepEqual(
-    log.searches.map((request) => request.skip),
+    log.searches.map((request) => request.skip).slice(0, 3),
     [0, 20, 40],
     "the new search pages from the start instead of trusting the old record",
   );
   const current = controller.getCurrent();
+  assert.equal(current.pagesFetched, 3);
   assert.equal(current.count, 25);
   assert.equal(current.endReason, "provider_end");
 });
@@ -1291,6 +1313,194 @@ test("the relay's 'already exists' means someone else saved it first on a first 
   assert.deepEqual(done.prospectIds, ["id-p2", "id-p3"]);
   assert.equal(done.count, 2);
   assert.equal(log.publishes.length, 1);
+});
+
+test("owner incident: the pages a run is already allowed to fetch are requested together, not one by one", async () => {
+  // 12 Nov 2026: 100 prospects took 75 seconds because each 20 result page
+  // waited for the one before it, although all five were approved up front.
+  const gates = new Map();
+  const { controller, log } = harness({
+    search: (request) => {
+      if (request.skip === 0) return page(1, 20, 20);
+      const gate = deferred();
+      gates.set(request.skip, gate);
+      return gate.promise;
+    },
+  });
+  await controller.start({ ...INPUT, target: 100 });
+
+  // The second page is asked for alone: it proves the provider moves forward.
+  await waitFor(() => gates.size === 1, "the second page in flight");
+  await settle();
+  assert.deepEqual([...gates.keys()], [20]);
+  gates.get(20).resolve(page(21, 20, 40));
+
+  // Then every remaining approved page is asked for at once.
+  await waitFor(() => gates.size === 4, "the three remaining pages in flight");
+  assert.deepEqual(
+    [...gates.keys()].sort((left, right) => left - right),
+    [20, 40, 60, 80],
+  );
+  assert.equal(controller.getCurrent().status, "running");
+
+  // The provider answers out of order. Pages are still saved in order.
+  gates.get(80).resolve(page(81, 20, 100));
+  gates.get(60).resolve(page(61, 20, 80));
+  gates.get(40).resolve(page(41, 20, 60));
+  await controller.whenIdle();
+
+  const done = controller.getCurrent();
+  assert.equal(done.count, 100);
+  assert.equal(done.endReason, "target_reached");
+  assert.deepEqual(
+    done.runLog.map((entry) => entry.skip),
+    [0, 20, 40, 60, 80],
+  );
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60, 80],
+    "no page is asked for twice",
+  );
+});
+
+test("owner incident: a provider that repeats its first page is never asked ahead", async () => {
+  // The relay fault of 12 Nov 2026: every offset returned the first page.
+  // Asking ahead must not multiply that into five paid copies.
+  const { controller, log } = harness({
+    pages: (request) => page(1, 20, request.skip + 20),
+  });
+  await controller.start({ ...INPUT, target: 200 });
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20],
+    "the run stops at the first repeated page with nothing requested ahead",
+  );
+  assert.equal(controller.getCurrent().endReason, "provider_repeat");
+});
+
+test("pages are never requested beyond what was approved", async () => {
+  const { controller, log } = harness({
+    pages: (request) => page(request.skip + 1, 20, request.skip + 20),
+  });
+  // 60 approved results are three pages, however many could be asked ahead.
+  await controller.start({ ...INPUT, target: 60 });
+  await controller.whenIdle();
+
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40],
+  );
+  assert.equal(controller.getCurrent().count, 60);
+});
+
+test("pages asked ahead past the end of the results cost nothing and save nothing", async () => {
+  // The provider has 50 results. Pages at 60 and 80 were asked for together
+  // with the page at 40; they come back empty, as the real provider does.
+  const { controller, log } = harness({
+    pages: (request) => {
+      if (request.skip < 40)
+        return page(request.skip + 1, 20, request.skip + 20);
+      if (request.skip === 40) return page(41, 10, null);
+      return { ...page(0, 0, null), estimatedCostUsd: 0 };
+    },
+  });
+  await controller.start({ ...INPUT, target: 100 });
+  await controller.whenIdle();
+
+  const done = controller.getCurrent();
+  assert.equal(done.count, 50);
+  assert.equal(done.endReason, "provider_end");
+  assert.equal(done.spentUsd, 0.18);
+  assert.deepEqual(
+    done.runLog.map((entry) => [entry.skip, entry.placesReturned]),
+    [
+      [0, 20],
+      [20, 20],
+      [40, 10],
+    ],
+    "only pages up to the provider's end are saved and logged",
+  );
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60, 80],
+  );
+});
+
+test("a page fetched ahead is kept when a save fails, and Retry does not pay for it again", async () => {
+  let failSaves = true;
+  const { controller, log } = harness({
+    pages: (request) => page(request.skip + 1, 20, request.skip + 20),
+    publish: async (input) => {
+      if (failSaves && input.changes.displayName === "Shop 41") {
+        throw new Error("The relay did not accept the record.");
+      }
+    },
+  });
+  await controller.start({ ...INPUT, target: 80 });
+  await controller.whenIdle();
+
+  // Pages 0 and 20 are saved in turn, then 40 and 60 are asked for together.
+  // A lead on the page at skip 40 is refused, so the run fails there while
+  // the page at skip 60 has already arrived.
+  const failed = controller.getCurrent();
+  assert.equal(failed.status, "failed");
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60],
+  );
+
+  failSaves = false;
+  await controller.retry();
+  await controller.whenIdle();
+
+  const done = controller.getCurrent();
+  assert.equal(done.status, "complete");
+  assert.equal(done.count, 80);
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60],
+    "the page fetched ahead (skip 60) is used, not bought again",
+  );
+});
+
+test("pausing keeps the pages already asked ahead, and Resume saves them without asking again", async () => {
+  const gates = new Map();
+  const { controller, log } = harness({
+    search: (request) => {
+      if (request.skip < 40)
+        return page(request.skip + 1, 20, request.skip + 20);
+      const gate = deferred();
+      gates.set(request.skip, gate);
+      return gate.promise;
+    },
+  });
+  await controller.start({ ...INPUT, target: 100 });
+  await waitFor(() => gates.size === 3, "pages 40, 60 and 80 in flight");
+  await controller.pause();
+  assert.equal(controller.getCurrent().status, "paused");
+
+  // The provider answers after the pause. Those pages were paid for.
+  for (const skip of [40, 60, 80]) {
+    gates.get(skip).resolve(page(skip + 1, 20, skip + 20));
+  }
+  await settle();
+  assert.equal(
+    controller.getCurrent().count,
+    40,
+    "nothing is saved while paused",
+  );
+
+  await controller.resume();
+  await controller.whenIdle();
+  const done = controller.getCurrent();
+  assert.equal(done.count, 100);
+  assert.deepEqual(
+    log.searches.map((request) => request.skip),
+    [0, 20, 40, 60, 80],
+    "no page is asked for a second time after Resume",
+  );
 });
 
 test("a run never goes past the page cap or approved budget", async () => {
