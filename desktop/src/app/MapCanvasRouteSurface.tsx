@@ -7,6 +7,7 @@ import {
 } from "@/features/cofounder/companyMapJobRoutes";
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { CompanyMapScreen } from "@/features/cofounder/ui/CompanyMapScreen";
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 
 import "./MapCanvasRouteSurface.css";
 
@@ -37,6 +38,16 @@ function MapCanvasWindow({
       data-testid="fullmap-window"
     >
       <span aria-hidden="true" className="map-canvas-route-connector" />
+      <span
+        aria-hidden="true"
+        className="map-canvas-route-job-ring"
+        data-testid="fullmap-window-job-ring"
+      >
+        <EmployeeAvatar
+          className="map-canvas-route-job-avatar"
+          name={job.jobName}
+        />
+      </span>
       <button
         aria-label="Close map screen"
         className="map-canvas-route-close"
@@ -44,7 +55,18 @@ function MapCanvasWindow({
         onClick={onClose}
         type="button"
       >
-        <span aria-hidden="true">×</span>
+        <svg
+          aria-hidden="true"
+          fill="none"
+          height="18"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2.4"
+          viewBox="0 0 24 24"
+          width="18"
+        >
+          <path d="m6 6 12 12M18 6 6 18" />
+        </svg>
       </button>
       <div className="map-canvas-route-window-content">{children}</div>
     </section>
@@ -92,28 +114,13 @@ export function MapCanvasRouteSurface({
       data-window-open={job ? "true" : undefined}
       data-testid="fullmap-canvas-route-surface"
     >
-      <div
-        aria-hidden={job ? true : undefined}
-        className="map-canvas-route-background"
-        inert={job ? true : undefined}
-      >
+      <div className="map-canvas-route-background">
         <CompanyMapScreen mapWindowJob={job} onMapWindowClose={closeWindow} />
       </div>
       {job ? (
-        <>
-          <button
-            aria-label="Fit the whole company"
-            className="map-canvas-route-fit"
-            data-testid="fullmap-window-fit"
-            onClick={closeWindow}
-            type="button"
-          >
-            Fit
-          </button>
-          <MapCanvasWindow job={job} onClose={closeWindow}>
-            {children}
-          </MapCanvasWindow>
-        </>
+        <MapCanvasWindow job={job} onClose={closeWindow}>
+          {children}
+        </MapCanvasWindow>
       ) : null}
     </div>
   );

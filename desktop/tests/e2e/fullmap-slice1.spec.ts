@@ -156,12 +156,112 @@ function windowGeometry() {
   };
   return {
     connector: box(document.querySelector(".map-canvas-route-connector")),
+    jobRing: box(
+      document.querySelector('[data-testid="fullmap-window-job-ring"]'),
+    ),
     sales: box(
       document.querySelector(
         '[data-testid="cofounder-map-sales"] .company-map-part-disc',
       ),
     ),
-    window: box(document.querySelector('[data-testid="fullmap-window"]')),
+    window: box(document.querySelector(".map-canvas-route-window-content")),
+  };
+}
+
+function openWindowMarkupContract() {
+  const box = (node: Element | null) => {
+    if (!(node instanceof HTMLElement || node instanceof SVGElement)) {
+      return null;
+    }
+    const bounds = node.getBoundingClientRect();
+    return {
+      bottom: Math.round(bounds.bottom),
+      height: Math.round(bounds.height),
+      left: Math.round(bounds.left),
+      right: Math.round(bounds.right),
+      top: Math.round(bounds.top),
+      width: Math.round(bounds.width),
+    };
+  };
+  const color = (value: string) => {
+    const probe = document.createElement("span");
+    probe.style.color = value;
+    document.body.append(probe);
+    const result = getComputedStyle(probe).color;
+    probe.remove();
+    return result;
+  };
+  const window = document.querySelector<HTMLElement>(
+    ".map-canvas-route-window-content",
+  );
+  const close = document.querySelector<HTMLElement>(
+    '[data-testid="fullmap-window-close"]',
+  );
+  const zoom = document.querySelector<HTMLElement>(".company-map-zoom");
+  const hint = document.querySelector<HTMLElement>(".company-map-note");
+  const ring = document.querySelector<HTMLElement>(
+    '[data-testid="fullmap-window-job-ring"]',
+  );
+  if (!window || !close || !zoom || !hint || !ring) {
+    throw new Error("Expected full map open-state contract nodes");
+  }
+  const windowBounds = window.getBoundingClientRect();
+  const closeBounds = close.getBoundingClientRect();
+  return {
+    close: {
+      background: getComputedStyle(close).backgroundColor,
+      bottom: Math.round(closeBounds.bottom - windowBounds.bottom),
+      color: getComputedStyle(close).color,
+      height: Math.round(closeBounds.height),
+      radius: getComputedStyle(close).borderRadius,
+      right: Math.round(closeBounds.right - windowBounds.right),
+      shadow: getComputedStyle(close).boxShadow,
+      top: Math.round(closeBounds.top - windowBounds.top),
+      width: Math.round(closeBounds.width),
+    },
+    hint: {
+      opacity: getComputedStyle(hint).opacity,
+      pointerEvents: getComputedStyle(hint).pointerEvents,
+      transitionDuration: getComputedStyle(hint).transitionDuration,
+    },
+    jobLinks: Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '.company-map-job-link[data-map-group="sales"]',
+      ),
+    ).map((node) => ({
+      opacity: getComputedStyle(node).opacity,
+      visibility: getComputedStyle(node).visibility,
+    })),
+    jobWires: Array.from(
+      document.querySelectorAll<SVGPathElement>(".company-map-job-line"),
+    ).map((node) => ({
+      opacity: getComputedStyle(node).opacity,
+      visibility: getComputedStyle(node).visibility,
+    })),
+    ring: {
+      ...box(ring),
+      shadow: getComputedStyle(ring).boxShadow,
+    },
+    tokens: {
+      canvas: color("hsl(var(--colony-canvas))"),
+      inkButton: color("var(--colony-ink-button)"),
+    },
+    window: {
+      ...box(window),
+      radius: getComputedStyle(window).borderRadius,
+    },
+    zoom: {
+      ...box(zoom),
+      buttons: Array.from(zoom.querySelectorAll("button")).map((button) => {
+        const bounds = button.getBoundingClientRect();
+        return {
+          height: Math.round(bounds.height),
+          width: Math.round(bounds.width),
+        };
+      }),
+      timing: getComputedStyle(zoom).transitionTimingFunction,
+      transitionDuration: getComputedStyle(zoom).transitionDuration,
+    },
   };
 }
 
@@ -211,6 +311,16 @@ test.describe("full map canvas slice 1", () => {
         x: 148,
         y: 183,
       },
+      jobRing: {
+        bottom: 208,
+        height: 48,
+        left: 166,
+        right: 214,
+        top: 160,
+        width: 48,
+        x: 166,
+        y: 160,
+      },
       sales: {
         bottom: 228,
         height: 88,
@@ -232,6 +342,64 @@ test.describe("full map canvas slice 1", () => {
         y: 124,
       },
     });
+    const openContract = await page.evaluate(openWindowMarkupContract);
+    expect(openContract.window).toMatchObject({
+      bottom: 823,
+      height: 699,
+      left: 200,
+      radius: "20px",
+      right: 1404,
+      top: 124,
+      width: 1204,
+    });
+    expect(openContract.close).toMatchObject({
+      background: openContract.tokens.inkButton,
+      color: openContract.tokens.canvas,
+      height: 44,
+      radius: "50%",
+      right: 14,
+      top: -14,
+      width: 44,
+    });
+    expect(openContract.close.shadow).toContain("4px");
+    expect(openContract.zoom).toMatchObject({
+      bottom: 866,
+      height: 52,
+      left: 16,
+      right: 156,
+      top: 814,
+      width: 140,
+    });
+    expect(openContract.zoom.buttons).toEqual([
+      { height: 44, width: 44 },
+      { height: 44, width: 44 },
+      { height: 44, width: 44 },
+    ]);
+    expect(openContract.zoom.transitionDuration).toBe("0.5s");
+    expect(openContract.zoom.timing).toBe("cubic-bezier(0.3, 0.8, 0.3, 1)");
+    expect(openContract.hint).toEqual({
+      opacity: "0",
+      pointerEvents: "none",
+      transitionDuration: "0.2s",
+    });
+    expect(openContract.ring).toMatchObject({
+      bottom: 208,
+      height: 48,
+      left: 166,
+      right: 214,
+      top: 160,
+      width: 48,
+    });
+    expect(openContract.ring.shadow).toContain("3px");
+    expect(openContract.ring.shadow).toContain("7px");
+    expect(openContract.jobLinks).toHaveLength(6);
+    for (const jobLink of openContract.jobLinks) {
+      expect(jobLink).toEqual({ opacity: "0", visibility: "hidden" });
+    }
+    expect(openContract.jobWires).not.toHaveLength(0);
+    for (const jobWire of openContract.jobWires) {
+      expect(jobWire).toEqual({ opacity: "0", visibility: "hidden" });
+    }
     const motion = await page.evaluate(() => {
       const stage = document.querySelector<HTMLElement>(
         '[data-testid="cofounder-map-stage"]',
@@ -281,7 +449,7 @@ test.describe("full map canvas slice 1", () => {
     await expect(stage).toHaveAttribute("data-active-part", "none");
 
     await openMapJob(page, WINDOW_JOBS[1]);
-    await page.getByTestId("fullmap-window-fit").click();
+    await page.getByTestId("cofounder-map-fit").click();
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
     await expect(stage).toHaveAttribute("data-active-part", "none");
 

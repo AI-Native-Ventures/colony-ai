@@ -45,6 +45,7 @@
 
 .company-map-viewport {
   position: relative;
+  container-type: inline-size;
   box-sizing: border-box;
   width: 100%;
   min-width: 1400px;
@@ -440,14 +441,19 @@
 .company-map-zoom {
   position: absolute;
   z-index: 6;
-  /* Pinned to the top middle of the canvas, not to the board. */
-  top: 28px;
-  left: calc(50% - 72px);
+  /*
+   * The design moves one control, rather than replacing it, between the
+   * closed board at (628, 8) and the open board at (16, 730).
+   */
+  top: 750px;
+  left: 16px;
   display: flex;
   padding: 4px;
   border-radius: 14px;
   background: var(--colony-overlay);
   box-shadow: var(--colony-shadow-frame);
+  transform: translate(calc(50cqw - 88px), -722px);
+  transition: transform 500ms cubic-bezier(0.3, 0.8, 0.3, 1);
 }
 
 .company-map-zoom button {
@@ -476,19 +482,7 @@
 }
 
 .company-map-viewport[data-map-window-open="true"] .company-map-zoom {
-  top: auto;
-  bottom: 16px;
-  left: 16px;
-}
-
-.company-map-viewport[data-map-window-open="true"] .company-map-zoom button {
-  display: none;
-}
-
-.company-map-viewport[data-map-window-open="true"]
-  .company-map-zoom
-  button:nth-child(2) {
-  display: block;
+  transform: translate(0, 0);
 }
 
 .company-map-note {
@@ -504,6 +498,13 @@
   color: hsl(var(--colony-muted));
   font-size: calc(13 * var(--colony-px));
   font-weight: 600;
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+
+.company-map-viewport[data-map-window-open="true"] .company-map-note {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .company-map-card {
@@ -917,7 +918,9 @@
   .company-map-stage,
   .company-map-highlight,
   .company-map-part-disc,
-  .company-map-job-link {
+  .company-map-job-link,
+  .company-map-zoom,
+  .company-map-note {
     animation: none;
     transition: none;
   }
@@ -936,4 +939,12 @@
 .company-map-stage[data-map-window-open="true"]
   .company-map-part-button[data-faded="true"] {
   opacity: 0;
+}
+
+.company-map-stage[data-map-window-open="true"] .company-map-job-link,
+.company-map-stage[data-map-window-open="true"] .company-map-job-line {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease 150ms;
+  visibility: hidden;
 }

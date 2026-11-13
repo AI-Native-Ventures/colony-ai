@@ -1018,10 +1018,12 @@ function CompanyMapDesktop({
           ref={stageRef}
         >
           <div
+            aria-hidden={mapWindowOpen ? true : undefined}
             className="company-map-stage"
             data-active-part={activePart ?? "none"}
             data-map-window-open={mapWindowOpen ? "true" : undefined}
             data-testid="cofounder-map-stage"
+            inert={mapWindowOpen ? true : undefined}
             style={stageStyle}
           >
             <MapConnectors
@@ -1120,7 +1122,13 @@ function CompanyMapDesktop({
           <div className="company-map-zoom" data-map-control>
             <button
               aria-label="Zoom out"
-              onClick={() => setBoardZoom(zoom - 0.15)}
+              onClick={() => {
+                if (mapWindowOpen) {
+                  onMapWindowClose?.();
+                  return;
+                }
+                setBoardZoom(zoom - 0.15);
+              }}
               type="button"
             >
               −
