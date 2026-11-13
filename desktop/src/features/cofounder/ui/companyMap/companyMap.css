@@ -1,18 +1,38 @@
 .company-map-page {
+  display: flex;
   box-sizing: border-box;
   width: 100%;
   min-height: 100%;
+  flex-direction: column;
   overflow-x: hidden;
   background: hsl(var(--colony-canvas));
   color: hsl(var(--colony-fg));
 }
 
+/*
+ * The map is a canvas: its dotted ground fills everything under the top bar,
+ * however tall or wide the window is. The board itself keeps its designed
+ * 1400 by 790 size and sits in the middle of that ground. At the design's
+ * 1440 by 900 window every piece is where the board draws it.
+ */
+.company-map-desktop {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+
+/*
+ * Sideways scrolling stays here for a window narrower than the board. A
+ * window shorter than the board scrolls the page itself, as every other
+ * screen does, so nothing ends up under the window's top strip.
+ */
 .company-map-scroll {
+  display: flex;
   box-sizing: border-box;
   width: 100%;
+  flex: 1 0 auto;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 20px 0 16px;
   background-color: hsl(var(--colony-canvas));
   background-image: radial-gradient(
     circle,
@@ -26,13 +46,15 @@
 .company-map-viewport {
   position: relative;
   box-sizing: border-box;
-  width: 1400px;
-  height: 790px;
-  margin: 0 auto;
+  width: 100%;
+  min-width: 1400px;
+  /* The board, 20px above it and 16px below it, as on the design. */
+  min-height: 826px;
+  flex: 1 0 auto;
+  margin: 0;
   overflow: hidden;
   touch-action: pan-x pan-y;
   border: 0;
-  min-inline-size: 0;
   padding: 0;
 }
 
@@ -49,7 +71,9 @@
 
 .company-map-stage {
   position: absolute;
-  inset: 0;
+  /* Centred in the canvas. 20px from its top at the design's window height. */
+  top: max(20px, calc(50% - 398px));
+  left: max(0px, calc(50% - 700px));
   width: 1400px;
   height: 790px;
   transform: var(--company-map-transform);
@@ -402,8 +426,9 @@
 .company-map-zoom {
   position: absolute;
   z-index: 6;
-  top: 8px;
-  left: 628px;
+  /* Pinned to the top middle of the canvas, not to the board. */
+  top: 28px;
+  left: calc(50% - 72px);
   display: flex;
   padding: 4px;
   border-radius: 14px;
@@ -439,8 +464,12 @@
 .company-map-note {
   position: absolute;
   z-index: 3;
-  right: 12px;
-  bottom: 8px;
+  /*
+   * Pinned to the bottom right corner of the canvas. On a canvas no bigger
+   * than the board it keeps the board's own 12px and 8px.
+   */
+  right: min(32px, calc(100% - 1388px));
+  bottom: min(34px, calc(100% - 802px));
   margin: 0;
   color: hsl(var(--colony-muted));
   font-size: calc(13 * var(--colony-px));

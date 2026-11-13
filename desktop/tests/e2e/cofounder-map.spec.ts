@@ -169,7 +169,9 @@ test.describe("co-founder mode desktop", () => {
     const geometry = await map.evaluate((stage) => {
       const stageBounds = stage.getBoundingClientRect();
       const viewport = stage.parentElement as HTMLElement;
-      const viewportBounds = viewport.getBoundingClientRect();
+      // The canvas fills the window. The board's own controls are still
+      // measured against the board, which is what the design numbers are for.
+      const viewportBounds = stageBounds;
       const point = (selector: string) => {
         const node = stage.querySelector<HTMLElement>(selector);
         const bounds = node?.getBoundingClientRect();
@@ -431,6 +433,86 @@ test.describe("co-founder mode desktop", () => {
     await expect(page.getByTestId("map-shell-map-button")).toHaveCount(0);
     await expect(page.getByTestId("map-shell-trail")).toHaveCount(0);
     expect(new URL(page.url()).hash).toBe("#/");
+  });
+
+  test("the canvas fills the window under the bar and the board sits in its middle", async ({
+    page,
+  }) => {
+    // Owner report, 13 Nov: on a tall window the dotted canvas stopped at the
+    // board's 790px and a blank band showed below it.
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
+    const measure = () =>
+      page.evaluate(() => {
+        const box = (selector: string) => {
+          const bounds = document
+            .querySelector(selector)
+            ?.getBoundingClientRect();
+          return bounds
+            ? {
+                left: Math.round(bounds.left),
+                top: Math.round(bounds.top),
+                right: Math.round(bounds.right),
+                bottom: Math.round(bounds.bottom),
+              }
+            : null;
+        };
+        const scroll = document.querySelector(".company-map-scroll");
+        return {
+          window: { width: window.innerWidth, height: window.innerHeight },
+          bar: box('[data-testid="map-shell-bar"]'),
+          canvas: box(".company-map-scroll"),
+          dotted: scroll
+            ? getComputedStyle(scroll).backgroundImage.includes("gradient")
+            : false,
+          board: box(".company-map-stage"),
+          zoom: box(".company-map-zoom"),
+          note: box(".company-map-note"),
+          scrollWidth: scroll?.scrollWidth ?? 0,
+        };
+      });
+
+    await page.setViewportSize({ width: 2000, height: 1228 });
+    await page.goto("/#/");
+    await expect(page.getByTestId("cofounder-map-stage")).toBeVisible();
+    const tall = await measure();
+    expect(tall.dotted).toBe(true);
+    // The canvas runs from the bar to the bottom and across the full width.
+    expect(tall.canvas).toEqual({
+      left: 0,
+      top: tall.bar?.bottom,
+      right: 2000,
+      bottom: 1228,
+    });
+    // The 1400 by 790 board is centred in it.
+    expect(tall.board).toMatchObject({ left: 300, right: 1700 });
+    const above = (tall.board?.top ?? 0) - (tall.canvas?.top ?? 0);
+    const below = (tall.canvas?.bottom ?? 0) - (tall.board?.bottom ?? 0);
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(8);
+    // Zoom stays at the top middle of the canvas, the hint in its corner.
+    expect((tall.zoom?.top ?? 0) - (tall.canvas?.top ?? 0)).toBe(28);
+    expect(((tall.zoom?.left ?? 0) + (tall.zoom?.right ?? 0)) / 2).toBeCloseTo(
+      998,
+      0,
+    );
+    expect(2000 - (tall.note?.right ?? 0)).toBe(32);
+    expect(1228 - (tall.note?.bottom ?? 0)).toBe(34);
+
+    // At the design's own window size nothing moved: the board starts 20px
+    // under the bar and 20px from the left.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const design = await measure();
+    expect(design.canvas?.bottom).toBe(900);
+    expect(design.board).toMatchObject({
+      left: 20,
+      top: (design.bar?.bottom ?? 0) + 20,
+    });
+
+    // A window narrower than the board scrolls sideways instead of cutting it.
+    await page.setViewportSize({ width: 1100, height: 700 });
+    const narrow = await measure();
+    expect(narrow.scrollWidth).toBe(1400);
   });
 
   test("each part reveals its current app jobs and closes with Escape", async ({
