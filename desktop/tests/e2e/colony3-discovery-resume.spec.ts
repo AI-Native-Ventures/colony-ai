@@ -343,12 +343,12 @@ for (const [width, height] of [
       );
 
       await releaseProviderPage(page);
-      await expect(
-        campaign.getByText("Search complete", { exact: true }),
-      ).toBeVisible({ timeout: 15_000 });
-      await expect(
-        campaign.getByText(/The relay returned nextSkip null after 3 pages/),
-      ).toBeVisible();
+      // The area ran out short of the target: the card says what was found
+      // and, in one short line, that there is no more here.
+      await expect(campaign.getByText(/^Found \d+ of \d+$/)).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(campaign.getByText(/ has no more\. /)).toBeVisible();
       await capture(
         page,
         campaign.locator(".c3d-run"),
@@ -357,15 +357,13 @@ for (const [width, height] of [
 
       await campaign.getByRole("button", { name: "Run details" }).click();
       const details = page.getByTestId("campaign-activity-dialog");
-      await expect(details.getByText("Provider page log")).toBeVisible();
+      await expect(details.getByText("Pages searched")).toBeVisible();
       await expect(details.getByText("Page 2")).toBeVisible();
       await expect(
-        details.getByText("Repeated in campaign").first(),
+        details.getByText("Found before in this search").first(),
       ).toBeVisible();
       await expect(
-        details.getByText(
-          "Stopped because the relay returned nextSkip null, so the provider offered no next page.",
-        ),
+        details.getByText("Stopped here: Maps returned no more results."),
       ).toBeVisible();
       await capture(page, details, `run-details-${suffix}.png`);
     });
@@ -408,9 +406,9 @@ for (const [width, height] of [
       );
 
       await releaseProviderPage(page);
-      await expect(
-        campaign.getByText("Search complete", { exact: true }),
-      ).toBeVisible({ timeout: 15_000 });
+      await expect(campaign.getByText(/^Found \d+ of \d+$/)).toBeVisible({
+        timeout: 15_000,
+      });
       const after = await campaignState(page);
       expect(after?.campaigns).toHaveLength(1);
       expect(after?.currentId).toBe("real-estate-stuck");

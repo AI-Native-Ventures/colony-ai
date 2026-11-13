@@ -35,6 +35,12 @@ import {
   PAGE_BUDGET_USD,
   roundUsd,
 } from "./discoveryCampaignContinuation";
+import {
+  enterNextArea,
+  inSearchArea,
+  movesToNextArea,
+} from "./discoveryCampaignAreas";
+import { advanceCoverage, coveredQueryIn } from "./discoveryCoverage";
 import { createFetchAhead } from "./discoveryFetchAhead";
 import { fitScore, leadNameKey, mapPlaceToProspect } from "./discoveryMapping";
 import {
@@ -56,7 +62,6 @@ import type {
   DiscoveryCoverage,
   DiscoveryEndReason,
   DiscoveryPageLog,
-  DiscoveryQueryEndReason,
 } from "./discoveryProvider";
 import {
   SEARCH_PAGE_SIZE,
@@ -75,7 +80,7 @@ import {
 /** The owner-facing campaign form permits targets from 100 through 500. */
 export const MIN_TARGET = 100;
 export const MAX_TARGET = 500;
-export const PUBLISH_CONCURRENCY = 3;
+export const PUBLISH_CONCURRENCY = 6;
 export const PUBLISH_BACKOFF_MS = [400, 800, 1600] as const;
 export const SEARCH_BACKOFF_MS = [1_000, 3_000] as const;
 export { BUDGET_USD_PER_PROSPECT, buildEndNote, MAX_PAGES };
@@ -135,44 +140,6 @@ type ActiveRun = {
   abort: AbortController;
   done: Promise<void>;
 };
-
-function coverageCursor(
-  coverage: readonly DiscoveryCoverage[],
-  queryKey: string,
-): number {
-  return coverage.find((entry) => entry.queryKey === queryKey)?.nextSkip ?? 0;
-}
-
-function coverageTerminalReason(
-  coverage: readonly DiscoveryCoverage[],
-  queryKey: string,
-): DiscoveryQueryEndReason | null {
-  return (
-    coverage.find((entry) => entry.queryKey === queryKey)?.terminalReason ??
-    null
-  );
-}
-
-function advanceCoverage(
-  coverage: readonly DiscoveryCoverage[],
-  queryKey: string,
-  nextSkip: number,
-  terminalReason: DiscoveryQueryEndReason | null,
-): DiscoveryCoverage[] {
-  const next = coverage.map((entry) =>
-    entry.queryKey === queryKey
-      ? {
-          ...entry,
-          nextSkip: Math.max(entry.nextSkip, nextSkip),
-          terminalReason: terminalReason ?? entry.terminalReason,
-        }
-      : { ...entry },
-  );
-  if (!next.some((entry) => entry.queryKey === queryKey)) {
-    next.push({ queryKey, nextSkip, terminalReason });
-  }
-  return next;
-}
 
 function requestedCoverageKey(
   campaign: Pick<
@@ -569,6 +536,12 @@ export function createDiscoveryController(
       while (isLive(run)) {
         const campaign = findCampaign(state, run.campaignId);
         if (!campaign) return;
+        // Only after the owner's yes: the next nearby area, same campaign.
+        if (movesToNextArea(campaign)) {
+          ahead.stop(campaign.id);
+          patch(run.campaignId, (it) => enterNextArea(it, coveredQuery));
+          continue;
+        }
         if (campaign.count >= campaign.target || campaign.exhausted) {
           if (campaign.count >= campaign.target && !campaign.endReason) {
             patch(run.campaignId, (existing) => ({
@@ -597,12 +570,13 @@ export function createDiscoveryController(
           await finish(run, context);
           return;
         }
+        const searching = inSearchArea(campaign);
         ahead.drop(campaign.id, campaign.skip);
-        ahead.start(campaign, pending !== null);
+        ahead.start(searching, pending !== null);
         const page =
           pending ??
-          (await ahead.pageAt(campaign, run.abort.signal, () =>
-            fetchCampaignPage(campaign, run.abort.signal, (request) =>
+          (await ahead.pageAt(searching, run.abort.signal, () =>
+            fetchCampaignPage(searching, run.abort.signal, (request) =>
               searchPage(run, request),
             ),
           ));
@@ -671,7 +645,7 @@ export function createDiscoveryController(
               : null;
           const coverage = advanceCoverage(
             existing.coverage,
-            requestedCoverageKey(existing, asked),
+            requestedCoverageKey(inSearchArea(existing), asked),
             coverageNext,
             coverageTerminalReason,
           );
@@ -691,6 +665,7 @@ export function createDiscoveryController(
             repeatedInCampaign: outcome.repeatedInCampaign,
             costUsd: response.estimatedCostUsd,
             stopReason,
+            area: inSearchArea(existing).location,
           };
           return {
             ...existing,
@@ -897,18 +872,26 @@ export function createDiscoveryController(
             tagCursors: [...fresh.tagCursors],
             coverage: fresh.coverage.map((entry) => ({ ...entry })),
           };
-    patch(fresh.id, (campaign) => ({
-      ...campaign,
-      budgetUsd: roundUsd(campaign.budgetUsd + requestedAdditional),
-      status: "running",
-      failureReason: null,
-      exhausted: false,
-      endReason: null,
-      endNote: null,
-      skip: cursorState.skip,
-      tagCursors: cursorState.tagCursors,
-      coverage: cursorState.coverage,
-    }));
+    // Continuing a campaign whose area ran out is the owner's yes to nearby.
+    const nearby = (freshContinuation.nearbyAreas?.length ?? 0) > 0;
+    if (nearby) ahead.stop(fresh.id);
+    patch(fresh.id, (campaign) => {
+      const resumed: StoredCampaign = {
+        ...campaign,
+        budgetUsd: roundUsd(campaign.budgetUsd + requestedAdditional),
+        status: "running",
+        failureReason: null,
+        exhausted: false,
+        endReason: null,
+        endNote: null,
+        skip: cursorState.skip,
+        tagCursors: cursorState.tagCursors,
+        coverage: cursorState.coverage,
+      };
+      return nearby
+        ? enterNextArea({ ...resumed, nearbyApproved: true }, coveredQuery)
+        : resumed;
+    });
     const resumed = findCampaign(state, fresh.id);
     if (!resumed) return;
     beginRun(
@@ -961,29 +944,7 @@ export function createDiscoveryController(
    * type and place finish at once with nothing found.
    */
   function coveredQuery(queryKey: string): DiscoveryCoverage {
-    const coverage = state.campaigns
-      .filter((campaign) => campaign.trustedCoverage)
-      .map((campaign) => campaign.coverage)
-      .reduce<DiscoveryCoverage>(
-        (current, entries) => {
-          const nextSkip = Math.max(
-            current.nextSkip,
-            coverageCursor(entries, queryKey),
-          );
-          return {
-            queryKey,
-            nextSkip,
-            terminalReason:
-              current.terminalReason ??
-              coverageTerminalReason(entries, queryKey),
-          };
-        },
-        { queryKey, nextSkip: 0, terminalReason: null },
-      );
-    return {
-      ...coverage,
-      nextSkip: Math.min(QUERY_PLACE_CEILING, coverage.nextSkip),
-    };
+    return coveredQueryIn(state.campaigns, queryKey);
   }
 
   const controller: DiscoveryController = {
@@ -1110,6 +1071,8 @@ export function createDiscoveryController(
         pageLog: [],
         coverage: initialCoverage,
         trustedCoverage: true,
+        areaIndex: 0,
+        nearbyApproved: false,
         skip: initialSkip,
         tagCursors: initialTagCursors,
         pendingTagCursors: first?.tagCursors ?? null,

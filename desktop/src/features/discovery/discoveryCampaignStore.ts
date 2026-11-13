@@ -15,6 +15,7 @@ import type {
   DiscoveryRunStatus,
   DiscoveryRunner,
 } from "./discoveryProvider";
+import { areasSearched, nearbyAreasLeft } from "./discoveryCampaignAreas";
 import { parseDiscoveryLocation } from "./discoveryLocation";
 import type {
   DiscoveryPlace,
@@ -33,7 +34,8 @@ const MAX_TOP_FITS = 5;
 const MAX_PENDING_PLACES = 50;
 const STORE_VERSION = 4;
 const MAX_SEEN_PROVIDER_PLACE_IDS = 400;
-const MAX_COVERAGE_STREAMS = 3;
+// Three tag streams for each of the chosen place and its six nearby areas.
+const MAX_COVERAGE_STREAMS = 21;
 const MAX_PAGE_LOGS = 25;
 
 export type TopFit = { id: string; name: string; fit: number };
@@ -61,6 +63,16 @@ export type CampaignInternals = {
   pageLog: DiscoveryPageLog[];
   /** The furthest cursor this device durably saved for each exact provider query. */
   coverage: DiscoveryCoverage[];
+  /**
+   * Which area is being searched: 0 is the place the owner chose, k is its
+   * k-th nearby area, nearest first. See `discoveryCampaignAreas.ts`.
+   */
+  areaIndex: number;
+  /**
+   * The owner said yes to searching the nearby areas. Only that answer sets
+   * it: a run never widens its area by itself.
+   */
+  nearbyApproved: boolean;
   /**
    * True for campaigns started by a build whose relay pages by a real offset.
    * Campaigns saved before 12 Nov 2026 lack it: the relay then sent an offset
@@ -255,6 +267,7 @@ function parsePageLog(value: unknown): DiscoveryPageLog[] {
     const repeatedInCampaign = nonNegativeInt(row.repeatedInCampaign);
     const costUsd = num(row.costUsd);
     const stopReason = str(row.stopReason);
+    const area = str(row.area);
     if (
       page < 1 ||
       skip > 400 ||
@@ -280,6 +293,7 @@ function parsePageLog(value: unknown): DiscoveryPageLog[] {
         stopReason && END_REASONS.has(stopReason)
           ? (stopReason as DiscoveryEndReason)
           : null,
+      ...(area ? { area } : {}),
     });
   }
   return logs;
@@ -398,6 +412,8 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     pageLog: parsePageLog(value.pageLog),
     coverage: parseCoverage(value.coverage),
     trustedCoverage: value.trustedCoverage === true,
+    areaIndex: nonNegativeInt(value.areaIndex),
+    nearbyApproved: value.nearbyApproved === true,
     skip: nonNegativeInt(value.skip),
     tagCursors: parseTagCursors(value.tagCursors, pickedTags.length),
     pendingTagCursors: Array.isArray(value.pendingTagCursors)
@@ -561,6 +577,8 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     endReason: campaign.endReason ?? null,
     runLog: campaign.pageLog.map((entry) => ({ ...entry })),
     pagesFetched: campaign.pagesFetched,
+    areasSearched: areasSearched(campaign),
+    nearbyAreasLeft: nearbyAreasLeft(campaign),
     coverage: campaign.coverage.map((cursor) => ({ ...cursor })),
     postedInSales: campaign.postedInSales === true,
     createdAt: campaign.createdAt,

@@ -7,7 +7,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { RUN_LABELS } from "./CampaignHelpers";
+import { runTitle } from "./CampaignHelpers";
+import { shortAreaName } from "./discoveryCampaignAreas";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -72,7 +73,7 @@ function runSteps(campaign: DiscoveryCampaign): Array<{
         }
       : { text: duplicateText, state: "done" },
     {
-      text: RUN_LABELS[campaign.status],
+      text: runTitle(campaign),
       state: campaign.status === "complete" ? "final" : "wait",
     },
   ];
@@ -81,17 +82,17 @@ function runSteps(campaign: DiscoveryCampaign): Array<{
 function pageStopReason(entry: DiscoveryPageLog): string {
   switch (entry.stopReason) {
     case "target_reached":
-      return "Stopped because the requested new-prospect target was reached.";
+      return "Stopped here: the number of new prospects you asked for was reached.";
     case "provider_end":
-      return "Stopped because the relay returned nextSkip null, so the provider offered no next page.";
+      return "Stopped here: Maps returned no more results.";
     case "provider_ceiling":
-      return "Stopped at the relay's 400-record provider ceiling.";
+      return "Stopped here: 400 businesses is the most Maps returns for one search.";
     case "provider_repeat":
-      return "Stopped because every provider place id on this page had already appeared in this campaign. No further paid page was requested.";
+      return "Stopped here: every business on this page had already been found by this search. No further page was paid for.";
     case "approved_budget":
       return "Stopped to ask before searching further: the results you approved were used. Find more continues at no extra cost.";
     default:
-      return "The relay offered another page after this one.";
+      return "More pages were available after this one.";
   }
 }
 
@@ -100,19 +101,21 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
   return (
     <section aria-labelledby="page-log-title" className="c3d-page-log">
       <div className="c3d-page-log-head">
-        <h3 id="page-log-title">Provider page log</h3>
-        <span>Recorded from each relay response</span>
+        <h3 id="page-log-title">Pages searched</h3>
+        <span>What each page returned</span>
       </div>
       <ol>
         {entries.map((entry) => (
           <li className="c3d-page-log-row" key={`${entry.page}-${entry.skip}`}>
             <div className="c3d-page-log-summary">
               <strong>
-                Page {entry.page} <span>skip {entry.skip}</span>
+                Page {entry.page}
+                {entry.area ? <span> {shortAreaName(entry.area)}</span> : null}
               </strong>
               <span>
                 {entry.placesReturned}{" "}
-                {entry.placesReturned === 1 ? "place" : "places"} returned ·{" "}
+                {entry.placesReturned === 1 ? "business" : "businesses"}{" "}
+                returned ·{" "}
                 {formatCustomerPrice(
                   newProspectsCostUsd(entry.newProspectsSaved),
                 )}
@@ -128,7 +131,7 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
                 <dd>{entry.alreadyInLeads}</dd>
               </div>
               <div>
-                <dt>Repeated in campaign</dt>
+                <dt>Found before in this search</dt>
                 <dd>{entry.repeatedInCampaign}</dd>
               </div>
             </dl>
