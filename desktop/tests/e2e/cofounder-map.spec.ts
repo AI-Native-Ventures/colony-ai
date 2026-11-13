@@ -25,7 +25,10 @@ import {
   FUNCTION_DETAILS,
   FUNCTION_ORDER,
 } from "../../src/features/cofounder/functions";
-import { getCompanyMapJobRoute } from "../../src/features/cofounder/companyMapJobRoutes";
+import {
+  companyMapWindowSearch,
+  getCompanyMapJobRoute,
+} from "../../src/features/cofounder/companyMapJobRoutes";
 
 type ConnectorState = "live" | "on" | "off";
 
@@ -765,7 +768,7 @@ test.describe("co-founder mode desktop", () => {
       await selectMapPart(page, functionId, FUNCTION_DETAILS[functionId].name);
       for (const jobName of FUNCTION_DETAILS[functionId].subFunctions) {
         const route = getCompanyMapJobRoute(functionId, jobName);
-        const target =
+        const path =
           route.kind === "app"
             ? route.to
             : route.kind === "work"
@@ -773,13 +776,22 @@ test.describe("co-founder mode desktop", () => {
               : route.kind === "whatsapp"
                 ? `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=${route.tab}`
                 : `/company/function/${route.functionId}`;
-        const escapedTarget = target
-          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-          .replaceAll("/", "\\/");
         const jobId = jobName.toLowerCase().replaceAll(" ", "-");
-        await expect(
-          page.getByTestId(`cofounder-map-job-${functionId}-${jobId}`),
-        ).toHaveAttribute("href", new RegExp(`${escapedTarget}$`));
+        const href = await page
+          .getByTestId(`cofounder-map-job-${functionId}-${jobId}`)
+          .getAttribute("href");
+        const target = href?.split("#")[1] ?? "";
+        const [targetPath, targetSearch] = target.split("?", 2);
+        expect(targetPath).toBe(path.split("?", 1)[0]);
+        const params = new URLSearchParams(
+          targetSearch ?? path.split("?", 2)[1],
+        );
+        expect(params.get("whatsappDeskTab")).toBe(
+          route.kind === "whatsapp" ? route.tab : null,
+        );
+        expect(params.get("mapJob")).toBe(
+          companyMapWindowSearch(functionId, jobName)?.mapJob ?? null,
+        );
       }
       await page.keyboard.press("Escape");
     }

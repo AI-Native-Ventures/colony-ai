@@ -3,6 +3,7 @@ import type {
   FunctionId,
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
+import type { CompanyMapWindowJob } from "@/features/cofounder/companyMapJobRoutes";
 
 export type ProfileLookup = Record<
   string,
@@ -29,4 +30,6 @@ export type CompanyMapBoardProps = {
   scoutPubkey?: string | null;
   summary: CompanyMapSummary | undefined;
   whatsAppChannelId?: string | null;
+  mapWindowJob?: CompanyMapWindowJob | null;
+  onMapWindowClose?: () => void;
 };
