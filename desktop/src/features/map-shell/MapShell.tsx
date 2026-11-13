@@ -4,7 +4,12 @@ import { ChevronDown, LogOut, Menu, Power, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { mapShellTrailForPath } from "@/app/topBarBreadcrumbs";
+import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { useNeedsYouSummary } from "@/features/cofounder/needsYouSummary";
+import {
+  setCompanyMapOpenPart,
+  useCompanyMapOpenPart,
+} from "@/features/cofounder/companyMapOpenPart";
 import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
 import { WorkspaceSwitcherMenu } from "@/features/communities/ui/WorkspaceSwitcherMenu";
 import type { Community } from "@/features/communities/types";
@@ -361,19 +366,31 @@ export function MapShell({
   const location = useLocation();
   const { data: needsYouSummary } = useNeedsYouSummary();
   const needsYouTotal = needsYouSummary?.total;
-  const isHome =
+  const mapHomeRoute =
     location.pathname === "/" || location.pathname === "/company/map";
+  const openMapPart = useCompanyMapOpenPart();
+  const isHome = mapHomeRoute && openMapPart === null;
   const activeChannel = channels.find(
     (channel) => channel.id === currentChannelId,
   );
-  const trail = mapShellTrailForPath(location.pathname, {
-    channelName: activeChannel?.name,
-  });
+  const trail =
+    mapHomeRoute && openMapPart
+      ? {
+          part: FUNCTION_DETAILS[openMapPart].name,
+          job: `All of ${FUNCTION_DETAILS[openMapPart].name}`,
+        }
+      : mapShellTrailForPath(location.pathname, {
+          channelName: activeChannel?.name,
+        });
   const activePart = trail && "part" in trail ? trail.part : undefined;
   const workspaceName = activeWorkspace?.name ?? "No workspace";
   const workspaceInitial =
     workspaceName.trim().slice(0, 1).toUpperCase() || "C";
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const handleMapClick = React.useCallback(() => {
+    setCompanyMapOpenPart(null);
+    if (!mapHomeRoute) onGoHome();
+  }, [mapHomeRoute, onGoHome]);
   const profileMenu = (
     <AccountMenu
       currentPubkey={currentPubkey}
@@ -462,7 +479,7 @@ export function MapShell({
               aria-label="Company map"
               className="map-shell-map-button"
               data-testid="map-shell-map-button"
-              onClick={onGoHome}
+              onClick={handleMapClick}
               type="button"
             >
               <MapMark activePart={activePart} />

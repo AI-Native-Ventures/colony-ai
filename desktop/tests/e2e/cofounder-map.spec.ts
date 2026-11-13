@@ -1,233 +1,85 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
-import { bytesToHex } from "@noble/hashes/utils.js";
-import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
-
+import { expect, type Page } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
-import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
-import type {
-  MockCompanyFunctionHead,
-  MockNumbers,
-  MockWorkerRun,
-} from "../../src/testing/e2eBridge";
+import { installMockBridge } from "../helpers/bridge";
+import { test } from "./cofounder-map-test";
 import {
-  makeCofounderNumbersFixture,
+  AYA_PUBKEY,
+  MAP_CHANNEL_ID,
   PROPOSED_COFOUNDER_GOAL_ID,
-} from "../../src/testing/cofounderNumbersFixtures";
+  SCOUT_PUBKEY,
+  WORKER_ID,
+  fixture,
+  functionHead,
+  numbersFixture,
+  openMapPart,
+  seedCofounderTheme,
+  seedCompanyMapBusiness,
+  seedCompanyMapMoneyRails,
+  seedCompanyMapWhatsApp,
+  selectMapPart,
+  workerRun,
+} from "./cofounder-map-fixtures";
+import {
+  FUNCTION_DETAILS,
+  FUNCTION_ORDER,
+} from "../../src/features/cofounder/functions";
+import { getCompanyMapJobRoute } from "../../src/features/cofounder/companyMapJobRoutes";
 
-const OWNER_PUBKEY = "deadbeef".repeat(8);
-const AYA_PUBKEY = TEST_IDENTITIES.alice.pubkey;
-const SCOUT_PUBKEY = TEST_IDENTITIES.bob.pubkey;
-const WORKER_ID = "11111111-1111-4111-8111-111111111111";
+type ConnectorState = "live" | "on" | "off";
 
-function numbersFixture(includeProposal = false): MockNumbers {
-  return makeCofounderNumbersFixture({
-    ownerPubkey: OWNER_PUBKEY,
-    scoutPubkey: SCOUT_PUBKEY,
-    salesLeadPubkey: AYA_PUBKEY,
-    includeProposal,
+async function measuredConnector(page: Page, target: string) {
+  const connector = page.locator(`[data-map-target="${target}"]`);
+  await expect(connector).toHaveCount(1);
+  await expect
+    .poll(() => connector.evaluate((node) => getComputedStyle(node).stroke))
+    .not.toBe("none");
+  return connector.evaluate((node) => {
+    const style = getComputedStyle(node);
+    const tokenColor = (value: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = value;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    };
+    return {
+      animationName: style.animationName,
+      dashArray: style.strokeDasharray.replaceAll("px", "").replaceAll(" ", ""),
+      state: node.getAttribute("data-state"),
+      stroke: style.stroke,
+      strokeWidth: Number.parseFloat(style.strokeWidth),
+      tokens: {
+        accent: tokenColor("hsl(var(--colony-accent))"),
+        need: tokenColor("hsl(var(--colony-need))"),
+        off: tokenColor("hsl(var(--colony-border-strong))"),
+        on: tokenColor("hsl(var(--colony-fg-secondary))"),
+      },
+    };
   });
 }
 
-const EMPTY_APPROVAL_SWITCHES = {
-  approveEveryHire: false,
-  approvePlaybookChanges: false,
-  approveEveryDiscoveryCampaign: false,
-};
-
-function functionHead(
-  functionId: MockCompanyFunctionHead["function"],
-  state: MockCompanyFunctionHead["state"],
-  leadPubkey?: string,
-): MockCompanyFunctionHead {
-  return { function: functionId, state, leadPubkey: leadPubkey ?? null };
-}
-
-function workerRun(overrides: Partial<MockWorkerRun> = {}): MockWorkerRun {
-  const now = Math.floor(Date.now() / 1000);
-  const run: MockWorkerRun = {
-    workerId: WORKER_ID,
-    parentPubkey: AYA_PUBKEY,
-    label: "Research: Linden guesthouses",
-    model: "gemini-flash",
-    status: "done",
-    startedAt: now - 120,
-    deadlineAt: now + 480,
-    finishedAt: now - 20,
-    inputTokens: 240,
-    outputTokens: 510,
-    costUsd: 0.06,
-    outputText: "Three guesthouses match the brief.",
-    ...overrides,
-  };
-  if (run.status !== "running") return run;
-  return {
-    workerId: run.workerId,
-    parentPubkey: run.parentPubkey,
-    label: run.label,
-    model: run.model,
-    status: run.status,
-    startedAt: run.startedAt,
-    deadlineAt: run.deadlineAt,
-    inputTokens: run.inputTokens,
-    outputTokens: run.outputTokens,
-  };
-}
-
-function fixture({
-  role = "owner",
-  enabled = true,
-  includeAya = true,
-  includeScout = false,
-  numbers = numbersFixture(),
-  functionHeads = [
-    functionHead("sales", "filled", AYA_PUBKEY),
-    functionHead("operations", "covered_by_scout"),
-  ],
-  workerRuns = [],
-}: {
-  role?: "owner" | "admin" | "member";
-  enabled?: boolean;
-  includeAya?: boolean;
-  includeScout?: boolean;
-  numbers?: MockNumbers;
-  functionHeads?: MockCompanyFunctionHead[];
-  workerRuns?: MockWorkerRun[];
-} = {}) {
-  const relaySecret = generateSecretKey();
-  return {
-    relaySelf: getPublicKey(relaySecret),
-    companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
-    relayRole: role,
-    relayRequiresMembership: true,
-    relayMembers: [
-      { pubkey: OWNER_PUBKEY, role },
-      ...(includeAya ? [{ pubkey: AYA_PUBKEY, role: "member" as const }] : []),
-      ...(includeScout
-        ? [{ pubkey: SCOUT_PUBKEY, role: "member" as const }]
-        : []),
-    ],
-    cofounderSettings: {
-      enabled,
-      moneyPreference: "cheapest_first" as const,
-      approvalSwitches: EMPTY_APPROVAL_SWITCHES,
-    },
-    companyNumbers: numbers,
-    companyFunctionHeads: functionHeads,
-    companyWorkerRuns: workerRuns,
-    searchProfiles: [
-      ...(includeAya
-        ? [{ pubkey: AYA_PUBKEY, displayName: "Aya", isAgent: true }]
-        : []),
-      ...(includeScout
-        ? [{ pubkey: SCOUT_PUBKEY, displayName: "Scout", isAgent: true }]
-        : []),
-    ],
-    relayAgents: [
-      ...(includeAya
-        ? [
-            {
-              pubkey: AYA_PUBKEY,
-              ownerPubkey: OWNER_PUBKEY,
-              name: "Aya",
-              agentType: "agent",
-              status: "online" as const,
-            },
-          ]
-        : []),
-      ...(includeScout
-        ? [
-            {
-              pubkey: SCOUT_PUBKEY,
-              ownerPubkey: OWNER_PUBKEY,
-              name: "Scout",
-              agentType: "agent",
-              status: "online" as const,
-            },
-          ]
-        : []),
-    ],
-    managedAgents: [
-      ...(includeAya
-        ? [
-            {
-              pubkey: AYA_PUBKEY,
-              name: "Aya",
-              status: "running" as const,
-              channelNames: ["general"],
-            },
-          ]
-        : []),
-      ...(includeScout
-        ? [
-            {
-              pubkey: SCOUT_PUBKEY,
-              name: "Scout",
-              status: "running" as const,
-              channelNames: ["general"],
-            },
-          ]
-        : []),
-    ],
-  };
-}
-
-async function seedCofounderTheme(
-  page: import("@playwright/test").Page,
-  theme: "light" | "dark",
+function expectConnectorKind(
+  measured: Awaited<ReturnType<typeof measuredConnector>>,
+  state: ConnectorState,
 ) {
-  await page.addInitScript(
-    ({ name, pubkey, relayUrl }) => {
-      const preference = {
-        version: 1,
-        theme: name,
-        accent: "#5B45BE",
-        followSystem: false,
-      };
-      localStorage.setItem("buzz-theme", name);
-      localStorage.setItem("buzz-follow-system", "false");
-      localStorage.setItem("buzz-accent-color", "#5B45BE");
-      localStorage.setItem(
-        `buzz-community-theme.v1:${pubkey}:${encodeURIComponent(relayUrl)}`,
-        JSON.stringify(preference),
-      );
-    },
-    {
-      name: theme === "dark" ? "buzz-dark" : "buzz",
-      pubkey: OWNER_PUBKEY,
-      relayUrl: "ws://localhost:3000",
-    },
+  const stroke =
+    state === "on"
+      ? measured.tokens.on
+      : state === "off"
+        ? measured.tokens.off
+        : measured.tokens.accent;
+  expect(measured).toMatchObject({
+    dashArray: state === "live" ? "6,7" : state === "on" ? "none" : "2,6",
+    state,
+    stroke,
+    strokeWidth: state === "live" ? 2.5 : 2,
+  });
+  expect(measured.animationName).toBe(
+    state === "live" ? "company-map-dash" : "none",
   );
-}
-
-async function seedCompanyMapBusiness(page: import("@playwright/test").Page) {
-  await page.addInitScript((logoUrl) => {
-    const communityId = "e2e-default-community";
-    const communities = JSON.parse(
-      window.localStorage.getItem("buzz-communities") ?? "[]",
-    ) as Array<Record<string, unknown>>;
-    window.localStorage.setItem(
-      "buzz-communities",
-      JSON.stringify(
-        communities.map((community) =>
-          community.id === communityId
-            ? { ...community, name: "Signal Story" }
-            : community,
-        ),
-      ),
-    );
-    window.localStorage.setItem(
-      `colony-business-profile.v1:${communityId}`,
-      JSON.stringify({
-        name: "Signal Story",
-        website: "https://signalstory.test",
-        description: "",
-        logoDataUrl: null,
-        logoUrl,
-      }),
-    );
-  }, "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='28' fill='%2324212a'/%3E%3Cpath d='M31 65c13-28 33-28 57-8' fill='none' stroke='%23f2ca72' stroke-linecap='round' stroke-width='12'/%3E%3Ccircle cx='84' cy='38' r='9' fill='%23e989b4'/%3E%3C/svg%3E");
 }
 
 test.describe("co-founder mode desktop", () => {
@@ -261,19 +113,29 @@ test.describe("co-founder mode desktop", () => {
     await expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
-  test("the radial map shows Scout and five ordered company functions", async ({
+  test("the company map shows five ordered parts around the company hub", async ({
     page,
   }) => {
     await installMockBridge(page, fixture());
+    await seedCompanyMapBusiness(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/#/company/map");
 
     const map = page.getByTestId("cofounder-map-stage");
     await expect(
       page.getByRole("heading", { name: "Company map" }),
     ).toBeVisible();
-    await expect(page.getByTestId("cofounder-map-scout")).toContainText(
-      "Scout",
+    await expect(
+      page.getByRole("group", { name: /company map$/i }),
+    ).toBeVisible();
+    await expect(page.getByTestId("cofounder-map-company-hub")).toHaveAttribute(
+      "aria-label",
+      "Horizon Labs. Lerato Molefe, founder, and Scout, chief of staff. Show the whole company.",
     );
+    await expect(map).toHaveAttribute("data-active-part", "none");
+    await expect(page.getByTestId("cofounder-map-company-hub")).toBeVisible();
+    await expect(page.getByTestId("cofounder-map-desktop")).toBeVisible();
+    await expect(page.getByTestId("cofounder-map-phone")).toBeHidden();
     const functions = map.locator("[data-function]");
     await expect(functions).toHaveCount(5);
     await expect
@@ -287,11 +149,9 @@ test.describe("co-founder mode desktop", () => {
       "aria-label",
       "Sales, led by Aya",
     );
-    await expect(page.getByRole("link", { name: "Weekly review" })).toHaveCount(
-      0,
-    );
-    await expect(map.getByTestId("cofounder-map-operations")).toContainText(
-      "Covered by Scout",
+    await expect(map.getByTestId("cofounder-map-operations")).toHaveAttribute(
+      "aria-label",
+      "Operations, covered by Scout",
     );
     await expect(map.getByTestId("cofounder-map-sales")).toHaveAttribute(
       "data-state",
@@ -306,97 +166,540 @@ test.describe("co-founder mode desktop", () => {
         map.getByTestId(`cofounder-map-${functionId}`),
       ).toHaveAttribute("data-state", "empty");
     }
-    const mapText = await map.innerText();
-    expect(mapText).not.toMatch(/\d+ leads|Sub-functions/i);
+    const geometry = await map.evaluate((stage) => {
+      const stageBounds = stage.getBoundingClientRect();
+      const viewport = stage.parentElement as HTMLElement;
+      const viewportBounds = viewport.getBoundingClientRect();
+      const point = (selector: string) => {
+        const node = stage.querySelector<HTMLElement>(selector);
+        const bounds = node?.getBoundingClientRect();
+        return bounds
+          ? {
+              x: Math.round(bounds.left - stageBounds.left + bounds.width / 2),
+              y: Math.round(bounds.top - stageBounds.top + bounds.height / 2),
+              width: Math.round(bounds.width),
+              height: Math.round(bounds.height),
+            }
+          : null;
+      };
+      const viewportMetrics = (selector: string) => {
+        const node = viewport.querySelector<HTMLElement>(selector);
+        if (!node) return null;
+        const bounds = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return {
+          x: Math.round(bounds.left - viewportBounds.left),
+          y: Math.round(bounds.top - viewportBounds.top),
+          width: Math.round(bounds.width),
+          height: Math.round(bounds.height),
+          padding: style.padding,
+          radius: style.borderRadius,
+          right: Math.round(viewportBounds.right - bounds.right),
+          bottom: Math.round(viewportBounds.bottom - bounds.bottom),
+        };
+      };
+      const zoomButtons = Array.from(
+        viewport.querySelectorAll<HTMLElement>(".company-map-zoom button"),
+      ).map((button) => {
+        const bounds = button.getBoundingClientRect();
+        return {
+          width: Math.round(bounds.width),
+          height: Math.round(bounds.height),
+        };
+      });
+      const homeCard = stage.querySelector<HTMLElement>(
+        '[data-testid="cofounder-map-home-card"]',
+      );
+      const homeCardBounds = homeCard?.getBoundingClientRect();
+      const homeCardStyle = homeCard ? getComputedStyle(homeCard) : null;
+      const note = viewport.querySelector<HTMLElement>(".company-map-note");
+      const noteBounds = note?.getBoundingClientRect();
+      const noteStyle = note ? getComputedStyle(note) : null;
+      return {
+        size: { width: stageBounds.width, height: stageBounds.height },
+        hub: point(
+          '[data-testid="cofounder-map-company-hub"] .company-map-hub-disc',
+        ),
+        parts: Object.fromEntries(
+          ["sales", "operations", "customer_success", "finance", "brand"].map(
+            (functionId) => [
+              functionId,
+              point(
+                `[data-testid="cofounder-map-${functionId}"] .company-map-part-disc`,
+              ),
+            ],
+          ),
+        ),
+        zoom: viewportMetrics(".company-map-zoom"),
+        zoomButtons,
+        homeCard:
+          homeCard && homeCardBounds && homeCardStyle
+            ? {
+                x: Math.round(homeCardBounds.left - stageBounds.left),
+                width: Math.round(homeCardBounds.width),
+                padding: homeCardStyle.padding,
+                radius: homeCardStyle.borderRadius,
+                right: Math.round(stageBounds.right - homeCardBounds.right),
+                bottom: Math.round(stageBounds.bottom - homeCardBounds.bottom),
+              }
+            : null,
+        note:
+          note && noteBounds && noteStyle
+            ? {
+                text: note.textContent?.trim(),
+                fontSize: noteStyle.fontSize,
+                right: Math.round(viewportBounds.right - noteBounds.right),
+                bottom: Math.round(viewportBounds.bottom - noteBounds.bottom),
+              }
+            : null,
+      };
+    });
+    expect(geometry).toEqual({
+      size: { width: 1400, height: 790 },
+      hub: { x: 700, y: 395, width: 120, height: 120 },
+      parts: {
+        sales: { x: 980, y: 212, width: 88, height: 88 },
+        operations: { x: 420, y: 127, width: 88, height: 88 },
+        customer_success: { x: 420, y: 387, width: 88, height: 88 },
+        finance: { x: 980, y: 562, width: 88, height: 88 },
+        brand: { x: 420, y: 647, width: 88, height: 88 },
+      },
+      zoom: {
+        x: 628,
+        y: 8,
+        width: 140,
+        height: 52,
+        padding: "4px",
+        radius: "14px",
+        right: 632,
+        bottom: 730,
+      },
+      zoomButtons: [
+        { width: 44, height: 44 },
+        { width: 44, height: 44 },
+        { width: 44, height: 44 },
+      ],
+      homeCard: {
+        x: 484,
+        width: 440,
+        padding: "16px",
+        radius: "20px",
+        right: 476,
+        bottom: 6,
+      },
+      note: {
+        text: "Point at a part to open it. Tap a job to go in.",
+        fontSize: "13px",
+        right: 12,
+        bottom: 8,
+      },
+    });
+    await expect(page.getByRole("button", { name: "Zoom out" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Fit the whole company" }),
+    ).toHaveText("Fit");
+    await expect(page.getByRole("button", { name: "Zoom in" })).toHaveText("+");
   });
 
-  test("the radial map keeps Scout copy clear and stops connectors on slot edges", async ({
+  test("shared Needs you summary drives map part and job badges", async ({
     page,
   }) => {
-    await installMockBridge(page, fixture({ includeScout: true }));
+    await installMockBridge(page, fixture());
+    await seedCompanyMapMoneyRails(page);
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/#/company/map");
 
-    for (const viewport of [
-      { width: 1440, height: 1000 },
-      { width: 390, height: 844 },
-    ]) {
-      await page.setViewportSize(viewport);
-      const geometry = await page
-        .getByTestId("cofounder-map-stage")
-        .evaluate((stage) => {
-          const connectorPaths = Array.from(
-            stage.querySelectorAll<SVGPathElement>("[data-map-connector]"),
-          ).filter((path) => path.getClientRects().length > 0);
-          const scoutLabel = stage.querySelector<HTMLElement>(
-            '[data-testid="cofounder-map-scout-label"]',
-          );
-          const scoutLabelBounds = scoutLabel?.getBoundingClientRect();
-          const scoutLabelCrossings = connectorPaths.flatMap((path) => {
-            if (!scoutLabelBounds) return ["missing Scout label"];
-            const matrix = path.getScreenCTM();
-            if (!matrix) return ["missing connector matrix"];
-            const length = path.getTotalLength();
-            const samples = Math.max(1, Math.ceil(length * 2));
-            for (let sample = 0; sample <= samples; sample += 1) {
-              const point = path.getPointAtLength((length * sample) / samples);
-              const screenPoint = new DOMPoint(
-                point.x,
-                point.y,
-              ).matrixTransform(matrix);
-              if (
-                screenPoint.x >= scoutLabelBounds.left - 3 &&
-                screenPoint.x <= scoutLabelBounds.right + 3 &&
-                screenPoint.y >= scoutLabelBounds.top - 3 &&
-                screenPoint.y <= scoutLabelBounds.bottom + 3
-              ) {
-                return [
-                  path.getAttribute("data-testid") ?? "unnamed connector",
-                ];
-              }
-            }
-            return [];
-          });
-          const offEdgeConnectors = connectorPaths.flatMap((path) => {
-            const target = path.getAttribute("data-map-target");
-            const targetCircle = target
-              ? Array.from(
-                  stage.querySelectorAll<HTMLElement>(
-                    `[data-map-circle="${target}"]`,
-                  ),
-                ).find((circle) => circle.getClientRects().length > 0)
-              : null;
-            const matrix = path.getScreenCTM();
-            if (!targetCircle || !matrix) {
-              return [path.getAttribute("data-testid") ?? "unnamed connector"];
-            }
-            const targetBounds = targetCircle.getBoundingClientRect();
-            const length = path.getTotalLength();
-            const point = path.getPointAtLength(length);
-            const endpoint = new DOMPoint(point.x, point.y).matrixTransform(
-              matrix,
-            );
-            const centerX = targetBounds.left + targetBounds.width / 2;
-            const centerY = targetBounds.top + targetBounds.height / 2;
-            const radius = (targetBounds.width + targetBounds.height) / 4;
-            const endpointDistance = Math.hypot(
-              endpoint.x - centerX,
-              endpoint.y - centerY,
-            );
-            return Math.abs(endpointDistance - radius) > 4
-              ? [path.getAttribute("data-testid") ?? "unnamed connector"]
-              : [];
-          });
+    await expect(page.getByTestId("cofounder-map-home-card")).toContainText(
+      "2 things need your yes.",
+    );
+    await expect(page.getByTestId("cofounder-map-part-needs-sales")).toHaveText(
+      "1",
+    );
+    await expect(
+      page.getByTestId("cofounder-map-part-needs-customer_success"),
+    ).toHaveText("1");
+    await expect(
+      page.getByTestId("cofounder-map-job-needs-sales-calls"),
+    ).toHaveText("1");
+  });
 
-          return {
-            connectorCount: connectorPaths.length,
-            offEdgeConnectors,
-            scoutLabelCrossings,
-          };
-        });
+  test("current connectors follow the board runner states, not needs badges", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await seedCompanyMapMoneyRails(page);
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
 
-      expect(geometry.connectorCount).toBe(6);
-      expect(geometry.scoutLabelCrossings).toEqual([]);
-      expect(geometry.offEdgeConnectors).toEqual([]);
+    await expect(
+      page.getByTestId("cofounder-map-part-needs-customer_success"),
+    ).toHaveText("1");
+    expectConnectorKind(await measuredConnector(page, "sales"), "on");
+    const waitingCustomerSuccess = await measuredConnector(
+      page,
+      "customer_success",
+    );
+    expectConnectorKind(waitingCustomerSuccess, "off");
+    expect(waitingCustomerSuccess.stroke).not.toBe(
+      waitingCustomerSuccess.tokens.need,
+    );
+
+    await selectMapPart(page, "sales", "Sales");
+    const calls = await measuredConnector(page, "sales:Calls");
+    expectConnectorKind(calls, "on");
+    expect(calls.stroke).not.toBe(calls.tokens.need);
+
+    await selectMapPart(page, "finance", "Finance");
+    expectConnectorKind(
+      await measuredConnector(page, "finance:Invoices"),
+      "off",
+    );
+    expectConnectorKind(
+      await measuredConnector(page, "finance:Recurring plans"),
+      "on",
+    );
+
+    await selectMapPart(page, "customer_success", "Customer Success");
+    for (const job of ["Renewals", "Upsell", "Reviews"]) {
+      expectConnectorKind(
+        await measuredConnector(page, `customer_success:${job}`),
+        "on",
+      );
+    }
+
+    await selectMapPart(page, "brand", "Brand");
+    for (const job of ["Website", "Portfolio", "Marketing"]) {
+      expectConnectorKind(await measuredConnector(page, `brand:${job}`), "on");
+    }
+    await expect(
+      page.locator('[data-map-connector][data-state="seat"]'),
+    ).toHaveCount(0);
+  });
+
+  test("a running part uses live wires for its waiting jobs", async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await installMockBridge(
+      page,
+      fixture({ workerRuns: [workerRun({ status: "running" })] }),
+    );
+    await seedCompanyMapMoneyRails(page);
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+
+    await page.waitForTimeout(250);
+    expect(pageErrors).toEqual([]);
+    await expect(page.getByTestId("cofounder-map-stage")).toBeVisible();
+    await expect(page.locator('[data-map-target="sales"]')).toHaveAttribute(
+      "data-state",
+      "live",
+    );
+    expectConnectorKind(await measuredConnector(page, "sales"), "live");
+
+    await selectMapPart(page, "sales", "Sales");
+    expectConnectorKind(await measuredConnector(page, "sales:Calls"), "live");
+  });
+
+  test("map-home bar follows the open part and closes its arm", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/");
+
+    const stage = page.getByTestId("cofounder-map-stage");
+    await expect(page.getByTestId("map-shell-company")).toBeVisible();
+    await page.getByTestId("cofounder-map-sales").click();
+    await expect(stage).toHaveAttribute("data-active-part", "sales");
+    await expect(page.getByTestId("map-shell-map-button")).toBeVisible();
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Sales/All of Sales",
+    );
+    await expect(page.getByTestId("map-shell-company")).toHaveCount(0);
+    expect(new URL(page.url()).hash).toBe("#/");
+
+    await page.getByTestId("map-shell-map-button").click();
+    await expect(stage).toHaveAttribute("data-active-part", "none");
+    await expect(page.getByTestId("map-shell-company")).toBeVisible();
+    await expect(page.getByTestId("map-shell-map-button")).toHaveCount(0);
+    await expect(page.getByTestId("map-shell-trail")).toHaveCount(0);
+    expect(new URL(page.url()).hash).toBe("#/");
+  });
+
+  test("each part reveals its current app jobs and closes with Escape", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+
+    const cases = [
+      ["sales", "Sales", 6],
+      ["operations", "Operations", 5],
+      ["customer_success", "Customer Success", 5],
+      ["finance", "Finance", 6],
+      ["brand", "Brand", 5],
+    ] as const;
+    for (const [functionId, name, jobCount] of cases) {
+      await selectMapPart(page, functionId, name);
+      await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
+        "data-active-part",
+        functionId,
+      );
+      await expect(
+        page.locator(`[data-map-group="${functionId}"][data-job]`),
+      ).toHaveCount(jobCount);
+      await expect(
+        page.getByTestId(`cofounder-map-${functionId}`),
+      ).toHaveAttribute("aria-expanded", "true");
+      if (functionId === "operations") {
+        await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+          "Scout runs Operations until you hire someone.",
+        );
+        await expect(
+          page.getByTestId("cofounder-map-part-card"),
+        ).not.toContainText("Each circle is one workflow.");
+      }
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
+        "data-active-part",
+        "none",
+      );
+    }
+  });
+
+  test("the open Sales arm and card match the measured board", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+    await selectMapPart(page, "sales", "Sales");
+
+    const stage = page.getByTestId("cofounder-map-stage");
+    await expect(stage).toHaveAttribute("data-active-part", "sales");
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Find small businesses that need a better website, start the conversation and close.",
+    );
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Aya runs Sales.",
+    );
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Part of your company",
+    );
+    await expect(
+      page.getByRole("link", { name: "Open Sales", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("cofounder-map-part-card").getByRole("button", {
+        name: "Close",
+      }),
+    ).toBeVisible();
+
+    const measured = await stage.evaluate((node) => {
+      const stageBounds = node.getBoundingClientRect();
+      const bounds = (selector: string) => {
+        const element = node.querySelector<HTMLElement>(selector);
+        const rect = element?.getBoundingClientRect();
+        if (!rect) return null;
+        const style = getComputedStyle(element);
+        return {
+          x: Math.round(rect.left - stageBounds.left),
+          y: Math.round(rect.top - stageBounds.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          padding: style.padding,
+          radius: style.borderRadius,
+          background: style.backgroundColor,
+          right: Math.round(stageBounds.right - rect.right),
+          bottom: Math.round(stageBounds.bottom - rect.bottom),
+        };
+      };
+      return {
+        card: bounds('[data-testid="cofounder-map-part-card"]'),
+        salesCircle: bounds(
+          '[data-testid="cofounder-map-sales"] .company-map-part-disc',
+        ),
+        firstJob: bounds(
+          '[data-testid="cofounder-map-job-sales-lead-finding"]',
+        ),
+        firstJobCircle: bounds(
+          '[data-testid="cofounder-map-job-sales-lead-finding"] .company-map-job-disc',
+        ),
+        highlight: bounds(".company-map-highlight"),
+        openAction: bounds('[data-testid="cofounder-map-open-sales"]'),
+        closeAction: bounds('[data-testid="cofounder-map-part-card"] button'),
+      };
+    });
+    expect(measured.card).toMatchObject({
+      x: 484,
+      width: 440,
+      padding: "16px",
+      radius: "20px",
+      right: 476,
+      bottom: 6,
+    });
+    expect(measured.salesCircle).toMatchObject({
+      x: 936,
+      y: 168,
+      width: 88,
+      height: 88,
+    });
+    expect(measured.firstJob).toMatchObject({
+      x: 1156,
+      y: 53,
+      width: 232,
+      height: 48,
+    });
+    expect(measured.firstJobCircle).toMatchObject({ width: 48, height: 48 });
+    expect(measured.highlight).toMatchObject({
+      x: 930,
+      y: 162,
+      width: 100,
+      height: 100,
+    });
+    expect(measured.openAction).toMatchObject({
+      width: 327,
+      height: 44,
+      padding: "0px 16px",
+    });
+    expect(measured.closeAction).toMatchObject({
+      height: 44,
+      background: "rgb(243, 239, 244)",
+    });
+  });
+
+  test("an empty part keeps its dashed circle and plus", async ({ page }) => {
+    await installMockBridge(page, fixture());
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+
+    const finance = page.getByTestId("cofounder-map-finance");
+    await expect(finance).toHaveAttribute("data-state", "empty");
+    const circle = finance.locator(".company-map-part-disc");
+    const measured = await circle.evaluate((node) => {
+      const style = getComputedStyle(node);
+      const bounds = node.getBoundingClientRect();
+      const plus = node.querySelector("svg")?.getBoundingClientRect();
+      return {
+        width: bounds.width,
+        height: bounds.height,
+        borderStyle: style.borderTopStyle,
+        plusWidth: plus?.width,
+        plusHeight: plus?.height,
+      };
+    });
+    expect(measured).toEqual({
+      width: 88,
+      height: 88,
+      borderStyle: "dashed",
+      plusWidth: 24,
+      plusHeight: 24,
+    });
+  });
+
+  test("hover, focus, Close, and the blank board control the active part", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/");
+
+    const stage = page.getByTestId("cofounder-map-stage");
+    const sales = page.getByTestId("cofounder-map-sales");
+    await sales.hover();
+    await expect(stage).toHaveAttribute("data-active-part", "sales");
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Sales/All of Sales",
+    );
+    await expect(page.getByTestId("cofounder-map-operations")).toHaveAttribute(
+      "data-faded",
+      "true",
+    );
+
+    const brand = page.getByTestId("cofounder-map-brand");
+    await brand.focus();
+    await expect(stage).toHaveAttribute("data-active-part", "brand");
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Brand/All of Brand",
+    );
+    await page.keyboard.press("Escape");
+    await expect(stage).toHaveAttribute("data-active-part", "none");
+    await expect(page.getByTestId("map-shell-company")).toBeVisible();
+
+    await selectMapPart(page, "finance", "Finance");
+    await page
+      .getByTestId("cofounder-map-part-card")
+      .getByRole("button", { name: "Close" })
+      .click();
+    await expect(stage).toHaveAttribute("data-active-part", "none");
+
+    await selectMapPart(page, "sales", "Sales");
+    await stage.click({ position: { x: 30, y: 30 } });
+    await expect(stage).toHaveAttribute("data-active-part", "none");
+
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect(page.getByTestId("cofounder-map-zoom-level")).toHaveText(
+      "130 percent",
+    );
+    const viewport = page.locator(".company-map-viewport");
+    const bounds = await viewport.boundingBox();
+    expect(bounds).not.toBeNull();
+    await page.mouse.move((bounds?.x ?? 0) + 100, (bounds?.y ?? 0) + 100);
+    await page.mouse.down();
+    await page.mouse.move((bounds?.x ?? 0) + 140, (bounds?.y ?? 0) + 130);
+    await page.mouse.up();
+    await expect(stage).toHaveCSS(
+      "transform",
+      "matrix(1.3, 0, 0, 1.3, 40, 30)",
+    );
+    await page.getByTestId("cofounder-map-fit").click();
+    await expect(page.getByTestId("cofounder-map-zoom-level")).toHaveText(
+      "100 percent",
+    );
+  });
+
+  test("every map-home job link follows its route table entry", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/");
+    await expect(page.getByTestId("map-shell-bar")).toBeVisible();
+    for (const functionId of FUNCTION_ORDER) {
+      await selectMapPart(page, functionId, FUNCTION_DETAILS[functionId].name);
+      for (const jobName of FUNCTION_DETAILS[functionId].subFunctions) {
+        const route = getCompanyMapJobRoute(functionId, jobName);
+        const target =
+          route.kind === "app"
+            ? route.to
+            : route.kind === "work"
+              ? "/work"
+              : route.kind === "whatsapp"
+                ? `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=${route.tab}`
+                : `/company/function/${route.functionId}`;
+        const escapedTarget = target
+          .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+          .replaceAll("/", "\\/");
+        const jobId = jobName.toLowerCase().replaceAll(" ", "-");
+        await expect(
+          page.getByTestId(`cofounder-map-job-${functionId}-${jobId}`),
+        ).toHaveAttribute("href", new RegExp(`${escapedTarget}$`));
+      }
+      await page.keyboard.press("Escape");
     }
   });
 
@@ -404,7 +707,7 @@ test.describe("co-founder mode desktop", () => {
     await installMockBridge(page, fixture({ workerRuns: [workerRun()] }));
     await page.goto("/#/company/map");
 
-    await page.getByTestId("cofounder-map-sales").click();
+    await openMapPart(page, "sales", "Sales");
     await expect(page.getByRole("heading", { name: "Sales" })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Aya", exact: true }),
@@ -443,7 +746,7 @@ test.describe("co-founder mode desktop", () => {
     );
     await page.goto("/#/company/map");
 
-    await page.getByTestId("cofounder-map-sales").click();
+    await openMapPart(page, "sales", "Sales");
     await expect(page.getByTestId("cofounder-worker-list")).toContainText(
       "Workers under Scout",
     );
@@ -648,16 +951,11 @@ test.describe("co-founder mode desktop", () => {
     await installMockBridge(page, fixture());
     await page.goto("/#/company/map");
 
-    await page.getByTestId("cofounder-map-finance").click();
+    await selectMapPart(page, "finance", "Finance");
     await expect(
-      page.getByRole("heading", { name: "Finance", exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Hire a Bookkeeper" }),
-    ).toBeVisible();
-    const fillSlot = page.getByTestId("cofounder-fill-slot");
-    await expect(fillSlot).toHaveAttribute("href", /hire\/roles/);
-    await fillSlot.click();
+      page.getByRole("link", { name: "Hire a Bookkeeper" }),
+    ).toHaveAttribute("href", /hire\/roles/);
+    await page.getByRole("link", { name: "Hire a Bookkeeper" }).click();
     await expect(page).toHaveURL(/#\/hire\/roles$/);
   });
 
@@ -699,96 +997,160 @@ test.describe("co-founder mode desktop", () => {
     );
     await page.goto("/#/company/map");
 
-    await page.getByTestId("cofounder-map-sales").click();
+    await openMapPart(page, "sales", "Sales");
     await expect(
       page.getByTestId(`cofounder-worker-status-${WORKER_ID}`),
     ).toHaveText("Failed");
   });
 
-  test("captures both approved radial states at 1440 and 390 in light and dark", async ({
-    browser,
+  test("the phone stack fits 390px and keeps every control reachable", async ({
+    page,
   }) => {
-    test.setTimeout(120_000);
-    const screenshotDir = "test-results/cofounder-map-radial";
-    mkdirSync(screenshotDir, { recursive: true });
-
-    for (const state of [
-      {
-        name: "signal-story-empty",
-        mock: fixture({
-          includeAya: false,
-          includeScout: true,
-          functionHeads: [],
-        }),
-      },
-      {
-        name: "approved-sample",
-        mock: fixture({ includeScout: true }),
-      },
-    ]) {
-      for (const theme of ["light", "dark"] as const) {
-        const capturePage = await browser.newPage();
-        await seedCofounderTheme(capturePage, theme);
-        await installMockBridge(capturePage, state.mock);
-        await seedCompanyMapBusiness(capturePage);
-        await capturePage.emulateMedia({ colorScheme: theme });
-
-        for (const viewport of [
-          { width: 1440, height: 1000 },
-          { width: 390, height: 844 },
-        ]) {
-          await capturePage.setViewportSize(viewport);
-          await capturePage.goto("/#/company/map");
-          await expect(
-            capturePage.getByTestId("cofounder-map-stage"),
-          ).toBeVisible();
-          await expect(
-            capturePage.getByTestId("cofounder-map-company-logo"),
-          ).toHaveAttribute("data-source", "profile");
-          await expect(
-            capturePage
-              .getByTestId("cofounder-map-company-logo")
-              .locator("img"),
-          ).toBeVisible();
-          await expect(
-            capturePage.getByRole("heading", { name: "Company map" }),
-          ).toBeVisible();
-          await expect(
-            capturePage.getByText("How Signal Story is run."),
-          ).toBeVisible();
-          await expect
-            .poll(() =>
-              capturePage.evaluate(() =>
-                document.documentElement.classList.contains("dark"),
-              ),
-            )
-            .toBe(theme === "dark");
-          await waitForAnimations(capturePage);
-          await capturePage.screenshot({
-            animations: "disabled",
-            fullPage: true,
-            path: join(
-              screenshotDir,
-              `${state.name}-${theme}-${viewport.width}.png`,
-            ),
-          });
-        }
-
-        await capturePage.close();
+    await installMockBridge(page, fixture());
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/#/company/map");
+    const phone = page.getByTestId("cofounder-map-phone");
+    await expect(phone).toBeVisible();
+    await expect(page.getByTestId("cofounder-map-desktop")).toBeHidden();
+    for (const functionId of FUNCTION_ORDER) {
+      await phone.getByTestId(`cofounder-map-phone-${functionId}`).click();
+      const controls = phone.locator("button:visible, a:visible");
+      for (let index = 0; index < (await controls.count()); index += 1) {
+        const control = controls.nth(index);
+        await control.scrollIntoViewIfNeeded();
+        const box = await control.boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+        expect(box?.x).toBeGreaterThanOrEqual(0);
+        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
       }
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      ).toBe(0);
     }
   });
 
-  test("captures weekly review and function pages at 1440 and 390 in light and dark", async ({
-    browser,
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    const screenshotDir = "test-results/cofounder-phase5";
-    mkdirSync(screenshotDir, { recursive: true });
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures every company map state at 1440 and 390 in ${theme}`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      const screenshotDir = "test-results/cofounder-map-board";
+      mkdirSync(screenshotDir, { recursive: true });
+      const desktopStates = [
+        { name: "no-part-open" },
+        { name: "sales-open", functionId: "sales", label: "Sales" },
+        {
+          name: "operations-open",
+          functionId: "operations",
+          label: "Operations",
+        },
+        {
+          name: "customer-success-open",
+          functionId: "customer_success",
+          label: "Customer Success",
+        },
+        { name: "finance-open", functionId: "finance", label: "Finance" },
+        { name: "brand-open", functionId: "brand", label: "Brand" },
+        { name: "zoomed", zoom: true },
+      ] as const;
 
-    for (const theme of ["light", "dark"] as const) {
-      const capturePage = theme === "light" ? page : await browser.newPage();
+      const capturePage = page;
+      await seedCofounderTheme(capturePage, theme);
+      await installMockBridge(capturePage, fixture({ includeScout: true }), {
+        previewFeatureOverrides: { map_home: true },
+      });
+      await seedCompanyMapBusiness(capturePage);
+      await seedCompanyMapMoneyRails(capturePage);
+      await seedCompanyMapWhatsApp(capturePage, MAP_CHANNEL_ID);
+      await capturePage.emulateMedia({ colorScheme: theme });
+      await capturePage.setViewportSize({ width: 1440, height: 900 });
+      await capturePage.goto("/#/");
+      await expect(capturePage.getByTestId("map-shell-bar")).toBeVisible();
+      await expect(
+        capturePage.getByTestId("cofounder-map-stage"),
+      ).toBeVisible();
+      await expect(
+        capturePage.getByTestId("cofounder-map-company-logo"),
+      ).toHaveAttribute("data-source", "profile");
+      await expect(
+        capturePage.getByRole("heading", { name: "Company map" }),
+      ).toBeVisible();
+      await expect(
+        capturePage.getByTestId("cofounder-map-home-card"),
+      ).toContainText("2 things need your yes.");
+      await expect
+        .poll(() =>
+          capturePage.evaluate(() =>
+            document.documentElement.classList.contains("dark"),
+          ),
+        )
+        .toBe(theme === "dark");
+
+      for (const state of desktopStates) {
+        await capturePage.getByTestId("cofounder-map-fit").click();
+        if ("functionId" in state) {
+          await selectMapPart(capturePage, state.functionId, state.label);
+        }
+        if ("zoom" in state && state.zoom) {
+          await capturePage.getByRole("button", { name: "Zoom in" }).click();
+          await capturePage.getByRole("button", { name: "Zoom in" }).click();
+        }
+        await waitForAnimations(capturePage);
+        await capturePage.screenshot({
+          animations: "disabled",
+          fullPage: false,
+          path: join(screenshotDir, `${state.name}-${theme}-1440.png`),
+        });
+        if ("functionId" in state) {
+          await capturePage.keyboard.press("Escape");
+          await expect(
+            capturePage.getByTestId("cofounder-map-stage"),
+          ).toHaveAttribute("data-active-part", "none");
+        }
+      }
+
+      await capturePage.setViewportSize({ width: 390, height: 844 });
+      await expect(
+        capturePage.getByTestId("cofounder-map-desktop"),
+      ).toBeHidden();
+      await expect(
+        capturePage.getByTestId("cofounder-map-phone"),
+      ).toBeVisible();
+      await waitForAnimations(capturePage);
+      await capturePage.screenshot({
+        animations: "disabled",
+        fullPage: false,
+        path: join(screenshotDir, `phone-no-part-open-${theme}-390.png`),
+      });
+      await capturePage.getByTestId("cofounder-map-phone-sales").click();
+      await expect(
+        capturePage.getByTestId("cofounder-map-phone-sales"),
+      ).toHaveAttribute("aria-expanded", "true");
+      await expect(
+        capturePage.getByTestId("cofounder-map-phone-job-sales-lead-finding"),
+      ).toBeVisible();
+      await waitForAnimations(capturePage);
+      await capturePage.screenshot({
+        animations: "disabled",
+        fullPage: false,
+        path: join(screenshotDir, `phone-sales-open-${theme}-390.png`),
+      });
+    });
+  }
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures weekly review and function pages at 1440 and 390 in ${theme}`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      const screenshotDir = "test-results/cofounder-phase5";
+      mkdirSync(screenshotDir, { recursive: true });
+
+      const capturePage = page;
       await seedCofounderTheme(capturePage, theme);
       await installMockBridge(capturePage, fixture());
       await capturePage.emulateMedia({ colorScheme: theme });
@@ -868,7 +1230,6 @@ test.describe("co-founder mode desktop", () => {
           }
         }
       }
-      if (theme === "dark") await capturePage.close();
-    }
-  });
+    });
+  }
 });
