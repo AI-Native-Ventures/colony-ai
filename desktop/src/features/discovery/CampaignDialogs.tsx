@@ -7,7 +7,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { RUN_LABELS } from "./CampaignHelpers";
+import { runTitle } from "./CampaignHelpers";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -72,7 +72,7 @@ function runSteps(campaign: DiscoveryCampaign): Array<{
         }
       : { text: duplicateText, state: "done" },
     {
-      text: RUN_LABELS[campaign.status],
+      text: runTitle(campaign),
       state: campaign.status === "complete" ? "final" : "wait",
     },
   ];

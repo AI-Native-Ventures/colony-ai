@@ -9,7 +9,7 @@ export type CampaignProspect = BusinessRecords["prospects"][number];
 export type ProspectFilter = "all" | "high-fit" | "accepted" | "candidates";
 export type PillTone = "ok" | "idle" | "accent" | "need" | "info" | "bad";
 
-export const RUN_LABELS: Record<DiscoveryRunStatus, string> = {
+const RUN_LABELS: Record<DiscoveryRunStatus, string> = {
   running: "Finding prospects",
   paused: "Search paused",
   failed: "Search interrupted",
@@ -24,6 +24,36 @@ export const STAGE_LABELS: Record<ProspectStage, string> = {
   won: "Won",
   lost: "Lost",
 };
+
+/**
+ * The run card's title. A search that used its approved results with part of
+ * the request still to find is not finished: the card asks whether to keep
+ * searching, so the title states what was found instead of "Search complete".
+ */
+export function runTitle(
+  campaign: Pick<
+    DiscoveryCampaign,
+    "status" | "endReason" | "count" | "target"
+  >,
+): string {
+  if (stoppedShortOfRequest(campaign)) {
+    return `Found ${campaign.count} of ${campaign.target}`;
+  }
+  return RUN_LABELS[campaign.status];
+}
+
+function stoppedShortOfRequest(
+  campaign: Pick<
+    DiscoveryCampaign,
+    "status" | "endReason" | "count" | "target"
+  >,
+): boolean {
+  return (
+    campaign.status === "complete" &&
+    campaign.endReason === "approved_budget" &&
+    campaign.count < campaign.target
+  );
+}
 
 /** The run status as the resume card and campaign list word it. */
 export function campaignStatusLabel(status: DiscoveryRunStatus): string {
@@ -68,6 +98,8 @@ export function runDescription(campaign: DiscoveryCampaign): string {
   if (campaign.status === "complete") {
     const found = `${campaign.count} prospects found · ${campaign.target} requested`;
     const note = campaign.endNote?.trim();
+    // The title already carries both numbers when the search stopped short.
+    if (note && stoppedShortOfRequest(campaign)) return note;
     return note ? `${found}. ${note}` : found;
   }
   if (campaign.status === "paused")

@@ -257,11 +257,15 @@ test("results already in Leads are not charged, and Find more continues the same
   await approve(firstDialog);
 
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
-  await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
+  // 100 results were approved and used. 89 of them were already Leads, so
+  // the run stops and asks before it searches further. A card that asks to
+  // keep searching does not call the search complete.
+  await expect(page.getByText("Found 11 of 100", { exact: true })).toBeVisible({
     timeout: 20_000,
   });
-  // 100 results were approved and used. 89 of them were already Leads, so
-  // the run stops and asks before it searches further.
+  await expect(page.getByText("Search complete", { exact: true })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByText(/results you approved were used after 5 pages/i),
   ).toBeVisible();
@@ -290,9 +294,10 @@ test("results already in Leads are not charged, and Find more continues the same
   await expect(
     page.getByText("Search nearby areas", { exact: true }),
   ).toBeVisible();
+  // The title holds both numbers, so the line under it is only the question.
   await expect(
     page.getByText(/11 prospects found · 100 requested/),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", {
       name: "Woodmead, Johannesburg, Gauteng, South Africa",

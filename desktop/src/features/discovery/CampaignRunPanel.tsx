@@ -1,6 +1,6 @@
 import { Pause, Play, RotateCcw } from "lucide-react";
 
-import { RUN_LABELS, runDescription } from "./CampaignHelpers";
+import { runDescription, runTitle } from "./CampaignHelpers";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -108,7 +108,7 @@ export function CampaignRunPanel({
             <RunIcon status={campaign.status} />
           </span>
           <div className="c3d-run-copy">
-            <h2 id="run-title">{RUN_LABELS[campaign.status]}</h2>
+            <h2 id="run-title">{runTitle(campaign)}</h2>
             <span>{runDescription(campaign)}</span>
           </div>
           {campaign.runBy ? (
