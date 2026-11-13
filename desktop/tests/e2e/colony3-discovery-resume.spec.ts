@@ -357,10 +357,10 @@ for (const [width, height] of [
 
       await campaign.getByRole("button", { name: "Run details" }).click();
       const details = page.getByTestId("campaign-activity-dialog");
-      await expect(details.getByText("Provider page log")).toBeVisible();
+      await expect(details.getByText("Pages searched")).toBeVisible();
       await expect(details.getByText("Page 2")).toBeVisible();
       await expect(
-        details.getByText("Repeated in campaign").first(),
+        details.getByText("Found before in this search").first(),
       ).toBeVisible();
       await expect(
         details.getByText("Stopped here: Maps returned no more results."),

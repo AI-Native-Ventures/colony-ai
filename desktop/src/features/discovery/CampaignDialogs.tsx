@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { runTitle } from "./CampaignHelpers";
+import { shortAreaName } from "./discoveryCampaignAreas";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -100,19 +101,21 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
   return (
     <section aria-labelledby="page-log-title" className="c3d-page-log">
       <div className="c3d-page-log-head">
-        <h3 id="page-log-title">Provider page log</h3>
-        <span>Recorded from each relay response</span>
+        <h3 id="page-log-title">Pages searched</h3>
+        <span>What each page returned</span>
       </div>
       <ol>
         {entries.map((entry) => (
           <li className="c3d-page-log-row" key={`${entry.page}-${entry.skip}`}>
             <div className="c3d-page-log-summary">
               <strong>
-                Page {entry.page} <span>skip {entry.skip}</span>
+                Page {entry.page}
+                {entry.area ? <span> {shortAreaName(entry.area)}</span> : null}
               </strong>
               <span>
                 {entry.placesReturned}{" "}
-                {entry.placesReturned === 1 ? "place" : "places"} returned ·{" "}
+                {entry.placesReturned === 1 ? "business" : "businesses"}{" "}
+                returned ·{" "}
                 {formatCustomerPrice(
                   newProspectsCostUsd(entry.newProspectsSaved),
                 )}
@@ -128,7 +131,7 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
                 <dd>{entry.alreadyInLeads}</dd>
               </div>
               <div>
-                <dt>Repeated in campaign</dt>
+                <dt>Found before in this search</dt>
                 <dd>{entry.repeatedInCampaign}</dd>
               </div>
             </dl>
