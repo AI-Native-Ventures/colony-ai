@@ -1,3 +1,4 @@
+import { nearbyAreasLeft } from "./discoveryCampaignAreas";
 import type { StoredCampaign } from "./discoveryCampaignStore";
 import type {
   DiscoveryContinuation,
@@ -221,11 +222,23 @@ export function continuationFor(
         tagCursors: [...campaign.tagCursors],
         coverage: campaign.coverage,
       };
-  const pagesAtProviderCeiling = pagesAvailableForContinuation(
-    campaign,
-    cursors.tagCursors,
-    cursors.skip,
-  );
+  // The areas searched so far have no more results. Continuing then means the
+  // owner's yes to the nearby areas, each a fresh search of its own.
+  const nearbyAreas =
+    campaign.exhausted &&
+    (campaign.endReason === "provider_end" ||
+      campaign.endReason === "provider_ceiling")
+      ? nearbyAreasLeft(campaign)
+      : [];
+  const pagesAtProviderCeiling = nearbyAreas.length
+    ? Math.max(
+        0,
+        Math.min(
+          MAX_PAGES - campaign.pagesFetched,
+          QUERY_PLACE_CEILING / SEARCH_PAGE_SIZE,
+        ),
+      )
+    : pagesAvailableForContinuation(campaign, cursors.tagCursors, cursors.skip);
   const estimatedPages = Math.min(
     pagesAtProviderCeiling,
     Math.max(1, Math.ceil(remainingTarget / SEARCH_PAGE_SIZE)),
@@ -255,12 +268,15 @@ export function continuationFor(
     estimatedPages,
     estimatedCostUsd,
   };
+  if (nearbyAreas.length && pagesAtProviderCeiling > 0) {
+    return { ...base, state: "ready", message: null, nearbyAreas };
+  }
   if (campaign.endReason === "provider_end") {
     return {
       ...base,
       state: "unavailable",
       message:
-        "Maps returned no more results for this search. Search a nearby area starts a new campaign.",
+        "Maps returned no more results for this search or its nearby areas. Try another business type or area.",
     };
   }
   if (
@@ -271,7 +287,7 @@ export function continuationFor(
       ...base,
       state: "unavailable",
       message:
-        "This search reached the 400 businesses Maps returns for one search. Search a nearby area starts a new campaign.",
+        "This search reached the 400 businesses Maps returns for one search. Try another business type or area.",
     };
   }
   if (
