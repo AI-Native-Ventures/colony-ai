@@ -22,6 +22,10 @@ import { cedarCafeLeadRecord } from "../../src/testing/cofounderCustomerFixtures
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
+// A finished run is titled "Search complete", or "Found N of M" when it
+// ended short of the target.
+const RUN_FINISHED_TITLE = /^(Search complete|Found \d+ of \d+)$/;
+
 const OUT = process.env.OL_UI_PROOF_DIR ?? "test-results/outreach-lists-ui";
 const RELAY_SECRET = generateSecretKey();
 const RELAY_SELF = getPublicKey(RELAY_SECRET);
@@ -955,9 +959,7 @@ test.describe("Outreach lists", () => {
       campaign.getByRole("heading", { name: "Restaurants prospects" }),
     ).toBeVisible();
     await expect(campaign.locator(".c3d-run")).toHaveCount(1);
-    await expect(
-      campaign.getByText("Search complete", { exact: true }),
-    ).toBeVisible();
+    await expect(campaign.getByText(RUN_FINISHED_TITLE)).toBeVisible();
     await expect(
       campaign.getByRole("button", { name: "Find more" }),
     ).toHaveCount(0);
