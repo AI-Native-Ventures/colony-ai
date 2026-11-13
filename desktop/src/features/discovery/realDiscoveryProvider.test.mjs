@@ -19,6 +19,7 @@ import {
   FIRST_START_ERROR,
   MAX_PAGES,
   PUBLISH_BACKOFF_MS,
+  PUBLISH_CONCURRENCY,
   SEARCH_BACKOFF_MS,
 } from "./realDiscoveryProvider.ts";
 
@@ -1260,8 +1261,9 @@ test("a save that keeps failing stops the run without advancing the cursor, and 
   const failed = controller.getCurrent();
   assert.equal(failed.status, "failed");
   assert.match(failed.failureReason, /could not be saved/);
-  // The two saves beside the failing one landed and are on the campaign.
-  assert.equal(failed.count, 2);
+  // The saves sent together with the failing one landed and are on the
+  // campaign.
+  assert.equal(failed.count, PUBLISH_CONCURRENCY - 1);
   assert.deepEqual(log.sleeps, [...PUBLISH_BACKOFF_MS]);
   assert.equal(log.searches.length, 1);
 
@@ -1272,8 +1274,8 @@ test("a save that keeps failing stops the run without advancing the cursor, and 
   assert.equal(done.status, "complete");
   assert.equal(done.count, 20);
   // The page that was found is saved from where it is kept: no second search
-  // is paid for, and the first two businesses were recognised as this
-  // campaign's own, not saved again.
+  // is paid for, and the businesses saved before the failure were recognised
+  // as this campaign's own, not saved again.
   assert.deepEqual(
     log.searches.map((request) => request.skip),
     [0],

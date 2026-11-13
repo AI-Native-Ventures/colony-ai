@@ -7,6 +7,10 @@ import {
   waitForRateLimitWithin,
 } from "@/shared/api/relayRateLimitGate";
 import { PUBLISH_TIMEOUT_MS } from "@/shared/api/relayClientTimings";
+import {
+  isBusinessRecordCommandKind,
+  paceRecordCommandsAsMessages,
+} from "@/shared/api/relayWebSocketOperationPacer";
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 const MAX_RATE_LIMIT_WAIT_MS = 30_000;
@@ -84,6 +88,10 @@ export async function publishSessionEvent(
       }
 
       lastRateLimitError = publishError;
+      // This relay holds record commands to a rate the pacer did not expect.
+      if (isBusinessRecordCommandKind(event.kind)) {
+        paceRecordCommandsAsMessages();
+      }
       if (retryDeadline === null) {
         retryDeadline = Date.now() + MAX_RATE_LIMIT_WAIT_MS;
       }

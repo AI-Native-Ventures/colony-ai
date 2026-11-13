@@ -75,7 +75,7 @@ import {
 /** The owner-facing campaign form permits targets from 100 through 500. */
 export const MIN_TARGET = 100;
 export const MAX_TARGET = 500;
-export const PUBLISH_CONCURRENCY = 3;
+export const PUBLISH_CONCURRENCY = 6;
 export const PUBLISH_BACKOFF_MS = [400, 800, 1600] as const;
 export const SEARCH_BACKOFF_MS = [1_000, 3_000] as const;
 export { BUDGET_USD_PER_PROSPECT, buildEndNote, MAX_PAGES };
