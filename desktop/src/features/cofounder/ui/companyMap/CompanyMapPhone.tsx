@@ -20,6 +20,7 @@ import {
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
   companyMapJobKey,
+  companyMapWindowSearch,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
@@ -204,6 +205,7 @@ function PhoneJobLink({
 }) {
   const route = getCompanyMapJobRoute(functionId, jobName);
   const fallback = isCompanyMapJobFallback(functionId, jobName);
+  const mapWindowSearch = companyMapWindowSearch(functionId, jobName);
   const testProps = {
     "aria-label": fallback
       ? `${jobName}. No screen for this job yet. Opens ${FUNCTION_DETAILS[functionId].name}.`
@@ -217,7 +219,12 @@ function PhoneJobLink({
   };
   if (route.kind === "app") {
     return (
-      <Link {...testProps} className="company-map-job-link" to={route.to}>
+      <Link
+        {...testProps}
+        className="company-map-job-link"
+        search={mapWindowSearch}
+        to={route.to}
+      >
         {children}
       </Link>
     );
@@ -228,6 +235,7 @@ function PhoneJobLink({
         {...testProps}
         className="company-map-job-link"
         params={{ workSurface: "work" }}
+        search={mapWindowSearch}
         to="/$workSurface"
       >
         {children}
@@ -240,7 +248,10 @@ function PhoneJobLink({
         {...testProps}
         className="company-map-job-link"
         params={{ channelId: whatsappChannelId }}
-        search={{ whatsappDeskTab: route.tab }}
+        search={{
+          mapJob: mapWindowSearch?.mapJob,
+          whatsappDeskTab: route.tab,
+        }}
         to="/channels/$channelId"
       >
         {children}
@@ -253,6 +264,7 @@ function PhoneJobLink({
       {...testProps}
       className="company-map-job-link"
       params={{ function: target }}
+      search={mapWindowSearch}
       to="/company/function/$function"
     >
       {children}

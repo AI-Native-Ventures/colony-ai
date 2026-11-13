@@ -9,6 +9,7 @@ import {
   validateHomeSearch,
 } from "@/features/map-shell/HomeFeedRouteContent";
 import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
+import { useMediaBreakpoint } from "@/shared/hooks/use-mobile";
 import {
   consumePendingWelcomeChannel,
   WELCOME_CHANNEL_READY_EVENT,
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/")({
 
 function HomeRouteComponent() {
   const mapShellEnabled = useMapShellEnabled();
+  const isMapCanvasNarrow = useMediaBreakpoint(701);
   const { goChannel } = useAppNavigation();
   const channelsQuery = useChannelsQuery();
   const channels = channelsQuery.data ?? [];
@@ -64,6 +66,7 @@ function HomeRouteComponent() {
     openPendingWelcomeChannel(availableChannelIds);
   }, [availableChannelIds, openPendingWelcomeChannel]);
 
+  if (mapShellEnabled && !isMapCanvasNarrow) return null;
   return mapShellEnabled ? (
     <CompanyMapScreen />
   ) : (

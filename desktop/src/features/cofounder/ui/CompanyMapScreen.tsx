@@ -17,8 +17,15 @@ import { useNeedsYouSummary } from "../needsYouSummary";
 import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
+import type { CompanyMapWindowJob } from "../companyMapJobRoutes";
 
-export function CompanyMapScreen() {
+export function CompanyMapScreen({
+  mapWindowJob = null,
+  onMapWindowClose,
+}: {
+  mapWindowJob?: CompanyMapWindowJob | null;
+  onMapWindowClose?: () => void;
+} = {}) {
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
@@ -129,6 +136,8 @@ export function CompanyMapScreen() {
       scoutPubkey={scout?.pubkey}
       slots={slots}
       liveFunctionIds={liveFunctionIds}
+      mapWindowJob={mapWindowJob}
+      onMapWindowClose={onMapWindowClose}
       summary={needsYouSummary.data}
       whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
     />

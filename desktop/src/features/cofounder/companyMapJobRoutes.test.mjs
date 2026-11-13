@@ -5,6 +5,8 @@ import { FUNCTION_DETAILS, FUNCTION_ORDER } from "./functions.ts";
 import {
   COMPANY_MAP_FALLBACK_JOBS,
   COMPANY_MAP_NO_SCREEN_JOBS,
+  companyMapWindowJobForRoute,
+  companyMapWindowSearch,
   companyMapJobKey,
   getCompanyMapJobRoute,
   hasRouteForEveryCompanyMapJob,
@@ -89,4 +91,41 @@ test("jobs without screens fall back to their owning function page", () => {
     assert.equal(isCompanyMapJobFallback(functionId, jobName), true);
   }
   assert.equal(isCompanyMapJobFallback("finance", "Invoices"), false);
+});
+
+test("map-window routes retain the job that opened a shared screen", () => {
+  assert.deepEqual(companyMapWindowSearch("finance", "Quotes"), {
+    mapJob: "finance:Quotes",
+  });
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/clients", { mapJob: "finance:Quotes" }),
+    { functionId: "finance", jobName: "Quotes" },
+  );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/money", {
+      mapJob: "finance:Deposits",
+    }),
+    { functionId: "finance", jobName: "Deposits" },
+  );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/channels/outreach", {
+      mapJob: "sales:Closing",
+      whatsappDeskTab: "pipeline",
+    }),
+    { functionId: "sales", jobName: "Closing" },
+  );
+  assert.deepEqual(companyMapWindowJobForRoute("/clients"), {
+    functionId: "sales",
+    jobName: "Quotes",
+  });
+  assert.deepEqual(companyMapWindowSearch("operations", "Client intake"), {
+    mapJob: "operations:Client intake",
+  });
+  assert.equal(
+    companyMapWindowJobForRoute("/clients", {
+      mapJob: "operations:Client intake",
+    }),
+    null,
+  );
+  assert.equal(companyMapWindowJobForRoute("/clients/record/123"), null);
 });
