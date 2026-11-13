@@ -131,9 +131,6 @@ export function CampaignScreen(context: CampaignContext) {
   const [widenOpen, setWidenOpen] = React.useState(false);
   const [widenLocation, setWidenLocation] =
     React.useState<DiscoveryLocation | null>(null);
-  const [widenSourceCampaign, setWidenSourceCampaign] = React.useState<
-    string | null
-  >(null);
   const [, setTagsReady] = React.useState(false);
   const [progress, setProgress] = React.useState<BulkAcceptProgress | null>(
     null,
@@ -584,7 +581,6 @@ export function CampaignScreen(context: CampaignContext) {
   function openWidenSearch(row: CatalogueRow, pickedTags: string[]) {
     setRelatedTypeId(null);
     setWidenLocation(currentCampaign.locationSelection ?? null);
-    setWidenSourceCampaign(null);
     setWidenPending({
       audience: "businesses",
       industryId: row.parentId,
@@ -623,7 +619,7 @@ export function CampaignScreen(context: CampaignContext) {
     const next = provider.getContinuation();
     if (!next) {
       setError(
-        "This campaign cannot continue from its current state. Retry an interrupted search or start a nearby campaign.",
+        "This search cannot continue from where it stopped. Retry it, or start a new search.",
       );
       return;
     }
@@ -632,21 +628,6 @@ export function CampaignScreen(context: CampaignContext) {
       return;
     }
     await continueCampaign();
-  }
-
-  function openNearbySearch(location: DiscoveryLocation) {
-    setRelatedTypeId(null);
-    setWidenLocation(location);
-    setWidenSourceCampaign(currentCampaign.name);
-    setWidenPending({
-      audience: currentCampaign.audience,
-      industryId: currentCampaign.industryId,
-      industryName: currentCampaign.industryName,
-      verticalId: currentCampaign.verticalId,
-      verticalName: currentCampaign.verticalName,
-      pickedTags: currentCampaign.pickedTags ?? [],
-    });
-    setWidenOpen(true);
   }
 
   const waiting = campaign.status === "running" && campaign.count === 0;
@@ -667,7 +648,6 @@ export function CampaignScreen(context: CampaignContext) {
             onNewSearch={() => void navigate({ to: "/discovery" })}
             onOpenDetails={() => setDialogMode("details")}
             onOpenSettings={() => setDialogMode("settings")}
-            onSearchNearby={openNearbySearch}
           />
           <CampaignQualificationPanel
             campaign={campaign}
@@ -882,7 +862,6 @@ export function CampaignScreen(context: CampaignContext) {
       />
       <DiscoveryCampaignDialog
         initialLocation={widenLocation}
-        continuationSourceCampaign={widenSourceCampaign}
         onOpenChange={setWidenOpen}
         onSubmit={startWidenSearch}
         open={widenOpen}

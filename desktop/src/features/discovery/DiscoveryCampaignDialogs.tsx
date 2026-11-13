@@ -295,7 +295,6 @@ export function DiscoveryCampaignDialog({
   runner,
   simulatedCosts,
   initialLocation,
-  continuationSourceCampaign,
 }: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: CampaignFormInput) => Promise<void>;
@@ -306,8 +305,6 @@ export function DiscoveryCampaignDialog({
   /** The test-build stand-in keeps the design's example wording. */
   simulatedCosts: boolean;
   initialLocation?: DiscoveryLocation | null;
-  /** A nearby place is intentionally a separate campaign, not Find more. */
-  continuationSourceCampaign?: string | null;
 }) {
   const [name, setName] = React.useState("");
   const [location, setLocation] = React.useState("");
@@ -329,11 +326,7 @@ export function DiscoveryCampaignDialog({
 
   React.useEffect(() => {
     if (!open || !pending) return;
-    setName(
-      continuationSourceCampaign
-        ? `Continues ${continuationSourceCampaign}`
-        : `${pending.verticalName} prospects`,
-    );
+    setName(`${pending.verticalName} prospects`);
     setLocation(initialLocation?.label ?? "");
     setLocationSelection(initialLocation ?? null);
     setTarget("100");
@@ -343,7 +336,7 @@ export function DiscoveryCampaignDialog({
     setError("");
     setFailure(null);
     setDetailsCopied(false);
-  }, [continuationSourceCampaign, initialLocation, open, pending]);
+  }, [initialLocation, open, pending]);
 
   async function copyFailureDetails() {
     if (!failure) return;
@@ -409,22 +402,14 @@ export function DiscoveryCampaignDialog({
         showCloseButton={false}
       >
         <div className="c3d-dialog-head">
-          <p className="c3d-eyebrow">
-            {continuationSourceCampaign
-              ? "New campaign for a nearby area"
-              : "New discovery campaign"}
-          </p>
+          <p className="c3d-eyebrow">New discovery campaign</p>
           <DialogTitle className="c3d-dialog-title">
-            {continuationSourceCampaign
-              ? "Continue in a nearby area."
-              : "Find the right fit."}
+            Find the right fit.
           </DialogTitle>
           <DialogDescription className="c3d-dialog-sub">
-            {continuationSourceCampaign
-              ? `This starts a new campaign that continues ${continuationSourceCampaign} in a different place.`
-              : pending
-                ? `${pending.industryName} / ${pending.verticalName}`
-                : "Choose a category."}
+            {pending
+              ? `${pending.industryName} / ${pending.verticalName}`
+              : "Choose a category."}
           </DialogDescription>
         </div>
         <form
@@ -670,8 +655,7 @@ export function DiscoveryCampaignDialog({
               disabled={submitting || !pending}
               type="submit"
             >
-              Approve &amp; {continuationSourceCampaign ? "start new" : "start"}{" "}
-              <ArrowRightGlyph size={16} />
+              Approve &amp; start <ArrowRightGlyph size={16} />
             </button>
           </div>
         </form>

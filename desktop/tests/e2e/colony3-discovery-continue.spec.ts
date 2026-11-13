@@ -266,14 +266,12 @@ test("results already in Leads are not charged, and Find more continues the same
   await expect(page.getByText("Search complete", { exact: true })).toHaveCount(
     0,
   );
+  // One short question, not a paragraph.
   await expect(
-    page.getByText(/results you approved were used after 5 pages/i),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/89 were already in your Leads and are not charged/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Keep searching for the other 89\?/),
+    page.getByText(
+      "89 were already in your Leads and are free. Find the other 89?",
+      { exact: true },
+    ),
   ).toBeVisible();
   // Only the 11 new prospects are charged.
   await expect(
@@ -291,9 +289,11 @@ test("results already in Leads are not charged, and Find more continues the same
     path: path.join(PROOF_DIR, "budget-ask-390.png"),
   });
   if (desktopSize) await page.setViewportSize(desktopSize);
+  // No row of nearby-area links: nearby areas are one question, asked only
+  // once this area has run out.
   await expect(
     page.getByText("Search nearby areas", { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   // The title holds both numbers, so the line under it is only the question.
   await expect(
     page.getByText(/11 prospects found · 100 requested/),
@@ -302,7 +302,7 @@ test("results already in Leads are not charged, and Find more continues the same
     page.getByRole("button", {
       name: "Woodmead, Johannesburg, Gauteng, South Africa",
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
     0, 20, 40, 60, 80,
   ]);
@@ -318,9 +318,20 @@ test("results already in Leads are not charged, and Find more continues the same
     0,
   );
 
-  await expect(page.getByText("Search complete", { exact: true })).toBeVisible({
+  // Johannesburg ran out at 14. The search stops and asks before it goes
+  // anywhere else: nothing was asked of Sandton or Woodmead.
+  await expect(page.getByText("Found 14 of 100", { exact: true })).toBeVisible({
     timeout: 20_000,
   });
+  await expect(
+    page.getByText(
+      "Johannesburg has no more. Find more in Sandton and Woodmead?",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(
+    new Set((await searchCalls(page)).map((call) => call.location)),
+  ).toEqual(new Set(["Johannesburg, Gauteng, South Africa"]));
   await expect(page.getByRole("link", { name: "Prospects 14" })).toBeVisible();
   // The five continued pages are asked for together, not one by one.
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
@@ -334,6 +345,110 @@ test("results already in Leads are not charged, and Find more continues the same
   await expect(
     page.getByText(/Search cost.*US\$0\.42.*US\$3\.00 approved/),
   ).toBeVisible();
+});
+
+test("the chosen place runs out: one clean question, and one yes continues through the nearby areas", async ({
+  page,
+}) => {
+  await installDiscoveryFixture(page);
+  // Maps lists 27 here, 25 in Sandton and 10 in Woodmead: 62 of the 100 asked.
+  await page.addInitScript(() => {
+    const w = window as DiscoveryWindow;
+    const listed: Record<string, number> = {
+      "Johannesburg, Gauteng, South Africa": 27,
+      "Sandton, Johannesburg, Gauteng, South Africa": 25,
+      "Woodmead, Johannesburg, Gauteng, South Africa": 10,
+    };
+    w.__BUZZ_E2E_DISCOVERY_SEARCH__ = async (request) => {
+      w.__discoveryCalls?.push(request);
+      const area = String(request.location ?? "");
+      const short = area.split(",")[0] ?? area;
+      const total = listed[area] ?? 0;
+      const skip = Number(request.skip ?? 0);
+      const count = Math.max(0, Math.min(20, total - skip));
+      return {
+        provider: "outscraper",
+        places: Array.from({ length: count }, (_, index) => {
+          const n = skip + index + 1;
+          return {
+            placeId: `${short}-${String(n)}`,
+            name: `${short} Interiors ${String(n)}`,
+            category: "Home goods store",
+            address: `${String(n)} Main Road, ${short}`,
+            city: short,
+            state: "Gauteng",
+            country: "South Africa",
+            phone: "+27 11 555 0100",
+            website: `https://${short.toLowerCase()}-${String(n)}.example`,
+            rating: 4.5,
+            reviews: 20,
+          };
+        }),
+        estimatedCostUsd: count > 0 ? 0.06 : 0,
+        nextSkip: skip + 20 < total ? skip + 20 : null,
+      };
+    };
+  });
+  await installMockBridge(page, REAL_RUNNER);
+  await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+  const dialog = await openCampaignDialog(page);
+  await chooseJohannesburg(dialog);
+  await approve(dialog);
+
+  await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
+  await expect(page.getByText("Found 27 of 100", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  const question = page.getByText(
+    "Johannesburg has no more. Find more in Sandton and Woodmead?",
+    { exact: true },
+  );
+  await expect(question).toBeVisible();
+  // It asked. It did not go there by itself.
+  expect(
+    new Set((await searchCalls(page)).map((call) => call.location)),
+  ).toEqual(new Set(["Johannesburg, Gauteng, South Africa"]));
+  await expect(
+    page.getByText("Search nearby areas", { exact: true }),
+  ).toHaveCount(0);
+  const before = await campaignStorage(page);
+  expect(before?.campaigns).toHaveLength(1);
+
+  mkdirSync(PROOF_DIR, { recursive: true });
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(PROOF_DIR, "nearby-ask-1440.png") });
+  const desktopSize = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(PROOF_DIR, "nearby-ask-390.png") });
+  if (desktopSize) await page.setViewportSize(desktopSize);
+
+  // One yes: Sandton first (nearer), then Woodmead, in the same campaign.
+  await page.getByRole("button", { name: /Find more/ }).click();
+  await expect(page.getByText("Found 62 of 100", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(
+    page.getByText(
+      "Johannesburg and its nearby areas have no more. Try another business type.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Find more/ })).toHaveCount(0);
+  await expect(page.getByText("Johannesburg + 2 nearby areas")).toBeVisible();
+  const areas: string[] = [];
+  for (const call of await searchCalls(page)) {
+    const area = String(call.location).split(",")[0] ?? "";
+    if (areas.at(-1) !== area) areas.push(area);
+  }
+  expect(areas).toEqual(["Johannesburg", "Sandton", "Woodmead"]);
+  const after = await campaignStorage(page);
+  expect(after?.campaigns).toHaveLength(1);
+  expect(after?.currentId).toBe(before?.currentId);
+  await expect(page.getByRole("link", { name: "Prospects 62" })).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(PROOF_DIR, "nearby-done-1440.png") });
 });
 
 test("location autocomplete refuses free text, then supports keyboard selection", async ({

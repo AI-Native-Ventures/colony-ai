@@ -1,5 +1,7 @@
 import type { ProspectStage } from "./businessRecordContract";
 import type { BusinessRecords } from "./businessRecordRelay";
+import { shortAreaName } from "./discoveryCampaignAreas";
+import { MAX_PAGES } from "./discoveryCampaignContinuation";
 import type {
   DiscoveryCampaign,
   DiscoveryRunStatus,
@@ -26,15 +28,12 @@ export const STAGE_LABELS: Record<ProspectStage, string> = {
 };
 
 /**
- * The run card's title. A search that used its approved results with part of
- * the request still to find is not finished: the card asks whether to keep
- * searching, so the title states what was found instead of "Search complete".
+ * The run card's title. A search that stopped with part of the request still
+ * to find is not finished, and its card says what can be done next, so the
+ * title states what was found instead of "Search complete".
  */
 export function runTitle(
-  campaign: Pick<
-    DiscoveryCampaign,
-    "status" | "endReason" | "count" | "target"
-  >,
+  campaign: Pick<DiscoveryCampaign, "status" | "count" | "target">,
 ): string {
   if (stoppedShortOfRequest(campaign)) {
     return `Found ${campaign.count} of ${campaign.target}`;
@@ -43,15 +42,85 @@ export function runTitle(
 }
 
 function stoppedShortOfRequest(
-  campaign: Pick<
-    DiscoveryCampaign,
-    "status" | "endReason" | "count" | "target"
-  >,
+  campaign: Pick<DiscoveryCampaign, "status" | "count" | "target">,
 ): boolean {
+  return campaign.status === "complete" && campaign.count < campaign.target;
+}
+
+function atPageLimit(campaign: Pick<DiscoveryCampaign, "pagesFetched">) {
+  return (campaign.pagesFetched ?? 0) >= MAX_PAGES;
+}
+
+function areaRanOut(campaign: Pick<DiscoveryCampaign, "endReason">) {
   return (
-    campaign.status === "complete" &&
-    campaign.endReason === "approved_budget" &&
-    campaign.count < campaign.target
+    campaign.endReason === "provider_end" ||
+    campaign.endReason === "provider_ceiling"
+  );
+}
+
+/**
+ * Whether the card offers Find more: the search stopped short and can go on,
+ * either in the same area or, once the owner says so, in its nearby areas.
+ */
+export function canFindMore(campaign: DiscoveryCampaign): boolean {
+  if (!stoppedShortOfRequest(campaign) || atPageLimit(campaign)) return false;
+  if (areaRanOut(campaign)) return (campaign.nearbyAreasLeft ?? []).length > 0;
+  return (
+    campaign.endReason === "provider_repeat" ||
+    campaign.endReason === "approved_budget"
+  );
+}
+
+/** "Umhlanga and Pinetown", or "Umhlanga, Pinetown and 2 more nearby areas". */
+function areaList(labels: readonly string[]): string {
+  const names = labels.map(shortAreaName);
+  if (names.length <= 2) return names.join(" and ");
+  const more = names.length - 2;
+  return `${names[0]}, ${names[1]} and ${more} more nearby ${more === 1 ? "area" : "areas"}`;
+}
+
+/** Where the campaign has searched, short enough for the card's detail row. */
+export function searchedAreasLabel(campaign: DiscoveryCampaign): string {
+  const searched = campaign.areasSearched ?? [];
+  if (searched.length <= 1) return campaign.location;
+  const nearby = searched.length - 1;
+  return `${shortAreaName(searched[0] ?? campaign.location)} + ${nearby} nearby ${nearby === 1 ? "area" : "areas"}`;
+}
+
+/**
+ * One short line for a search that stopped short: what ran out, and what Find
+ * more would do. The full reason stays in Run details and the Sales message.
+ */
+function stoppedShortLine(campaign: DiscoveryCampaign): string {
+  const searched = campaign.areasSearched?.length
+    ? campaign.areasSearched
+    : [campaign.location];
+  const here = shortAreaName(searched.at(-1) ?? campaign.location);
+  const remaining = campaign.target - campaign.count;
+  if (atPageLimit(campaign)) {
+    return `This search reached its limit of ${MAX_PAGES} pages. Try another business type or area.`;
+  }
+  if (areaRanOut(campaign)) {
+    const left = campaign.nearbyAreasLeft ?? [];
+    if (left.length) {
+      return `${here} has no more. Find more in ${areaList(left)}?`;
+    }
+    return searched.length > 1
+      ? `${shortAreaName(searched[0] ?? campaign.location)} and its nearby areas have no more. Try another business type.`
+      : `${here} has no more. Try another business type or area.`;
+  }
+  if (campaign.endReason === "provider_repeat") {
+    return "Results started repeating. Find more tries the next page.";
+  }
+  if (campaign.endReason === "approved_budget") {
+    const owned = campaign.skippedDuplicates ?? 0;
+    return owned > 0
+      ? `${owned} were already in your Leads and are free. Find the other ${remaining}?`
+      : `Find the other ${remaining}?`;
+  }
+  return (
+    campaign.endNote?.trim() ||
+    `${campaign.count} prospects found · ${campaign.target} requested`
   );
 }
 
@@ -96,11 +165,8 @@ export function runDescription(campaign: DiscoveryCampaign): string {
   if (campaign.status === "running")
     return "You can keep working. Results appear as they arrive.";
   if (campaign.status === "complete") {
-    const found = `${campaign.count} prospects found · ${campaign.target} requested`;
-    const note = campaign.endNote?.trim();
-    // The title already carries both numbers when the search stopped short.
-    if (note && stoppedShortOfRequest(campaign)) return note;
-    return note ? `${found}. ${note}` : found;
+    if (stoppedShortOfRequest(campaign)) return stoppedShortLine(campaign);
+    return `${campaign.count} prospects found · ${campaign.target} requested`;
   }
   if (campaign.status === "paused")
     return "Your results are saved. Resume when you’re ready.";
