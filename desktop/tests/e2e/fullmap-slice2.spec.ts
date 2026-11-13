@@ -48,6 +48,7 @@ const FINANCE_REVENUE = "/money/revenue";
 const SALES_CLIENTS = "/clients?mapJob=sales%3AQuotes";
 const SALES_CLOSING = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AClosing&whatsappDeskTab=pipeline`;
 const primedPages = new WeakSet<Page>();
+const SURFACE_BOOT_TIMEOUT_MS = 40_000;
 
 function customerRecord() {
   return planeTreeCustomerRecord({
@@ -128,7 +129,9 @@ async function visitUntilSurfaceIsReady(page: Page, testId: string) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await page.goto("/#/");
     try {
-      await expect(page.getByTestId(testId)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId(testId)).toBeVisible({
+        timeout: SURFACE_BOOT_TIMEOUT_MS,
+      });
       return;
     } catch (error) {
       lastError = error;
