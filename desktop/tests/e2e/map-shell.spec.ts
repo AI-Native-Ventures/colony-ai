@@ -404,6 +404,9 @@ test("desktop shell matches the board and keeps the app journeys reachable", asy
   await capture(page, "light-1440-home");
 
   await page.getByTestId("cofounder-map-sales").click();
+  const salesPartCard = page.getByTestId("cofounder-map-part-card");
+  await expect(salesPartCard).toBeVisible();
+  await salesPartCard.getByRole("link", { name: "Open Sales" }).click();
   const salesFunction = page.getByTestId("cofounder-function-screen");
   const mapOriginBack = salesFunction.getByRole("button", {
     name: "Company map",
