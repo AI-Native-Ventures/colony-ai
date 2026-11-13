@@ -1263,6 +1263,10 @@ fn rate_limit_config_from_env() -> Result<buzz_auth::RateLimitConfig, ConfigErro
             "BUZZ_RATE_LIMIT_HUMAN_MESSAGES_PER_MIN",
             defaults.human_messages_per_min,
         )?,
+        human_record_writes_per_min: positive_u64_from_env(
+            "BUZZ_RATE_LIMIT_HUMAN_RECORD_WRITES_PER_MIN",
+            defaults.human_record_writes_per_min,
+        )?,
         gif_searches_per_min: positive_u64_from_env(
             "BUZZ_RATE_LIMIT_GIF_SEARCHES_PER_MIN",
             defaults.gif_searches_per_min,
@@ -3372,6 +3376,7 @@ mod tests {
     fn rate_limits_can_be_overridden() {
         let _guard = ENV_MUTEX.lock().unwrap();
         std::env::set_var("BUZZ_RATE_LIMIT_HUMAN_MESSAGES_PER_MIN", "1001");
+        std::env::set_var("BUZZ_RATE_LIMIT_HUMAN_RECORD_WRITES_PER_MIN", "1005");
         std::env::set_var("BUZZ_RATE_LIMIT_GIF_SEARCHES_PER_MIN", "1004");
         std::env::set_var("BUZZ_RATE_LIMIT_HUMAN_API_CALLS_PER_MIN", "1002");
         std::env::set_var("BUZZ_RATE_LIMIT_HUMAN_WS_EVENTS_PER_SEC", "1003");
@@ -3379,10 +3384,12 @@ mod tests {
         let config = Config::from_env().expect("config");
 
         std::env::remove_var("BUZZ_RATE_LIMIT_HUMAN_MESSAGES_PER_MIN");
+        std::env::remove_var("BUZZ_RATE_LIMIT_HUMAN_RECORD_WRITES_PER_MIN");
         std::env::remove_var("BUZZ_RATE_LIMIT_GIF_SEARCHES_PER_MIN");
         std::env::remove_var("BUZZ_RATE_LIMIT_HUMAN_API_CALLS_PER_MIN");
         std::env::remove_var("BUZZ_RATE_LIMIT_HUMAN_WS_EVENTS_PER_SEC");
         assert_eq!(config.auth.rate_limits.human_messages_per_min, 1001);
+        assert_eq!(config.auth.rate_limits.human_record_writes_per_min, 1005);
         assert_eq!(config.auth.rate_limits.gif_searches_per_min, 1004);
         assert_eq!(config.auth.rate_limits.human_api_calls_per_min, 1002);
         assert_eq!(config.auth.rate_limits.human_ws_events_per_sec, 1003);
