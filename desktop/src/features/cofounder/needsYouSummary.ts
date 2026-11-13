@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import { useCommunities } from "@/features/communities/useCommunities";
 import { buildGapNeedsYouItems } from "./accessRecords";
@@ -182,17 +182,45 @@ export function buildNeedsYouSummary(
   return summary;
 }
 
-/** Shared count for the top bar, map badges and Needs you page. */
-export function useNeedsYouSummary(): {
+/** What the shared count hook reports to the top bar, map and Needs you page. */
+export type NeedsYouSummaryState = {
   data: NeedsYouSummary | undefined;
   isPending: boolean;
   isError: boolean;
-} {
+};
+
+/** A count taken once every source had answered, kept for its workspace. */
+export type SettledNeedsYouSummary = {
+  communityId: string | null;
+  data: NeedsYouSummary;
+  isError: boolean;
+};
+
+/**
+ * Keeps the last settled count on screen while a source loads again.
+ *
+ * A source that failed holds no data, so every retry reports it as loading.
+ * Without this the count would vanish and come back on each retry. A count
+ * from another workspace is never reused.
+ */
+export function holdSettledNeedsYouSummary(
+  current: NeedsYouSummaryState,
+  settled: SettledNeedsYouSummary | null,
+  communityId: string | null,
+): NeedsYouSummaryState {
+  if (current.data !== undefined) return current;
+  if (settled === null || settled.communityId !== communityId) return current;
+  return { data: settled.data, isPending: false, isError: settled.isError };
+}
+
+/** Shared count for the top bar, map badges and Needs you page. */
+export function useNeedsYouSummary(): NeedsYouSummaryState {
   const { activeCommunity } = useCommunities();
   const needsYou = useNeedsYouQuery();
   const access = useCompanyAccessQuery(activeCommunity?.id ?? null);
   const moneyRails = useMoneyRailsSnapshot();
-  const hasCommunity = Boolean(activeCommunity?.id);
+  const communityId = activeCommunity?.id ?? null;
+  const hasCommunity = communityId !== null;
   const isPending =
     needsYou.isPending ||
     needsYou.whatsappSummaryIsPending ||
@@ -222,6 +250,14 @@ export function useNeedsYouSummary(): {
       needsYou.whatsappContacts,
     ],
   );
+  const settled = useRef<SettledNeedsYouSummary | null>(null);
+  if (data !== undefined) {
+    settled.current = { communityId, data, isError };
+  }
 
-  return { data, isPending, isError };
+  return holdSettledNeedsYouSummary(
+    { data, isPending, isError },
+    settled.current,
+    communityId,
+  );
 }

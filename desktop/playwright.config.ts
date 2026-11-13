@@ -177,6 +177,7 @@ export default defineConfig({
         "**/sidebar-full-app.spec.ts",
         "**/workspace-header-icon.spec.ts",
         "**/workspace-switcher.spec.ts",
+        "**/map-shell.spec.ts",
         "**/sidebar-reference-fixture.spec.ts",
         "**/tooltip-semantics.spec.ts",
         "**/search-scope-screenshots.spec.ts",

@@ -6,6 +6,13 @@
       "name": "Agent-managed profiles",
       "description": "Let agents manage their own relay name and avatar instead of restoring the desktop copy",
       "platforms": ["desktop"]
+    },
+    {
+      "id": "map_home",
+      "name": "Map home",
+      "description": "Preview the company-map home and top bar",
+      "defaultEnabled": false,
+      "platforms": ["desktop"]
     }
   ]
 }
