@@ -343,12 +343,12 @@ for (const [width, height] of [
       );
 
       await releaseProviderPage(page);
-      await expect(
-        campaign.getByText("Search complete", { exact: true }),
-      ).toBeVisible({ timeout: 15_000 });
-      await expect(
-        campaign.getByText(/Maps returned no more results after 3 pages/),
-      ).toBeVisible();
+      // The area ran out short of the target: the card says what was found
+      // and, in one short line, that there is no more here.
+      await expect(campaign.getByText(/^Found \d+ of \d+$/)).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(campaign.getByText(/ has no more\. /)).toBeVisible();
       await capture(
         page,
         campaign.locator(".c3d-run"),
@@ -406,9 +406,9 @@ for (const [width, height] of [
       );
 
       await releaseProviderPage(page);
-      await expect(
-        campaign.getByText("Search complete", { exact: true }),
-      ).toBeVisible({ timeout: 15_000 });
+      await expect(campaign.getByText(/^Found \d+ of \d+$/)).toBeVisible({
+        timeout: 15_000,
+      });
       const after = await campaignState(page);
       expect(after?.campaigns).toHaveLength(1);
       expect(after?.currentId).toBe("real-estate-stuck");
