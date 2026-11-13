@@ -1,4 +1,10 @@
-import { Fragment, useRef, useState, type CSSProperties } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type { FocusEvent, PointerEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -30,6 +36,7 @@ import {
 } from "@/features/cofounder/companyMapLayout";
 import {
   companyMapJobKey,
+  companyMapWindowSearch,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
@@ -302,6 +309,7 @@ function JobLink({
 }) {
   const destination = getCompanyMapJobRoute(functionId, jobName);
   const fallback = isCompanyMapJobFallback(functionId, jobName);
+  const mapWindowSearch = companyMapWindowSearch(functionId, jobName);
   const common = {
     "aria-label": fallback
       ? `${jobName}. No screen for this job yet. Opens ${FUNCTION_DETAILS[functionId].name}.`
@@ -324,6 +332,7 @@ function JobLink({
       <Link
         {...common}
         className="company-map-job-link"
+        search={mapWindowSearch}
         style={style}
         to={destination.to}
       >
@@ -337,6 +346,7 @@ function JobLink({
         {...common}
         className="company-map-job-link"
         params={{ workSurface: "work" }}
+        search={mapWindowSearch}
         style={style}
         to="/$workSurface"
       >
@@ -351,7 +361,10 @@ function JobLink({
         className="company-map-job-link"
         params={{ channelId: whatsappChannelId }}
         style={style}
-        search={{ whatsappDeskTab: destination.tab }}
+        search={{
+          mapJob: mapWindowSearch?.mapJob,
+          whatsappDeskTab: destination.tab,
+        }}
         to="/channels/$channelId"
       >
         {children}
@@ -365,6 +378,7 @@ function JobLink({
       {...common}
       className="company-map-job-link"
       params={{ function: functionIdForLink }}
+      search={mapWindowSearch}
       style={style}
       to="/company/function/$function"
     >
@@ -852,11 +866,13 @@ function CompanyMapDesktop({
   liveFunctionIds,
   summary,
   whatsAppChannelId: whatsappChannelId,
+  mapWindowJob = null,
+  onMapWindowClose,
 }: CompanyMapBoardProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const {
-    activePart,
+    activePart: interactiveActivePart,
     blurPart,
     clearOpenPart,
     closeHoverSoon,
@@ -864,6 +880,15 @@ function CompanyMapDesktop({
     focusPart,
     togglePinnedPart,
   } = useCompanyMapDesktopOpenPart();
+  const activePart = mapWindowJob?.functionId ?? interactiveActivePart;
+  const mapWindowOpen = mapWindowJob !== null;
+  const wasMapWindowOpen = useRef(mapWindowOpen);
+  useEffect(() => {
+    if (wasMapWindowOpen.current && !mapWindowOpen) {
+      clearOpenPart();
+    }
+    wasMapWindowOpen.current = mapWindowOpen;
+  }, [clearOpenPart, mapWindowOpen]);
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -881,6 +906,7 @@ function CompanyMapDesktop({
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (
+      mapWindowOpen ||
       zoom <= 1 ||
       event.button !== 0 ||
       (event.target instanceof HTMLElement &&
@@ -917,8 +943,13 @@ function CompanyMapDesktop({
     if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
   }
 
+  const mapWindowPart = mapWindowJob
+    ? partPosition(mapWindowJob.functionId)
+    : null;
   const stageStyle: StageStyle = {
-    "--company-map-transform": `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    "--company-map-transform": mapWindowPart
+      ? `translate(${84 - mapWindowPart.x}px, ${100 - mapWindowPart.y}px) scale(1)`
+      : `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
   };
   const jobs = activePart
     ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => ({
@@ -957,6 +988,7 @@ function CompanyMapDesktop({
           className="company-map-viewport"
           role="group"
           onClick={(event) => {
+            if (mapWindowOpen) return;
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
               return;
@@ -970,19 +1002,28 @@ function CompanyMapDesktop({
             }
           }}
           onKeyDown={(event) => {
-            if (event.key === "Escape") clearOpenPart();
+            if (event.key !== "Escape") return;
+            if (mapWindowOpen) {
+              onMapWindowClose?.();
+              return;
+            }
+            clearOpenPart();
           }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           data-zoomed={zoom > 1}
+          data-map-window-open={mapWindowOpen ? "true" : undefined}
           ref={stageRef}
         >
           <div
+            aria-hidden={mapWindowOpen ? true : undefined}
             className="company-map-stage"
             data-active-part={activePart ?? "none"}
+            data-map-window-open={mapWindowOpen ? "true" : undefined}
             data-testid="cofounder-map-stage"
+            inert={mapWindowOpen ? true : undefined}
             style={stageStyle}
           >
             <MapConnectors
@@ -1081,7 +1122,13 @@ function CompanyMapDesktop({
           <div className="company-map-zoom" data-map-control>
             <button
               aria-label="Zoom out"
-              onClick={() => setBoardZoom(zoom - 0.15)}
+              onClick={() => {
+                if (mapWindowOpen) {
+                  onMapWindowClose?.();
+                  return;
+                }
+                setBoardZoom(zoom - 0.15);
+              }}
               type="button"
             >
               −
@@ -1090,6 +1137,10 @@ function CompanyMapDesktop({
               aria-label="Fit the whole company"
               data-testid="cofounder-map-fit"
               onClick={() => {
+                if (mapWindowOpen) {
+                  onMapWindowClose?.();
+                  return;
+                }
                 setBoardZoom(1);
                 setPan({ x: 0, y: 0 });
               }}

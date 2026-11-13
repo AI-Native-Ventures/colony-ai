@@ -19,6 +19,7 @@ type ChannelRouteSearch = {
    */
   autoSend?: string;
   messageId?: string;
+  mapJob?: string;
   profile?: string;
   profileTab?: ProfilePanelTab;
   profileView?: ProfilePanelView;
@@ -48,6 +49,7 @@ function validateChannelSearch(
   return {
     autoSend: nonEmptyString(search.autoSend),
     messageId: nonEmptyString(search.messageId),
+    mapJob: nonEmptyString(search.mapJob),
     profile: nonEmptyString(search.profile),
     profileTab: parseProfilePanelTab(search.profileTab) ?? undefined,
     profileView: parseProfilePanelView(search.profileView) ?? undefined,
