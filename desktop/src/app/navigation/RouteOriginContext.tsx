@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 
 import { breadcrumbForPath } from "@/app/topBarBreadcrumbs";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import {
   allowNavigation,
   traverseHistory,
@@ -74,6 +75,7 @@ function remember<T>(map: Map<string, T>, key: string, value: T) {
 
 function fallbackOriginDetails(
   location: RouteLocation,
+  mapHomeEnabled: boolean,
 ): Pick<RouteOrigin, "backLabel" | "breadcrumbs"> {
   const crumbs = breadcrumbForPath(location.pathname)?.map(
     ({ label }) => label,
@@ -160,6 +162,12 @@ function fallbackOriginDetails(
     return { backLabel: "Workspace", breadcrumbs: ["Settings"] };
   }
   if (location.pathname === "/") {
+    if (mapHomeEnabled) {
+      return {
+        backLabel: "Company map",
+        breadcrumbs: ["Company", "Company map"],
+      };
+    }
     return { backLabel: "Activity", breadcrumbs: ["Activity"] };
   }
   if (location.pathname === "/today") {
@@ -259,6 +267,7 @@ export function RouteOriginProvider({
 }) {
   const router = useRouter();
   const location = useLocation();
+  const mapHomeEnabled = useMapShellEnabled();
   const originsRef = React.useRef(new Map<string, RouteOrigin>());
   const snapshotsRef = React.useRef(new Map<string, RoutePageSnapshot>());
   const pendingRestoreRef = React.useRef<{
@@ -281,7 +290,7 @@ export function RouteOriginProvider({
         const savedOrigin = originsRef.current.get(toKey);
         if (!savedOrigin) {
           const snapshot = snapshotsRef.current.get(fromKey) ?? null;
-          const defaults = fallbackOriginDetails(from);
+          const defaults = fallbackOriginDetails(from, mapHomeEnabled);
           remember(originsRef.current, toKey, {
             pathname: from.pathname,
             href: from.href,
@@ -299,7 +308,7 @@ export function RouteOriginProvider({
           pendingRestoreRef.current = null;
         }
       }),
-    [router],
+    [mapHomeEnabled, router],
   );
 
   const savePageSnapshot = React.useCallback(

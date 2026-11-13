@@ -17,6 +17,7 @@ import { Route as discoveryRouteImport } from "./routes/discovery";
 import { Route as clientsRouteImport } from "./routes/clients";
 import { Route as campaignRouteImport } from "./routes/campaign";
 import { Route as agentsRouteImport } from "./routes/agents";
+import { Route as activityRouteImport } from "./routes/activity";
 import { Route as workRouteImport } from "./routes/work";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as workDotworkIdRouteImport } from "./routes/work.$workId";
@@ -112,6 +113,11 @@ const campaignRoute = campaignRouteImport.update({
 const agentsRoute = agentsRouteImport.update({
   id: "/agents",
   path: "/agents",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const activityRoute = activityRouteImport.update({
+  id: "/activity",
+  path: "/activity",
   getParentRoute: () => rootRouteImport,
 } as any);
 const workRoute = workRouteImport.update({
@@ -311,6 +317,7 @@ const asksDotchannelIdDotaskIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/$workSurface": typeof workRoute;
+  "/activity": typeof activityRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
@@ -361,6 +368,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/$workSurface": typeof workRoute;
+  "/activity": typeof activityRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
@@ -412,6 +420,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
   "/$workSurface": typeof workRoute;
+  "/activity": typeof activityRoute;
   "/agents": typeof agentsRoute;
   "/campaign": typeof campaignRoute;
   "/clients": typeof clientsRoute;
@@ -464,6 +473,7 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/$workSurface"
+    | "/activity"
     | "/agents"
     | "/campaign"
     | "/clients"
@@ -514,6 +524,7 @@ export interface FileRouteTypes {
   to:
     | "/"
     | "/$workSurface"
+    | "/activity"
     | "/agents"
     | "/campaign"
     | "/clients"
@@ -564,6 +575,7 @@ export interface FileRouteTypes {
     | "__root__"
     | "/"
     | "/$workSurface"
+    | "/activity"
     | "/agents"
     | "/campaign"
     | "/clients"
@@ -615,6 +627,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   workRoute: typeof workRoute;
+  activityRoute: typeof activityRoute;
   agentsRoute: typeof agentsRoute;
   campaignRoute: typeof campaignRoute;
   clientsRoute: typeof clientsRoute;
@@ -747,6 +760,13 @@ declare module "@tanstack/react-router" {
       path: "/agents";
       fullPath: "/agents";
       preLoaderRoute: typeof agentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/activity": {
+      id: "/activity";
+      path: "/activity";
+      fullPath: "/activity";
+      preLoaderRoute: typeof activityRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/$workSurface": {
@@ -1007,6 +1027,7 @@ declare module "@tanstack/react-router" {
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   workRoute: workRoute,
+  activityRoute: activityRoute,
   agentsRoute: agentsRoute,
   campaignRoute: campaignRoute,
   clientsRoute: clientsRoute,

@@ -30,6 +30,11 @@ import "./ProfileMenus.css";
 interface ProfilePopoverProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Additional account actions rendered in the existing account menu. */
+  additionalMenuItems?: React.ReactNode;
+  align?: "start" | "center" | "end";
+  placement?: "top" | "bottom";
+  largeTouchTargets?: boolean;
   displayName: string;
   /** The person's own job title, shown under their name. */
   jobTitle?: string | null;
@@ -68,6 +73,10 @@ const ALL_STATUSES: PresenceStatus[] = ["online", "away", "offline"];
 export function ProfilePopover({
   open,
   onOpenChange,
+  additionalMenuItems,
+  align = "start",
+  placement = "top",
+  largeTouchTargets = false,
   displayName,
   jobTitle,
   avatarUrl,
@@ -119,9 +128,10 @@ export function ProfilePopover({
         <PopoverTrigger asChild>{children}</PopoverTrigger>
 
         <PopoverContent
-          align="start"
-          alignOffset={-52}
+          align={align}
+          alignOffset={align === "start" ? -52 : 0}
           className="pm-menu"
+          data-large-touch-targets={largeTouchTargets ? "true" : undefined}
           data-testid="profile-popover"
           onInteractOutside={(event) => {
             const target = event.target as Node | null;
@@ -132,8 +142,8 @@ export function ProfilePopover({
               event.preventDefault();
             }
           }}
-          side="top"
-          sideOffset={27}
+          side={placement}
+          sideOffset={placement === "top" ? 27 : 8}
         >
           <Popover onOpenChange={setPresenceMenuOpen} open={presenceMenuOpen}>
             <PopoverAnchor asChild>
@@ -270,6 +280,8 @@ export function ProfilePopover({
                     </span>
                   </button>
                 ) : null}
+
+                {additionalMenuItems}
 
                 <button
                   className="pm-row"

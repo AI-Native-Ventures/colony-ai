@@ -75,10 +75,23 @@ export function useAppNavigation() {
     (behavior?: NavigationBehavior) =>
       commitNavigation(
         {
+          // The root route is the company map while the map-home preview is on.
           to: "/",
         },
         behavior,
       ),
+    [commitNavigation],
+  );
+
+  const goActivity = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/activity" }, behavior),
+    [commitNavigation],
+  );
+
+  const goNeedsYou = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/today/needs-you" }, behavior),
     [commitNavigation],
   );
 
@@ -127,6 +140,18 @@ export function useAppNavigation() {
       commitNavigation(
         {
           to: "/",
+          search: { profile: pubkey },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goActivityProfile = React.useCallback(
+    (pubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/activity",
           search: { profile: pubkey },
         },
         behavior,
@@ -314,6 +339,8 @@ export function useAppNavigation() {
          * silently swallowed (block/buzz#3509). */
         force?: boolean;
         messageId?: string;
+        whatsappContactWaId?: string;
+        whatsappDeskTab?: "needs-you" | "pipeline" | "chats" | "discussion";
         /** Preserve an active search highlight; ordinary navigation clears it. */
         preserveSearchHighlight?: boolean;
         searchHighlight?: SearchHighlightNavigation;
@@ -338,6 +365,14 @@ export function useAppNavigation() {
               : {}),
             ...(options?.thread ? { thread: options.thread } : {}),
             ...(options?.autoSend ? { autoSend: options.autoSend } : {}),
+            ...(options?.whatsappContactWaId
+              ? {
+                  whatsappContactWaId: options.whatsappContactWaId,
+                  whatsappDeskTab: options.whatsappDeskTab ?? "chats",
+                }
+              : options?.whatsappDeskTab
+                ? { whatsappDeskTab: options.whatsappDeskTab }
+                : {}),
           },
           state: options?.preserveSearchHighlight
             ? undefined
@@ -441,6 +476,8 @@ export function useAppNavigation() {
 
   return {
     closeSettings,
+    goActivity,
+    goActivityProfile,
     goAgents,
     goAgentProfile,
     goAskDetail,
@@ -448,6 +485,7 @@ export function useAppNavigation() {
     goClient,
     goClients,
     goHome,
+    goNeedsYou,
     goLead,
     goTeam,
     goTeamMember,
