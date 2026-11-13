@@ -130,7 +130,10 @@ export function discoveryLocationKey(
 }
 
 /** Great-circle distance between two places, in kilometres. */
-function distanceKm(from: DiscoveryLocation, to: DiscoveryLocation): number {
+export function distanceKm(
+  from: DiscoveryLocation,
+  to: DiscoveryLocation,
+): number {
   const radians = (degrees: number) => (degrees * Math.PI) / 180;
   const latitude = radians(to.latitude - from.latitude);
   const longitude = radians(to.longitude - from.longitude);

@@ -47,8 +47,11 @@ const { invokeTauri } = await import("./tauri.ts");
 const { activateRateLimit, isRateLimited, resetRateLimitGate } = await import(
   "./relayRateLimitGate.ts"
 );
-const { resetRelayWebSocketOperationPacer, sendPacedRelayOperation } =
-  await import("./relayWebSocketOperationPacer.ts");
+const {
+  isBusinessRecordCommandKind,
+  resetRelayWebSocketOperationPacer,
+  sendPacedRelayOperation,
+} = await import("./relayWebSocketOperationPacer.ts");
 
 function reset() {
   resetRateLimitGate();
@@ -533,6 +536,166 @@ test("persisted EVENT pacing stays below 60 messages per minute", async () => {
       `found ${count} persisted EVENT frames in one 60-second window`,
     );
   }
+});
+
+const PROSPECT_ACTION_KIND = 47034;
+
+function countInWindow(times, windowMs) {
+  return Math.max(
+    ...times.map(
+      (startAt) =>
+        times.filter(
+          (sentAt) => sentAt >= startAt && sentAt - startAt < windowMs,
+        ).length,
+    ),
+  );
+}
+
+test("saved business records are not paced as chat messages", async () => {
+  reset();
+  const recordTimes = [];
+  const records = Array.from({ length: 100 }, (_, index) =>
+    sendPacedRelayOperation(
+      ["EVENT", { id: `record-${index}`, kind: PROSPECT_ACTION_KIND }],
+      () => true,
+      async () => recordTimes.push(fakeNow),
+      "interactive",
+    ),
+  );
+
+  await advanceTimersUntil(() => recordTimes.length === records.length, 20_000);
+  await Promise.all(records);
+
+  assert.ok(
+    recordTimes.at(-1) <= 12_000,
+    `100 saved records took ${recordTimes.at(-1)} ms; message pacing would take about 115,000 ms`,
+  );
+  assert.ok(
+    countInWindow(recordTimes, 5_000) <= 48,
+    "stay under the relay's shared budget of 50 operations per five seconds",
+  );
+  assert.ok(
+    countInWindow(recordTimes, 60_000) <= 600,
+    "stay under the relay's record allowance of 600 per minute",
+  );
+
+  // A batch of records must not use up the chat allowance.
+  const chatTimes = [];
+  const startedAt = fakeNow;
+  const chat = Array.from({ length: 4 }, (_, index) =>
+    sendPacedRelayOperation(
+      ["EVENT", { id: `chat-${index}`, kind: 9 }],
+      () => true,
+      async () => chatTimes.push(fakeNow - startedAt),
+      "interactive",
+    ),
+  );
+  await advanceTimersUntil(() => chatTimes.length === chat.length, 2_000);
+  await Promise.all(chat);
+  assert.ok(
+    chatTimes.at(-1) < 1_200,
+    "the four-message chat burst is still available after the batch",
+  );
+});
+
+test("a relay that refuses a record command for its rate gets message pacing from then on", async () => {
+  reset();
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    const client = connectedClient();
+    const event = {
+      id: "c3".repeat(32),
+      kind: PROSPECT_ACTION_KIND,
+      content: "{}",
+      tags: [["h", "channel-id"]],
+    };
+    const published = client.publishEvent(event, "timed out", "send failed");
+    await flushUntil(() => eventFrames().length === 1);
+    await deliver(client, [
+      "OK",
+      event.id,
+      false,
+      "rate-limited: quota exceeded; retry in 1s",
+    ]);
+    await advanceTimersUntil(() => eventFrames().length === 2, 5_000);
+    await deliver(client, ["OK", event.id, true, ""]);
+    assert.equal(await published, event);
+
+    const startedAt = fakeNow;
+    const recordTimes = [];
+    const records = Array.from({ length: 60 }, (_, index) =>
+      sendPacedRelayOperation(
+        ["EVENT", { id: `record-${index}`, kind: PROSPECT_ACTION_KIND }],
+        () => true,
+        async () => recordTimes.push(fakeNow - startedAt),
+        "interactive",
+      ),
+    );
+    await advanceTimersUntil(
+      () => recordTimes.length === records.length,
+      80_000,
+    );
+    await Promise.all(records);
+    assert.ok(
+      countInWindow(recordTimes, 60_000) <= 53,
+      "records are held to the message quota after the refusal",
+    );
+
+    // The next community may be served by a relay with the record allowance.
+    resetRelayWebSocketOperationPacer();
+    const freshTimes = [];
+    const freshStart = fakeNow;
+    const fresh = Array.from({ length: 20 }, (_, index) =>
+      sendPacedRelayOperation(
+        ["EVENT", { id: `fresh-${index}`, kind: PROSPECT_ACTION_KIND }],
+        () => true,
+        async () => freshTimes.push(fakeNow - freshStart),
+        "interactive",
+      ),
+    );
+    await advanceTimersUntil(() => freshTimes.length === fresh.length, 5_000);
+    await Promise.all(fresh);
+    assert.ok(freshTimes.at(-1) <= 2_000);
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
+test("the pacer and the relay agree on which kinds are business record commands", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(
+    new URL("../../../../crates/buzz-core/src/kind.rs", import.meta.url),
+    "utf8",
+  );
+  const body = source.match(
+    /pub const fn is_business_command_kind\(kind: u32\) -> bool \{\s*matches!\(\s*kind,([\s\S]*?)\)\s*\}/,
+  );
+  assert.ok(body, "is_business_command_kind was not found in kind.rs");
+  const names = body[1].match(/KIND_[A-Z0-9_]+/g) ?? [];
+  assert.ok(names.length > 0);
+  const relayKinds = names.map((name) => {
+    const value = source.match(new RegExp(`pub const ${name}: u32 = (\\d+);`));
+    assert.ok(value, `${name} has no numeric value in kind.rs`);
+    return Number(value[1]);
+  });
+
+  for (const kind of relayKinds) {
+    assert.ok(
+      isBusinessRecordCommandKind(kind),
+      `relay record command kind ${kind} is paced as chat by the desktop`,
+    );
+  }
+  // Probe every kind the relay could mean, so an extra desktop kind is caught.
+  const desktopKinds = [];
+  for (let kind = 0; kind <= 65_535; kind++) {
+    if (isBusinessRecordCommandKind(kind)) desktopKinds.push(kind);
+  }
+  assert.deepEqual(
+    desktopKinds,
+    [...relayKinds].sort((left, right) => left - right),
+    "a desktop-only kind would be sent faster than the relay's message quota allows",
+  );
 });
 
 test("a rate-limited publish retries the same signed event after the relay hint", async () => {

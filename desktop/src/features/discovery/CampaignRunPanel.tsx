@@ -1,6 +1,11 @@
 import { Pause, Play, RotateCcw } from "lucide-react";
 
-import { RUN_LABELS, runDescription } from "./CampaignHelpers";
+import {
+  canFindMore,
+  runDescription,
+  runTitle,
+  searchedAreasLabel,
+} from "./CampaignHelpers";
 import {
   CheckGlyph,
   CloseGlyph,
@@ -13,7 +18,6 @@ import {
 import { RunnerAvatar } from "./DiscoveryRunner";
 import { newProspectsCostUsd } from "./discoveryCampaignContinuation";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
-import type { DiscoveryLocation } from "./discoveryLocation";
 import type { DiscoveryCampaign } from "./discoveryProvider";
 
 import "./colony3-discovery.css";
@@ -36,7 +40,6 @@ export function CampaignRunPanel({
   onNewSearch,
   onOpenDetails,
   onOpenSettings,
-  onSearchNearby,
 }: {
   campaign: DiscoveryCampaign;
   onChangeRun: (action: RunAction) => void;
@@ -45,16 +48,11 @@ export function CampaignRunPanel({
   onNewSearch: () => void;
   onOpenDetails: () => void;
   onOpenSettings: () => void;
-  onSearchNearby: (location: DiscoveryLocation) => void;
 }) {
   const progress = Math.min(
     100,
     campaign.target > 0 ? (campaign.count / campaign.target) * 100 : 0,
   );
-  const canFindMore =
-    campaign.count < campaign.target &&
-    (campaign.endReason === "provider_repeat" ||
-      campaign.endReason === "approved_budget");
   return (
     <>
       <div className="c3d-head">
@@ -108,7 +106,7 @@ export function CampaignRunPanel({
             <RunIcon status={campaign.status} />
           </span>
           <div className="c3d-run-copy">
-            <h2 id="run-title">{RUN_LABELS[campaign.status]}</h2>
+            <h2 id="run-title">{runTitle(campaign)}</h2>
             <span>{runDescription(campaign)}</span>
           </div>
           {campaign.runBy ? (
@@ -155,7 +153,7 @@ export function CampaignRunPanel({
               </button>
             ) : (
               <>
-                {canFindMore ? (
+                {canFindMore(campaign) ? (
                   <button
                     className="c3d-btn c3d-btn--ink c3d-btn--md"
                     onClick={onFindMore}
@@ -187,7 +185,7 @@ export function CampaignRunPanel({
         </div>
         <div className="c3d-run-meta">
           <span>
-            <PinGlyph /> {campaign.location}
+            <PinGlyph /> {searchedAreasLabel(campaign)}
           </span>
           <span>{campaign.count} prospects</span>
           <span>
@@ -203,23 +201,6 @@ export function CampaignRunPanel({
             Run details
           </button>
         </div>
-        {campaign.status !== "running" &&
-        campaign.status !== "paused" &&
-        campaign.locationSelection?.nearby?.length ? (
-          <div className="c3d-nearby-areas">
-            <span>Search nearby areas</span>
-            {campaign.locationSelection.nearby.map((location) => (
-              <button
-                className="c3d-text-link"
-                key={`${location.label}-${location.latitude}-${location.longitude}`}
-                onClick={() => onSearchNearby(location)}
-                type="button"
-              >
-                {location.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </section>
     </>
   );

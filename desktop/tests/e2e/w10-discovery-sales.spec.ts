@@ -3,6 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
+// A finished run is titled "Search complete", or "Found N of M" when it
+// ended short of the target.
+const RUN_FINISHED_TITLE = /^(Search complete|Found \d+ of \d+)$/;
+
 const REFERENCE_WORKSPACE = { referenceWorkspace: true };
 
 async function openHomeDecorCampaignForm(page: Page) {
@@ -370,9 +374,9 @@ test.describe("W10 discovery and sales", () => {
       page.getByText("Search interrupted", { exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Retry search" }).click();
-    await expect(
-      page.getByText("Search complete", { exact: true }),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(RUN_FINISHED_TITLE)).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(
       page.getByTestId("w10-campaign-page").locator("tbody tr"),
     ).toHaveCount(7);
