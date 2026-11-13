@@ -29,6 +29,7 @@ import { useAppShellLifecycleEffects } from "@/app/useAppShellLifecycleEffects";
 import { useChannelActivityProjection } from "@/app/useChannelActivityProjection";
 import { useTauriWindowDrag } from "@/app/useTauriWindowDrag";
 import { MapShell } from "@/features/map-shell/MapShell";
+import { MapShellDialogs } from "@/features/map-shell/MapShellDialogs";
 import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import { useWebviewZoomShortcuts } from "@/app/useWebviewZoomShortcuts";
 import {
@@ -1056,6 +1057,21 @@ export function AppShell() {
                     />
                   </div>
                 )}
+                {mapShellEnabled ? (
+                  <MapShellDialogs
+                    addWorkspacePrefill={addCommunityDialog.prefill}
+                    isAddWorkspaceOpen={addCommunityDialog.open}
+                    isCreateChannelOpen={isCreateChannelOpen}
+                    isCreatingChannel={createChannelMutation.isPending}
+                    onAddWorkspaceOpenChange={
+                      handleAddCommunityDialogOpenChange
+                    }
+                    onCreateChannel={handleCreateChannel}
+                    onCreateChannelOpenChange={setIsCreateChannelOpen}
+                    onOpenWorkspaceDialog={openWorkspaceDialog}
+                    workspaceDialogMode={workspaceDialogMode}
+                  />
+                ) : null}
                 <RequestedAgentCreateDialogs />
                 <AgentManagementDialogs />
                 <AppShellOverlays
