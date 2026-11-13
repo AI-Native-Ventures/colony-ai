@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  MAX_MAP_CANVAS_TRAIL_ENTRIES,
+  createMapCanvasTrail,
+  mapCanvasTrailForHref,
+  planMapCanvasTrailNavigation,
+  truncateMapCanvasTrail,
+} from "./mapCanvasTrail.ts";
+
+const root = { functionId: "sales", jobName: "Closing" };
+
+test("appends a deep route with the captured departing screen", () => {
+  const trail = createMapCanvasTrail(root, "/channels/outreach?tab=pipeline", 4);
+  const result = planMapCanvasTrailNavigation({
+    historyIndex: 4,
+    href: "/channels/outreach?tab=chats",
+    scroll: [{ index: 3, left: 0, top: 240 }],
+    snapshot: { height: 699, html: "<div>pipeline</div>", width: 1204 },
+    trail,
+  });
+
+  assert.equal(result.kind, "append");
+  assert.deepEqual(result.trail.entries, [
+    {
+      historyIndex: 4,
+      href: "/channels/outreach?tab=pipeline",
+      scroll: [{ index: 3, left: 0, top: 240 }],
+      snapshot: { height: 699, html: "<div>pipeline</div>", width: 1204 },
+    },
+    {
+      historyIndex: 5,
+      href: "/channels/outreach?tab=chats",
+      scroll: [],
+      snapshot: null,
+    },
+  ]);
+});
+
+test("swaps same-route tabs without growing the trail", () => {
+  const trail = createMapCanvasTrail(root, "/leads?tab=queue", 2);
+  const result = planMapCanvasTrailNavigation({
+    historyIndex: 2,
+    href: "/leads?tab=sent",
+    scroll: [],
+    snapshot: null,
+    trail,
+  });
+
+  assert.equal(result.kind, "replace");
+  assert.equal(result.trail.entries.length, 1);
+  assert.equal(result.trail.entries[0]?.href, "/leads?tab=sent");
+});
+
+test("returns to an existing trail screen instead of copying it", () => {
+  const first = createMapCanvasTrail(root, "/discovery", 7);
+  const second = planMapCanvasTrailNavigation({
+    historyIndex: 7,
+    href: "/discovery/campaigns",
+    scroll: [],
+    snapshot: null,
+    trail: first,
+  }).trail;
+  const result = planMapCanvasTrailNavigation({
+    historyIndex: 8,
+    href: "/discovery",
+    scroll: [],
+    snapshot: null,
+    trail: second,
+  });
+
+  assert.equal(result.kind, "return");
+  assert.equal(result.targetIndex, 0);
+  assert.deepEqual(truncateMapCanvasTrail(second, result.targetIndex).entries, [
+    first.entries[0],
+  ]);
+});
+
+test("rejects mismatched or unbounded persisted trails", () => {
+  const trail = createMapCanvasTrail(root, "/pipeline", 1);
+  assert.equal(mapCanvasTrailForHref({ mapCanvasTrail: trail }, "/leads"), null);
+  assert.equal(
+    mapCanvasTrailForHref(
+      {
+        mapCanvasTrail: {
+          ...trail,
+          entries: Array.from({ length: MAX_MAP_CANVAS_TRAIL_ENTRIES + 1 }, () =>
+            trail.entries[0],
+          ),
+        },
+      },
+      "/pipeline",
+    ),
+    null,
+  );
+});
