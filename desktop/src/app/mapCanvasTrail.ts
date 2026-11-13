@@ -188,6 +188,30 @@ function withLatestEntry(
   return { ...trail, entries: [...trail.entries.slice(0, -1), entry] };
 }
 
+/** Stores the last rendered state of the newest route before it is left. */
+export function captureMapCanvasTrailLatest(
+  trail: MapCanvasTrail,
+  {
+    historyIndex,
+    scroll,
+    snapshot,
+  }: Pick<MapCanvasTrailEntry, "historyIndex" | "scroll" | "snapshot">,
+): MapCanvasTrail {
+  const latest = trail.entries.at(-1);
+  return latest
+    ? withLatestEntry(trail, { ...latest, historyIndex, scroll, snapshot })
+    : trail;
+}
+
+/** Aligns the newest entry with the browser history slot that owns it. */
+export function setMapCanvasTrailLatestHistoryIndex(
+  trail: MapCanvasTrail,
+  historyIndex: number | null,
+): MapCanvasTrail {
+  const latest = trail.entries.at(-1);
+  return latest ? withLatestEntry(trail, { ...latest, historyIndex }) : trail;
+}
+
 /** Builds the next bounded trail state for navigation from a live window. */
 export function planMapCanvasTrailNavigation({
   href,
@@ -210,13 +234,11 @@ export function planMapCanvasTrailNavigation({
     return { kind: "return", targetIndex: knownIndex, trail };
   }
 
-  const departing = {
-    ...latest,
+  const departingTrail = captureMapCanvasTrailLatest(trail, {
     historyIndex,
     scroll,
     snapshot,
-  };
-  const departingTrail = withLatestEntry(trail, departing);
+  });
   const nextEntry: MapCanvasTrailEntry = {
     historyIndex: historyIndex === null ? null : historyIndex + 1,
     href,

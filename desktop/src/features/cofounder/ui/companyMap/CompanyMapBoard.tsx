@@ -866,8 +866,10 @@ function CompanyMapDesktop({
   liveFunctionIds,
   summary,
   whatsAppChannelId: whatsappChannelId,
+  mapWindowDepth = 0,
   mapWindowJob = null,
   onMapWindowClose,
+  onMapWindowFit,
 }: CompanyMapBoardProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -946,9 +948,10 @@ function CompanyMapDesktop({
   const mapWindowPart = mapWindowJob
     ? partPosition(mapWindowJob.functionId)
     : null;
+  const trailDepth = Math.max(0, Math.floor(mapWindowDepth));
   const stageStyle: StageStyle = {
     "--company-map-transform": mapWindowPart
-      ? `translate(${84 - mapWindowPart.x}px, ${100 - mapWindowPart.y}px) scale(1)`
+      ? `translate(${84 - mapWindowPart.x - trailDepth * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
       : `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
   };
   const jobs = activePart
@@ -1138,7 +1141,7 @@ function CompanyMapDesktop({
               data-testid="cofounder-map-fit"
               onClick={() => {
                 if (mapWindowOpen) {
-                  onMapWindowClose?.();
+                  onMapWindowFit?.() ?? onMapWindowClose?.();
                   return;
                 }
                 setBoardZoom(1);
