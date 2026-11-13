@@ -59,6 +59,8 @@ const WINDOW_JOBS: readonly WindowJob[] = [
   { functionId: "finance", jobName: "Costs" },
 ];
 
+const OPEN_ZOOM_CANVAS_GAPS = { bottom: 34, left: 16 } as const;
+
 function mapTarget({ functionId, jobName }: WindowJob): string {
   const route = getCompanyMapJobRoute(functionId, jobName);
   const mapJob = companyMapWindowSearch(functionId, jobName)?.mapJob;
@@ -213,16 +215,19 @@ function openWindowMarkupContract() {
   const close = document.querySelector<HTMLElement>(
     '[data-testid="fullmap-window-close"]',
   );
+  const canvas = document.querySelector<HTMLElement>(".company-map-scroll");
   const zoom = document.querySelector<HTMLElement>(".company-map-zoom");
   const hint = document.querySelector<HTMLElement>(".company-map-note");
   const ring = document.querySelector<HTMLElement>(
     '[data-testid="fullmap-window-job-ring"]',
   );
-  if (!window || !close || !zoom || !hint || !ring) {
+  if (!window || !close || !canvas || !zoom || !hint || !ring) {
     throw new Error("Expected full map open-state contract nodes");
   }
+  const canvasBounds = canvas.getBoundingClientRect();
   const windowBounds = window.getBoundingClientRect();
   const closeBounds = close.getBoundingClientRect();
+  const zoomBounds = zoom.getBoundingClientRect();
   return {
     close: {
       background: getComputedStyle(close).backgroundColor,
@@ -268,6 +273,8 @@ function openWindowMarkupContract() {
     },
     zoom: {
       ...box(zoom),
+      canvasBottomGap: Math.round(canvasBounds.bottom - zoomBounds.bottom),
+      canvasLeftGap: Math.round(zoomBounds.left - canvasBounds.left),
       buttons: Array.from(zoom.querySelectorAll("button")).map((button) => {
         const bounds = button.getBoundingClientRect();
         return {
@@ -380,6 +387,8 @@ test.describe("full map canvas slice 1", () => {
     expect(openContract.close.shadow).toContain("4px");
     expect(openContract.zoom).toMatchObject({
       bottom: 866,
+      canvasBottomGap: OPEN_ZOOM_CANVAS_GAPS.bottom,
+      canvasLeftGap: OPEN_ZOOM_CANVAS_GAPS.left,
       height: 52,
       left: 16,
       right: 156,
@@ -560,6 +569,11 @@ test.describe("full map canvas slice 1", () => {
       width: 1764,
     });
     expect(geometry.connector).toMatchObject({ left: 148, right: 200 });
+    const openContract = await page.evaluate(openWindowMarkupContract);
+    expect(openContract.zoom.canvasBottomGap).toBe(
+      OPEN_ZOOM_CANVAS_GAPS.bottom,
+    );
+    expect(openContract.zoom.canvasLeftGap).toBe(OPEN_ZOOM_CANVAS_GAPS.left);
   });
 
   test("removes map-window motion when reduced motion is requested", async ({

@@ -443,17 +443,19 @@
   z-index: 6;
   /*
    * The design moves one control, rather than replacing it, between the
-   * closed board at (628, 8) and the open board at (16, 730).
+   * closed board and the bottom-left corner of the open canvas.
    */
-  top: 750px;
+  bottom: calc(100% - 80px);
   left: 16px;
   display: flex;
   padding: 4px;
   border-radius: 14px;
   background: var(--colony-overlay);
   box-shadow: var(--colony-shadow-frame);
-  transform: translate(calc(50cqw - 88px), -722px);
-  transition: transform 500ms cubic-bezier(0.3, 0.8, 0.3, 1);
+  transform: translate(calc(50cqw - 88px), 0);
+  transition-property: bottom, transform;
+  transition-duration: 500ms;
+  transition-timing-function: cubic-bezier(0.3, 0.8, 0.3, 1);
 }
 
 .company-map-zoom button {
@@ -482,6 +484,7 @@
 }
 
 .company-map-viewport[data-map-window-open="true"] .company-map-zoom {
+  bottom: 34px;
   transform: translate(0, 0);
 }
 
