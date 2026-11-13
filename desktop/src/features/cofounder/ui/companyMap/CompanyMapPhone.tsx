@@ -344,7 +344,7 @@ function PhoneActionCard({
   const count = countForPart(summary, activePart);
   const leader =
     slot.state === "covered_by_scout"
-      ? `Scout runs ${detail.name} until you hire someone.${activePart === "operations" ? " Each circle is one workflow. Tap it to see its steps. Tap + to add a workflow." : ""}`
+      ? `Scout runs ${detail.name} until you hire someone.`
       : lead
         ? `${fullName(lead, profiles)} runs ${detail.name}.`
         : slot.state === "filled"

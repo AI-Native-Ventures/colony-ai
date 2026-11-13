@@ -63,8 +63,8 @@ export function getCompanyMapJobRoute(
   return ROUTES[`${functionId}:${jobName}`] ?? { kind: "part", functionId };
 }
 
-/** Proposal jobs whose app screens do not exist in this checkout. */
-export const COMPANY_MAP_PROPOSAL_JOBS = [
+/** Jobs whose dedicated app screens do not exist in this checkout. */
+export const COMPANY_MAP_NO_SCREEN_JOBS = [
   "sales:Calls",
   "finance:Recurring plans",
   "customer_success:Renewals",
@@ -77,7 +77,7 @@ export const COMPANY_MAP_PROPOSAL_JOBS = [
 
 /** Current app jobs that intentionally fall back to their part page. */
 export const COMPANY_MAP_FALLBACK_JOBS = [
-  ...COMPANY_MAP_PROPOSAL_JOBS,
+  ...COMPANY_MAP_NO_SCREEN_JOBS,
   "brand:Offer and prices",
   "brand:Voice",
 ] as const;
@@ -87,16 +87,6 @@ export function companyMapJobKey(
   jobName: string,
 ): string {
   return `${functionId}:${jobName}`;
-}
-
-/** Whether the job is still a proposed seat rather than a current app surface. */
-export function isCompanyMapProposalJob(
-  functionId: FunctionId,
-  jobName: string,
-): boolean {
-  return (COMPANY_MAP_PROPOSAL_JOBS as readonly string[]).includes(
-    companyMapJobKey(functionId, jobName),
-  );
 }
 
 export function isCompanyMapJobFallback(

@@ -1,10 +1,4 @@
-import {
-  Fragment,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { Fragment, useRef, useState, type CSSProperties } from "react";
 import type { FocusEvent, PointerEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -38,10 +32,14 @@ import {
   companyMapJobKey,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
-  isCompanyMapProposalJob,
 } from "@/features/cofounder/companyMapJobRoutes";
+import {
+  companyMapJobConnectorState,
+  type CompanyMapConnectorState,
+} from "@/features/cofounder/companyMapConnectorState";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
+import { useCompanyMapDesktopOpenPart } from "./useCompanyMapDesktopOpenPart";
 import type {
   CompanyMapBoardProps,
   CompanyMapSummary as MapSummary,
@@ -387,28 +385,6 @@ function countForJob(
   return summary?.byJob[companyMapJobKey(functionId, name)] ?? 0;
 }
 
-type ConnectorState = "live" | "on" | "seat" | "off";
-
-function jobConnectorState(
-  functionId: FunctionId,
-  name: string,
-  slot: FunctionSlotView,
-  summary: MapSummary | undefined,
-  liveFunctionIds: readonly FunctionId[],
-): ConnectorState {
-  if (
-    liveFunctionIds.includes(functionId) &&
-    countForJob(summary, functionId, name) > 0
-  ) {
-    return "live";
-  }
-  if (isCompanyMapProposalJob(functionId, name)) return "seat";
-  const runBySomeone =
-    companyMapJobIsScoutLed(functionId, name, slot.state) ||
-    slot.state === "filled";
-  return runBySomeone ? "on" : "off";
-}
-
 function connectorPath(x1: number, y1: number, x2: number, y2: number): string {
   const middle = (x1 + x2) / 2;
   return `M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}`;
@@ -437,7 +413,9 @@ function MapConnectors({
           (part) => part.functionId === functionId,
         )?.side;
         const slot = slotForFunction(functionId, slots);
-        const state = liveFunctionIds.includes(functionId)
+        const state: CompanyMapConnectorState = liveFunctionIds.includes(
+          functionId,
+        )
           ? "live"
           : slot.state === "empty"
             ? "off"
@@ -464,12 +442,12 @@ function MapConnectors({
             const side = COMPANY_MAP_LAYOUT.jobs.find(
               (job) => job.functionId === activePart && job.name === name,
             )?.side;
-            const state = jobConnectorState(
+            const state = companyMapJobConnectorState(
               activePart,
               name,
-              slotForFunction(activePart, slots),
-              summary,
-              liveFunctionIds,
+              slotForFunction(activePart, slots).state,
+              liveFunctionIds.includes(activePart),
+              countForJob(summary, activePart, name) > 0,
             );
             const part = partPosition(activePart);
             return (
@@ -508,12 +486,12 @@ function MapConnectors({
                     )}
                     data-map-connector
                     data-map-target={`${functionId}:${name}`}
-                    data-state={jobConnectorState(
+                    data-state={companyMapJobConnectorState(
                       functionId,
                       name,
-                      slotForFunction(functionId, slots),
-                      summary,
-                      liveFunctionIds,
+                      slotForFunction(functionId, slots).state,
+                      liveFunctionIds.includes(functionId),
+                      countForJob(summary, functionId, name) > 0,
                     )}
                     key={`${functionId}:${name}`}
                   />
@@ -663,7 +641,7 @@ function ActionCard({
   const leadName = lead ? fullName(lead, profiles) : null;
   const summaryLine =
     slot.state === "covered_by_scout"
-      ? `Scout runs ${detail.name} until you hire someone.${activePart === "operations" ? " Each circle is one workflow. Tap it to see its steps. Tap + to add a workflow." : ""}`
+      ? `Scout runs ${detail.name} until you hire someone.`
       : leadName
         ? `${leadName} runs ${detail.name}.`
         : activePart === "operations"
@@ -875,11 +853,17 @@ function CompanyMapDesktop({
   summary,
   whatsAppChannelId: whatsappChannelId,
 }: CompanyMapBoardProps) {
-  const [pinnedPart, setPinnedPart] = useState<FunctionId | null>(null);
-  const [hoveredPart, setHoveredPart] = useState<FunctionId | null>(null);
-  const [focusedPart, setFocusedPart] = useState<FunctionId | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const {
+    activePart,
+    blurPart,
+    clearOpenPart,
+    closeHoverSoon,
+    enterPart,
+    focusPart,
+    togglePinnedPart,
+  } = useCompanyMapDesktopOpenPart();
   const stageRef = useRef<HTMLFieldSetElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -888,55 +872,6 @@ function CompanyMapDesktop({
     pan: { x: number; y: number };
   } | null>(null);
   const suppressClickRef = useRef(false);
-  const hoverCloseRef = useRef<number | null>(null);
-  const activePart = focusedPart ?? hoveredPart ?? pinnedPart;
-
-  useEffect(
-    () => () => {
-      if (hoverCloseRef.current !== null)
-        window.clearTimeout(hoverCloseRef.current);
-    },
-    [],
-  );
-
-  function closeHoverSoon() {
-    if (hoverCloseRef.current !== null)
-      window.clearTimeout(hoverCloseRef.current);
-    hoverCloseRef.current = window.setTimeout(() => setHoveredPart(null), 140);
-  }
-
-  function enterPart(functionId: FunctionId) {
-    if (hoverCloseRef.current !== null)
-      window.clearTimeout(hoverCloseRef.current);
-    setHoveredPart(functionId);
-  }
-
-  function clearOpenPart() {
-    setPinnedPart(null);
-    setHoveredPart(null);
-    setFocusedPart(null);
-  }
-
-  function blurPart(event: FocusEvent<HTMLElement>, functionId: FunctionId) {
-    const next = event.relatedTarget;
-    if (
-      next instanceof HTMLElement &&
-      next.closest<HTMLElement>("[data-map-group]")?.dataset.mapGroup ===
-        functionId
-    ) {
-      return;
-    }
-    window.setTimeout(() => {
-      const current = document.activeElement;
-      const nextGroup =
-        current instanceof HTMLElement
-          ? current.closest<HTMLElement>("[data-map-group]")?.dataset.mapGroup
-          : undefined;
-      setFocusedPart(
-        FUNCTION_ORDER.find((candidate) => candidate === nextGroup) ?? null,
-      );
-    }, 0);
-  }
 
   function setBoardZoom(next: number) {
     const bounded = Math.min(1.3, Math.max(0.7, next));
@@ -1081,18 +1016,8 @@ function CompanyMapDesktop({
                   functionId={functionId}
                   members={members}
                   onBlur={(event) => blurPart(event, functionId)}
-                  onClick={() => {
-                    setPinnedPart((current) => {
-                      if (current === functionId) {
-                        setHoveredPart(null);
-                        setFocusedPart(null);
-                        return null;
-                      }
-                      return functionId;
-                    });
-                    setFocusedPart(null);
-                  }}
-                  onFocus={() => setFocusedPart(functionId)}
+                  onClick={() => togglePinnedPart(functionId)}
+                  onFocus={() => focusPart(functionId)}
                   onMouseEnter={() => enterPart(functionId)}
                   onMouseLeave={closeHoverSoon}
                   profiles={profiles}
@@ -1108,7 +1033,7 @@ function CompanyMapDesktop({
                       members={members}
                       name={job.name}
                       onGroupBlur={blurPart}
-                      onGroupFocus={setFocusedPart}
+                      onGroupFocus={focusPart}
                       onGroupMouseEnter={enterPart}
                       onGroupMouseLeave={closeHoverSoon}
                       profiles={profiles}
@@ -1140,7 +1065,7 @@ function CompanyMapDesktop({
               members={members}
               onClose={clearOpenPart}
               onGroupBlur={blurPart}
-              onGroupFocus={setFocusedPart}
+              onGroupFocus={focusPart}
               onGroupMouseEnter={enterPart}
               onGroupMouseLeave={closeHoverSoon}
               ownerName={ownerName}

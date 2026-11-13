@@ -27,11 +27,14 @@ import {
 } from "../../src/features/cofounder/functions";
 import { getCompanyMapJobRoute } from "../../src/features/cofounder/companyMapJobRoutes";
 
-type ConnectorState = "live" | "on" | "seat" | "off";
+type ConnectorState = "live" | "on" | "off";
 
 async function measuredConnector(page: Page, target: string) {
   const connector = page.locator(`[data-map-target="${target}"]`);
   await expect(connector).toHaveCount(1);
+  await expect
+    .poll(() => connector.evaluate((node) => getComputedStyle(node).stroke))
+    .not.toBe("none");
   return connector.evaluate((node) => {
     const style = getComputedStyle(node);
     const tokenColor = (value: string) => {
@@ -321,8 +324,7 @@ test.describe("co-founder mode desktop", () => {
     ).toHaveText("1");
   });
 
-  test("connectors use the four board wire states, not needs badges", async ({
-    browser,
+  test("current connectors follow the board runner states, not needs badges", async ({
     page,
   }) => {
     await installMockBridge(page, fixture());
@@ -345,38 +347,90 @@ test.describe("co-founder mode desktop", () => {
     );
 
     await selectMapPart(page, "sales", "Sales");
-    expectConnectorKind(await measuredConnector(page, "sales:Calls"), "seat");
+    const calls = await measuredConnector(page, "sales:Calls");
+    expectConnectorKind(calls, "on");
+    expect(calls.stroke).not.toBe(calls.tokens.need);
 
     await selectMapPart(page, "finance", "Finance");
     expectConnectorKind(
       await measuredConnector(page, "finance:Invoices"),
       "off",
     );
+    expectConnectorKind(
+      await measuredConnector(page, "finance:Recurring plans"),
+      "on",
+    );
 
-    const liveContext = await browser.newContext();
-    const livePage = await liveContext.newPage();
-    try {
-      await installMockBridge(
-        livePage,
-        fixture({ workerRuns: [workerRun({ status: "running" })] }),
-      );
-      await seedCompanyMapMoneyRails(livePage);
-      await seedCompanyMapWhatsApp(livePage, MAP_CHANNEL_ID);
-      await livePage.setViewportSize({ width: 1440, height: 900 });
-      await livePage.goto("/#/company/map");
-      await expect(
-        livePage.locator('[data-map-target="sales"]'),
-      ).toHaveAttribute("data-state", "live");
-      expectConnectorKind(await measuredConnector(livePage, "sales"), "live");
-
-      await selectMapPart(livePage, "sales", "Sales");
+    await selectMapPart(page, "customer_success", "Customer Success");
+    for (const job of ["Renewals", "Upsell", "Reviews"]) {
       expectConnectorKind(
-        await measuredConnector(livePage, "sales:Calls"),
-        "live",
+        await measuredConnector(page, `customer_success:${job}`),
+        "on",
       );
-    } finally {
-      await liveContext.close();
     }
+
+    await selectMapPart(page, "brand", "Brand");
+    for (const job of ["Website", "Portfolio", "Marketing"]) {
+      expectConnectorKind(await measuredConnector(page, `brand:${job}`), "on");
+    }
+    await expect(
+      page.locator('[data-map-connector][data-state="seat"]'),
+    ).toHaveCount(0);
+  });
+
+  test("a running part uses live wires for its waiting jobs", async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await installMockBridge(
+      page,
+      fixture({ workerRuns: [workerRun({ status: "running" })] }),
+    );
+    await seedCompanyMapMoneyRails(page);
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+
+    await page.waitForTimeout(250);
+    expect(pageErrors).toEqual([]);
+    await expect(page.getByTestId("cofounder-map-stage")).toBeVisible();
+    await expect(page.locator('[data-map-target="sales"]')).toHaveAttribute(
+      "data-state",
+      "live",
+    );
+    expectConnectorKind(await measuredConnector(page, "sales"), "live");
+
+    await selectMapPart(page, "sales", "Sales");
+    expectConnectorKind(await measuredConnector(page, "sales:Calls"), "live");
+  });
+
+  test("map-home bar follows the open part and closes its arm", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/");
+
+    const stage = page.getByTestId("cofounder-map-stage");
+    await expect(page.getByTestId("map-shell-company")).toBeVisible();
+    await page.getByTestId("cofounder-map-sales").click();
+    await expect(stage).toHaveAttribute("data-active-part", "sales");
+    await expect(page.getByTestId("map-shell-map-button")).toBeVisible();
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Sales/All of Sales",
+    );
+    await expect(page.getByTestId("map-shell-company")).toHaveCount(0);
+    expect(new URL(page.url()).hash).toBe("#/");
+
+    await page.getByTestId("map-shell-map-button").click();
+    await expect(stage).toHaveAttribute("data-active-part", "none");
+    await expect(page.getByTestId("map-shell-company")).toBeVisible();
+    await expect(page.getByTestId("map-shell-map-button")).toHaveCount(0);
+    await expect(page.getByTestId("map-shell-trail")).toHaveCount(0);
+    expect(new URL(page.url()).hash).toBe("#/");
   });
 
   test("each part reveals its current app jobs and closes with Escape", async ({
@@ -407,8 +461,11 @@ test.describe("co-founder mode desktop", () => {
       ).toHaveAttribute("aria-expanded", "true");
       if (functionId === "operations") {
         await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
-          "Each circle is one workflow. Tap it to see its steps. Tap + to add a workflow.",
+          "Scout runs Operations until you hire someone.",
         );
+        await expect(
+          page.getByTestId("cofounder-map-part-card"),
+        ).not.toContainText("Each circle is one workflow.");
       }
       await page.keyboard.press("Escape");
       await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
@@ -551,14 +608,19 @@ test.describe("co-founder mode desktop", () => {
   test("hover, focus, Close, and the blank board control the active part", async ({
     page,
   }) => {
-    await installMockBridge(page, fixture());
+    await installMockBridge(page, fixture(), {
+      previewFeatureOverrides: { map_home: true },
+    });
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/#/company/map");
+    await page.goto("/#/");
 
     const stage = page.getByTestId("cofounder-map-stage");
     const sales = page.getByTestId("cofounder-map-sales");
     await sales.hover();
     await expect(stage).toHaveAttribute("data-active-part", "sales");
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Sales/All of Sales",
+    );
     await expect(page.getByTestId("cofounder-map-operations")).toHaveAttribute(
       "data-faded",
       "true",
@@ -567,8 +629,12 @@ test.describe("co-founder mode desktop", () => {
     const brand = page.getByTestId("cofounder-map-brand");
     await brand.focus();
     await expect(stage).toHaveAttribute("data-active-part", "brand");
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Brand/All of Brand",
+    );
     await page.keyboard.press("Escape");
     await expect(stage).toHaveAttribute("data-active-part", "none");
+    await expect(page.getByTestId("map-shell-company")).toBeVisible();
 
     await selectMapPart(page, "finance", "Finance");
     await page
@@ -967,32 +1033,32 @@ test.describe("co-founder mode desktop", () => {
     }
   });
 
-  test("captures every company map state at 1440 and 390 in light and dark", async ({
-    browser,
-  }) => {
-    test.setTimeout(120_000);
-    const screenshotDir = "test-results/cofounder-map-board";
-    mkdirSync(screenshotDir, { recursive: true });
-    const desktopStates = [
-      { name: "no-part-open" },
-      { name: "sales-open", functionId: "sales", label: "Sales" },
-      {
-        name: "operations-open",
-        functionId: "operations",
-        label: "Operations",
-      },
-      {
-        name: "customer-success-open",
-        functionId: "customer_success",
-        label: "Customer Success",
-      },
-      { name: "finance-open", functionId: "finance", label: "Finance" },
-      { name: "brand-open", functionId: "brand", label: "Brand" },
-      { name: "zoomed", zoom: true },
-    ] as const;
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures every company map state at 1440 and 390 in ${theme}`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      const screenshotDir = "test-results/cofounder-map-board";
+      mkdirSync(screenshotDir, { recursive: true });
+      const desktopStates = [
+        { name: "no-part-open" },
+        { name: "sales-open", functionId: "sales", label: "Sales" },
+        {
+          name: "operations-open",
+          functionId: "operations",
+          label: "Operations",
+        },
+        {
+          name: "customer-success-open",
+          functionId: "customer_success",
+          label: "Customer Success",
+        },
+        { name: "finance-open", functionId: "finance", label: "Finance" },
+        { name: "brand-open", functionId: "brand", label: "Brand" },
+        { name: "zoomed", zoom: true },
+      ] as const;
 
-    for (const theme of ["light", "dark"] as const) {
-      const capturePage = await browser.newPage();
+      const capturePage = page;
       await seedCofounderTheme(capturePage, theme);
       await installMockBridge(capturePage, fixture({ includeScout: true }), {
         previewFeatureOverrides: { map_home: true },
@@ -1073,20 +1139,18 @@ test.describe("co-founder mode desktop", () => {
         fullPage: false,
         path: join(screenshotDir, `phone-sales-open-${theme}-390.png`),
       });
-      await capturePage.close();
-    }
-  });
+    });
+  }
 
-  test("captures weekly review and function pages at 1440 and 390 in light and dark", async ({
-    browser,
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    const screenshotDir = "test-results/cofounder-phase5";
-    mkdirSync(screenshotDir, { recursive: true });
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures weekly review and function pages at 1440 and 390 in ${theme}`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      const screenshotDir = "test-results/cofounder-phase5";
+      mkdirSync(screenshotDir, { recursive: true });
 
-    for (const theme of ["light", "dark"] as const) {
-      const capturePage = theme === "light" ? page : await browser.newPage();
+      const capturePage = page;
       await seedCofounderTheme(capturePage, theme);
       await installMockBridge(capturePage, fixture());
       await capturePage.emulateMedia({ colorScheme: theme });
@@ -1166,7 +1230,6 @@ test.describe("co-founder mode desktop", () => {
           }
         }
       }
-      if (theme === "dark") await capturePage.close();
-    }
-  });
+    });
+  }
 });

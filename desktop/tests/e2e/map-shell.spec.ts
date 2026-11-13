@@ -858,9 +858,14 @@ test("App community switching returns to the map when map_home is enabled", asyn
     featureEnabled: true,
     workspaces: MAP_SHELL_WORKSPACES,
   });
-  await page.goto("/#/company/function/operations");
-  await expect(page.getByTestId("map-shell-trail")).toBeVisible();
+  const stage = page.getByTestId("cofounder-map-stage");
+  await page.getByTestId("cofounder-map-sales").click();
+  await expect(stage).toHaveAttribute("data-active-part", "sales");
+  await expect(page.getByTestId("map-shell-trail")).toHaveText(
+    "Sales/All of Sales",
+  );
   await page.getByTestId("map-shell-map-button").click();
+  await expect(stage).toHaveAttribute("data-active-part", "none");
   await expect(page.getByTestId("map-shell-company")).toBeVisible();
 
   await page.getByTestId("map-shell-company").click();
@@ -880,6 +885,13 @@ test("App community switching returns to the map when map_home is enabled", asyn
   await expect.poll(() => pathname(page.url())).toBe("/");
   await expect(page.getByTestId("map-shell-bar")).toBeVisible();
   await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+  await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
+    "data-active-part",
+    "none",
+  );
+  await expect(page.getByTestId("map-shell-company")).toBeVisible();
+  await expect(page.getByTestId("map-shell-map-button")).toHaveCount(0);
+  await expect(page.getByTestId("map-shell-trail")).toHaveCount(0);
 });
 
 test("cofounder mode off keeps the current sidebar with map_home enabled", async ({
@@ -917,6 +929,12 @@ test("top bar actions open their dialogs without the sidebar", async ({
   await expect(workspaceDialog).toBeVisible();
   await workspaceDialog.getByTestId("workspace-dialog-close").click();
   await expect(workspaceDialog).toHaveCount(0);
+  await waitForAnimations(page);
+  await page.mouse.move(0, 0);
+  await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
+    "data-active-part",
+    "none",
+  );
 
   await page.getByTestId("map-shell-company").click();
   await page
@@ -926,6 +944,12 @@ test("top bar actions open their dialogs without the sidebar", async ({
   await expect(page.getByTestId("workspace-join-form")).toBeVisible();
   await page.getByTestId("workspace-dialog-close").click();
   await expect(page.getByTestId("workspace-action-dialog")).toHaveCount(0);
+  await waitForAnimations(page);
+  await page.mouse.move(0, 0);
+  await expect(page.getByTestId("cofounder-map-stage")).toHaveAttribute(
+    "data-active-part",
+    "none",
+  );
 
   await page.getByTestId("open-search").click();
   await page.getByTestId("search-result-action-create-channel").click();

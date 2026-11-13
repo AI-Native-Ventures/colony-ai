@@ -4,11 +4,11 @@ import test from "node:test";
 import { FUNCTION_DETAILS, FUNCTION_ORDER } from "./functions.ts";
 import {
   COMPANY_MAP_FALLBACK_JOBS,
-  COMPANY_MAP_PROPOSAL_JOBS,
+  COMPANY_MAP_NO_SCREEN_JOBS,
   companyMapJobKey,
   getCompanyMapJobRoute,
   hasRouteForEveryCompanyMapJob,
-  isCompanyMapProposalJob,
+  isCompanyMapJobFallback,
 } from "./companyMapJobRoutes.ts";
 
 test("every current app job has an explicit destination", () => {
@@ -63,8 +63,8 @@ test("the supported app screens use their real route targets", () => {
   });
 });
 
-test("unbuilt proposal jobs fall back to their owning function page", () => {
-  assert.deepEqual(COMPANY_MAP_PROPOSAL_JOBS, [
+test("jobs without screens fall back to their owning function page", () => {
+  assert.deepEqual(COMPANY_MAP_NO_SCREEN_JOBS, [
     "sales:Calls",
     "finance:Recurring plans",
     "customer_success:Renewals",
@@ -86,10 +86,7 @@ test("unbuilt proposal jobs fall back to their owning function page", () => {
       functionId,
     });
     assert.equal(companyMapJobKey(functionId, jobName), key);
-    assert.equal(
-      isCompanyMapProposalJob(functionId, jobName),
-      Array.from(COMPANY_MAP_PROPOSAL_JOBS).includes(key),
-    );
+    assert.equal(isCompanyMapJobFallback(functionId, jobName), true);
   }
-  assert.equal(isCompanyMapProposalJob("finance", "Invoices"), false);
+  assert.equal(isCompanyMapJobFallback("finance", "Invoices"), false);
 });
