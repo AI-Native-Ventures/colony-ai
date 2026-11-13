@@ -589,6 +589,7 @@ test("a legacy provider-repeat campaign resumes in place from its consumed curso
       repeatedInCampaign: 0,
       costUsd: 0.06,
       stopReason: "provider_end",
+      area: "Johannesburg",
     },
   ]);
 });

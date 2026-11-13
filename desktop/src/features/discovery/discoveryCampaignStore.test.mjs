@@ -47,6 +47,8 @@ function campaign(id, overrides = {}) {
     pageLog: [],
     coverage: [],
     trustedCoverage: false,
+    areaIndex: 0,
+    nearbyApproved: false,
     skip: 20,
     tagCursors: [],
     pendingTagCursors: null,
