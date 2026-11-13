@@ -130,6 +130,22 @@ async function openMapJob(page: Page, job: WindowJob) {
   await waitForAnimations(page);
 }
 
+async function dispatchPrimaryWorkspaceShortcut(page: Page, digit: string) {
+  const cancelled = await page.evaluate((key) => {
+    const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform);
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: !isMac,
+      key,
+      metaKey: isMac,
+    });
+    const wasNotCancelled = window.dispatchEvent(event);
+    return !wasNotCancelled && event.defaultPrevented;
+  }, digit);
+  expect(cancelled).toBe(true);
+}
+
 async function waitForTheme(page: Page, theme: "light" | "dark") {
   await expect(page.locator("html")).toHaveAttribute(
     "data-buzz-theme",
@@ -627,7 +643,7 @@ test.describe("full map canvas slice 1", () => {
     await page.goto("/#/");
     await openMapJob(page, WINDOW_JOBS[0]);
 
-    await page.keyboard.press("Meta+2");
+    await dispatchPrimaryWorkspaceShortcut(page, "2");
     await expect
       .poll(() =>
         page.evaluate(() =>
