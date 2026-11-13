@@ -864,7 +864,7 @@ function CompanyMapDesktop({
     focusPart,
     togglePinnedPart,
   } = useCompanyMapDesktopOpenPart();
-  const stageRef = useRef<HTMLFieldSetElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
     x: number;
@@ -879,7 +879,7 @@ function CompanyMapDesktop({
     if (bounded <= 1) setPan({ x: 0, y: 0 });
   }
 
-  function handlePointerDown(event: PointerEvent<HTMLFieldSetElement>) {
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (
       zoom <= 1 ||
       event.button !== 0 ||
@@ -899,7 +899,7 @@ function CompanyMapDesktop({
     };
   }
 
-  function handlePointerMove(event: PointerEvent<HTMLFieldSetElement>) {
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) {
@@ -913,7 +913,7 @@ function CompanyMapDesktop({
     });
   }
 
-  function handlePointerUp(event: PointerEvent<HTMLFieldSetElement>) {
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
     if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
   }
 
@@ -949,8 +949,13 @@ function CompanyMapDesktop({
   return (
     <div className="company-map-desktop" data-testid="cofounder-map-desktop">
       <div className="company-map-scroll">
-        <fieldset
+        {/* A plain group, not a fieldset: a fieldset clips everything inside
+            it when it is stretched by its minimum height. */}
+        {/* biome-ignore lint/a11y/useSemanticElements: see the note above */}
+        <div
+          aria-label={`${companyName} company map`}
           className="company-map-viewport"
+          role="group"
           onClick={(event) => {
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
@@ -974,7 +979,6 @@ function CompanyMapDesktop({
           data-zoomed={zoom > 1}
           ref={stageRef}
         >
-          <legend className="sr-only">{companyName} company map</legend>
           <div
             className="company-map-stage"
             data-active-part={activePart ?? "none"}
@@ -1104,7 +1108,7 @@ function CompanyMapDesktop({
           <p className="company-map-note">
             Point at a part to open it. Tap a job to go in.
           </p>
-        </fieldset>
+        </div>
       </div>
       <span className="sr-only" data-testid="cofounder-map-zoom-level">
         {Math.round(zoom * 100)} percent
