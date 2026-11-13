@@ -13,16 +13,21 @@ use tokio::sync::mpsc;
 use crate::connection::tests::{authenticated_state, read_frame, test_conn_with_auth};
 
 async fn state_with_limits(messages: u64, agent_messages: u64, ws: u64) -> AppState {
-    let url = std::env::var("BUZZ_TEST_REDIS_URL").expect("explicit isolated BUZZ_TEST_REDIS_URL");
-    let mut state = (*crate::state::tests::test_state().await).clone();
-    let mut auth = state.auth.config().clone();
-    auth.rate_limits = RateLimitConfig {
+    state_with_rate_limits(RateLimitConfig {
         human_messages_per_min: messages,
         agent_standard_messages_per_min: agent_messages,
         human_ws_events_per_sec: ws,
         human_api_calls_per_min: 2,
         ..RateLimitConfig::default()
-    };
+    })
+    .await
+}
+
+async fn state_with_rate_limits(rate_limits: RateLimitConfig) -> AppState {
+    let url = std::env::var("BUZZ_TEST_REDIS_URL").expect("explicit isolated BUZZ_TEST_REDIS_URL");
+    let mut state = (*crate::state::tests::test_state().await).clone();
+    let mut auth = state.auth.config().clone();
+    auth.rate_limits = rate_limits;
     state.auth = Arc::new(AuthService::new(auth));
     state.redis_pool = deadpool_redis::Config::from_url(url)
         .create_pool(Some(deadpool_redis::Runtime::Tokio1))
@@ -155,6 +160,64 @@ async fn ephemeral_events_leave_human_and_agent_message_budgets_untouched() {
         }
     }
     assert_metric(&recorder, "websocket", "quota", "messages", 12);
+}
+
+#[tokio::test]
+#[ignore = "requires explicit isolated BUZZ_TEST_REDIS_URL"]
+async fn human_record_commands_draw_on_their_own_allowance() {
+    let state = state_with_rate_limits(RateLimitConfig {
+        human_messages_per_min: 1,
+        human_record_writes_per_min: 3,
+        agent_standard_messages_per_min: 2,
+        human_ws_events_per_sec: 100,
+        ..RateLimitConfig::default()
+    })
+    .await;
+    let recorder = DebuggingRecorder::new();
+    let _guard = metrics::set_default_local_recorder(&recorder);
+    let record_kind = buzz_core::kind::KIND_PROSPECT_ACTION as u16;
+
+    // A batch of saved records leaves the chat allowance untouched.
+    let (conn, mut rx) = connection(false);
+    for expected in 1..=3 {
+        assert!(enforce_ws_admission(&event(record_kind), &conn, &state).await);
+        assert_eq!(
+            counter(&state, &conn, LimitType::RecordWrites).await,
+            Some(expected)
+        );
+    }
+    assert_eq!(counter(&state, &conn, LimitType::Messages).await, None);
+
+    // Chat keeps its own limit after the batch.
+    assert!(enforce_ws_admission(&event(9), &conn, &state).await);
+    let chat = event(9);
+    assert!(!enforce_ws_admission(&chat, &conn, &state).await);
+    assert_quota_frame(&read_frame(&mut rx), &chat, 60);
+
+    // The record allowance is a limit too.
+    let record = event(record_kind);
+    assert!(!enforce_ws_admission(&record, &conn, &state).await);
+    assert_quota_frame(&read_frame(&mut rx), &record, 60);
+    assert_eq!(
+        counter(&state, &conn, LimitType::RecordWrites).await,
+        Some(4)
+    );
+    assert_eq!(counter(&state, &conn, LimitType::Messages).await, Some(2));
+    assert!(rx.try_recv().is_err());
+
+    // An agent's record commands stay on its message allowance.
+    let (agent, mut agent_rx) = connection(true);
+    for _ in 0..2 {
+        assert!(enforce_ws_admission(&event(record_kind), &agent, &state).await);
+    }
+    let rejected = event(record_kind);
+    assert!(!enforce_ws_admission(&rejected, &agent, &state).await);
+    assert_quota_frame(&read_frame(&mut agent_rx), &rejected, 60);
+    assert_eq!(counter(&state, &agent, LimitType::RecordWrites).await, None);
+    assert_eq!(counter(&state, &agent, LimitType::Messages).await, Some(3));
+
+    assert_metric(&recorder, "websocket", "quota", "record_writes", 1);
+    assert_metric(&recorder, "websocket", "quota", "messages", 2);
 }
 
 #[tokio::test]
