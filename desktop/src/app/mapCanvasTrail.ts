@@ -115,14 +115,22 @@ function parseEntry(value: unknown): MapCanvasTrailEntry | null {
     typeof value.href !== "string" ||
     !value.href.startsWith("/") ||
     value.href.length > 4096 ||
-    !(value.historyIndex === null || isFiniteNonNegativeInteger(value.historyIndex))
+    !(
+      value.historyIndex === null ||
+      isFiniteNonNegativeInteger(value.historyIndex)
+    )
   ) {
     return null;
   }
   const scroll = parseScrollPositions(value.scroll);
   const snapshot = parseSnapshot(value.snapshot);
   if (scroll === null) return null;
-  return { historyIndex: value.historyIndex, href: value.href, scroll, snapshot };
+  return {
+    historyIndex: value.historyIndex,
+    href: value.href,
+    scroll,
+    snapshot,
+  };
 }
 
 /** Reads the bounded trail payload persisted in a TanStack history state. */
@@ -181,6 +189,13 @@ export function mapCanvasPathname(href: string): string {
   return pathEnd === -1 ? href : href.slice(0, pathEnd);
 }
 
+/** Removes canvas-only route metadata before comparing real screen targets. */
+export function mapCanvasRouteIdentity(href: string): string {
+  const destination = new URL(href, "https://map-canvas.invalid");
+  destination.searchParams.delete("mapJob");
+  return `${destination.pathname}${destination.search}${destination.hash}`;
+}
+
 function withLatestEntry(
   trail: MapCanvasTrail,
   entry: MapCanvasTrailEntry,
@@ -229,7 +244,10 @@ export function planMapCanvasTrailNavigation({
   const latest = trail.entries.at(-1);
   if (!latest || latest.href === href) return { kind: "none", trail };
 
-  const knownIndex = trail.entries.findIndex((entry) => entry.href === href);
+  const destinationIdentity = mapCanvasRouteIdentity(href);
+  const knownIndex = trail.entries.findIndex(
+    (entry) => mapCanvasRouteIdentity(entry.href) === destinationIdentity,
+  );
   if (knownIndex >= 0) {
     return { kind: "return", targetIndex: knownIndex, trail };
   }
@@ -257,12 +275,18 @@ export function planMapCanvasTrailNavigation({
   }
 
   if (departingTrail.entries.length >= MAX_MAP_CANVAS_TRAIL_ENTRIES) {
-    return { kind: "replace", trail: withLatestEntry(departingTrail, nextEntry) };
+    return {
+      kind: "replace",
+      trail: withLatestEntry(departingTrail, nextEntry),
+    };
   }
 
   return {
     kind: "append",
-    trail: { ...departingTrail, entries: [...departingTrail.entries, nextEntry] },
+    trail: {
+      ...departingTrail,
+      entries: [...departingTrail.entries, nextEntry],
+    },
   };
 }
 

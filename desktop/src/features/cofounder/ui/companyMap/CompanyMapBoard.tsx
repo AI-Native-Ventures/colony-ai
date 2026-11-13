@@ -1122,7 +1122,11 @@ function CompanyMapDesktop({
               summary={summary}
             />
           </div>
-          <div className="company-map-zoom" data-map-control>
+          <div
+            className="company-map-zoom"
+            data-map-control
+            data-testid="cofounder-map-zoom"
+          >
             <button
               aria-label="Zoom out"
               onClick={() => {
@@ -1141,7 +1145,11 @@ function CompanyMapDesktop({
               data-testid="cofounder-map-fit"
               onClick={() => {
                 if (mapWindowOpen) {
-                  onMapWindowFit?.() ?? onMapWindowClose?.();
+                  if (onMapWindowFit) {
+                    onMapWindowFit();
+                    return;
+                  }
+                  onMapWindowClose?.();
                   return;
                 }
                 setBoardZoom(1);

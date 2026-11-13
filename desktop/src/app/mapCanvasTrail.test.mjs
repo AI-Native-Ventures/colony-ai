@@ -77,16 +77,45 @@ test("returns to an existing trail screen instead of copying it", () => {
   ]);
 });
 
+test("returns through a map-job launch route with its screen identity", () => {
+  const trail = createMapCanvasTrail(root, "/money?mapJob=finance%3AQuotes", 4);
+  const result = planMapCanvasTrailNavigation({
+    historyIndex: 5,
+    href: "/money",
+    scroll: [],
+    snapshot: null,
+    trail: {
+      ...trail,
+      entries: [
+        trail.entries[0],
+        {
+          historyIndex: 5,
+          href: "/money/invoices",
+          scroll: [],
+          snapshot: null,
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.kind, "return");
+  assert.equal(result.targetIndex, 0);
+});
+
 test("rejects mismatched or unbounded persisted trails", () => {
   const trail = createMapCanvasTrail(root, "/pipeline", 1);
-  assert.equal(mapCanvasTrailForHref({ mapCanvasTrail: trail }, "/leads"), null);
+  assert.equal(
+    mapCanvasTrailForHref({ mapCanvasTrail: trail }, "/leads"),
+    null,
+  );
   assert.equal(
     mapCanvasTrailForHref(
       {
         mapCanvasTrail: {
           ...trail,
-          entries: Array.from({ length: MAX_MAP_CANVAS_TRAIL_ENTRIES + 1 }, () =>
-            trail.entries[0],
+          entries: Array.from(
+            { length: MAX_MAP_CANVAS_TRAIL_ENTRIES + 1 },
+            () => trail.entries[0],
           ),
         },
       },
