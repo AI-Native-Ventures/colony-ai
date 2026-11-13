@@ -38,6 +38,7 @@ import {
   companyMapJobKey,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
+  isCompanyMapProposalJob,
 } from "@/features/cofounder/companyMapJobRoutes";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
@@ -386,12 +387,26 @@ function countForJob(
   return summary?.byJob[companyMapJobKey(functionId, name)] ?? 0;
 }
 
-function jobHasDoer(
+type ConnectorState = "live" | "on" | "seat" | "off";
+
+function jobConnectorState(
   functionId: FunctionId,
   name: string,
   slot: FunctionSlotView,
-) {
-  return jobLead(functionId, name, slot) !== null || slot.state === "filled";
+  summary: MapSummary | undefined,
+  liveFunctionIds: readonly FunctionId[],
+): ConnectorState {
+  if (
+    liveFunctionIds.includes(functionId) &&
+    countForJob(summary, functionId, name) > 0
+  ) {
+    return "live";
+  }
+  if (isCompanyMapProposalJob(functionId, name)) return "seat";
+  const runBySomeone =
+    companyMapJobIsScoutLed(functionId, name, slot.state) ||
+    slot.state === "filled";
+  return runBySomeone ? "on" : "off";
 }
 
 function connectorPath(x1: number, y1: number, x2: number, y2: number): string {
@@ -403,10 +418,12 @@ function MapConnectors({
   summary,
   activePart,
   slots,
+  liveFunctionIds,
 }: {
   summary: MapSummary | undefined;
   activePart: FunctionId | null;
   slots: FunctionSlotView[];
+  liveFunctionIds: readonly FunctionId[];
 }) {
   return (
     <svg
@@ -419,10 +436,12 @@ function MapConnectors({
         const side = COMPANY_MAP_LAYOUT.parts.find(
           (part) => part.functionId === functionId,
         )?.side;
-        const count = countForPart(summary, functionId);
         const slot = slotForFunction(functionId, slots);
-        const state =
-          count > 0 ? "waiting" : slot.state === "empty" ? "empty" : "assigned";
+        const state = liveFunctionIds.includes(functionId)
+          ? "live"
+          : slot.state === "empty"
+            ? "off"
+            : "on";
         return (
           <path
             className="company-map-center-line"
@@ -445,17 +464,13 @@ function MapConnectors({
             const side = COMPANY_MAP_LAYOUT.jobs.find(
               (job) => job.functionId === activePart && job.name === name,
             )?.side;
-            const count = countForJob(summary, activePart, name);
-            const state =
-              count > 0
-                ? "waiting"
-                : jobHasDoer(
-                      activePart,
-                      name,
-                      slotForFunction(activePart, slots),
-                    )
-                  ? "assigned"
-                  : "empty";
+            const state = jobConnectorState(
+              activePart,
+              name,
+              slotForFunction(activePart, slots),
+              summary,
+              liveFunctionIds,
+            );
             const part = partPosition(activePart);
             return (
               <path
@@ -493,7 +508,13 @@ function MapConnectors({
                     )}
                     data-map-connector
                     data-map-target={`${functionId}:${name}`}
-                    data-state="waiting"
+                    data-state={jobConnectorState(
+                      functionId,
+                      name,
+                      slotForFunction(functionId, slots),
+                      summary,
+                      liveFunctionIds,
+                    )}
                     key={`${functionId}:${name}`}
                   />
                 );
@@ -850,6 +871,7 @@ function CompanyMapDesktop({
   members,
   profiles,
   slots,
+  liveFunctionIds,
   summary,
   whatsAppChannelId: whatsappChannelId,
 }: CompanyMapBoardProps) {
@@ -1026,6 +1048,7 @@ function CompanyMapDesktop({
           >
             <MapConnectors
               activePart={activePart}
+              liveFunctionIds={liveFunctionIds}
               slots={slots}
               summary={summary}
             />

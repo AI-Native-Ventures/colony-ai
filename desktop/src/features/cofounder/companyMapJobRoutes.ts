@@ -89,6 +89,16 @@ export function companyMapJobKey(
   return `${functionId}:${jobName}`;
 }
 
+/** Whether the job is still a proposed seat rather than a current app surface. */
+export function isCompanyMapProposalJob(
+  functionId: FunctionId,
+  jobName: string,
+): boolean {
+  return (COMPANY_MAP_PROPOSAL_JOBS as readonly string[]).includes(
+    companyMapJobKey(functionId, jobName),
+  );
+}
+
 export function isCompanyMapJobFallback(
   functionId: FunctionId,
   jobName: string,

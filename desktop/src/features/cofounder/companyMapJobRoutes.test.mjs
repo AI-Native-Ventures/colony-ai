@@ -8,6 +8,7 @@ import {
   companyMapJobKey,
   getCompanyMapJobRoute,
   hasRouteForEveryCompanyMapJob,
+  isCompanyMapProposalJob,
 } from "./companyMapJobRoutes.ts";
 
 test("every current app job has an explicit destination", () => {
@@ -85,5 +86,10 @@ test("unbuilt proposal jobs fall back to their owning function page", () => {
       functionId,
     });
     assert.equal(companyMapJobKey(functionId, jobName), key);
+    assert.equal(
+      isCompanyMapProposalJob(functionId, jobName),
+      Array.from(COMPANY_MAP_PROPOSAL_JOBS).includes(key),
+    );
   }
+  assert.equal(isCompanyMapProposalJob("finance", "Invoices"), false);
 });

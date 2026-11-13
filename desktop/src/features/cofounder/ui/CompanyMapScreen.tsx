@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
@@ -5,7 +6,13 @@ import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
-import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
+import {
+  useCofounderSettingsQuery,
+  useFunctionSlotsQuery,
+  useWorkerRunsQuery,
+} from "../hooks";
+import { workerEffectiveStatus } from "../cofounderRecords";
+import { FUNCTION_ORDER } from "../functions";
 import { useNeedsYouSummary } from "../needsYouSummary";
 import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 
@@ -19,6 +26,7 @@ export function CompanyMapScreen() {
   const profileQuery = useProfileQuery(Boolean(activeCommunity));
   const identityQuery = useIdentityQuery();
   const needsYouSummary = useNeedsYouSummary();
+  const workerRunsQuery = useWorkerRunsQuery(null, { all: true });
   const enabled = settingsQuery.data?.settings.enabled === true;
   const whatsappStatus = useWhatsAppStatusQuery(enabled);
   const members = teamQuery.data?.members ?? [];
@@ -35,6 +43,28 @@ export function CompanyMapScreen() {
     return name?.toLowerCase() === "scout";
   });
   const companyName = activeCommunity?.name ?? "Company";
+  const liveFunctionIds = useMemo(() => {
+    const runningParentPubkeys = new Set(
+      (workerRunsQuery.data ?? [])
+        .filter((run) => workerEffectiveStatus(run) === "running")
+        .map((run) => run.parentPubkey.toLowerCase()),
+    );
+    return FUNCTION_ORDER.filter((functionId) => {
+      const slot = slots.find(
+        (candidate) => candidate.functionId === functionId,
+      );
+      const runnerPubkey =
+        slot?.state === "filled"
+          ? slot.leadPubkey
+          : slot?.state === "covered_by_scout"
+            ? (scout?.pubkey ?? null)
+            : null;
+      return (
+        runnerPubkey !== null &&
+        runningParentPubkeys.has(runnerPubkey.toLowerCase())
+      );
+    });
+  }, [scout?.pubkey, slots, workerRunsQuery.data]);
 
   if (settingsQuery.isLoading || teamQuery.isLoading) {
     return (
@@ -98,6 +128,7 @@ export function CompanyMapScreen() {
       relayUrl={activeCommunity?.relayUrl}
       scoutPubkey={scout?.pubkey}
       slots={slots}
+      liveFunctionIds={liveFunctionIds}
       summary={needsYouSummary.data}
       whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
     />

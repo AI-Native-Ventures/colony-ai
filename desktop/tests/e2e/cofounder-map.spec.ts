@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { test } from "./cofounder-map-test";
@@ -26,6 +26,58 @@ import {
   FUNCTION_ORDER,
 } from "../../src/features/cofounder/functions";
 import { getCompanyMapJobRoute } from "../../src/features/cofounder/companyMapJobRoutes";
+
+type ConnectorState = "live" | "on" | "seat" | "off";
+
+async function measuredConnector(page: Page, target: string) {
+  const connector = page.locator(`[data-map-target="${target}"]`);
+  await expect(connector).toHaveCount(1);
+  return connector.evaluate((node) => {
+    const style = getComputedStyle(node);
+    const tokenColor = (value: string) => {
+      const probe = document.createElement("span");
+      probe.style.color = value;
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    };
+    return {
+      animationName: style.animationName,
+      dashArray: style.strokeDasharray.replaceAll("px", "").replaceAll(" ", ""),
+      state: node.getAttribute("data-state"),
+      stroke: style.stroke,
+      strokeWidth: Number.parseFloat(style.strokeWidth),
+      tokens: {
+        accent: tokenColor("hsl(var(--colony-accent))"),
+        need: tokenColor("hsl(var(--colony-need))"),
+        off: tokenColor("hsl(var(--colony-border-strong))"),
+        on: tokenColor("hsl(var(--colony-fg-secondary))"),
+      },
+    };
+  });
+}
+
+function expectConnectorKind(
+  measured: Awaited<ReturnType<typeof measuredConnector>>,
+  state: ConnectorState,
+) {
+  const stroke =
+    state === "on"
+      ? measured.tokens.on
+      : state === "off"
+        ? measured.tokens.off
+        : measured.tokens.accent;
+  expect(measured).toMatchObject({
+    dashArray: state === "live" ? "6,7" : state === "on" ? "none" : "2,6",
+    state,
+    stroke,
+    strokeWidth: state === "live" ? 2.5 : 2,
+  });
+  expect(measured.animationName).toBe(
+    state === "live" ? "company-map-dash" : "none",
+  );
+}
 
 test.describe("co-founder mode desktop", () => {
   test("owner sees the company-only switch and turns it on", async ({
@@ -267,6 +319,64 @@ test.describe("co-founder mode desktop", () => {
     await expect(
       page.getByTestId("cofounder-map-job-needs-sales-calls"),
     ).toHaveText("1");
+  });
+
+  test("connectors use the four board wire states, not needs badges", async ({
+    browser,
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await seedCompanyMapMoneyRails(page);
+    await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/company/map");
+
+    await expect(
+      page.getByTestId("cofounder-map-part-needs-customer_success"),
+    ).toHaveText("1");
+    expectConnectorKind(await measuredConnector(page, "sales"), "on");
+    const waitingCustomerSuccess = await measuredConnector(
+      page,
+      "customer_success",
+    );
+    expectConnectorKind(waitingCustomerSuccess, "off");
+    expect(waitingCustomerSuccess.stroke).not.toBe(
+      waitingCustomerSuccess.tokens.need,
+    );
+
+    await selectMapPart(page, "sales", "Sales");
+    expectConnectorKind(await measuredConnector(page, "sales:Calls"), "seat");
+
+    await selectMapPart(page, "finance", "Finance");
+    expectConnectorKind(
+      await measuredConnector(page, "finance:Invoices"),
+      "off",
+    );
+
+    const liveContext = await browser.newContext();
+    const livePage = await liveContext.newPage();
+    try {
+      await installMockBridge(
+        livePage,
+        fixture({ workerRuns: [workerRun({ status: "running" })] }),
+      );
+      await seedCompanyMapMoneyRails(livePage);
+      await seedCompanyMapWhatsApp(livePage, MAP_CHANNEL_ID);
+      await livePage.setViewportSize({ width: 1440, height: 900 });
+      await livePage.goto("/#/company/map");
+      await expect(
+        livePage.locator('[data-map-target="sales"]'),
+      ).toHaveAttribute("data-state", "live");
+      expectConnectorKind(await measuredConnector(livePage, "sales"), "live");
+
+      await selectMapPart(livePage, "sales", "Sales");
+      expectConnectorKind(
+        await measuredConnector(livePage, "sales:Calls"),
+        "live",
+      );
+    } finally {
+      await liveContext.close();
+    }
   });
 
   test("each part reveals its current app jobs and closes with Escape", async ({

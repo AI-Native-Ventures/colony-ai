@@ -22,6 +22,7 @@ export type CompanyMapBoardProps = {
   members: TeamMember[];
   profiles: ProfileLookup;
   slots: FunctionSlotView[];
+  liveFunctionIds: readonly FunctionId[];
   ownerName: string;
   ownerPubkey?: string;
   ownerAvatarUrl?: string | null;

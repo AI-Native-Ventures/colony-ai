@@ -75,27 +75,29 @@
   vector-effect: non-scaling-stroke;
 }
 
-.company-map-center-line[data-state="assigned"],
-.company-map-job-line[data-state="assigned"] {
+.company-map-center-line[data-state="on"],
+.company-map-job-line[data-state="on"] {
   stroke: hsl(var(--colony-fg-secondary));
 }
 
-.company-map-center-line[data-state="empty"],
-.company-map-job-line[data-state="empty"] {
+.company-map-center-line[data-state="off"],
+.company-map-job-line[data-state="off"] {
   stroke: hsl(var(--colony-border-strong));
   stroke-dasharray: 2 6;
 }
 
-.company-map-center-line[data-state="waiting"],
-.company-map-job-line[data-state="waiting"] {
-  stroke: hsl(var(--colony-need));
-  stroke-dasharray: 6 7;
-  animation: company-map-dash 1s linear infinite;
+.company-map-center-line[data-state="seat"],
+.company-map-job-line[data-state="seat"] {
+  stroke: hsl(var(--colony-accent));
+  stroke-dasharray: 2 6;
 }
 
-.company-map-center-line[data-state="waiting"],
-.company-map-job-line[data-state="waiting"] {
+.company-map-center-line[data-state="live"],
+.company-map-job-line[data-state="live"] {
+  stroke: hsl(var(--colony-accent));
   stroke-width: 2.5;
+  stroke-dasharray: 6 7;
+  animation: company-map-dash 1s linear infinite;
 }
 
 .company-map-highlight {
@@ -861,8 +863,8 @@
     transition: none;
   }
 
-  .company-map-center-line[data-state="waiting"],
-  .company-map-job-line[data-state="waiting"] {
+  .company-map-center-line[data-state="live"],
+  .company-map-job-line[data-state="live"] {
     animation: none;
   }
 }
