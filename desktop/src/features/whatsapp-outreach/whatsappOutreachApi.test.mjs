@@ -533,6 +533,32 @@ test("a contact that appears on two pages is kept once at its first place", asyn
   );
 });
 
+test("a single page with repeated waIds is returned whole and in order", async () => {
+  // The older-relay case: one page behaves exactly as before paging existed, even when
+  // several rows share a waId (including the empty string).
+  const waIds = ["27820000001", "", "", "27820000001", "", "27820000002"];
+  const relay = scriptedRelay({
+    contacts: waIds.map((waId, index) => ({
+      ...rawContact(waId || "27820000009"),
+      waId,
+      leadId: `lead-${index}`,
+    })),
+  });
+  const contacts = await loadWhatsAppContacts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+  assert.equal(relay.bodies.length, 1);
+  assert.deepEqual(
+    contacts.map((contact) => contact.waId),
+    waIds,
+  );
+  assert.deepEqual(
+    contacts.map((contact) => contact.leadId),
+    waIds.map((_, index) => `lead-${index}`),
+  );
+});
+
 test("a failing second page rejects the whole load", async () => {
   const relay = scriptedRelay(
     { contacts: [rawContact("27820000001")], nextCursor: "c1" },

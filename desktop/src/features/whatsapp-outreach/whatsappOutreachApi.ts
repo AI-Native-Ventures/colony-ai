@@ -243,14 +243,17 @@ export async function loadWhatsAppTemplates(
 
 /**
  * Every contact, newest activity first. Follows the relay's `nextCursor` page by page; an
- * answer without one (an older relay) is the whole list in one request. A contact that moves
- * between pages while loading is kept once, at its first position.
+ * answer without one (an older relay) is the whole list in one request, returned exactly as
+ * sent. A contact is skipped only when an EARLIER page of this load already returned its
+ * `waId` (it moved between pages while loading); contacts inside one page are all kept, in
+ * order, even with equal `waId`s.
  */
 export async function loadWhatsAppContacts(
   relayUrl: string,
   dependencies?: ApiDependencies,
 ): Promise<readonly WhatsAppContact[]> {
   const contacts: WhatsAppContact[] = [];
+  // `waId`s returned by earlier pages. The current page is added only once it is processed.
   const seenWaIds = new Set<string>();
   const usedCursors = new Set<string>();
   let before: string | undefined;
@@ -270,12 +273,11 @@ export async function loadWhatsAppContacts(
     if (!Array.isArray(response.contacts)) {
       throw new Error("The WhatsApp relay returned an invalid contact list.");
     }
-    for (const raw of response.contacts) {
-      const contact = parseWhatsAppContact(raw);
-      if (seenWaIds.has(contact.waId)) continue;
-      seenWaIds.add(contact.waId);
-      contacts.push(contact);
+    const pageContacts = response.contacts.map(parseWhatsAppContact);
+    for (const contact of pageContacts) {
+      if (!seenWaIds.has(contact.waId)) contacts.push(contact);
     }
+    for (const contact of pageContacts) seenWaIds.add(contact.waId);
     const next = response.nextCursor;
     if (next === undefined || next === null || next === "") break;
     if (typeof next !== "string") {
