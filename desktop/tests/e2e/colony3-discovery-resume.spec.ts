@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
+import { answerFirstSearchWordOnly } from "./helpers/discoveryFirstWord";
 
 const PROOF_DIR =
   process.env.COLONY3_DISCOVERY_RESUME_PROOF_DIR ??
@@ -241,6 +242,9 @@ async function installDiscoveryFixture(page: Page, scenario: Scenario) {
       storageKey: DISCOVERY_STORAGE_KEY,
     },
   );
+  // The saved campaigns here are for estate agents; new ones are started
+  // from "home decor".
+  await answerFirstSearchWordOnly(page, /home furnishings|real estate agents/i);
   await installMockBridge(page, REAL_RUNNER);
 }
 

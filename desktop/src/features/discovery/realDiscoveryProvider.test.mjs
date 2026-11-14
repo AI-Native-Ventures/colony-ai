@@ -206,7 +206,16 @@ test("a run saves each business, posts the best fits in Sales and stops at the a
     log.searches.map((request) => request.skip),
     [0],
   );
-  assert.equal(log.searches[0].query, "Home Decor & Gift Shops");
+  assert.equal(
+    log.searches[0].query,
+    "Home Decor Gift Shops",
+    "Maps is asked in plain words, not with the catalogue's formal label",
+  );
+  assert.equal(
+    log.searches[0].coordinates,
+    undefined,
+    "the named area is searched as a whole, not from one point",
+  );
   assert.equal(log.searches[0].country, "ZA");
   for (const changes of log.publishes) {
     assert.ok(changes.externalIds.includes("campaign:camp-1"));

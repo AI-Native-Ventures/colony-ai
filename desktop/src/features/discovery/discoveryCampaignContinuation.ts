@@ -125,6 +125,8 @@ export function continuationCursors(
   const keys = discoveryCoverageKeys({
     verticalId: campaign.verticalId,
     pickedTags: campaign.pickedTags,
+    searchWords: campaign.searchWords,
+    wordIndex: campaign.wordIndex,
     location: campaign.location,
     locationSelection: campaign.locationSelection,
   });
@@ -143,8 +145,15 @@ export function continuationCursors(
   );
   const tagged = (campaign.pickedTags ?? []).length > 0;
   if (!tagged) {
-    const skip = cappedCursor(campaign.pagesFetched * SEARCH_PAGE_SIZE);
     const queryKey = keys[0];
+    // A campaign with search words fetched its pages across several words, so
+    // its page count says nothing about one word: its saved cursor does.
+    const skip = (campaign.searchWords ?? []).length
+      ? cappedCursor(
+          (queryKey ? priorCoverage.get(queryKey)?.nextSkip : undefined) ??
+            campaign.skip,
+        )
+      : cappedCursor(campaign.pagesFetched * SEARCH_PAGE_SIZE);
     const index = coverage.findIndex((entry) => entry.queryKey === queryKey);
     const resumed = { queryKey, nextSkip: skip, terminalReason: null };
     if (index >= 0) coverage[index] = resumed;

@@ -81,6 +81,10 @@ test("a saved list round-trips", () => {
   assert.equal(restored.ownerPubkey, "owner");
   assert.deepEqual(restored.campaigns[0], {
     ...state.campaigns[0],
+    // A campaign saved before search words existed has none: it keeps
+    // searching the way it began.
+    searchWords: [],
+    wordIndex: 0,
     qualification: {
       enabled: false,
       selectedSignals: [],
@@ -89,6 +93,25 @@ test("a saved list round-trips", () => {
       failureReason: null,
     },
   });
+});
+
+test("a campaign's search words and the word it is on round-trip", () => {
+  const state = withCampaigns(
+    campaign("worded", {
+      searchWords: [
+        "Furniture Upholstery Repair",
+        " upholsterers ",
+        "upholsterers",
+      ],
+      wordIndex: 1,
+    }),
+  );
+  const restored = parseStoredState(serializeState(state)).campaigns[0];
+  assert.deepEqual(restored.searchWords, [
+    "Furniture Upholstery Repair",
+    "upholsterers",
+  ]);
+  assert.equal(restored.wordIndex, 1);
 });
 
 test("campaign qualification starts fully off and preserves an explicit selection", () => {

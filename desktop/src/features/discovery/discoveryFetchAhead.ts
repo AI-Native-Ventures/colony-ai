@@ -13,6 +13,7 @@ import {
   PAGE_BUDGET_USD,
 } from "./discoveryCampaignContinuation";
 import type { StoredCampaign } from "./discoveryCampaignStore";
+import { currentSearchWord } from "./discoveryCampaignWords";
 import {
   SEARCH_PAGE_SIZE,
   cursorHasPages,
@@ -54,9 +55,34 @@ export type FetchAhead = {
  * asking ahead then would have bought the same page five times.
  */
 export function providerPagesForward(
-  campaign: Pick<StoredCampaign, "pageLog">,
+  campaign: Pick<StoredCampaign, "pageLog"> &
+    Partial<
+      Pick<
+        StoredCampaign,
+        "pickedTags" | "searchWords" | "wordIndex" | "location"
+      >
+    >,
 ): boolean {
   const last = campaign.pageLog.at(-1);
+  // A campaign with search words has several searches, one after another. The
+  // last page only speaks for the word and area it was asked for: a new word
+  // has shown nothing yet, and its first pages are often businesses the
+  // earlier word already found, which would be bought ahead for nothing.
+  const word = currentSearchWord({
+    pickedTags: campaign.pickedTags ?? [],
+    searchWords: campaign.searchWords,
+    wordIndex: campaign.wordIndex,
+  });
+  if (
+    word !== null &&
+    last !== undefined &&
+    (last.word !== word ||
+      (campaign.location !== undefined &&
+        last.area !== undefined &&
+        last.area !== campaign.location))
+  ) {
+    return false;
+  }
   return (
     last !== undefined &&
     last.page >= 2 &&
