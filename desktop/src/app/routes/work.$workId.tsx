@@ -9,6 +9,7 @@ export const Route = createFileRoute("/work/$workId")({
   validateSearch: (search: Record<string, unknown>) => ({
     ...(typeof search.client === "string" ? { client: search.client } : {}),
     ...(typeof search.channel === "string" ? { channel: search.channel } : {}),
+    ...(typeof search.mapJob === "string" ? { mapJob: search.mapJob } : {}),
   }),
 });
 

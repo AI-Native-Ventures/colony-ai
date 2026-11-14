@@ -5,6 +5,9 @@ import { FunctionScreen } from "@/features/cofounder/ui/FunctionScreen";
 
 export const Route = createFileRoute("/company/function/$function")({
   component: CompanyFunctionRoute,
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search.mapJob === "string" ? { mapJob: search.mapJob } : {}),
+  }),
 });
 
 function CompanyFunctionRoute() {

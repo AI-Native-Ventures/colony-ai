@@ -165,7 +165,7 @@ export function buildCompanyMapOperationsLayout({
     y += LEFT_GROUP_GAP;
   }
 
-  const parts = FUNCTION_ORDER.map(
+  const parts: CompanyMapPartPosition[] = FUNCTION_ORDER.map(
     (functionId) =>
       dynamicParts.get(functionId) ??
       COMPANY_MAP_LAYOUT.parts.find(

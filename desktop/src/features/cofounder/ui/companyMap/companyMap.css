@@ -377,6 +377,182 @@
   color: hsl(var(--colony-fg));
 }
 
+/* Data-backed Operations workflows use the board's larger outer circle and
+   smaller ordered step rail. They deliberately remain separate from static
+   job rows so an empty company retains the established Operations fallback. */
+.company-map-workflow-link,
+.company-map-workflow-step-link {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  color: inherit;
+  outline: none;
+  text-decoration: none;
+  transition: transform 160ms ease;
+}
+
+.company-map-workflow-link {
+  width: 232px;
+  height: 48px;
+  border-radius: 14px;
+}
+
+.company-map-workflow-step-link {
+  width: 226px;
+  height: 28px;
+  border-radius: 12px;
+}
+
+.company-map-workflow-link:focus-visible,
+.company-map-workflow-link:hover,
+.company-map-workflow-step-link:focus-visible,
+.company-map-workflow-step-link:hover {
+  z-index: 4;
+  transform: scale(1.07);
+}
+
+.company-map-workflow-link:focus-visible,
+.company-map-workflow-step-link:focus-visible {
+  outline: 3px solid hsl(var(--colony-accent));
+  outline-offset: 3px;
+}
+
+.company-map-workflow-row {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 232px;
+  height: 48px;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  flex-direction: row-reverse;
+}
+
+.company-map-workflow-disc {
+  position: relative;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  overflow: visible;
+  border: 0;
+  border-radius: 999px;
+  background: var(--colony-overlay);
+  box-shadow: var(--colony-shadow-frame);
+  color: hsl(var(--colony-muted));
+}
+
+.company-map-workflow-disc[data-new="true"] {
+  border: 1.5px dashed hsl(var(--colony-need));
+  background: hsl(var(--colony-need-bg));
+  box-shadow: none;
+}
+
+.company-map-workflow-disc[data-new="true"] .company-map-workflow-avatar {
+  width: 34px;
+  height: 34px;
+}
+
+.company-map-workflow-disc[data-add="true"] {
+  border: 1.5px dashed hsl(var(--colony-accent));
+  background: hsl(var(--colony-surface));
+  box-shadow: none;
+  color: hsl(var(--colony-accent));
+}
+
+.company-map-workflow-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.company-map-workflow-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: hsl(var(--colony-fg));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+  line-height: 18px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-map-workflow-name[data-add="true"] {
+  color: hsl(var(--colony-accent));
+}
+
+.company-map-workflow-step-row {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 226px;
+  height: 28px;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  flex-direction: row-reverse;
+}
+
+.company-map-workflow-step-disc {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid hsl(var(--colony-accent-line));
+  border-radius: 50%;
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+  font-size: calc(12.5 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1;
+}
+
+.company-map-workflow-step-disc[data-target="work"] {
+  border-color: hsl(var(--colony-border-strong));
+  background: var(--colony-overlay);
+  color: hsl(var(--colony-fg));
+}
+
+.company-map-workflow-step-disc[data-target="needs-you"] {
+  border-color: hsl(var(--colony-need));
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.company-map-workflow-step-disc[data-add="true"] {
+  border: 1.5px dashed hsl(var(--colony-accent));
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-accent));
+}
+
+.company-map-workflow-step-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: hsl(var(--colony-fg));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 700;
+  line-height: 16px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-map-workflow-step-name[data-add="true"] {
+  color: hsl(var(--colony-accent));
+}
+
 .company-map-hub {
   position: absolute;
   z-index: 4;
@@ -944,6 +1120,8 @@
   .company-map-highlight,
   .company-map-part-disc,
   .company-map-job-link,
+  .company-map-workflow-link,
+  .company-map-workflow-step-link,
   .company-map-zoom,
   .company-map-note {
     animation: none;
@@ -957,6 +1135,8 @@
 }
 
 .company-map-stage[data-map-window-open="true"] .company-map-job-link,
+.company-map-stage[data-map-window-open="true"] .company-map-workflow-link,
+.company-map-stage[data-map-window-open="true"] .company-map-workflow-step-link,
 .company-map-stage[data-map-window-open="true"] .company-map-card,
 .company-map-stage[data-map-window-open="true"] .company-map-hub,
 .company-map-stage[data-map-window-open="true"] .company-map-hover-bridge,
@@ -967,6 +1147,8 @@
 }
 
 .company-map-stage[data-map-window-open="true"] .company-map-job-link,
+.company-map-stage[data-map-window-open="true"] .company-map-workflow-link,
+.company-map-stage[data-map-window-open="true"] .company-map-workflow-step-link,
 .company-map-stage[data-map-window-open="true"] .company-map-job-line {
   opacity: 0;
   pointer-events: none;

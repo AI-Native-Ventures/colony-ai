@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import { useChannelsQuery } from "@/features/channels/hooks";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -15,6 +16,8 @@ import { workerEffectiveStatus } from "../cofounderRecords";
 import { FUNCTION_ORDER } from "../functions";
 import { useNeedsYouSummary } from "../needsYouSummary";
 import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import { operationsMapWorkflows } from "../companyMapOperations";
+import { usePlaybooksQuery } from "../playbookHooks";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
 import type { CompanyMapWindowJob } from "../companyMapJobRoutes";
@@ -40,6 +43,8 @@ export function CompanyMapScreen({
   const workerRunsQuery = useWorkerRunsQuery(null, { all: true });
   const enabled = settingsQuery.data?.settings.enabled === true;
   const whatsappStatus = useWhatsAppStatusQuery(enabled);
+  const playbooksQuery = usePlaybooksQuery(Boolean(activeCommunity));
+  const channelsQuery = useChannelsQuery({ enabled });
   const members = teamQuery.data?.members ?? [];
   const pubkeys = members.map((member) => member.pubkey);
   const profilesQuery = useUsersBatchQuery(pubkeys, {
@@ -54,6 +59,44 @@ export function CompanyMapScreen({
     return name?.toLowerCase() === "scout";
   });
   const companyName = activeCommunity?.name ?? "Company";
+  const operationsWorkflows = useMemo(
+    () =>
+      operationsMapWorkflows({
+        jobs: playbooksQuery.data?.jobs ?? [],
+        playbooks: playbooksQuery.data?.playbooks ?? [],
+      }),
+    [playbooksQuery.data],
+  );
+  const scoutChannelId = useMemo(() => {
+    if (!scout?.pubkey) return null;
+    const scoutPubkey = scout.pubkey.toLowerCase();
+    return (
+      channelsQuery.data
+        ?.filter(
+          (channel) =>
+            channel.isMember &&
+            channel.channelType === "stream" &&
+            channel.memberPubkeys.some(
+              (pubkey) => pubkey.toLowerCase() === scoutPubkey,
+            ),
+        )
+        .sort((first, second) => {
+          const firstIsGeneral = first.name.trim().toLowerCase() === "general";
+          const secondIsGeneral =
+            second.name.trim().toLowerCase() === "general";
+          return Number(secondIsGeneral) - Number(firstIsGeneral);
+        })[0]?.id ?? null
+    );
+  }, [channelsQuery.data, scout?.pubkey]);
+  const clientChannelId = useMemo(() => {
+    const scopedId = activeCommunity?.clientChannelId?.toLowerCase();
+    if (!scopedId) return null;
+    return (
+      channelsQuery.data?.find(
+        (channel) => channel.isMember && channel.id.toLowerCase() === scopedId,
+      )?.id ?? null
+    );
+  }, [activeCommunity?.clientChannelId, channelsQuery.data]);
   const liveFunctionIds = useMemo(() => {
     const runningParentPubkeys = new Set(
       (workerRunsQuery.data ?? [])
@@ -144,6 +187,9 @@ export function CompanyMapScreen({
       mapWindowJob={mapWindowJob}
       onMapWindowClose={onMapWindowClose}
       onMapWindowFit={onMapWindowFit}
+      clientChannelId={clientChannelId}
+      operationsWorkflows={operationsWorkflows}
+      scoutChannelId={scoutChannelId}
       summary={needsYouSummary.data}
       whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
     />

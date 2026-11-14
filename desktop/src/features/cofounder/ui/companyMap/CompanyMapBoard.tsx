@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -24,22 +24,32 @@ import {
   COMPANY_MAP_CENTER,
   COMPANY_MAP_LAYOUT,
   COMPANY_MAP_SIZE,
-  companyMapJobPosition as jobPosition,
-  companyMapPartSide,
-  companyMapPartPosition as partPosition,
+  type CompanyMapJobPosition,
+  type CompanyMapPartPosition,
+  type CompanyMapPoint,
   mapPercent,
 } from "@/features/cofounder/companyMapLayout";
 import {
   companyMapJobKey,
+  companyMapOperationsWindowSearch,
   companyMapWhatsAppSearch,
   companyMapWindowSearch,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
+import type { CompanyMapOperationsWindowTarget } from "@/features/cofounder/companyMapJobRoutes";
 import {
   companyMapJobConnectorState,
   type CompanyMapConnectorState,
 } from "@/features/cofounder/companyMapConnectorState";
+import {
+  buildCompanyMapOperationsLayout,
+  type CompanyMapOperationsLayout,
+} from "@/features/cofounder/companyMapOperationsLayout";
+import type {
+  CompanyMapOperationsStep,
+  CompanyMapOperationsWorkflow,
+} from "@/features/cofounder/companyMapOperations";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
 import { useCompanyMapCamera } from "./useCompanyMapCamera";
@@ -51,6 +61,37 @@ import type {
 } from "./companyMapTypes";
 import "./companyMap.css";
 type StageStyle = CSSProperties & { "--company-map-transform": string };
+
+const STATIC_OPERATIONS_ADD_WORKFLOW_POINT = { x: 220, y: 271 } as const;
+
+type CompanyMapLayoutSurface = {
+  jobs: readonly CompanyMapJobPosition[];
+  parts: readonly CompanyMapPartPosition[];
+};
+
+function partInLayout(
+  layout: CompanyMapLayoutSurface,
+  functionId: FunctionId,
+): CompanyMapPartPosition {
+  return (
+    layout.parts.find((part) => part.functionId === functionId) ??
+    COMPANY_MAP_LAYOUT.parts.find((part) => part.functionId === functionId) ?? {
+      functionId,
+      point: { x: COMPANY_MAP_SIZE.width / 2, y: COMPANY_MAP_SIZE.height / 2 },
+      side: functionId === "sales" || functionId === "finance" ? 1 : -1,
+    }
+  );
+}
+
+function operationsWindowTarget(
+  step: CompanyMapOperationsStep,
+  clientChannelId: string | null | undefined,
+): CompanyMapOperationsWindowTarget {
+  if (step.target === "client-conversation" && clientChannelId) {
+    return "channel";
+  }
+  return step.target === "client-conversation" ? "operations" : step.target;
+}
 
 function fullName(member: TeamMember, profiles: ProfileLookup): string {
   return (
@@ -415,11 +456,17 @@ function MapConnectors({
   activePart,
   slots,
   liveFunctionIds,
+  layout,
+  operationsLayout,
+  operationsWorkflows,
 }: {
   summary: MapSummary | undefined;
   activePart: FunctionId | null;
   slots: FunctionSlotView[];
   liveFunctionIds: readonly FunctionId[];
+  layout: CompanyMapLayoutSurface;
+  operationsLayout: CompanyMapOperationsLayout | null;
+  operationsWorkflows: readonly CompanyMapOperationsWorkflow[];
 }) {
   return (
     <svg
@@ -428,10 +475,8 @@ function MapConnectors({
       viewBox={`0 0 ${COMPANY_MAP_SIZE.width} ${COMPANY_MAP_SIZE.height}`}
     >
       {FUNCTION_ORDER.map((functionId) => {
-        const position = partPosition(functionId);
-        const side = COMPANY_MAP_LAYOUT.parts.find(
-          (part) => part.functionId === functionId,
-        )?.side;
+        const part = partInLayout(layout, functionId);
+        const { point: position, side } = part;
         const slot = slotForFunction(functionId, slots);
         const state: CompanyMapConnectorState = liveFunctionIds.includes(
           functionId,
@@ -457,67 +502,84 @@ function MapConnectors({
         );
       })}
       {activePart
-        ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => {
-            const position = jobPosition(activePart, name);
-            const side = COMPANY_MAP_LAYOUT.jobs.find(
-              (job) => job.functionId === activePart && job.name === name,
-            )?.side;
-            const state = companyMapJobConnectorState(
-              activePart,
-              name,
-              slotForFunction(activePart, slots).state,
-              liveFunctionIds.includes(activePart),
-              countForJob(summary, activePart, name) > 0,
+        ? layout.jobs
+            .filter((job) => job.functionId === activePart)
+            .map((job) => {
+              const { name, point: position, side } = job;
+              const state = companyMapJobConnectorState(
+                activePart,
+                name,
+                slotForFunction(activePart, slots).state,
+                liveFunctionIds.includes(activePart),
+                countForJob(summary, activePart, name) > 0,
+              );
+              const part = partInLayout(layout, activePart).point;
+              return (
+                <path
+                  className="company-map-job-line"
+                  d={connectorPath(
+                    part.x + (side ?? 1) * 46,
+                    part.y,
+                    position.x - (side ?? 1) * 26,
+                    position.y,
+                  )}
+                  data-map-connector
+                  data-map-target={`${activePart}:${name}`}
+                  data-state={state}
+                  key={name}
+                />
+              );
+            })
+        : layout.jobs
+            .filter((job) => countForJob(summary, job.functionId, job.name) > 0)
+            .map((job) => {
+              const { functionId, name, point: position, side } = job;
+              const part = partInLayout(layout, functionId).point;
+              return (
+                <path
+                  className="company-map-job-line"
+                  d={connectorPath(
+                    part.x + (side ?? 1) * 46,
+                    part.y,
+                    position.x - (side ?? 1) * 26,
+                    position.y,
+                  )}
+                  data-map-connector
+                  data-map-target={`${functionId}:${name}`}
+                  data-state={companyMapJobConnectorState(
+                    functionId,
+                    name,
+                    slotForFunction(functionId, slots).state,
+                    liveFunctionIds.includes(functionId),
+                    countForJob(summary, functionId, name) > 0,
+                  )}
+                  key={`${functionId}:${name}`}
+                />
+              );
+            })}
+      {activePart === "operations" && operationsLayout
+        ? operationsLayout.workflows.map((position) => {
+            const workflow = operationsWorkflows.find(
+              (candidate) => candidate.playbookId === position.playbookId,
             );
-            const part = partPosition(activePart);
+            const part = partInLayout(layout, "operations").point;
             return (
               <path
                 className="company-map-job-line"
                 d={connectorPath(
-                  part.x + (side ?? 1) * 46,
+                  part.x - 46,
                   part.y,
-                  position.x - (side ?? 1) * 26,
-                  position.y,
+                  position.point.x + 26,
+                  position.point.y,
                 )}
                 data-map-connector
-                data-map-target={`${activePart}:${name}`}
-                data-state={state}
-                key={name}
+                data-map-target={`operations:${position.playbookId}`}
+                data-state={workflow?.isNew ? "seat" : "on"}
+                key={`operations:${position.playbookId}`}
               />
             );
           })
-        : FUNCTION_ORDER.flatMap((functionId) =>
-            FUNCTION_DETAILS[functionId].subFunctions
-              .filter((name) => countForJob(summary, functionId, name) > 0)
-              .map((name) => {
-                const position = jobPosition(functionId, name);
-                const side = COMPANY_MAP_LAYOUT.jobs.find(
-                  (job) => job.functionId === functionId && job.name === name,
-                )?.side;
-                const part = partPosition(functionId);
-                return (
-                  <path
-                    className="company-map-job-line"
-                    d={connectorPath(
-                      part.x + (side ?? 1) * 46,
-                      part.y,
-                      position.x - (side ?? 1) * 26,
-                      position.y,
-                    )}
-                    data-map-connector
-                    data-map-target={`${functionId}:${name}`}
-                    data-state={companyMapJobConnectorState(
-                      functionId,
-                      name,
-                      slotForFunction(functionId, slots).state,
-                      liveFunctionIds.includes(functionId),
-                      countForJob(summary, functionId, name) > 0,
-                    )}
-                    key={`${functionId}:${name}`}
-                  />
-                );
-              }),
-          )}
+        : null}
     </svg>
   );
 }
@@ -710,6 +772,7 @@ function JobNode({
   count,
   slot,
   side,
+  point,
   members,
   profiles,
   whatsappChannelId,
@@ -723,6 +786,7 @@ function JobNode({
   count: number;
   slot: FunctionSlotView;
   side: -1 | 1;
+  point: CompanyMapPoint;
   members: TeamMember[];
   profiles: ProfileLookup;
   whatsappChannelId?: string | null;
@@ -731,7 +795,6 @@ function JobNode({
   onGroupMouseEnter: (functionId: FunctionId) => void;
   onGroupMouseLeave: () => void;
 }) {
-  const point = jobPosition(functionId, name);
   const left = side === 1 ? point.x - 24 : point.x + 24 - 232;
   const style = {
     left: mapPercent(left, COMPANY_MAP_SIZE.width),
@@ -777,12 +840,347 @@ function JobNode({
   );
 }
 
+type OperationsMapNodeProps = {
+  children: ReactNode;
+  ariaLabel: string;
+  className: string;
+  dataTestId: string;
+  kind: "add-step" | "add-workflow" | "step" | "workflow";
+  mapWindowSearch: { mapJob: string };
+  target: CompanyMapOperationsWindowTarget;
+  channelId?: string | null;
+  playbookId?: string | null;
+  stepId?: string | null;
+  style: CSSProperties;
+  onBlur: (event: FocusEvent<HTMLElement>) => void;
+  onFocus: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+};
+
+function OperationsMapNodeLink({
+  children,
+  ariaLabel,
+  className,
+  dataTestId,
+  kind,
+  mapWindowSearch,
+  target,
+  channelId,
+  playbookId = null,
+  stepId = null,
+  style,
+  onBlur,
+  onFocus,
+  onMouseEnter,
+  onMouseLeave,
+}: OperationsMapNodeProps) {
+  const common = {
+    "aria-label": ariaLabel,
+    "data-map-group": "operations",
+    "data-map-kind": kind,
+    "data-map-step": stepId ?? undefined,
+    "data-map-workflow": playbookId ?? undefined,
+    "data-testid": dataTestId,
+    className,
+    onBlur,
+    onFocus,
+    onMouseEnter,
+    onMouseLeave,
+    style,
+  };
+
+  if (target === "channel" && channelId) {
+    return (
+      <Link
+        {...common}
+        params={{ channelId }}
+        search={mapWindowSearch}
+        to="/channels/$channelId"
+      >
+        {children}
+      </Link>
+    );
+  }
+  if (target === "work") {
+    return (
+      <Link
+        {...common}
+        params={{ workSurface: "work" }}
+        search={mapWindowSearch}
+        to="/$workSurface"
+      >
+        {children}
+      </Link>
+    );
+  }
+  if (target === "needs-you") {
+    return (
+      <Link {...common} search={mapWindowSearch} to="/today/needs-you">
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      {...common}
+      params={{ function: "operations" }}
+      search={mapWindowSearch}
+      to="/company/function/$function"
+    >
+      {children}
+    </Link>
+  );
+}
+
+function operationsWorkflowStyle(point: CompanyMapPoint): CSSProperties {
+  return {
+    left: mapPercent(point.x + 24 - 232, COMPANY_MAP_SIZE.width),
+    top: mapPercent(point.y - 24, COMPANY_MAP_SIZE.height),
+  };
+}
+
+function operationsStepStyle(point: CompanyMapPoint): CSSProperties {
+  return {
+    left: mapPercent(point.x - 212, COMPANY_MAP_SIZE.width),
+    top: mapPercent(point.y - 14, COMPANY_MAP_SIZE.height),
+  };
+}
+
+type OperationsInteractionProps = {
+  onGroupBlur: (event: FocusEvent<HTMLElement>, functionId: FunctionId) => void;
+  onGroupFocus: (functionId: FunctionId) => void;
+  onGroupMouseEnter: (functionId: FunctionId) => void;
+  onGroupMouseLeave: () => void;
+};
+
+function WorkflowNode({
+  workflow,
+  point,
+  onSelect,
+  ...interactions
+}: {
+  workflow: CompanyMapOperationsWorkflow;
+  point: CompanyMapPoint;
+  onSelect: () => void;
+} & OperationsInteractionProps) {
+  const waitingCount = workflow.steps.filter(
+    (step) => step.waitingForOwner,
+  ).length;
+  return (
+    <OperationsMapNodeLink
+      ariaLabel={
+        workflow.isNew
+          ? `${workflow.title}. New workflow waiting for your yes.`
+          : `${workflow.title}. ${workflow.runningJobCount} running ${workflow.runningJobCount === 1 ? "job" : "jobs"}.`
+      }
+      className="company-map-workflow-link"
+      dataTestId={`cofounder-map-workflow-${workflow.playbookId}`}
+      kind="workflow"
+      mapWindowSearch={companyMapOperationsWindowSearch({
+        kind: "workflow",
+        playbookId: workflow.playbookId,
+        target: "operations",
+      })}
+      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
+      onFocus={() => {
+        onSelect();
+        interactions.onGroupFocus("operations");
+      }}
+      onMouseEnter={() => {
+        onSelect();
+        interactions.onGroupMouseEnter("operations");
+      }}
+      onMouseLeave={interactions.onGroupMouseLeave}
+      playbookId={workflow.playbookId}
+      style={operationsWorkflowStyle(point)}
+      target="operations"
+    >
+      <span className="company-map-workflow-row" data-side="-1">
+        <span
+          className="company-map-workflow-disc"
+          data-new={workflow.isNew ? "true" : undefined}
+        >
+          <MapDoer className="company-map-workflow-avatar" scout />
+          <NeedsBadge
+            count={workflow.isNew ? 1 : waitingCount}
+            testId={`cofounder-map-workflow-needs-${workflow.playbookId}`}
+          />
+        </span>
+        <span className="company-map-workflow-name">{workflow.title}</span>
+      </span>
+    </OperationsMapNodeLink>
+  );
+}
+
+function WorkflowStepNode({
+  workflow,
+  step,
+  point,
+  clientChannelId,
+  onSelect,
+  ...interactions
+}: {
+  workflow: CompanyMapOperationsWorkflow;
+  step: CompanyMapOperationsStep;
+  point: CompanyMapPoint;
+  clientChannelId?: string | null;
+  onSelect: () => void;
+} & OperationsInteractionProps) {
+  const target = operationsWindowTarget(step, clientChannelId);
+  return (
+    <OperationsMapNodeLink
+      ariaLabel={
+        step.waitingForOwner || step.target === "needs-you"
+          ? `${step.title}. Needs your yes.`
+          : `${step.title}. Opens ${
+              target === "work"
+                ? "Work"
+                : target === "channel"
+                  ? "the client conversation"
+                  : "Operations"
+            }.`
+      }
+      channelId={target === "channel" ? clientChannelId : null}
+      className="company-map-workflow-step-link"
+      dataTestId={`cofounder-map-workflow-step-${workflow.playbookId}-${step.stepId}`}
+      kind="step"
+      mapWindowSearch={companyMapOperationsWindowSearch({
+        kind: "step",
+        playbookId: workflow.playbookId,
+        stepId: step.stepId,
+        target,
+      })}
+      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
+      onFocus={() => {
+        onSelect();
+        interactions.onGroupFocus("operations");
+      }}
+      onMouseEnter={() => {
+        onSelect();
+        interactions.onGroupMouseEnter("operations");
+      }}
+      onMouseLeave={interactions.onGroupMouseLeave}
+      playbookId={workflow.playbookId}
+      stepId={step.stepId}
+      style={operationsStepStyle(point)}
+      target={target}
+    >
+      <span className="company-map-workflow-step-row" data-side="-1">
+        <span
+          className="company-map-workflow-step-disc"
+          data-owner={step.owner.kind}
+          data-target={target}
+        >
+          <span aria-hidden="true">{workflow.steps.indexOf(step) + 1}</span>
+          <NeedsBadge
+            count={step.waitingForOwner || step.target === "needs-you" ? 1 : 0}
+            testId={`cofounder-map-workflow-step-needs-${workflow.playbookId}-${step.stepId}`}
+          />
+        </span>
+        <span className="company-map-workflow-step-name">{step.title}</span>
+      </span>
+    </OperationsMapNodeLink>
+  );
+}
+
+function AddStepNode({
+  workflow,
+  point,
+  onSelect,
+  ...interactions
+}: {
+  workflow: CompanyMapOperationsWorkflow;
+  point: CompanyMapPoint;
+  onSelect: () => void;
+} & OperationsInteractionProps) {
+  return (
+    <OperationsMapNodeLink
+      ariaLabel={`Add a step to ${workflow.title}. Opens Operations.`}
+      className="company-map-workflow-step-link"
+      dataTestId={`cofounder-map-add-step-${workflow.playbookId}`}
+      kind="add-step"
+      mapWindowSearch={companyMapOperationsWindowSearch({
+        kind: "add-step",
+        playbookId: workflow.playbookId,
+        target: "operations",
+      })}
+      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
+      onFocus={() => {
+        onSelect();
+        interactions.onGroupFocus("operations");
+      }}
+      onMouseEnter={() => {
+        onSelect();
+        interactions.onGroupMouseEnter("operations");
+      }}
+      onMouseLeave={interactions.onGroupMouseLeave}
+      playbookId={workflow.playbookId}
+      style={operationsStepStyle(point)}
+      target="operations"
+    >
+      <span className="company-map-workflow-step-row" data-side="-1">
+        <span className="company-map-workflow-step-disc" data-add="true">
+          <Plus aria-hidden="true" size={13} strokeWidth={2.2} />
+        </span>
+        <span className="company-map-workflow-step-name" data-add="true">
+          Add a step
+        </span>
+      </span>
+    </OperationsMapNodeLink>
+  );
+}
+
+function AddWorkflowNode({
+  point,
+  scoutChannelId,
+  ...interactions
+}: {
+  point: CompanyMapPoint;
+  scoutChannelId?: string | null;
+} & OperationsInteractionProps) {
+  const target = scoutChannelId ? "channel" : "operations";
+  return (
+    <OperationsMapNodeLink
+      ariaLabel={
+        scoutChannelId
+          ? "Add a workflow. Opens your conversation with Scout."
+          : "Add a workflow. Opens Operations."
+      }
+      channelId={scoutChannelId}
+      className="company-map-workflow-link"
+      dataTestId="cofounder-map-add-workflow"
+      kind="add-workflow"
+      mapWindowSearch={companyMapOperationsWindowSearch({
+        kind: "add-workflow",
+        target,
+      })}
+      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
+      onFocus={() => interactions.onGroupFocus("operations")}
+      onMouseEnter={() => interactions.onGroupMouseEnter("operations")}
+      onMouseLeave={interactions.onGroupMouseLeave}
+      style={operationsWorkflowStyle(point)}
+      target={target}
+    >
+      <span className="company-map-workflow-row" data-side="-1">
+        <span className="company-map-workflow-disc" data-add="true">
+          <Plus aria-hidden="true" size={16} strokeWidth={2.2} />
+        </span>
+        <span className="company-map-workflow-name" data-add="true">
+          Add a workflow
+        </span>
+      </span>
+    </OperationsMapNodeLink>
+  );
+}
+
 function PartNode({
   functionId,
   active,
   faded,
   count,
   slot,
+  point,
   members,
   profiles,
   onClick,
@@ -796,6 +1194,7 @@ function PartNode({
   faded: boolean;
   count: number;
   slot: FunctionSlotView;
+  point: CompanyMapPoint;
   members: TeamMember[];
   profiles: ProfileLookup;
   onClick: () => void;
@@ -805,7 +1204,6 @@ function PartNode({
   onMouseLeave: () => void;
 }) {
   const detail = FUNCTION_DETAILS[functionId];
-  const point = partPosition(functionId);
   const style = {
     left: mapPercent(point.x - 80, COMPANY_MAP_SIZE.width),
     top: mapPercent(point.y - 44, COMPANY_MAP_SIZE.height),
@@ -872,6 +1270,9 @@ function CompanyMapDesktop({
   liveFunctionIds,
   summary,
   whatsAppChannelId: whatsappChannelId,
+  operationsWorkflows = [],
+  scoutChannelId,
+  clientChannelId,
   mapWindowDepth = 0,
   mapWindowJob = null,
   onMapWindowClose,
@@ -887,6 +1288,37 @@ function CompanyMapDesktop({
     togglePinnedPart,
   } = useCompanyMapDesktopOpenPart();
   const activePart = mapWindowJob?.functionId ?? interactiveActivePart;
+  const [selectedOperationsWorkflowId, setSelectedOperationsWorkflowId] =
+    useState<string | null>(null);
+  const mapWindowWorkflowId =
+    mapWindowJob && "playbookId" in mapWindowJob
+      ? mapWindowJob.playbookId
+      : null;
+  const selectedWorkflowIsPresent = operationsWorkflows.some(
+    (workflow) => workflow.playbookId === selectedOperationsWorkflowId,
+  );
+  const openOperationsWorkflowId =
+    activePart === "operations"
+      ? (mapWindowWorkflowId ??
+        (selectedWorkflowIsPresent ? selectedOperationsWorkflowId : null) ??
+        operationsWorkflows[0]?.playbookId ??
+        null)
+      : null;
+  const operationsLayout = useMemo(
+    () =>
+      operationsWorkflows.length > 0
+        ? buildCompanyMapOperationsLayout({
+            openPlaybookId: openOperationsWorkflowId,
+            workflows: operationsWorkflows.map((workflow) => ({
+              playbookId: workflow.playbookId,
+              stepIds: workflow.steps.map((step) => step.stepId),
+            })),
+          })
+        : null,
+    [openOperationsWorkflowId, operationsWorkflows],
+  );
+  const layout: CompanyMapLayoutSurface =
+    operationsLayout ?? COMPANY_MAP_LAYOUT;
   const mapWindowOpen = mapWindowJob !== null;
   const {
     camera,
@@ -914,40 +1346,20 @@ function CompanyMapDesktop({
     wasMapWindowOpen.current = mapWindowOpen;
   }, [clearOpenPart, mapWindowOpen]);
   const mapWindowPart = mapWindowJob
-    ? partPosition(mapWindowJob.functionId)
+    ? partInLayout(layout, mapWindowJob.functionId)
     : null;
-  const mapWindowSide = mapWindowJob
-    ? companyMapPartSide(mapWindowJob.functionId)
-    : null;
+  const mapWindowSide = mapWindowPart?.side ?? null;
   const trailDepth = Math.max(0, Math.floor(mapWindowDepth));
   const stageStyle: StageStyle = {
     "--company-map-transform": mapWindowPart
-      ? `translate(${(mapWindowSide === -1 ? 1316 : 84) - mapWindowPart.x + (mapWindowSide === -1 ? trailDepth : -trailDepth) * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
+      ? `translate(${(mapWindowSide === -1 ? 1316 : 84) - mapWindowPart.point.x + (mapWindowSide === -1 ? trailDepth : -trailDepth) * 1260}px, ${100 - mapWindowPart.point.y}px) scale(1)`
       : `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
   };
   const jobs = activePart
-    ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => ({
-        functionId: activePart,
-        name,
-        point: jobPosition(activePart, name),
-        side:
-          COMPANY_MAP_LAYOUT.jobs.find(
-            (job) => job.functionId === activePart && job.name === name,
-          )?.side ?? 1,
-      }))
+    ? layout.jobs.filter((job) => job.functionId === activePart)
     : summary
-      ? FUNCTION_ORDER.flatMap((functionId) =>
-          FUNCTION_DETAILS[functionId].subFunctions
-            .filter((name) => countForJob(summary, functionId, name) > 0)
-            .map((name) => ({
-              functionId,
-              name,
-              point: jobPosition(functionId, name),
-              side:
-                COMPANY_MAP_LAYOUT.jobs.find(
-                  (job) => job.functionId === functionId && job.name === name,
-                )?.side ?? 1,
-            })),
+      ? layout.jobs.filter(
+          (job) => countForJob(summary, job.functionId, job.name) > 0,
         )
       : [];
 
@@ -1017,7 +1429,10 @@ function CompanyMapDesktop({
           >
             <MapConnectors
               activePart={activePart}
+              layout={layout}
               liveFunctionIds={liveFunctionIds}
+              operationsLayout={operationsLayout}
+              operationsWorkflows={operationsWorkflows}
               slots={slots}
               summary={summary}
             />
@@ -1028,8 +1443,8 @@ function CompanyMapDesktop({
               style={
                 activePart
                   ? {
-                      left: partPosition(activePart).x - 50,
-                      top: partPosition(activePart).y - 50,
+                      left: partInLayout(layout, activePart).point.x - 50,
+                      top: partInLayout(layout, activePart).point.y - 50,
                       width: 100,
                       height: 100,
                     }
@@ -1054,6 +1469,7 @@ function CompanyMapDesktop({
                   onFocus={() => focusPart(functionId)}
                   onMouseEnter={() => enterPart(functionId)}
                   onMouseLeave={closeHoverSoon}
+                  point={partInLayout(layout, functionId).point}
                   profiles={profiles}
                   slot={slotForFunction(functionId, slots)}
                 />
@@ -1070,12 +1486,109 @@ function CompanyMapDesktop({
                       onGroupFocus={focusPart}
                       onGroupMouseEnter={enterPart}
                       onGroupMouseLeave={closeHoverSoon}
+                      point={job.point}
                       profiles={profiles}
                       side={job.side}
                       slot={slotForFunction(job.functionId, slots)}
                       whatsappChannelId={whatsappChannelId}
                     />
                   ))}
+                {functionId === "operations" &&
+                activePart === "operations" &&
+                operationsLayout ? (
+                  <>
+                    {operationsLayout.workflows.map((position) => {
+                      const workflow = operationsWorkflows.find(
+                        (candidate) =>
+                          candidate.playbookId === position.playbookId,
+                      );
+                      return workflow ? (
+                        <WorkflowNode
+                          key={`workflow:${workflow.playbookId}`}
+                          onGroupBlur={blurPart}
+                          onGroupFocus={focusPart}
+                          onGroupMouseEnter={enterPart}
+                          onGroupMouseLeave={closeHoverSoon}
+                          onSelect={() =>
+                            setSelectedOperationsWorkflowId(workflow.playbookId)
+                          }
+                          point={position.point}
+                          workflow={workflow}
+                        />
+                      ) : null;
+                    })}
+                    {operationsLayout.steps.map((position) => {
+                      const workflow = operationsWorkflows.find(
+                        (candidate) =>
+                          candidate.playbookId === position.playbookId,
+                      );
+                      const step = workflow?.steps.find(
+                        (candidate) => candidate.stepId === position.stepId,
+                      );
+                      return workflow && step ? (
+                        <WorkflowStepNode
+                          clientChannelId={clientChannelId}
+                          key={`step:${workflow.playbookId}:${step.stepId}`}
+                          onGroupBlur={blurPart}
+                          onGroupFocus={focusPart}
+                          onGroupMouseEnter={enterPart}
+                          onGroupMouseLeave={closeHoverSoon}
+                          onSelect={() =>
+                            setSelectedOperationsWorkflowId(workflow.playbookId)
+                          }
+                          point={position.point}
+                          step={step}
+                          workflow={workflow}
+                        />
+                      ) : null;
+                    })}
+                    {operationsLayout.addStep
+                      ? (() => {
+                          const workflow = operationsWorkflows.find(
+                            (candidate) =>
+                              candidate.playbookId ===
+                              operationsLayout.addStep?.playbookId,
+                          );
+                          return workflow ? (
+                            <AddStepNode
+                              key={`add-step:${workflow.playbookId}`}
+                              onGroupBlur={blurPart}
+                              onGroupFocus={focusPart}
+                              onGroupMouseEnter={enterPart}
+                              onGroupMouseLeave={closeHoverSoon}
+                              onSelect={() =>
+                                setSelectedOperationsWorkflowId(
+                                  workflow.playbookId,
+                                )
+                              }
+                              point={operationsLayout.addStep.point}
+                              workflow={workflow}
+                            />
+                          ) : null;
+                        })()
+                      : null}
+                    <AddWorkflowNode
+                      onGroupBlur={blurPart}
+                      onGroupFocus={focusPart}
+                      onGroupMouseEnter={enterPart}
+                      onGroupMouseLeave={closeHoverSoon}
+                      point={operationsLayout.addWorkflow.point}
+                      scoutChannelId={scoutChannelId}
+                    />
+                  </>
+                ) : null}
+                {functionId === "operations" &&
+                activePart === "operations" &&
+                operationsWorkflows.length === 0 ? (
+                  <AddWorkflowNode
+                    onGroupBlur={blurPart}
+                    onGroupFocus={focusPart}
+                    onGroupMouseEnter={enterPart}
+                    onGroupMouseLeave={closeHoverSoon}
+                    point={STATIC_OPERATIONS_ADD_WORKFLOW_POINT}
+                    scoutChannelId={scoutChannelId}
+                  />
+                ) : null}
                 <CompanyMapHoverBridge
                   functionId={functionId}
                   onEnter={() => enterPart(functionId)}
