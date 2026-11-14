@@ -133,17 +133,13 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     const viewportElement = viewportRef.current;
     if (!stageElement || !viewportElement) return null;
 
-    const stageBounds = stageElement.getBoundingClientRect();
     const viewportBounds = viewportElement.getBoundingClientRect();
-    const current = cameraRef.current;
     const width = stageElement.offsetWidth;
     const height = stageElement.offsetHeight;
-    const scaleOffsetX = ((1 - current.scale) * width) / 2;
-    const scaleOffsetY = ((1 - current.scale) * height) / 2;
     const stage = {
       height,
-      left: stageBounds.left - current.x - scaleOffsetX,
-      top: stageBounds.top - current.y - scaleOffsetY,
+      left: viewportBounds.left + viewportElement.clientLeft + stageElement.offsetLeft,
+      top: viewportBounds.top + viewportElement.clientTop + stageElement.offsetTop,
       width,
     };
     const viewport = {
@@ -209,6 +205,14 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     }
   }, []);
 
+  const clearPendingContextMenu = useCallback(() => {
+    suppressContextMenuRef.current = false;
+    if (contextMenuResetTimerRef.current !== null) {
+      window.clearTimeout(contextMenuResetTimerRef.current);
+      contextMenuResetTimerRef.current = null;
+    }
+  }, []);
+
   const endCurrentGesture = useCallback(() => {
     clearWheelEndTimer();
     pointerGestureRef.current = null;
@@ -268,7 +272,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     const clearTransientInput = () => {
       spacePressedRef.current = false;
       suppressClickRef.current = false;
-      suppressContextMenuRef.current = false;
+      clearPendingContextMenu();
       endCurrentGesture();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -282,22 +286,27 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") clearTransientInput();
     };
+    const onDocumentContextMenu = (event: MouseEvent) => {
+      if (!suppressContextMenuRef.current) return;
+      clearPendingContextMenu();
+      event.preventDefault();
+    };
 
     window.addEventListener("blur", clearTransientInput);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    document.addEventListener("contextmenu", onDocumentContextMenu, true);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("blur", clearTransientInput);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      document.removeEventListener("contextmenu", onDocumentContextMenu, true);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearWheelEndTimer();
-      if (contextMenuResetTimerRef.current !== null) {
-        window.clearTimeout(contextMenuResetTimerRef.current);
-      }
+      clearPendingContextMenu();
     };
-  }, [clearWheelEndTimer, endCurrentGesture]);
+  }, [clearPendingContextMenu, clearWheelEndTimer, endCurrentGesture]);
 
   const panBy = useCallback(
     (delta: CompanyMapPoint, synchronize = true) => {
@@ -533,6 +542,10 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
 
   const onPointerCancel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.type === "pointercancel") {
+        suppressClickRef.current = false;
+        clearPendingContextMenu();
+      }
       if (event.pointerType === "touch") {
         touchPointsRef.current.delete(event.pointerId);
       }
@@ -543,7 +556,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
         endCurrentGesture();
       }
     },
-    [endCurrentGesture],
+    [clearPendingContextMenu, endCurrentGesture],
   );
 
   const onClickCapture = useCallback(
@@ -559,15 +572,11 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   const onContextMenuCapture = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!suppressContextMenuRef.current) return;
-      suppressContextMenuRef.current = false;
-      if (contextMenuResetTimerRef.current !== null) {
-        window.clearTimeout(contextMenuResetTimerRef.current);
-        contextMenuResetTimerRef.current = null;
-      }
+      clearPendingContextMenu();
       event.preventDefault();
       event.stopPropagation();
     },
-    [],
+    [clearPendingContextMenu],
   );
 
   const onWheel = useCallback(

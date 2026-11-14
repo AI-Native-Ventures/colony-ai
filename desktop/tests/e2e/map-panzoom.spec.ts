@@ -434,6 +434,58 @@ test.describe("company map pan and zoom", () => {
     expect(afterEmpty.y).toBeGreaterThan(afterSpace.y);
   });
 
+  test("ends a map drag on pointer cancellation and window blur", async ({
+    page,
+  }) => {
+    await openMap(page);
+    const viewport = page.getByTestId("cofounder-map-viewport");
+    const start = await findBlankCanvasPoint(page);
+    const end = { x: start.x - 90, y: start.y + 70 };
+
+    await page.evaluate(() => {
+      type ProbeWindow = Window & { __MAP_PANZOOM_POINTER_ID__?: number };
+      const testWindow = window as ProbeWindow;
+      testWindow.__MAP_PANZOOM_POINTER_ID__ = undefined;
+      document.addEventListener(
+        "pointerdown",
+        (event) => {
+          testWindow.__MAP_PANZOOM_POINTER_ID__ = event.pointerId;
+        },
+        { capture: true, once: true },
+      );
+    });
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    const pointerId = await page.evaluate(() => {
+      const value = (
+        window as Window & { __MAP_PANZOOM_POINTER_ID__?: number }
+      ).__MAP_PANZOOM_POINTER_ID__;
+      if (typeof value !== "number") throw new Error("Expected a pointer ID");
+      return value;
+    });
+    await page.mouse.move(end.x, end.y, { steps: 3 });
+    await expect(viewport).toHaveAttribute("data-camera-interacting", "true");
+    await viewport.evaluate((node, cancelledPointerId) => {
+      node.dispatchEvent(
+        new PointerEvent("pointercancel", {
+          bubbles: true,
+          pointerId: cancelledPointerId,
+          pointerType: "mouse",
+        }),
+      );
+    }, pointerId);
+    await expect(viewport).not.toHaveAttribute("data-camera-interacting", "true");
+    await page.mouse.up();
+
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 3 });
+    await expect(viewport).toHaveAttribute("data-camera-interacting", "true");
+    await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+    await expect(viewport).not.toHaveAttribute("data-camera-interacting", "true");
+    await page.mouse.up();
+  });
+
   test("keeps a three-pixel job-circle press as a click", async ({ page }) => {
     await openMap(page);
     await openSalesJobs(page);
