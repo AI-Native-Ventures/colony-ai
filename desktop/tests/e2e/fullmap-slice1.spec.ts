@@ -746,7 +746,7 @@ test.describe("full map canvas slice 1", () => {
     await expect(
       page.getByRole("heading", { name: "Queued to contact" }),
     ).toBeVisible();
-    await expect(page.getByTestId("channel-view-tab-pipeline")).toHaveAttribute(
+    await expect(page.getByTestId("map-outreach-tab-pipeline")).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -760,6 +760,13 @@ test.describe("full map canvas slice 1", () => {
     await page.goto(`/#${mapTarget(WINDOW_JOBS[1])}`);
     await expect(page.getByTestId("fullmap-window")).toBeVisible();
     await waitForAnimations(page);
+
+    await page
+      .getByTestId("map-outreach-desk-tabs")
+      .getByRole("link", { name: "Leads" })
+      .click();
+    await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+    await expect(page.getByTestId("fullmap-window")).toBeVisible();
 
     await page.getByRole("button", { name: "Add lead" }).click();
     const dialog = page.getByTestId("w10-add-lead-dialog");

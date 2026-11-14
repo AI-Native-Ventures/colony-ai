@@ -934,7 +934,7 @@ test.describe("full map canvas slice 2", () => {
     await expectMapWindow(page, 0);
   });
 
-  test("swaps Sales tabs and the Find prospects header action in one map window", async ({
+  test("swaps Sales tabs and the Leads Find prospects header action in one map window", async ({
     page,
   }) => {
     await installFullMap(page);
@@ -968,6 +968,13 @@ test.describe("full map canvas slice 2", () => {
     await expectMapWindow(page, 0);
     await page.goBack();
     await expectRoute(page, SALES_OUTREACH);
+    await expectMapWindow(page, 0);
+
+    const returnedNeedsTabs = windowContent(page).getByRole("navigation", {
+      name: "Outreach views",
+    });
+    await returnedNeedsTabs.getByRole("link", { name: "Leads" }).click();
+    await expectRoute(page, "/leads");
     await expectMapWindow(page, 0);
 
     await windowContent(page)
