@@ -469,18 +469,21 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       if (disabled) return;
       const geometry = readGeometry();
       if (!geometry) return;
-      const nextScale = clampCompanyMapScale(cameraRef.current.scale + amount);
-      if (nextScale <= 1) {
-        writeCamera({ scale: nextScale, x: 0, y: 0 }, geometry, true);
-        return;
-      }
-      const center = {
-        x: geometry.viewport.left + geometry.viewport.width / 2,
-        y: geometry.viewport.top + geometry.viewport.height / 2,
-      };
-      zoomAt(nextScale, center, center, geometry, true);
+      const current = cameraRef.current;
+      const nextScale = clampCompanyMapScale(current.scale + amount);
+      // Buttons and keyboard retain the legacy centered-control behavior:
+      // scale the board without introducing an offset from subpixel layout.
+      // Pointer input uses zoomAt below, where keeping its world point fixed is
+      // the required behavior.
+      writeCamera(
+        nextScale <= 1
+          ? { scale: nextScale, x: 0, y: 0 }
+          : { ...current, scale: nextScale },
+        geometry,
+        true,
+      );
     },
-    [disabled, readGeometry, writeCamera, zoomAt],
+    [disabled, readGeometry, writeCamera],
   );
 
   const fitCamera = useCallback(() => {
