@@ -13,8 +13,10 @@ export type CompanyMapJobRoute =
         | "/company/access";
     }
   | { kind: "work" }
-  | { kind: "whatsapp"; tab: "needs-you" | "chats" | "pipeline" }
+  | { kind: "whatsapp"; tab: CompanyMapWhatsAppTab }
   | { kind: "part"; functionId: FunctionId };
+
+export type CompanyMapWhatsAppTab = "needs-you" | "chats" | "pipeline";
 
 /** A screen-backed job that can open in the persistent map canvas window. */
 export type CompanyMapWindowJob = {
@@ -119,6 +121,27 @@ export function companyMapWindowSearch(
 ): { mapJob: string } | undefined {
   const key = companyMapJobKey(functionId, jobName);
   return Object.hasOwn(ROUTES, key) ? { mapJob: key } : undefined;
+}
+
+/** Builds the map-job trail search for a channel desk or its setup fallback. */
+export function companyMapWhatsAppSearch(
+  mapJob: string | undefined,
+  tab: CompanyMapWhatsAppTab,
+  target: "channel",
+): { mapJob: string | undefined; whatsappDeskTab: CompanyMapWhatsAppTab };
+export function companyMapWhatsAppSearch(
+  mapJob: string | undefined,
+  tab: CompanyMapWhatsAppTab,
+  target: "setup",
+): { mapJob: string | undefined; outreachDeskTab: CompanyMapWhatsAppTab };
+export function companyMapWhatsAppSearch(
+  mapJob: string | undefined,
+  tab: CompanyMapWhatsAppTab,
+  target: "channel" | "setup",
+) {
+  return target === "channel"
+    ? { mapJob, whatsappDeskTab: tab }
+    : { mapJob, outreachDeskTab: tab };
 }
 
 function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
