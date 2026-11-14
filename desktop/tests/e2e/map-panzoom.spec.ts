@@ -567,6 +567,7 @@ test.describe("company map pan and zoom", () => {
     const cameraBeforeOpening = await readCamera(page);
     await openSalesLeadFinding(page);
     const window = page.getByTestId("fullmap-window");
+    await waitForAnimations(page);
     const windowBox = await readBox(window);
     expect(windowBox).toEqual({ height: 699, width: 1204, x: 200, y: 124 });
 
@@ -610,6 +611,7 @@ test.describe("company map pan and zoom", () => {
 
     await page.getByTestId("fullmap-window-close").click();
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+    await waitForAnimations(page);
     expect(await readCamera(page)).toEqual(cameraBeforeOpening);
   });
 

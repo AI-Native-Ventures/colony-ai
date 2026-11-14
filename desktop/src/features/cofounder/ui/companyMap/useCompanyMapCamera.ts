@@ -236,6 +236,35 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   }, [disabled, endCurrentGesture]);
 
   useEffect(() => {
+    const stageElement = stageRef.current;
+    const viewportElement = viewportRef.current;
+    if (
+      !stageElement ||
+      !viewportElement ||
+      disabled ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+
+    let frame: number | null = null;
+    const clampAfterResize = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        writeCamera(cameraRef.current, readGeometry(), true);
+      });
+    };
+    const observer = new ResizeObserver(clampAfterResize);
+    observer.observe(stageElement);
+    observer.observe(viewportElement);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [disabled, readGeometry, writeCamera]);
+
+  useEffect(() => {
     const clearTransientInput = () => {
       spacePressedRef.current = false;
       suppressClickRef.current = false;

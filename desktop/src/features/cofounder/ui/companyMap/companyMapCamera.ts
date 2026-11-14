@@ -1,7 +1,6 @@
 export const COMPANY_MAP_MIN_SCALE = 0.7;
 export const COMPANY_MAP_MAX_SCALE = 1.3;
-
-const MIN_VISIBLE_COMPANY_PX = 72;
+export const COMPANY_MAP_MIN_VISIBLE_PX = 72;
 
 export type CompanyMapCamera = {
   scale: number;
@@ -37,8 +36,8 @@ export function clampCompanyMapCamera(
   const scale = clampCompanyMapScale(camera.scale);
   const scaledWidth = stage.width * scale;
   const scaledHeight = stage.height * scale;
-  const visibleWidth = Math.min(MIN_VISIBLE_COMPANY_PX, scaledWidth);
-  const visibleHeight = Math.min(MIN_VISIBLE_COMPANY_PX, scaledHeight);
+  const visibleWidth = Math.min(COMPANY_MAP_MIN_VISIBLE_PX, scaledWidth);
+  const visibleHeight = Math.min(COMPANY_MAP_MIN_VISIBLE_PX, scaledHeight);
   const scaleOffsetX = ((1 - scale) * stage.width) / 2;
   const scaleOffsetY = ((1 - scale) * stage.height) / 2;
   const minX =

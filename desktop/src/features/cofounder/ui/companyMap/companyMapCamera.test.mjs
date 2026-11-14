@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   COMPANY_MAP_MAX_SCALE,
+  COMPANY_MAP_MIN_VISIBLE_PX,
   COMPANY_MAP_MIN_SCALE,
   cameraForScaledPoint,
   clampCompanyMapCamera,
@@ -23,6 +24,11 @@ function worldPoint(camera, point) {
   };
 }
 
+function assertPointNear(actual, expected, tolerance = 1e-9) {
+  assert.ok(Math.abs(actual.x - expected.x) <= tolerance);
+  assert.ok(Math.abs(actual.y - expected.y) <= tolerance);
+}
+
 test("clamps map scale to the existing zoom button bounds", () => {
   assert.equal(clampCompanyMapScale(0.1), COMPANY_MAP_MIN_SCALE);
   assert.equal(clampCompanyMapScale(9), COMPANY_MAP_MAX_SCALE);
@@ -40,7 +46,7 @@ test("keeps the world point beneath a wheel pointer fixed while zooming", () => 
     target: pointer,
   });
 
-  assert.deepEqual(worldPoint(after, pointer), worldPoint(before, pointer));
+  assertPointNear(worldPoint(after, pointer), worldPoint(before, pointer));
 });
 
 test("moves the pinch anchor with its fingers while preserving its world point", () => {
@@ -55,7 +61,7 @@ test("moves the pinch anchor with its fingers while preserving its world point",
     target: end,
   });
 
-  assert.deepEqual(worldPoint(after, end), worldPoint(before, start));
+  assertPointNear(worldPoint(after, end), worldPoint(before, start));
 });
 
 test("clamps a pan so a visible strip of the company remains in the viewport", () => {
@@ -69,8 +75,8 @@ test("clamps a pan so a visible strip of the company remains in the viewport", (
   const mapTop = stage.top + clamped.y;
   const mapBottom = mapTop + stage.height * clamped.scale;
 
-  assert.ok(mapLeft <= viewport.left + viewport.width - 72);
-  assert.ok(mapRight >= viewport.left + 72);
-  assert.ok(mapTop <= viewport.top + viewport.height - 72);
-  assert.ok(mapBottom >= viewport.top + 72);
+  assert.ok(mapLeft <= viewport.left + viewport.width - COMPANY_MAP_MIN_VISIBLE_PX);
+  assert.ok(mapRight >= viewport.left + COMPANY_MAP_MIN_VISIBLE_PX);
+  assert.ok(mapTop <= viewport.top + viewport.height - COMPANY_MAP_MIN_VISIBLE_PX);
+  assert.ok(mapBottom >= viewport.top + COMPANY_MAP_MIN_VISIBLE_PX);
 });
