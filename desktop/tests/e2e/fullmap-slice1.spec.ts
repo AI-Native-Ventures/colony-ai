@@ -672,7 +672,10 @@ test.describe("full map canvas slice 1", () => {
     page,
   }) => {
     test.setTimeout(120_000);
-    const { dialog } = await openFix2CampaignDialog(page, true);
+    const { dialog } = await openFix2CampaignDialog(
+      page,
+      process.env.FIX2_MAP_HOME !== "0",
+    );
     const approval = dialog.locator("label.c3d-approval");
     const checkbox = dialog.getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
@@ -715,7 +718,10 @@ test.describe("full map canvas slice 1", () => {
     page,
   }) => {
     test.setTimeout(120_000);
-    const { dialog } = await openFix2CampaignDialog(page, true);
+    const { dialog } = await openFix2CampaignDialog(
+      page,
+      process.env.FIX2_MAP_HOME !== "0",
+    );
     const checkbox = dialog.getByRole("checkbox", {
       name: "I approve this campaign’s maximum budget.",
     });
