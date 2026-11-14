@@ -5,7 +5,7 @@
 //! customer heads, co-founder settings), never one per contact and never a full customer
 //! gather.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -22,7 +22,7 @@ use buzz_core::whatsapp_stage::{
     derive_stage, is_not_on_whatsapp_code, Fact, ManualStage, OptOutKind, StageInputs,
     WhatsappStage,
 };
-use buzz_db::whatsapp::{DeskFacts, WhatsappContact};
+use buzz_db::whatsapp::{DeskFacts, WhatsappContact, WhatsappContactCursor};
 use buzz_db::EventQuery;
 
 use super::policy::{contact_label, failure_summary_for_code, is_contact_engagement_limit};
@@ -346,6 +346,37 @@ const fn legacy_stage_wire_value(stage: WhatsappStage) -> &'static str {
     }
 }
 
+/// The `stage` string a caller sees: the real stage for a caller that advertised `queued`
+/// support, the legacy-safe projection otherwise. The list and the counts both go through
+/// here, so a count always equals what a full list would show.
+fn project_stage(stage: WhatsappStage, supports_queued_stage: bool) -> &'static str {
+    if supports_queued_stage {
+        stage.as_str()
+    } else {
+        legacy_stage_wire_value(stage)
+    }
+}
+
+impl DeskData {
+    /// The facts, linked lead and record of `contact`, as the list view looks them up.
+    fn parts_of<'a>(
+        &'a self,
+        contact: &WhatsappContact,
+        default_facts: &'a DeskFacts,
+    ) -> (
+        &'a DeskFacts,
+        Option<&'a LeadFacts>,
+        Option<&'a RecordFacts>,
+    ) {
+        let lead_id = contact.lead_id.as_deref();
+        (
+            self.facts.get(&contact.wa_id).unwrap_or(default_facts),
+            lead_id.and_then(|id| self.leads.get(id)),
+            lead_id.and_then(|id| self.records.get(id)),
+        )
+    }
+}
+
 /// Build the desk projection for a caller that has explicitly advertised whether it can parse
 /// the `queued` stage. New wire fields remain additive; only the existing `stage` enum is
 /// projected for compatibility.
@@ -357,11 +388,7 @@ pub fn desk_fields_for_capability(
     supports_queued_stage: bool,
 ) -> Map<String, Value> {
     let result = derive_stage(&stage_inputs(contact, facts, lead, record));
-    let wire_stage = if supports_queued_stage {
-        result.stage.as_str()
-    } else {
-        legacy_stage_wire_value(result.stage)
-    };
+    let wire_stage = project_stage(result.stage, supports_queued_stage);
     let profile = contact.display_name.trim();
     let has_profile = profile.chars().any(char::is_alphanumeric);
     let mut fields = Map::new();
@@ -420,6 +447,115 @@ pub fn desk_fields_for_capability(
         );
     }
     fields
+}
+
+/// Contacts read per round trip while counting stages.
+const COUNT_CHUNK: u64 = 1_000;
+/// Most contacts one count covers. A community with more is counted up to this many and the
+/// answer says so (`countsTruncated`), so the work and the memory of one request stay bounded.
+pub const COUNT_CONTACT_CAP: u64 = 50_000;
+
+/// Contacts per stage, over a whole community.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StageCounts {
+    /// Contacts per stage string. A stage with no contacts is absent.
+    pub by_stage: BTreeMap<String, u64>,
+    /// Contacts whose stage is `none` and whose latest outbound message failed.
+    pub failed_not_contacted: u64,
+    /// Contacts counted.
+    pub total: u64,
+    /// More contacts exist than the cap allowed to count, so every number is a floor.
+    pub truncated: bool,
+}
+
+impl StageCounts {
+    /// Count one contact by its `stage` string and the state of its latest outbound message.
+    pub fn add(&mut self, stage: &str, last_outcome_state: Option<&str>) {
+        *self.by_stage.entry(stage.to_owned()).or_insert(0) += 1;
+        if stage == "none" && last_outcome_state == Some("failed") {
+            self.failed_not_contacted += 1;
+        }
+        self.total += 1;
+    }
+
+    /// The fields the `contacts` answer carries when counts were asked for.
+    pub fn fields(&self) -> Map<String, Value> {
+        let mut fields = Map::new();
+        fields.insert("stageCounts".into(), json!(self.by_stage));
+        fields.insert(
+            "failedNotContacted".into(),
+            json!(self.failed_not_contacted),
+        );
+        fields.insert("totalContacts".into(), json!(self.total));
+        fields.insert("countsTruncated".into(), json!(self.truncated));
+        fields
+    }
+}
+
+/// Count every contact of the community by the stage the list view shows for it.
+///
+/// Contacts are read in keyset chunks and each chunk goes through [`load`] and the same stage
+/// projection as the list, so no second stage rule exists. Stops at [`COUNT_CONTACT_CAP`]
+/// contacts and sets `truncated`. Any failure fails the whole count: partial numbers are never
+/// returned as if complete.
+pub async fn stage_counts(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    supports_queued_stage: bool,
+) -> Result<StageCounts, String> {
+    stage_counts_bounded(
+        state,
+        community,
+        supports_queued_stage,
+        COUNT_CONTACT_CAP,
+        COUNT_CHUNK,
+    )
+    .await
+}
+
+/// [`stage_counts`] with its bounds as arguments, so a test can cross a chunk edge and the cap
+/// without thousands of contacts. `chunk` is at most 1,000.
+pub(crate) async fn stage_counts_bounded(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    supports_queued_stage: bool,
+    cap: u64,
+    chunk: u64,
+) -> Result<StageCounts, String> {
+    let chunk = chunk.clamp(1, COUNT_CHUNK);
+    let mut counts = StageCounts::default();
+    let mut cursor: Option<WhatsappContactCursor> = None;
+    let default_facts = DeskFacts::default();
+    // Each pass adds at least one contact, so the loop ends within `cap` passes.
+    while counts.total < cap {
+        let want = (cap - counts.total).min(chunk);
+        let mut page = state
+            .db
+            .whatsapp_list_contacts_page(community, want as i64 + 1, cursor.as_ref())
+            .await
+            .map_err(|error| format!("whatsapp query: {error}"))?;
+        let more = page.len() as u64 > want;
+        page.truncate(want as usize);
+        if page.is_empty() {
+            return Ok(counts);
+        }
+        let data = load(state, community, &page).await?;
+        for contact in &page {
+            let (facts, lead, record) = data.parts_of(contact, &default_facts);
+            let stage = project_stage(
+                derive_stage(&stage_inputs(contact, facts, lead, record)).stage,
+                supports_queued_stage,
+            );
+            counts.add(stage, facts.last_outcome_state.as_deref());
+        }
+        if !more {
+            return Ok(counts);
+        }
+        cursor = page.last().map(WhatsappContact::cursor);
+    }
+    // The cap is reached and the last chunk reported another row after it.
+    counts.truncated = true;
+    Ok(counts)
 }
 
 #[cfg(test)]
@@ -564,6 +700,54 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(desk_fields(&contact(), &facts, None, None)["stage"], "none");
+    }
+
+    #[test]
+    fn stage_counts_tally_every_stage_and_failed_openers_that_never_reached() {
+        let mut counts = StageCounts::default();
+        counts.add("contacted", Some("delivered"));
+        counts.add("contacted", None);
+        counts.add("replied", None);
+        counts.add("none", Some("failed"));
+        counts.add("none", Some("failed"));
+        counts.add("none", None);
+        // A failed latest send only counts while the stage is `none`.
+        counts.add("not_on_whatsapp", Some("failed"));
+        assert_eq!(counts.total, 7);
+        assert_eq!(counts.failed_not_contacted, 2);
+        assert!(!counts.truncated);
+        assert_eq!(counts.by_stage["contacted"], 2);
+        assert_eq!(counts.by_stage["none"], 3);
+        assert_eq!(counts.by_stage["replied"], 1);
+        assert_eq!(counts.by_stage["not_on_whatsapp"], 1);
+        assert_eq!(counts.by_stage.values().sum::<u64>(), counts.total);
+
+        counts.truncated = true;
+        let fields = counts.fields();
+        assert_eq!(fields["stageCounts"]["contacted"], 2);
+        assert_eq!(fields["failedNotContacted"], 2);
+        assert_eq!(fields["totalContacts"], 7);
+        assert_eq!(fields["countsTruncated"], true);
+    }
+
+    #[test]
+    fn the_count_projection_is_the_list_projection() {
+        // A queued contact reads `none` to a legacy caller and `queued` to a current one, in
+        // the list and in the counts alike.
+        assert_eq!(project_stage(WhatsappStage::Queued, false), "none");
+        assert_eq!(project_stage(WhatsappStage::Queued, true), "queued");
+        let facts = DeskFacts {
+            queued_at: Some(t(2)),
+            ..Default::default()
+        };
+        for supports in [false, true] {
+            let listed = desk_fields_for_capability(&contact(), &facts, None, None, supports);
+            let counted = project_stage(
+                derive_stage(&stage_inputs(&contact(), &facts, None, None)).stage,
+                supports,
+            );
+            assert_eq!(listed["stage"], counted);
+        }
     }
 
     #[test]
