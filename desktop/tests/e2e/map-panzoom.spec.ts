@@ -363,19 +363,29 @@ test.describe("company map pan and zoom", () => {
     });
   });
 
-  test("zooms for Ctrl and Cmd wheel input", async ({ page }) => {
+  test("zooms for Ctrl and Cmd wheel input", async ({ page }, testInfo) => {
     await openMap(page);
     const pointer = await pointAt(
       page.getByTestId("cofounder-map-company-hub"),
     );
 
+    await recordNextWheel(page);
     await dispatchWheel(page, pointer, { deltaY: -90, modifiers: 2 });
     const afterControl = await readCamera(page);
+    const controlSample = await readWheelSample(page);
+    await recordNextWheel(page);
     await dispatchWheel(page, pointer, { deltaY: -90, modifiers: 4 });
     const afterCommand = await readCamera(page);
+    const commandSample = await readWheelSample(page);
 
     expect(afterControl.scale).toBeGreaterThan(1);
     expect(afterCommand.scale).toBeGreaterThan(afterControl.scale);
+    expect(controlSample).toMatchObject({ ctrlKey: true, metaKey: false });
+    expect(commandSample).toMatchObject({ ctrlKey: false, metaKey: true });
+    await testInfo.attach("modifier-wheel-samples.json", {
+      body: JSON.stringify({ commandSample, controlSample }, null, 2),
+      contentType: "application/json",
+    });
   });
 
   test("pans for plain two-axis wheel scroll without guessing the device", async ({
@@ -386,8 +396,7 @@ test.describe("company map pan and zoom", () => {
     const before = await readCamera(page);
 
     await recordNextWheel(page);
-    await page.mouse.move(pointer.x, pointer.y);
-    await page.mouse.wheel(40, 120);
+    await dispatchWheel(page, pointer, { deltaX: 40, deltaY: 120 });
     await waitForPaint(page);
 
     const after = await readCamera(page);

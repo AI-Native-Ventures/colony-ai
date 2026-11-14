@@ -50,6 +50,12 @@ type PinchGesture = CameraGeometry & {
   source: CompanyMapPoint;
 };
 
+type LinkPress = {
+  link: HTMLAnchorElement;
+  pointerId: number;
+  start: CompanyMapPoint;
+};
+
 function toPoint(event: { clientX: number; clientY: number }): CompanyMapPoint {
   return { x: event.clientX, y: event.clientY };
 }
@@ -104,6 +110,12 @@ function isLeftDragCanvasTarget(target: EventTarget | null): boolean {
   );
 }
 
+function mapLinkTarget(target: EventTarget | null): HTMLAnchorElement | null {
+  if (!(target instanceof Element)) return null;
+  const link = target.closest("a");
+  return link instanceof HTMLAnchorElement ? link : null;
+}
+
 function normalizeWheelDelta(
   event: ReactWheelEvent<HTMLDivElement>,
   viewportHeight: number,
@@ -125,6 +137,8 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const pointerGestureRef = useRef<PointerGesture | null>(null);
   const pinchGestureRef = useRef<PinchGesture | null>(null);
+  const linkPressRef = useRef<LinkPress | null>(null);
+  const pendingLinkActivationRef = useRef<HTMLAnchorElement | null>(null);
   const touchPointsRef = useRef(new Map<number, CompanyMapPoint>());
   const spacePressedRef = useRef(false);
   const suppressClickRef = useRef(false);
@@ -134,6 +148,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   const wheelEndTimerRef = useRef<number | null>(null);
   const clickResetTimerRef = useRef<number | null>(null);
   const contextMenuResetTimerRef = useRef<number | null>(null);
+  const linkActivationFrameRef = useRef<number | null>(null);
 
   const readGeometry = useCallback((): CameraGeometry | null => {
     const stageElement = stageRef.current;
@@ -242,6 +257,29 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     }
   }, []);
 
+  const clearPendingLinkActivation = useCallback(() => {
+    pendingLinkActivationRef.current = null;
+    if (linkActivationFrameRef.current !== null) {
+      window.cancelAnimationFrame(linkActivationFrameRef.current);
+      linkActivationFrameRef.current = null;
+    }
+  }, []);
+
+  const queueLinkActivation = useCallback(
+    (link: HTMLAnchorElement) => {
+      clearPendingLinkActivation();
+      if (!link.isConnected) return;
+      pendingLinkActivationRef.current = link;
+      linkActivationFrameRef.current = window.requestAnimationFrame(() => {
+        linkActivationFrameRef.current = null;
+        const pendingLink = pendingLinkActivationRef.current;
+        pendingLinkActivationRef.current = null;
+        pendingLink?.click();
+      });
+    },
+    [clearPendingLinkActivation],
+  );
+
   const endCurrentGesture = useCallback(() => {
     clearWheelEndTimer();
     pointerGestureRef.current = null;
@@ -300,8 +338,10 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   useEffect(() => {
     const clearTransientInput = () => {
       spacePressedRef.current = false;
+      linkPressRef.current = null;
       clearPendingClick();
       clearPendingContextMenu();
+      clearPendingLinkActivation();
       endCurrentGesture();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -348,10 +388,12 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       clearWheelEndTimer();
       clearPendingClick();
       clearPendingContextMenu();
+      clearPendingLinkActivation();
     };
   }, [
     clearPendingClick,
     clearPendingContextMenu,
+    clearPendingLinkActivation,
     clearWheelEndTimer,
     endCurrentGesture,
   ]);
@@ -447,6 +489,21 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       if (!geometry) return;
       const point = toPoint(event);
 
+      linkPressRef.current =
+        event.button === 0
+          ? (() => {
+              const link = mapLinkTarget(event.target);
+              return link
+                ? { link, pointerId: event.pointerId, start: point }
+                : null;
+            })()
+          : null;
+
+      if (event.button === 2) {
+        clearPendingContextMenu();
+        suppressContextMenuRef.current = true;
+      }
+
       if (event.pointerType === "touch") {
         touchPointsRef.current.set(event.pointerId, point);
         const touches = [...touchPointsRef.current.values()];
@@ -504,13 +561,21 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       };
       if (event.button === 1) event.preventDefault();
     },
-    [beginInteraction, disabled, readGeometry],
+    [beginInteraction, clearPendingContextMenu, disabled, readGeometry],
   );
 
   const onPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (disabled) return;
       const point = toPoint(event);
+      const linkPress = linkPressRef.current;
+      if (
+        linkPress?.pointerId === event.pointerId &&
+        Math.hypot(point.x - linkPress.start.x, point.y - linkPress.start.y) >=
+          CAMERA_DRAG_THRESHOLD
+      ) {
+        linkPressRef.current = null;
+      }
       if (event.pointerType === "touch") {
         touchPointsRef.current.set(event.pointerId, point);
         const pinch = pinchGestureRef.current;
@@ -565,6 +630,18 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
 
   const onPointerEnd = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      const linkPress = linkPressRef.current;
+      if (linkPress?.pointerId === event.pointerId) {
+        linkPressRef.current = null;
+        if (
+          Math.hypot(
+            event.clientX - linkPress.start.x,
+            event.clientY - linkPress.start.y,
+          ) < CAMERA_DRAG_THRESHOLD
+        ) {
+          queueLinkActivation(linkPress.link);
+        }
+      }
       if (event.pointerType === "touch") {
         const wasPinching = pinchGestureRef.current !== null;
         touchPointsRef.current.delete(event.pointerId);
@@ -577,7 +654,10 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       const gesture = pointerGestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       pointerGestureRef.current = null;
-      if (!gesture.started) return;
+      if (!gesture.started) {
+        if (gesture.button === 2) clearPendingContextMenu();
+        return;
+      }
       if (gesture.button === 0 || gesture.pointerType === "touch") {
         scheduleClickReset();
       }
@@ -592,14 +672,22 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       }
       finishInteraction();
     },
-    [endCurrentGesture, finishInteraction, scheduleClickReset],
+    [
+      clearPendingContextMenu,
+      endCurrentGesture,
+      finishInteraction,
+      queueLinkActivation,
+      scheduleClickReset,
+    ],
   );
 
   const onPointerCancel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.type === "pointercancel") {
+        linkPressRef.current = null;
         clearPendingClick();
         clearPendingContextMenu();
+        clearPendingLinkActivation();
       }
       if (event.pointerType === "touch") {
         touchPointsRef.current.delete(event.pointerId);
@@ -611,17 +699,26 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
         endCurrentGesture();
       }
     },
-    [clearPendingClick, clearPendingContextMenu, endCurrentGesture],
+    [
+      clearPendingClick,
+      clearPendingContextMenu,
+      clearPendingLinkActivation,
+      endCurrentGesture,
+    ],
   );
 
   const onClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
+      const pendingLink = pendingLinkActivationRef.current;
+      if (pendingLink && mapLinkTarget(event.target) === pendingLink) {
+        clearPendingLinkActivation();
+      }
       if (!suppressClickRef.current) return;
       clearPendingClick();
       event.preventDefault();
       event.stopPropagation();
     },
-    [clearPendingClick],
+    [clearPendingClick, clearPendingLinkActivation],
   );
 
   const onContextMenuCapture = useCallback(
