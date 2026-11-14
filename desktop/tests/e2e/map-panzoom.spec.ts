@@ -70,7 +70,9 @@ async function openMap(page: Page, viewport = LARGE_VIEWPORT) {
 
 async function openSalesJobs(page: Page) {
   await page.getByTestId("cofounder-map-sales").click();
-  await expect(page.getByTestId("cofounder-map-job-sales-lead-finding")).toBeVisible();
+  await expect(
+    page.getByTestId("cofounder-map-job-sales-lead-finding"),
+  ).toBeVisible();
 }
 
 async function openSalesLeadFinding(page: Page) {
@@ -142,7 +144,11 @@ async function findBlankCanvasPoint(page: Page) {
 async function dispatchWheel(
   page: Page,
   point: { x: number; y: number },
-  { deltaX = 0, deltaY, modifiers = 0 }: { deltaX?: number; deltaY: number; modifiers?: number },
+  {
+    deltaX = 0,
+    deltaY,
+    modifiers = 0,
+  }: { deltaX?: number; deltaY: number; modifiers?: number },
 ) {
   const session = await page.context().newCDPSession(page);
   try {
@@ -275,7 +281,10 @@ async function installDragFrameProbe(page: Page) {
           frameQueued = false;
           if (latestMoveAt === null) return;
           const elapsed = performance.now() - latestMoveAt;
-          probe.maxMoveToFrameMs = Math.max(probe.maxMoveToFrameMs ?? 0, elapsed);
+          probe.maxMoveToFrameMs = Math.max(
+            probe.maxMoveToFrameMs ?? 0,
+            elapsed,
+          );
         });
       },
       true,
@@ -356,7 +365,9 @@ test.describe("company map pan and zoom", () => {
 
   test("zooms for Ctrl and Cmd wheel input", async ({ page }) => {
     await openMap(page);
-    const pointer = await pointAt(page.getByTestId("cofounder-map-company-hub"));
+    const pointer = await pointAt(
+      page.getByTestId("cofounder-map-company-hub"),
+    );
 
     await dispatchWheel(page, pointer, { deltaY: -90, modifiers: 2 });
     const afterControl = await readCamera(page);
@@ -461,9 +472,8 @@ test.describe("company map pan and zoom", () => {
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     const pointerId = await page.evaluate(() => {
-      const value = (
-        window as Window & { __MAP_PANZOOM_POINTER_ID__?: number }
-      ).__MAP_PANZOOM_POINTER_ID__;
+      const value = (window as Window & { __MAP_PANZOOM_POINTER_ID__?: number })
+        .__MAP_PANZOOM_POINTER_ID__;
       if (typeof value !== "number") throw new Error("Expected a pointer ID");
       return value;
     });
@@ -478,7 +488,10 @@ test.describe("company map pan and zoom", () => {
         }),
       );
     }, pointerId);
-    await expect(viewport).not.toHaveAttribute("data-camera-interacting", "true");
+    await expect(viewport).not.toHaveAttribute(
+      "data-camera-interacting",
+      "true",
+    );
     await page.mouse.up();
 
     await page.mouse.move(start.x, start.y);
@@ -486,7 +499,10 @@ test.describe("company map pan and zoom", () => {
     await page.mouse.move(end.x, end.y, { steps: 3 });
     await expect(viewport).toHaveAttribute("data-camera-interacting", "true");
     await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-    await expect(viewport).not.toHaveAttribute("data-camera-interacting", "true");
+    await expect(viewport).not.toHaveAttribute(
+      "data-camera-interacting",
+      "true",
+    );
     await page.mouse.up();
   });
 
@@ -590,8 +606,12 @@ test.describe("company map pan and zoom", () => {
         topVisible: viewportBox.bottom - stageBox.top,
       };
     });
-    expect(Math.max(clamped.leftVisible, clamped.rightVisible)).toBeGreaterThanOrEqual(72);
-    expect(Math.max(clamped.topVisible, clamped.bottomVisible)).toBeGreaterThanOrEqual(72);
+    expect(
+      Math.max(clamped.leftVisible, clamped.rightVisible),
+    ).toBeGreaterThanOrEqual(72);
+    expect(
+      Math.max(clamped.topVisible, clamped.bottomVisible),
+    ).toBeGreaterThanOrEqual(72);
 
     await page.getByTestId("cofounder-map-fit").click();
     await waitForAnimations(page);
@@ -626,7 +646,10 @@ test.describe("company map pan and zoom", () => {
   }) => {
     await openMap(page, SLICE_ONE_VIEWPORT);
     const hub = page.getByTestId("cofounder-map-company-hub");
-    await dispatchWheel(page, await pointAt(hub), { deltaY: -120, modifiers: 2 });
+    await dispatchWheel(page, await pointAt(hub), {
+      deltaY: -120,
+      modifiers: 2,
+    });
     const cameraBeforeOpening = await readCamera(page);
     await openSalesLeadFinding(page);
     const window = page.getByTestId("fullmap-window");
@@ -682,7 +705,9 @@ test.describe("company map pan and zoom", () => {
     await installMap(page, { mapHome: false });
     await page.setViewportSize(SLICE_ONE_VIEWPORT);
     await page.goto("/#/");
-    await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("app-sidebar")).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByTestId("cofounder-company-map")).toHaveCount(0);
   });
 
@@ -692,7 +717,10 @@ test.describe("company map pan and zoom", () => {
     await openMap(page);
     await openSalesJobs(page);
     const sales = page.getByTestId("cofounder-map-sales");
-    await dispatchWheel(page, await pointAt(sales), { deltaY: -120, modifiers: 2 });
+    await dispatchWheel(page, await pointAt(sales), {
+      deltaY: -120,
+      modifiers: 2,
+    });
     await capture(page, "01-zoomed-sales");
 
     await page.getByRole("button", { name: "Zoom out" }).click();

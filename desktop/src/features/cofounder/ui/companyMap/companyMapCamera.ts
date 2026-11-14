@@ -21,7 +21,10 @@ export type CompanyMapRect = {
 };
 
 export function clampCompanyMapScale(scale: number): number {
-  return Math.min(COMPANY_MAP_MAX_SCALE, Math.max(COMPANY_MAP_MIN_SCALE, scale));
+  return Math.min(
+    COMPANY_MAP_MAX_SCALE,
+    Math.max(COMPANY_MAP_MIN_SCALE, scale),
+  );
 }
 
 /**

@@ -64,11 +64,17 @@ function centerOf(
   };
 }
 
-function distanceBetween(first: CompanyMapPoint, second: CompanyMapPoint): number {
+function distanceBetween(
+  first: CompanyMapPoint,
+  second: CompanyMapPoint,
+): number {
   return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
-function sameCamera(first: CompanyMapCamera, second: CompanyMapCamera): boolean {
+function sameCamera(
+  first: CompanyMapCamera,
+  second: CompanyMapCamera,
+): boolean {
   return (
     first.scale === second.scale && first.x === second.x && first.y === second.y
   );
@@ -139,8 +145,12 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     const height = stageElement.offsetHeight;
     const stage = {
       height,
-      left: viewportBounds.left + viewportElement.clientLeft + stageElement.offsetLeft,
-      top: viewportBounds.top + viewportElement.clientTop + stageElement.offsetTop,
+      left:
+        viewportBounds.left +
+        viewportElement.clientLeft +
+        stageElement.offsetLeft,
+      top:
+        viewportBounds.top + viewportElement.clientTop + stageElement.offsetTop,
       width,
     };
     const viewport = {
@@ -529,7 +539,10 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
 
       const gesture = pointerGestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
-      const delta = { x: point.x - gesture.start.x, y: point.y - gesture.start.y };
+      const delta = {
+        x: point.x - gesture.start.x,
+        y: point.y - gesture.start.y,
+      };
       if (
         !gesture.started &&
         Math.hypot(delta.x, delta.y) < CAMERA_DRAG_THRESHOLD
@@ -634,7 +647,8 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       beginInteraction();
       if (event.ctrlKey || event.metaKey) {
         zoomAt(
-          cameraRef.current.scale * Math.exp(-delta.y * WHEEL_SCALE_SENSITIVITY),
+          cameraRef.current.scale *
+            Math.exp(-delta.y * WHEEL_SCALE_SENSITIVITY),
           toPoint(event),
           toPoint(event),
           geometry,

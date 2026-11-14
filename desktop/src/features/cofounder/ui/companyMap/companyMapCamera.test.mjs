@@ -75,8 +75,12 @@ test("clamps a pan so a visible strip of the company remains in the viewport", (
   const mapTop = stage.top + clamped.y;
   const mapBottom = mapTop + stage.height * clamped.scale;
 
-  assert.ok(mapLeft <= viewport.left + viewport.width - COMPANY_MAP_MIN_VISIBLE_PX);
+  assert.ok(
+    mapLeft <= viewport.left + viewport.width - COMPANY_MAP_MIN_VISIBLE_PX,
+  );
   assert.ok(mapRight >= viewport.left + COMPANY_MAP_MIN_VISIBLE_PX);
-  assert.ok(mapTop <= viewport.top + viewport.height - COMPANY_MAP_MIN_VISIBLE_PX);
+  assert.ok(
+    mapTop <= viewport.top + viewport.height - COMPANY_MAP_MIN_VISIBLE_PX,
+  );
   assert.ok(mapBottom >= viewport.top + COMPANY_MAP_MIN_VISIBLE_PX);
 });
