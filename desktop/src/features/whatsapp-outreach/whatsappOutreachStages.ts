@@ -2,6 +2,7 @@ import {
   formatWhatsAppNumber,
   type WhatsAppContact,
   type WhatsAppStage,
+  type WhatsAppStageCounts,
 } from "./whatsappOutreachModels";
 
 export const WHATSAPP_PIPELINE_STAGES = [
@@ -99,4 +100,23 @@ export function isWhatsAppPipelineStage(
   stage: WhatsAppStage,
 ): stage is (typeof WHATSAPP_PIPELINE_STAGES)[number] {
   return (WHATSAPP_PIPELINE_STAGES as readonly WhatsAppStage[]).includes(stage);
+}
+
+/**
+ * The number a Pipeline column or pile shows. While searching it is the matching loaded
+ * contacts. Otherwise it is the relay's true count over every contact, which the loaded list
+ * may not hold in full; `contacted` also takes the contacts that never reached anyone, as the
+ * Contacted column lists them. Without counts (an older relay, still loading, or failed) it
+ * falls back to the loaded contacts of the stage.
+ */
+export function pipelineStageTotal(input: {
+  stage: WhatsAppStage;
+  loadedCount: number;
+  searching: boolean;
+  counts: WhatsAppStageCounts | null | undefined;
+}): number {
+  const { stage, loadedCount, searching, counts } = input;
+  if (searching || !counts) return loadedCount;
+  const counted = counts.stageCounts[stage] ?? 0;
+  return stage === "contacted" ? counted + counts.failedNotContacted : counted;
 }

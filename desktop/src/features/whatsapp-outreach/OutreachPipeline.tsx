@@ -25,12 +25,15 @@ import {
   useWhatsAppCommand,
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
+  useWhatsAppStageCountsQuery,
   useWhatsAppStatusQuery,
 } from "./whatsappOutreachQueries";
+import { PipelineRevealList } from "./PipelineRevealList";
 import { WhatsAppSendHealthBanner } from "./WhatsAppSendHealthNotice";
 import { canManageWhatsAppContact } from "./whatsappContactAccess";
 import {
   isWhatsAppPipelineStage,
+  pipelineStageTotal,
   WHATSAPP_MANUAL_STAGES,
   WHATSAPP_PIPELINE_STAGES,
   WHATSAPP_STAGE_LABELS,
@@ -286,6 +289,8 @@ export function OutreachPipeline({
   const { activeCommunity } = useCommunities();
   const businessName = activeCommunity?.name.trim() || "This business";
   const contactsQuery = useWhatsAppContactsQuery();
+  // A failed or unavailable count leaves `null`; the columns then show the loaded numbers.
+  const stageCounts = useWhatsAppStageCountsQuery().data ?? null;
   const draftsQuery = useWhatsAppDraftsQuery();
   const statusQuery = useWhatsAppStatusQuery();
   const business = useBusinessRecords({ createIfMissing: false });
@@ -333,6 +338,36 @@ export function OutreachPipeline({
   );
   const collapsedStages = ["no_thanks", "stopped", "not_on_whatsapp"] as const;
   const records = customerRecords.data ?? [];
+  const stageTotal = (stage: WhatsAppStage, loadedCount: number) =>
+    pipelineStageTotal({
+      stage,
+      loadedCount,
+      searching: search.length > 0,
+      counts: stageCounts,
+    });
+  const renderPipelineCard = (contact: WhatsAppContact) => {
+    const businessIdentity = resolveOutreachContactIdentity(
+      contact,
+      business.records,
+    );
+    const record = customerRecordForContact(contact, businessIdentity, records);
+    return (
+      <PipelineCard
+        canEdit={canEdit}
+        contact={contact}
+        customerStep={customerRecordNextStep(record)}
+        hasDraft={draftIds.has(contact.waId)}
+        identity={businessIdentity}
+        key={contact.waId}
+        onMove={(selectedContact, nextStage) =>
+          void move(selectedContact, nextStage)
+        }
+        onOpenChat={onOpenChat}
+        onOpenLead={onOpenLead}
+        busy={busyWaId === contact.waId}
+      />
+    );
+  };
 
   async function move(contact: WhatsAppContact, stage: WhatsAppStage) {
     if (!canEdit || busyWaId) return;
@@ -443,6 +478,12 @@ export function OutreachPipeline({
           Loading pipeline…
         </p>
       ) : null}
+      {stageCounts && stageCounts.totalContacts > contacts.length ? (
+        <p className="c3wa-desk-empty" role="status">
+          Showing the latest {contacts.length} of {stageCounts.totalContacts}{" "}
+          contacts.
+        </p>
+      ) : null}
       <section
         className="c3wa-pipeline-columns"
         aria-label="WhatsApp pipeline stages"
@@ -466,36 +507,16 @@ export function OutreachPipeline({
                 <h2 id={`pipeline-heading-${stage}`}>
                   {WHATSAPP_STAGE_LABELS[stage]}
                 </h2>
-                <span>{stageContacts.length}</span>
+                <span>{stageTotal(stage, stageContacts.length)}</span>
               </header>
               {stageContacts.length ? (
-                stageContacts.map((contact) => {
-                  const businessIdentity = resolveOutreachContactIdentity(
-                    contact,
-                    business.records,
-                  );
-                  const record = customerRecordForContact(
-                    contact,
-                    businessIdentity,
-                    records,
-                  );
-                  return (
-                    <PipelineCard
-                      canEdit={canEdit}
-                      contact={contact}
-                      customerStep={customerRecordNextStep(record)}
-                      hasDraft={draftIds.has(contact.waId)}
-                      identity={businessIdentity}
-                      key={contact.waId}
-                      onMove={(selectedContact, nextStage) =>
-                        void move(selectedContact, nextStage)
-                      }
-                      onOpenChat={onOpenChat}
-                      onOpenLead={onOpenLead}
-                      busy={busyWaId === contact.waId}
-                    />
-                  );
-                })
+                <PipelineRevealList
+                  itemKey={(contact) => contact.waId}
+                  items={stageContacts}
+                  resetKey={search}
+                >
+                  {renderPipelineCard}
+                </PipelineRevealList>
               ) : (
                 <p className="c3wa-pipeline-empty-stage">
                   No contacts here yet
@@ -521,35 +542,15 @@ export function OutreachPipeline({
             >
               <summary>
                 <span>{WHATSAPP_STAGE_LABELS[stage]}</span>
-                <b>{stageContacts.length}</b>
+                <b>{stageTotal(stage, stageContacts.length)}</b>
               </summary>
-              {stageContacts.map((contact) => {
-                const businessIdentity = resolveOutreachContactIdentity(
-                  contact,
-                  business.records,
-                );
-                const record = customerRecordForContact(
-                  contact,
-                  businessIdentity,
-                  records,
-                );
-                return (
-                  <PipelineCard
-                    canEdit={canEdit}
-                    contact={contact}
-                    customerStep={customerRecordNextStep(record)}
-                    hasDraft={draftIds.has(contact.waId)}
-                    identity={businessIdentity}
-                    key={contact.waId}
-                    onMove={(selectedContact, nextStage) =>
-                      void move(selectedContact, nextStage)
-                    }
-                    onOpenChat={onOpenChat}
-                    onOpenLead={onOpenLead}
-                    busy={busyWaId === contact.waId}
-                  />
-                );
-              })}
+              <PipelineRevealList
+                itemKey={(contact) => contact.waId}
+                items={stageContacts}
+                resetKey={search}
+              >
+                {renderPipelineCard}
+              </PipelineRevealList>
             </details>
           );
         })}
@@ -563,27 +564,32 @@ export function OutreachPipeline({
             <details key={stage}>
               <summary>
                 {WHATSAPP_STAGE_LABELS[stage]}{" "}
-                <span>{stageContacts.length}</span>
+                <span>{stageTotal(stage, stageContacts.length)}</span>
               </summary>
-              {stageContacts.map((contact) => (
-                <PipelineCard
-                  canEdit={canEdit && stage === "no_thanks"}
-                  contact={contact}
-                  customerStep={null}
-                  hasDraft={draftIds.has(contact.waId)}
-                  identity={resolveOutreachContactIdentity(
-                    contact,
-                    business.records,
-                  )}
-                  key={contact.waId}
-                  onMove={(selectedContact, nextStage) =>
-                    void move(selectedContact, nextStage)
-                  }
-                  onOpenChat={onOpenChat}
-                  onOpenLead={onOpenLead}
-                  busy={busyWaId === contact.waId}
-                />
-              ))}
+              <PipelineRevealList
+                itemKey={(contact) => contact.waId}
+                items={stageContacts}
+                resetKey={search}
+              >
+                {(contact) => (
+                  <PipelineCard
+                    canEdit={canEdit && stage === "no_thanks"}
+                    contact={contact}
+                    customerStep={null}
+                    hasDraft={draftIds.has(contact.waId)}
+                    identity={resolveOutreachContactIdentity(
+                      contact,
+                      business.records,
+                    )}
+                    onMove={(selectedContact, nextStage) =>
+                      void move(selectedContact, nextStage)
+                    }
+                    onOpenChat={onOpenChat}
+                    onOpenLead={onOpenLead}
+                    busy={busyWaId === contact.waId}
+                  />
+                )}
+              </PipelineRevealList>
             </details>
           );
         })}

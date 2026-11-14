@@ -140,7 +140,7 @@ test.describe("WhatsApp work area dock", () => {
     );
   });
 
-  test("WhatsApp chats opens from channel and DM headers and the dock add menu", async ({
+  test("WhatsApp chats opens from the channel header and the dock add menu, and a DM header has no WhatsApp trigger", async ({
     page,
   }) => {
     await installWhatsAppMockBridge(page);
@@ -167,8 +167,9 @@ test.describe("WhatsApp work area dock", () => {
     ).toBeVisible();
 
     await gotoWhatsAppScreen(page, "/channels/e2e-whatsapp-aya-dm");
-    await page.getByTestId("channel-whatsapp-chats-trigger").click();
-    await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
     await expect(page.getByTestId("chat-title")).toHaveText("Aya");
+    await expect(
+      page.getByTestId("channel-whatsapp-chats-trigger"),
+    ).toHaveCount(0);
   });
 });

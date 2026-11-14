@@ -5101,3 +5101,212 @@ async fn a_failed_send_with_the_meta_undeliverable_code_is_not_on_whatsapp_until
     );
     assert!(refusal.contains("cannot be changed"), "{refusal}");
 }
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page() {
+    // GUARD: the desktop used to ask for one page of 200 and count its stages, so a community
+    // with 429 contacts read 62 Contacted instead of 174. Paging must reach every contact
+    // exactly once, and the counts must come from all of them whatever the page size.
+    const TOTAL: usize = 450;
+    let fx = fixture().await;
+    for i in 0..TOTAL {
+        let wa = format!("2782{i:07}");
+        match i % 5 {
+            // Never messaged.
+            0 => {
+                fx.state
+                    .db
+                    .whatsapp_ensure_contact(fx.community(), &wa, None)
+                    .await
+                    .expect("contact");
+            }
+            // Opener delivered.
+            1 => seed_opener(&fx, &wa, &format!("wamid.PAGE-{i}"), "delivered", None).await,
+            // Opener failed for a reason other than "not on WhatsApp".
+            2 => {
+                seed_opener(
+                    &fx,
+                    &wa,
+                    &format!("wamid.PAGE-{i}"),
+                    "failed",
+                    Some("131049"),
+                )
+                .await
+            }
+            // Opener failed because the number is not on WhatsApp.
+            3 => {
+                seed_opener(
+                    &fx,
+                    &wa,
+                    &format!("wamid.PAGE-{i}"),
+                    "failed",
+                    Some("131026"),
+                )
+                .await
+            }
+            // They wrote first.
+            _ => {
+                fx.state
+                    .db
+                    .whatsapp_ensure_contact(fx.community(), &wa, None)
+                    .await
+                    .expect("contact");
+                fx.state
+                    .db
+                    .whatsapp_touch_inbound(
+                        fx.community(),
+                        &wa,
+                        base() + Duration::hours((i / 50) as i64),
+                    )
+                    .await
+                    .expect("inbound");
+            }
+        }
+    }
+    // Fifty contacts share each creation time, so the `wa_id` tie-break decides their order.
+    sqlx::query(
+        "UPDATE whatsapp_contacts \
+         SET created_at = $2::timestamptz + (substr(wa_id, 5)::bigint / 50) * interval '1 hour' \
+         WHERE community_id = $1",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(base())
+    .execute(&fx.pool)
+    .await
+    .expect("share creation times");
+    let now = Utc::now();
+
+    // A cursor this relay did not issue is refused, never read as the first page.
+    let refused = crate::api::whatsapp::contacts_page_view(
+        &fx.state,
+        fx.community(),
+        200,
+        Some("not-a-cursor"),
+        false,
+        now,
+        true,
+    )
+    .await
+    .expect_err("a malformed cursor is a 400");
+    assert_eq!(refused.0, StatusCode::BAD_REQUEST);
+
+    // (a) Paging through `nextCursor` returns every contact exactly once, in list order.
+    let mut seen: Vec<String> = Vec::new();
+    let mut listed_stages: HashMap<String, u64> = HashMap::new();
+    let mut listed_failed_not_contacted = 0u64;
+    let mut before: Option<String> = None;
+    let mut pages = 0;
+    loop {
+        let page = crate::api::whatsapp::contacts_page_view(
+            &fx.state,
+            fx.community(),
+            200,
+            before.as_deref(),
+            false,
+            now,
+            true,
+        )
+        .await
+        .expect("contacts page");
+        assert!(
+            page.get("stageCounts").is_none(),
+            "counts are opt in: {page}"
+        );
+        for contact in page["contacts"].as_array().expect("contacts") {
+            seen.push(contact["waId"].as_str().expect("waId").to_owned());
+            let stage = contact["stage"].as_str().expect("stage").to_owned();
+            if stage == "none" && contact["lastOutboundState"] == "failed" {
+                listed_failed_not_contacted += 1;
+            }
+            *listed_stages.entry(stage).or_insert(0) += 1;
+        }
+        pages += 1;
+        assert!(pages <= 3, "450 contacts fit three pages of 200");
+        match page["nextCursor"].as_str() {
+            Some(cursor) => before = Some(cursor.to_owned()),
+            None => break,
+        }
+    }
+    assert_eq!(pages, 3);
+    assert_eq!(seen.len(), TOTAL);
+    assert_eq!(
+        seen.iter().collect::<std::collections::HashSet<_>>().len(),
+        TOTAL,
+        "no contact appears on two pages"
+    );
+    let expected_order: Vec<String> = sqlx::query_scalar(
+        "SELECT wa_id FROM whatsapp_contacts WHERE community_id = $1 \
+         ORDER BY GREATEST(last_inbound_at, last_outbound_at, created_at) DESC, wa_id DESC",
+    )
+    .bind(fx.community().as_uuid())
+    .fetch_all(&fx.pool)
+    .await
+    .expect("expected order");
+    assert_eq!(seen, expected_order);
+
+    // (b) Counts cover all 450 contacts however small the page, and equal the full list.
+    let counted = crate::api::whatsapp::contacts_page_view(
+        &fx.state,
+        fx.community(),
+        1,
+        None,
+        true,
+        now,
+        true,
+    )
+    .await
+    .expect("counted contacts");
+    assert_eq!(counted["contacts"].as_array().map(Vec::len), Some(1));
+    assert!(counted["nextCursor"].is_string());
+    assert_eq!(counted["totalContacts"], TOTAL);
+    assert_eq!(counted["countsTruncated"], false);
+    let stage_counts = counted["stageCounts"].as_object().expect("stageCounts");
+    let from_counts: HashMap<String, u64> = stage_counts
+        .iter()
+        .map(|(stage, n)| (stage.clone(), n.as_u64().expect("count")))
+        .collect();
+    assert_eq!(from_counts.values().sum::<u64>(), TOTAL as u64);
+    assert_eq!(from_counts, listed_stages);
+    assert_eq!(
+        counted["failedNotContacted"].as_u64(),
+        Some(listed_failed_not_contacted)
+    );
+    assert_eq!(listed_failed_not_contacted, (TOTAL / 5) as u64);
+    for stage in ["contacted", "replied", "not_on_whatsapp"] {
+        assert_eq!(from_counts[stage], (TOTAL / 5) as u64, "{stage}");
+    }
+
+    // A legacy caller (no queued capability) gets the same totals.
+    let legacy = crate::api::whatsapp::contacts_page_view(
+        &fx.state,
+        fx.community(),
+        1,
+        None,
+        true,
+        now,
+        false,
+    )
+    .await
+    .expect("legacy counts");
+    assert_eq!(legacy["totalContacts"], TOTAL);
+
+    // The bound: chunk edges do not change the numbers, and a cap below the community size
+    // counts exactly that many and says the numbers are a floor.
+    let chunked = super::desk::stage_counts_bounded(&fx.state, fx.community(), true, 450, 100)
+        .await
+        .expect("chunked counts");
+    assert_eq!(chunked.total, TOTAL as u64);
+    assert!(
+        !chunked.truncated,
+        "a cap equal to the size is not a truncation"
+    );
+    let expected_by_stage: std::collections::BTreeMap<String, u64> =
+        from_counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    assert_eq!(chunked.by_stage, expected_by_stage);
+    let capped = super::desk::stage_counts_bounded(&fx.state, fx.community(), true, 300, 100)
+        .await
+        .expect("capped counts");
+    assert_eq!(capped.total, 300);
+    assert!(capped.truncated);
+}
