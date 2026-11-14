@@ -32,7 +32,11 @@ export function BusinessTabs({
     ["pipeline", "Pipeline", "/pipeline"],
   ] as const;
   return (
-    <nav aria-label="Business" className="w10-tabs">
+    <nav
+      aria-label="Business"
+      className="w10-tabs"
+      data-map-canvas-same-desk="true"
+    >
       {tabs.map(([id, label, path]) => (
         <a
           aria-current={active === id ? "page" : undefined}
@@ -51,10 +55,12 @@ export function W10Heading({
   title,
   description,
   actions,
+  sameDeskActions = false,
 }: {
   title: string;
   description?: string;
   actions?: React.ReactNode;
+  sameDeskActions?: boolean;
 }) {
   return (
     <header className="w10-page-heading">
@@ -62,7 +68,14 @@ export function W10Heading({
         <h1>{title}</h1>
         {description ? <p>{description}</p> : null}
       </div>
-      {actions ? <div className="w10-heading-actions">{actions}</div> : null}
+      {actions ? (
+        <div
+          className="w10-heading-actions"
+          data-map-canvas-same-desk={sameDeskActions ? "true" : undefined}
+        >
+          {actions}
+        </div>
+      ) : null}
     </header>
   );
 }

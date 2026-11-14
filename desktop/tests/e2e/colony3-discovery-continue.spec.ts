@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 import { waitForAnimations } from "../helpers/animations";
+import { answerFirstSearchWordOnly } from "./helpers/discoveryFirstWord";
 
 const PROOF_DIR =
   process.env.COLONY3_DISCOVERY_CONTINUE_PROOF_DIR ??
@@ -156,6 +157,7 @@ async function installDiscoveryFixture(page: Page) {
       };
     };
   }, EXISTING_LEAD_NAMES);
+  await answerFirstSearchWordOnly(page);
 }
 
 async function openDiscovery(page: Page) {
@@ -389,6 +391,7 @@ test("the chosen place runs out: one clean question, and one yes continues throu
       };
     };
   });
+  await answerFirstSearchWordOnly(page);
   await installMockBridge(page, REAL_RUNNER);
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("w10-discovery-page")).toBeVisible();

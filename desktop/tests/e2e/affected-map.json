@@ -48,6 +48,7 @@
       "fullmap-slice1.spec.ts",
       "fullmap-slice2.spec.ts",
       "fullmap-slice3a.spec.ts",
+      "map-panzoom.spec.ts",
       "map-shell.spec.ts",
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
@@ -131,6 +132,7 @@
         "fullmap-slice1.spec.ts",
         "fullmap-slice2.spec.ts",
         "fullmap-slice3a.spec.ts",
+        "map-panzoom.spec.ts",
         "workspace-header-icon.spec.ts",
         "cofounder-customer-record.spec.ts",
         "money-rails-pay-ui.spec.ts",
@@ -146,6 +148,7 @@
       "paths": ["desktop/src/features/map-shell/**"],
       "specs": [
         "map-shell.spec.ts",
+        "map-channels-menu.spec.ts",
         "fullmap-slice1.spec.ts",
         "fullmap-slice2.spec.ts",
         "fullmap-slice3a.spec.ts"
@@ -514,6 +517,7 @@
       "specs": [
         "whatsapp-outreach-desk.spec.ts",
         "whatsapp-outreach-desk.visual.spec.ts",
+        "outreach-desk-map.visual.spec.ts",
         "whatsapp-outreach.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",

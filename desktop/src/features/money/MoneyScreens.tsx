@@ -368,7 +368,11 @@ function MoneyNavigation({
   ] as const;
   return (
     <div className="b3-tabs-row">
-      <nav aria-label="Money views" className="b3-tabs">
+      <nav
+        aria-label="Money views"
+        className="b3-tabs"
+        data-map-canvas-same-desk="true"
+      >
         {tabs.map(([id, label, href]) => (
           <a
             aria-current={section === id ? "page" : undefined}

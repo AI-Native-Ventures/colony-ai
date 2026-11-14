@@ -203,6 +203,20 @@ export async function seedCofounderTheme(
 ) {
   await page.addInitScript(
     ({ name, pubkey, relayUrl }) => {
+      // The profile is intentionally persistent for browser locking. Clear
+      // every theme record so its newer outbox revision cannot override the
+      // proof's requested theme from an earlier test.
+      for (const key of Object.keys(localStorage)) {
+        if (
+          key === "buzz-theme-cache" ||
+          key.startsWith("colony.appearance.v1:") ||
+          key.startsWith("buzz-community-theme.v1:") ||
+          key.startsWith("buzz-community-theme-outbox.v1:") ||
+          key.startsWith("buzz-community-theme-migrated.v1:")
+        ) {
+          localStorage.removeItem(key);
+        }
+      }
       const preference = {
         version: 1,
         theme: name,
@@ -295,13 +309,16 @@ export async function seedCompanyMapWhatsApp(
   page: import("@playwright/test").Page,
   outreachChannelId: string | null,
   includeCallRequest = true,
+  connected = true,
 ) {
   await page.addInitScript(
     ({
       channelId,
+      connected,
       includeCallRequest,
     }: {
       channelId: string | null;
+      connected: boolean;
       includeCallRequest: boolean;
     }) => {
       const testWindow = window as Window & {
@@ -318,7 +335,7 @@ export async function seedCompanyMapWhatsApp(
           request.body?.what === "status"
         ) {
           return {
-            connected: true,
+            connected,
             connectionId: "e2e-company-map-whatsapp",
             displayPhoneNumber: "+27 61 534 0627",
             verifiedName: "Horizon Labs",
@@ -366,6 +383,6 @@ export async function seedCompanyMapWhatsApp(
         return {};
       };
     },
-    { channelId: outreachChannelId, includeCallRequest },
+    { channelId: outreachChannelId, connected, includeCallRequest },
   );
 }

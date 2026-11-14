@@ -31,6 +31,7 @@ import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
 import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
 import { useWhatsAppContactsQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import { MapOutreachDeskHeader } from "@/features/whatsapp-outreach/MapOutreachDesk";
 import { requestChannelSearch } from "@/shared/lib/channelSearchRequest";
 import type {
   Channel,
@@ -84,6 +85,7 @@ type ChannelScreenHeaderProps = {
   headerEndActions?: React.ReactNode;
   isAddBotOpen?: boolean;
   isJoining?: boolean;
+  mapOutreachDesk?: boolean;
   members?: ChannelMember[];
   showHeaderContent?: boolean;
   transparentChrome?: boolean;
@@ -108,6 +110,7 @@ export function ChannelScreenHeader({
   headerEndActions,
   isAddBotOpen,
   isJoining = false,
+  mapOutreachDesk = false,
   members = [],
   onAddBotOpenChange,
   onOutreachTabChange,
@@ -273,6 +276,17 @@ export function ChannelScreenHeader({
   ) : (
     headerEndActions
   );
+
+  if (mapOutreachDesk && activeChannel) {
+    return (
+      <MapOutreachDeskHeader
+        actions={actions}
+        active={outreachTab ?? "needs-you"}
+        chromeWrapperRef={chromeWrapperRef}
+        outreachChannelId={activeChannel.id}
+      />
+    );
+  }
 
   const leading = isDm ? (
     isGroupDm ? (

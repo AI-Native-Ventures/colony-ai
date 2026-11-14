@@ -1,11 +1,5 @@
-import {
-  Fragment,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
-import type { FocusEvent, PointerEvent, ReactNode } from "react";
+import { Fragment, useEffect, useRef } from "react";
+import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
@@ -37,6 +31,7 @@ import {
 } from "@/features/cofounder/companyMapLayout";
 import {
   companyMapJobKey,
+  companyMapWhatsAppSearch,
   companyMapWindowSearch,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
@@ -47,6 +42,7 @@ import {
 } from "@/features/cofounder/companyMapConnectorState";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
+import { useCompanyMapCamera } from "./useCompanyMapCamera";
 import { useCompanyMapDesktopOpenPart } from "./useCompanyMapDesktopOpenPart";
 import type {
   CompanyMapBoardProps,
@@ -310,11 +306,12 @@ function JobLink({
   const destination = getCompanyMapJobRoute(functionId, jobName);
   const fallback = isCompanyMapJobFallback(functionId, jobName);
   const mapWindowSearch = companyMapWindowSearch(functionId, jobName);
+  const mapJob = mapWindowSearch?.mapJob;
   const common = {
     "aria-label": fallback
       ? `${jobName}. No screen for this job yet. Opens ${FUNCTION_DETAILS[functionId].name}.`
       : destination.kind === "whatsapp" && !whatsappChannelId
-        ? `${jobName}. WhatsApp is not set up. Opens ${FUNCTION_DETAILS[functionId].name}.`
+        ? `${jobName}. WhatsApp is not set up. Opens Outreach setup.`
         : count > 0
           ? `${jobName}, ${countLabel(count)}`
           : jobName,
@@ -326,7 +323,6 @@ function JobLink({
     onMouseEnter,
     onMouseLeave,
   };
-
   if (destination.kind === "app") {
     return (
       <Link
@@ -360,24 +356,34 @@ function JobLink({
         {...common}
         className="company-map-job-link"
         params={{ channelId: whatsappChannelId }}
+        search={companyMapWhatsAppSearch(mapJob, destination.tab, "channel")}
         style={style}
-        search={{
-          mapJob: mapWindowSearch?.mapJob,
-          whatsappDeskTab: destination.tab,
-        }}
         to="/channels/$channelId"
       >
         {children}
       </Link>
     );
   }
-  const functionIdForLink =
+  if (destination.kind === "whatsapp") {
+    return (
+      <Link
+        {...common}
+        className="company-map-job-link"
+        search={companyMapWhatsAppSearch(mapJob, destination.tab, "setup")}
+        style={style}
+        to="/leads"
+      >
+        {children}
+      </Link>
+    );
+  }
+  const partId =
     destination.kind === "part" ? destination.functionId : functionId;
   return (
     <Link
       {...common}
       className="company-map-job-link"
-      params={{ function: functionIdForLink }}
+      params={{ function: partId }}
       search={mapWindowSearch}
       style={style}
       to="/company/function/$function"
@@ -871,8 +877,6 @@ function CompanyMapDesktop({
   onMapWindowClose,
   onMapWindowFit,
 }: CompanyMapBoardProps) {
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const {
     activePart: interactiveActivePart,
     blurPart,
@@ -884,6 +888,24 @@ function CompanyMapDesktop({
   } = useCompanyMapDesktopOpenPart();
   const activePart = mapWindowJob?.functionId ?? interactiveActivePart;
   const mapWindowOpen = mapWindowJob !== null;
+  const {
+    camera,
+    fitCamera,
+    onClickCapture,
+    onContextMenuCapture,
+    onDragStartCapture,
+    onKeyDown: onCameraKeyDown,
+    onKeyUp: onCameraKeyUp,
+    onLostPointerCapture,
+    onPointerCancel,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onWheel,
+    stageRef,
+    viewportRef,
+    zoomCameraBy,
+  } = useCompanyMapCamera({ disabled: mapWindowOpen });
   const wasMapWindowOpen = useRef(mapWindowOpen);
   useEffect(() => {
     if (wasMapWindowOpen.current && !mapWindowOpen) {
@@ -891,60 +913,6 @@ function CompanyMapDesktop({
     }
     wasMapWindowOpen.current = mapWindowOpen;
   }, [clearOpenPart, mapWindowOpen]);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    pointerId: number;
-    x: number;
-    y: number;
-    pan: { x: number; y: number };
-  } | null>(null);
-  const suppressClickRef = useRef(false);
-
-  function setBoardZoom(next: number) {
-    const bounded = Math.min(1.3, Math.max(0.7, next));
-    setZoom(bounded);
-    if (bounded <= 1) setPan({ x: 0, y: 0 });
-  }
-
-  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (
-      mapWindowOpen ||
-      zoom <= 1 ||
-      event.button !== 0 ||
-      (event.target instanceof HTMLElement &&
-        event.target.closest("button, a, [data-map-control]"))
-    ) {
-      return;
-    }
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.preventDefault();
-    suppressClickRef.current = false;
-    dragRef.current = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      pan,
-    };
-  }
-
-  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) {
-      suppressClickRef.current = true;
-    }
-    const maxX = (COMPANY_MAP_SIZE.width * (zoom - 1)) / 2;
-    const maxY = (COMPANY_MAP_SIZE.height * (zoom - 1)) / 2;
-    setPan({
-      x: Math.max(-maxX, Math.min(maxX, drag.pan.x + event.clientX - drag.x)),
-      y: Math.max(-maxY, Math.min(maxY, drag.pan.y + event.clientY - drag.y)),
-    });
-  }
-
-  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
-  }
-
   const mapWindowPart = mapWindowJob
     ? partPosition(mapWindowJob.functionId)
     : null;
@@ -955,7 +923,7 @@ function CompanyMapDesktop({
   const stageStyle: StageStyle = {
     "--company-map-transform": mapWindowPart
       ? `translate(${(mapWindowSide === -1 ? 1316 : 84) - mapWindowPart.x + (mapWindowSide === -1 ? trailDepth : -trailDepth) * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
-      : `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+      : `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
   };
   const jobs = activePart
     ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => ({
@@ -992,13 +960,14 @@ function CompanyMapDesktop({
         <div
           aria-label={`${companyName} company map`}
           className="company-map-viewport"
+          data-map-camera-wheel-owner={mapWindowOpen ? undefined : "true"}
+          data-testid="cofounder-map-viewport"
           role="group"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: This application map implements the documented keyboard panning and zooming controls.
+          tabIndex={0}
+          onClickCapture={onClickCapture}
           onClick={(event) => {
             if (mapWindowOpen) return;
-            if (suppressClickRef.current) {
-              suppressClickRef.current = false;
-              return;
-            }
             if (
               event.target === event.currentTarget ||
               event.target ===
@@ -1007,7 +976,10 @@ function CompanyMapDesktop({
               clearOpenPart();
             }
           }}
+          onContextMenuCapture={onContextMenuCapture}
+          onDragStartCapture={onDragStartCapture}
           onKeyDown={(event) => {
+            if (onCameraKeyDown(event)) return;
             if (event.key !== "Escape") return;
             if (mapWindowOpen) {
               onMapWindowClose?.();
@@ -1015,11 +987,14 @@ function CompanyMapDesktop({
             }
             clearOpenPart();
           }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          data-zoomed={zoom > 1}
+          onKeyUp={onCameraKeyUp}
+          onLostPointerCapture={onLostPointerCapture}
+          onPointerCancel={onPointerCancel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onWheel={onWheel}
+          data-zoomed={camera.scale > 1}
           data-map-window-open={mapWindowOpen ? "true" : undefined}
           data-map-window-side={
             mapWindowSide === -1
@@ -1028,7 +1003,7 @@ function CompanyMapDesktop({
                 ? "right"
                 : undefined
           }
-          ref={stageRef}
+          ref={viewportRef}
         >
           <div
             aria-hidden={mapWindowOpen ? true : undefined}
@@ -1037,6 +1012,7 @@ function CompanyMapDesktop({
             data-map-window-open={mapWindowOpen ? "true" : undefined}
             data-testid="cofounder-map-stage"
             inert={mapWindowOpen ? true : undefined}
+            ref={stageRef}
             style={stageStyle}
           >
             <MapConnectors
@@ -1144,7 +1120,7 @@ function CompanyMapDesktop({
                   onMapWindowClose?.();
                   return;
                 }
-                setBoardZoom(zoom - 0.15);
+                zoomCameraBy(-0.15);
               }}
               type="button"
             >
@@ -1162,8 +1138,7 @@ function CompanyMapDesktop({
                   onMapWindowClose?.();
                   return;
                 }
-                setBoardZoom(1);
-                setPan({ x: 0, y: 0 });
+                fitCamera();
               }}
               type="button"
             >
@@ -1171,7 +1146,7 @@ function CompanyMapDesktop({
             </button>
             <button
               aria-label="Zoom in"
-              onClick={() => setBoardZoom(zoom + 0.15)}
+              onClick={() => zoomCameraBy(0.15)}
               type="button"
             >
               +
@@ -1183,7 +1158,7 @@ function CompanyMapDesktop({
         </div>
       </div>
       <span className="sr-only" data-testid="cofounder-map-zoom-level">
-        {Math.round(zoom * 100)} percent
+        {Math.round(camera.scale * 100)} percent
       </span>
     </div>
   );

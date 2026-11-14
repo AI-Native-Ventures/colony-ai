@@ -1149,8 +1149,7 @@
   background: var(--c3l-wash);
 }
 
-.c3l-tabs a,
-.c3l-tabs > span {
+.c3l-tabs a {
   display: inline-flex;
   min-height: 2.5rem;
   align-items: center;
@@ -1162,10 +1161,6 @@
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
-}
-
-.c3l-tab-placeholder {
-  cursor: default;
 }
 
 .c3l-tabs a[aria-current="page"] {

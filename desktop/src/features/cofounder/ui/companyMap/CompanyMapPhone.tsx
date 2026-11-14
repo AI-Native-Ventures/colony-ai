@@ -205,11 +205,15 @@ function PhoneJobLink({
 }) {
   const route = getCompanyMapJobRoute(functionId, jobName);
   const fallback = isCompanyMapJobFallback(functionId, jobName);
+  const retainsLegacyOutreachLeads =
+    functionId === "sales" && jobName === "Outreach";
   const mapWindowSearch = companyMapWindowSearch(functionId, jobName);
   const testProps = {
     "aria-label": fallback
       ? `${jobName}. No screen for this job yet. Opens ${FUNCTION_DETAILS[functionId].name}.`
-      : route.kind === "whatsapp" && !whatsappChannelId
+      : route.kind === "whatsapp" &&
+          !whatsappChannelId &&
+          !retainsLegacyOutreachLeads
         ? `${jobName}. WhatsApp is not set up. Opens ${FUNCTION_DETAILS[functionId].name}.`
         : count > 0
           ? `${jobName}, ${countLabel(count)}`
@@ -217,6 +221,20 @@ function PhoneJobLink({
     "data-job": companyMapJobKey(functionId, jobName),
     "data-testid": `cofounder-map-phone-job-${functionId}-${jobName.toLowerCase().replaceAll(" ", "-")}`,
   };
+  // The phone map retains its existing Leads destination. The joined desk is
+  // only used by the desktop canvas shell.
+  if (retainsLegacyOutreachLeads) {
+    return (
+      <Link
+        {...testProps}
+        className="company-map-job-link"
+        search={mapWindowSearch}
+        to="/leads"
+      >
+        {children}
+      </Link>
+    );
+  }
   if (route.kind === "app") {
     return (
       <Link

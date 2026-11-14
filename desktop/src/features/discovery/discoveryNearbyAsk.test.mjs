@@ -89,9 +89,16 @@ function place(area, n) {
   };
 }
 
+/**
+ * The campaign's first search word. These tests are about areas, so Maps
+ * lists businesses for that word only and nothing for the type's other words.
+ */
+const FIRST_WORD = "Real Estate Agents and Brokers";
+
 /** One 20-place page of an area's list, as the relay returns it. */
 function areaPage(request, listed = LISTED) {
-  const total = listed[request.location] ?? 0;
+  const total =
+    request.query === FIRST_WORD ? (listed[request.location] ?? 0) : 0;
   const from = request.skip;
   const count = Math.max(0, Math.min(20, total - from));
   return {
@@ -164,7 +171,9 @@ function areasAsked(log) {
 /** Page offsets that returned businesses for one area, in the order asked. */
 function pagesAsked(log, area) {
   return log.searches
-    .filter((request) => request.location === area)
+    .filter(
+      (request) => request.location === area && request.query === FIRST_WORD,
+    )
     .map((request) => request.skip);
 }
 
@@ -232,8 +241,12 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
     [DURBAN, UMHLANGA, PINETOWN],
     "Ballito is next, but no page was fetched there, so it is not listed",
   );
+  // Pages that listed businesses. Each area also has one empty page for each
+  // of the type's other search words, which these tests give no results.
   assert.deepEqual(
-    paused.runLog.map((entry) => entry.area),
+    paused.runLog
+      .filter((entry) => entry.placesReturned > 0)
+      .map((entry) => entry.area),
     [
       ...Array(6).fill(DURBAN),
       ...Array(2).fill(UMHLANGA),
@@ -251,7 +264,14 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
   assert.equal(done.status, "complete");
   assert.equal(done.endReason, "target_reached");
   assert.equal(done.count, 200);
-  assert.deepEqual(areasAsked(log), [BALLITO]);
+  // The approved results ran out before Pinetown's other search words were
+  // asked. They are asked first (Maps lists nothing for them here), then Ballito.
+  assert.deepEqual(areasAsked(log), [PINETOWN, BALLITO]);
+  assert.deepEqual(
+    pagesAsked(log, PINETOWN),
+    [],
+    "no Pinetown page is bought twice",
+  );
   assert.equal(pagesAsked(log, BALLITO)[0], 0);
   assert.deepEqual(done.areasSearched, [DURBAN, UMHLANGA, PINETOWN, BALLITO]);
 
@@ -290,7 +310,11 @@ test("after a restart the campaign continues in the nearby area it had reached",
   await second.controller.whenIdle();
   assert.equal(second.log.searches[0].location, PINETOWN);
   assert.equal(second.log.searches[0].skip, 60);
-  assert.equal(second.log.searches[0].coordinates.latitude, -29.8167);
+  assert.equal(
+    second.log.searches[0].coordinates,
+    undefined,
+    "the area is searched by its name as a whole, not from one point",
+  );
   assert.ok(
     second.log.searches.every((request) => request.location !== DURBAN),
     "Durban is not searched again",

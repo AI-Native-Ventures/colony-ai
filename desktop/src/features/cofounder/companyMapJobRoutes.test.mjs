@@ -7,6 +7,7 @@ import {
   COMPANY_MAP_NO_SCREEN_JOBS,
   companyMapWindowJobForRoute,
   companyMapWindowSearch,
+  companyMapWhatsAppSearch,
   companyMapJobKey,
   getCompanyMapJobRoute,
   hasRouteForEveryCompanyMapJob,
@@ -32,8 +33,8 @@ test("the supported app screens use their real route targets", () => {
     to: "/discovery",
   });
   assert.deepEqual(getCompanyMapJobRoute("sales", "Outreach"), {
-    kind: "app",
-    to: "/leads",
+    kind: "whatsapp",
+    tab: "needs-you",
   });
   assert.deepEqual(getCompanyMapJobRoute("finance", "Invoices"), {
     kind: "app",
@@ -115,6 +116,23 @@ test("map-window routes retain the job that opened a shared screen", () => {
     }),
     { functionId: "sales", jobName: "Closing" },
   );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/channels/outreach", {
+      mapJob: "sales:Outreach",
+      whatsappDeskTab: "needs-you",
+    }),
+    { functionId: "sales", jobName: "Outreach" },
+  );
+  assert.deepEqual(companyMapWindowJobForRoute("/lists/a-list"), {
+    functionId: "sales",
+    jobName: "Outreach",
+  });
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/channels/outreach", {
+      whatsappDeskTab: "discussion",
+    }),
+    { functionId: "sales", jobName: "Outreach" },
+  );
   assert.deepEqual(companyMapWindowJobForRoute("/clients"), {
     functionId: "sales",
     jobName: "Quotes",
@@ -169,5 +187,16 @@ test("accepts only the explicit screen-backed map roots", () => {
   assert.equal(
     isCompanyMapWindowJob({ functionId: "brand", jobName: "Voice" }),
     false,
+  );
+});
+
+test("WhatsApp map searches preserve a job trail through setup", () => {
+  assert.deepEqual(
+    companyMapWhatsAppSearch("sales:Outreach", "needs-you", "channel"),
+    { mapJob: "sales:Outreach", whatsappDeskTab: "needs-you" },
+  );
+  assert.deepEqual(
+    companyMapWhatsAppSearch("sales:Outreach", "needs-you", "setup"),
+    { mapJob: "sales:Outreach", outreachDeskTab: "needs-you" },
   );
 });

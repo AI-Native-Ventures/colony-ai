@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
 
 import {
   customerRecordForContact,
@@ -45,13 +44,11 @@ import {
   useWhatsAppSendNowBatchIds,
 } from "./whatsappSendNowHooks";
 import { WhatsAppPendingBatches } from "./WhatsAppPendingBatches";
-import { WhatsAppResumeAndRetryAction } from "./WhatsAppRetryActions";
 import {
   accountRecoveryCount,
   WhatsAppContactPauseNotice,
   WhatsAppSendHealthBanner,
 } from "./WhatsAppSendHealthNotice";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { WhatsAppThreadMessage } from "./WhatsAppThreadMessage";
 import { WhatsAppContactRow } from "./WhatsAppContactRow";
 import { WhatsAppOutreachContactRow } from "./WhatsAppOutreachContactRow";
@@ -79,6 +76,7 @@ import {
   useWhatsAppOptOutSuppressionByWaId,
 } from "./useWhatsAppOutreachSafety";
 import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
+import { WhatsAppOutreachHeaderActions } from "./WhatsAppOutreachHeaderActions";
 import "./whatsappOutreach.css";
 
 function dayKey(value: string | Date): string {
@@ -118,6 +116,7 @@ export function WhatsAppOutreachScreen({
   channelId,
   initialThreadRootId,
   initialContactWaId = null,
+  mapDesk = false,
   mode = "full",
   channelIsMember = false,
   onSelectedContactChange,
@@ -574,7 +573,11 @@ export function WhatsAppOutreachScreen({
   if (!status?.connected) {
     return (
       <main className="c3wa-root c3wa-outreach-empty">
-        <h1>WhatsApp is not connected</h1>
+        {mapDesk ? (
+          <h2>WhatsApp is not connected</h2>
+        ) : (
+          <h1>WhatsApp is not connected</h1>
+        )}
         <p>Connect your {businessName} number in Settings to open Outreach.</p>
         <Button onClick={openSettings} type="button">
           Open WhatsApp settings
@@ -612,30 +615,27 @@ export function WhatsAppOutreachScreen({
               templates={templates}
             />
           )}
-          <div className="c3wa-outreach-title-row">
-            <div>
-              <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
-              <span>WhatsApp · {status.displayPhoneNumber}</span>
+          {mapDesk ? (
+            <WhatsAppOutreachHeaderActions
+              canManage={canManage}
+              mapDesk
+              onOpenSettings={openSettings}
+              status={status}
+            />
+          ) : (
+            <div className="c3wa-outreach-title-row">
+              <div>
+                <h1>{mode === "full" ? "Outreach" : "Chats"}</h1>
+                <span>WhatsApp · {status.displayPhoneNumber}</span>
+              </div>
+              <WhatsAppOutreachHeaderActions
+                canManage={canManage}
+                mapDesk={false}
+                onOpenSettings={openSettings}
+                status={status}
+              />
             </div>
-            {canManage && status.accountRetryCount > 0 && !status.sendHealth ? (
-              <WhatsAppResumeAndRetryAction count={status.accountRetryCount} />
-            ) : null}
-            <Tooltip disableHoverableContent>
-              <TooltipTrigger asChild>
-                <button
-                  aria-label="WhatsApp settings"
-                  className="c3wa-icon-button c3wa-settings-button"
-                  data-testid="whatsapp-settings-trigger"
-                  onClick={openSettings}
-                  title="WhatsApp settings"
-                  type="button"
-                >
-                  <Settings aria-hidden="true" size={17} strokeWidth={1.8} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>WhatsApp settings</TooltipContent>
-            </Tooltip>
-          </div>
+          )}
           <WhatsAppOutreachContactFilters
             activeFilter={activeFilter}
             mode={mode}

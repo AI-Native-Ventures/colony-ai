@@ -22,6 +22,10 @@ import { KeyRescueCard } from "@/features/agents/ui/KeyRescueCard";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
 import type { OutreachDeskTab } from "@/features/channels/ui/ChannelWorkspaceTabs";
 import { OutreachDeskWorkspace } from "@/features/whatsapp-outreach/OutreachDeskWorkspace";
+import {
+  MapOutreachDeskProvider,
+  MapOutreachDeskWorkArea,
+} from "@/features/whatsapp-outreach/MapOutreachDesk";
 import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
 import {
@@ -34,6 +38,7 @@ import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { useWelcomeKickoffEntrance } from "@/features/onboarding/useWelcomeKickoffEntrance";
 import { useWelcomeKickoffStagePresence } from "@/features/onboarding/useWelcomeKickoffStagePresence";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import {
   useChannelMessagesQuery,
   useChannelSubscription,
@@ -69,7 +74,7 @@ import { ProfilePanelProvider } from "@/shared/context/ProfilePanelContext";
 import { useMainInsetRef } from "@/shared/layout/MainInsetContext";
 import { channelContentTopPaddingMeasurement } from "@/shared/layout/chromeLayout";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
-import { useElementWidth } from "@/shared/hooks/use-mobile";
+import { useElementWidth, useMediaBreakpoint } from "@/shared/hooks/use-mobile";
 import { useThreadPanelWidth } from "@/shared/hooks/useThreadPanelWidth";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
@@ -99,6 +104,7 @@ export function ChannelScreen({
   currentProfile,
   initialWhatsAppContactWaId,
   initialWhatsAppDeskTab,
+  initialOutreachWorkArea,
   headerEndActions, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
@@ -193,9 +199,13 @@ export function ChannelScreen({
   const mainInsetRef = useMainInsetRef();
   const currentPubkey = currentIdentity?.pubkey;
   const activeChannelId = activeChannel?.id ?? null;
+  const mapShellEnabled = useMapShellEnabled();
+  const isMapCanvasNarrow = useMediaBreakpoint(701);
   const isOutreachChannel =
     activeChannel?.channelType === "stream" &&
     activeChannel.name.trim().toLocaleLowerCase() === "outreach";
+  const mapOutreachDesk =
+    mapShellEnabled && !isMapCanvasNarrow && isOutreachChannel;
   React.useEffect(() => {
     // Reset the channel-scoped tab when the active route changes.
     void activeChannelId;
@@ -759,6 +769,7 @@ export function ChannelScreen({
         {...{ currentPubkey, headerEndActions }}
         onOutreachTabChange={setOutreachTab}
         outreachTab={outreachTab}
+        mapOutreachDesk={mapOutreachDesk}
         isAddBotOpen={isAddBotOpen}
         isJoining={joinChannelMutation.isPending}
         members={channelMembers ?? EMPTY_CHANNEL_MEMBERS}
@@ -791,10 +802,18 @@ export function ChannelScreen({
       handleManageChannel,
       handleToggleMembers,
       isSinglePanelView,
+      mapOutreachDesk,
     ],
   );
   const outreachWorkspaceContent =
-    isOutreachChannel &&
+    mapOutreachDesk && initialOutreachWorkArea && activeChannel ? (
+      <MapOutreachDeskWorkArea
+        channelId={activeChannel.id}
+        currentPubkey={currentPubkey}
+        isArchived={Boolean(activeChannel.archivedAt)}
+        view={initialOutreachWorkArea}
+      />
+    ) : isOutreachChannel &&
     (outreachTab === "needs-you" ||
       outreachTab === "pipeline" ||
       outreachTab === "chats") ? (
@@ -803,12 +822,14 @@ export function ChannelScreen({
         channelId={activeChannel.id}
         channelIsMember={activeChannel.isMember}
         initialContactWaId={selectedOutreachWaId}
+        mapDesk={mapOutreachDesk}
         onTabChange={setOutreachTab}
         onSelectedContactChange={setSelectedOutreachWaId}
       />
     ) : undefined;
   return (
-    <ProfilePanelProvider onOpenProfilePanel={handleOpenProfilePanel}>
+    <MapOutreachDeskProvider enabled={mapOutreachDesk}>
+      <ProfilePanelProvider onOpenProfilePanel={handleOpenProfilePanel}>
         <DeleteMessageConfirmDialog
           onConfirm={() => {
             if (emptyDeleteId) {
@@ -996,6 +1017,7 @@ export function ChannelScreen({
           relayUrl={activeCommunity?.relayUrl}
         />
         </div>
-    </ProfilePanelProvider>
+      </ProfilePanelProvider>
+    </MapOutreachDeskProvider>
   );
 }

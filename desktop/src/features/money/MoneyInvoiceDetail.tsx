@@ -118,7 +118,11 @@ export function MoneyInvoiceDetail({
         ]}
       />
       <div className="b3-tabs-row">
-        <nav aria-label="Money views" className="b3-tabs">
+        <nav
+          aria-label="Money views"
+          className="b3-tabs"
+          data-map-canvas-same-desk="true"
+        >
           <a className="b3-tab" href="#/money">
             Overview
           </a>

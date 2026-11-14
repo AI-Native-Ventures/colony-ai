@@ -40,6 +40,14 @@ import {
   inSearchArea,
   movesToNextArea,
 } from "./discoveryCampaignAreas";
+import {
+  enterNextWord,
+  movesToNextWord,
+  pageSearchWord,
+  pageWordField,
+  repeatPageReason,
+  searchWordsForType,
+} from "./discoveryCampaignWords";
 import { advanceCoverage, coveredQueryIn } from "./discoveryCoverage";
 import { createFetchAhead } from "./discoveryFetchAhead";
 import { fitScore, leadNameKey, mapPlaceToProspect } from "./discoveryMapping";
@@ -145,12 +153,14 @@ function requestedCoverageKey(
   campaign: Pick<
     StoredCampaign,
     "verticalId" | "location" | "locationSelection" | "pickedTags"
-  >,
+  > &
+    Partial<Pick<StoredCampaign, "searchWords" | "wordIndex">>,
   tagIndex: number | null,
 ): string {
   return discoveryCoverageKey({
     verticalId: campaign.verticalId,
     tag: tagIndex === null ? null : (campaign.pickedTags?.[tagIndex] ?? null),
+    word: pageSearchWord(campaign, tagIndex),
     location: campaign.location,
     locationSelection: campaign.locationSelection,
   });
@@ -170,6 +180,8 @@ function requestedTagIndex(campaign: CampaignSearchSpec): number | null {
     pickedTags: campaign.pickedTags,
     tagCursors: campaign.tagCursors,
     turn: campaign.pagesFetched ?? 0,
+    searchWords: campaign.searchWords,
+    wordIndex: campaign.wordIndex,
   });
   return plan.requests[0]?.tagIndex ?? null;
 }
@@ -536,6 +548,13 @@ export function createDiscoveryController(
       while (isLive(run)) {
         const campaign = findCampaign(state, run.campaignId);
         if (!campaign) return;
+        // The word ran out here before the target: the next plain word for
+        // the same business type, in the same area. Not a wider search.
+        if (movesToNextWord(campaign)) {
+          ahead.stop(campaign.id);
+          patch(run.campaignId, (it) => enterNextWord(it, coveredQuery));
+          continue;
+        }
         // Only after the owner's yes: the next nearby area, same campaign.
         if (movesToNextArea(campaign)) {
           ahead.stop(campaign.id);
@@ -620,8 +639,11 @@ export function createDiscoveryController(
           // exact provider query that was asked.
           const providerEnded =
             asked === null ? next === null : moved[asked] === null;
-          const pageReason = outcome.providerLooped
-            ? "provider_repeat"
+          const repeatReason = outcome.providerLooped
+            ? repeatPageReason(existing, asked)
+            : null;
+          const pageReason = repeatReason
+            ? repeatReason
             : providerEnded
               ? response.places.length >= SEARCH_PAGE_SIZE &&
                 requestedSkip + SEARCH_PAGE_SIZE >= QUERY_PLACE_CEILING
@@ -666,6 +688,7 @@ export function createDiscoveryController(
             costUsd: response.estimatedCostUsd,
             stopReason,
             area: inSearchArea(existing).location,
+            ...pageWordField(existing, asked),
           };
           return {
             ...existing,
@@ -999,9 +1022,17 @@ export function createDiscoveryController(
       // words and leaves no campaign behind.
       const probe = new AbortController();
       const pickedTags = normalizePickedTags(input.pickedTags);
+      // Plain words Maps understands, and the whole named area. See
+      // `discoveryCampaignWords.ts` for what the old request found.
+      const searchWords = searchWordsForType(
+        input.verticalId,
+        input.verticalName,
+      );
       const coverageKeys = discoveryCoverageKeys({
         verticalId: input.verticalId,
         pickedTags,
+        searchWords,
+        wordIndex: 0,
         location,
         locationSelection,
       });
@@ -1029,6 +1060,8 @@ export function createDiscoveryController(
               skip: initialSkip,
               pickedTags,
               tagCursors: initialTagCursors,
+              searchWords,
+              wordIndex: 0,
             },
             probe.signal,
             deps.search,
@@ -1073,6 +1106,8 @@ export function createDiscoveryController(
         trustedCoverage: true,
         areaIndex: 0,
         nearbyApproved: false,
+        searchWords,
+        wordIndex: 0,
         skip: initialSkip,
         tagCursors: initialTagCursors,
         pendingTagCursors: first?.tagCursors ?? null,

@@ -40,9 +40,11 @@ import {
   customerRecordNextStep,
   resolveOutreachContactIdentity,
 } from "./outreachDeskUtils";
+import { MapOutreachDeskHeaderAction } from "./MapOutreachDesk";
 
 type Props = {
   channelIsMember: boolean;
+  mapDesk?: boolean;
   onOpenChat: (waId: string) => void;
   onOpenLead: (leadId: string) => void;
 };
@@ -277,6 +279,7 @@ function PipelineCard({
 
 export function OutreachPipeline({
   channelIsMember,
+  mapDesk = false,
   onOpenChat,
   onOpenLead,
 }: Props) {
@@ -393,27 +396,37 @@ export function OutreachPipeline({
     );
   }
 
+  const pipelineSearch = (
+    <label className="c3wa-pipeline-search">
+      <span className="c3wa-sr-only">Search pipeline</span>
+      <input
+        onChange={(event) => setSearchTerm(event.currentTarget.value)}
+        placeholder="Find a business"
+        type="search"
+        value={searchTerm}
+      />
+    </label>
+  );
+
   return (
     <main
       className="c3wa-root c3wa-desk c3wa-pipeline"
       data-testid="outreach-desk-pipeline"
     >
-      <header className="c3wa-desk-page-head">
-        <div>
-          <p className="c3wa-desk-eyebrow">{businessName} · WhatsApp</p>
-          <h1>Pipeline</h1>
-          <p>Move conversations forward as the work happens.</p>
-        </div>
-        <label className="c3wa-pipeline-search">
-          <span className="c3wa-sr-only">Search pipeline</span>
-          <input
-            onChange={(event) => setSearchTerm(event.currentTarget.value)}
-            placeholder="Find a business"
-            type="search"
-            value={searchTerm}
-          />
-        </label>
-      </header>
+      {mapDesk ? (
+        <MapOutreachDeskHeaderAction>
+          {pipelineSearch}
+        </MapOutreachDeskHeaderAction>
+      ) : (
+        <header className="c3wa-desk-page-head">
+          <div>
+            <p className="c3wa-desk-eyebrow">{businessName} · WhatsApp</p>
+            <h1>Pipeline</h1>
+            <p>Move conversations forward as the work happens.</p>
+          </div>
+          {pipelineSearch}
+        </header>
+      )}
       {statusQuery.data ? (
         <WhatsAppSendHealthBanner
           canManage={canManage}
