@@ -2002,8 +2002,8 @@ button.c3d-search-chip {
   font-size: calc(13 * var(--colony-px));
 }
 
-.d4-type-dialog,
-.d4-selection-dialog {
+.c3d-dialog.d4-type-dialog,
+.c3d-dialog.d4-selection-dialog {
   max-width: 42rem;
   max-height: calc(100vh - 2rem);
   gap: 1.25rem;

@@ -18,6 +18,8 @@ import {
   seedCompanyMapWhatsApp,
 } from "./cofounder-map-fixtures";
 import { planeTreeCustomerRecord } from "../../src/testing/cofounderCustomerFixtures";
+import { REFERENCE_PROSPECT_IDS } from "../../src/testing/e2eReferenceWorkspace";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
 type Theme = "dark" | "light";
 
@@ -46,7 +48,9 @@ const MAP_WORKSPACES: WorkspaceSeed[] = [
 const FINANCE_MONEY = "/money?mapJob=finance%3AChasing+payments";
 const FINANCE_INVOICES = "/money/invoices";
 const FINANCE_REVENUE = "/money/revenue";
+const SALES_OUTREACH = "/leads?mapJob=sales%3AOutreach";
 const SALES_CLOSING = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AClosing&whatsappDeskTab=pipeline`;
+const FIX1_OUTREACH_LIST_ID = "3f1a7000-0000-4000-9000-000000000001";
 const primedPages = new WeakSet<Page>();
 const SURFACE_BOOT_TIMEOUT_MS = 40_000;
 
@@ -63,10 +67,14 @@ async function installFullMap(
   theme: Theme = "light",
   {
     mapHome = true,
+    referenceMoneyRecords = false,
+    referenceOutreachBoard = false,
     seedClient = false,
     workspaces,
   }: {
     mapHome?: boolean;
+    referenceMoneyRecords?: boolean;
+    referenceOutreachBoard?: boolean;
     seedClient?: boolean;
     workspaces?: WorkspaceSeed[];
   } = {},
@@ -89,6 +97,17 @@ async function installFullMap(
     {
       ...fixture(),
       ...(seedClient ? { companyCustomerRecords: [customerRecord()] } : {}),
+      ...(referenceMoneyRecords
+        ? { referenceWorkspace: true, referenceWorkspaceMoneyRecords: true }
+        : {}),
+      ...(referenceOutreachBoard
+        ? {
+            referenceWorkspace: true,
+            referenceWorkspaceOutreachBoard: true,
+            referenceWorkspaceOutreachReady: true,
+            referenceWorkspaceOutreachSidebar: true,
+          }
+        : {}),
       visualChannels: [{ id: MAP_CHANNEL_ID, name: "Outreach" }],
     },
     {
@@ -160,9 +179,9 @@ async function openInvoices(
   page: Page,
   method: "keyboard" | "pointer" = "pointer",
 ) {
-  const invoices = windowContent(page)
-    .locator('a[href="#/money/invoices"]')
-    .first();
+  const invoices = windowContent(page).locator(
+    '.b3-kpi[href="#/money/invoices"]',
+  );
   if (method === "keyboard") {
     await invoices.focus();
     await page.keyboard.press("Enter");
@@ -173,11 +192,10 @@ async function openInvoices(
   await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
 }
 
-async function openRevenue(page: Page) {
-  await windowContent(page)
-    .locator('a[href="#/money/revenue"]')
-    .first()
-    .click();
+async function openInvoiceDetail(page: Page) {
+  const invoice = windowContent(page).locator(".b3-invoice-link").first();
+  await expect(invoice).toBeVisible();
+  await invoice.click();
   await expectMapWindow(page, 2);
   await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
 }
@@ -190,6 +208,61 @@ async function openSalesChat(page: Page) {
   await expect(page.getByTestId("whatsapp-outreach")).toBeVisible({
     timeout: 15_000,
   });
+}
+
+async function captureFix1Screen(
+  page: Page,
+  screenshotDir: string,
+  name: string,
+  testId: string,
+  depth: number,
+) {
+  const screen = page.getByTestId(testId);
+  await expect(screen).toBeVisible({ timeout: 15_000 });
+  await expectMapWindow(page, depth);
+  if (testId === "w10-discovery-page") {
+    await expect(screen).toHaveAttribute("data-vertical-tags-loaded", "true");
+  }
+  await waitForAnimations(page);
+  await page.screenshot({
+    animations: "disabled",
+    path: join(screenshotDir, `audit-${name}-1728x1117.png`),
+  });
+}
+
+async function openSalesOutreach(page: Page) {
+  await openRoute(page, SALES_OUTREACH);
+  await expect(page.getByTestId("w10-leads-page")).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+async function openSalesView(
+  page: Page,
+  label: "Lists" | "Pipeline",
+  route: "/lists" | "/pipeline",
+) {
+  await windowContent(page)
+    .getByRole("navigation", { name: "Business views" })
+    .getByRole("link", { name: label })
+    .click();
+  await expectRoute(page, route);
+  await expectMapWindow(page, 0);
+}
+
+async function openClosingDeskView(
+  page: Page,
+  view: "needs-you" | "pipeline" | "chats" | "discussion",
+) {
+  await openRoute(page, SALES_CLOSING);
+  if (view !== "pipeline") {
+    await page.getByTestId(`channel-view-tab-${view}`).click();
+  }
+  await expect(page.getByTestId(`channel-view-tab-${view}`)).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expectMapWindow(page, 0);
 }
 
 async function waitForTheme(page: Page, theme: Theme) {
@@ -511,17 +584,17 @@ test.describe("full map canvas slice 2", () => {
       .toContain("whatsappDeskTab=chats");
   });
 
-  test("opens by keyboard, supports a three-screen trail, and returns to a known screen", async ({
+  test("opens body routes by keyboard, supports a three-screen trail, and returns to a known screen", async ({
     page,
   }) => {
-    await installFullMap(page);
+    await installFullMap(page, "light", { referenceMoneyRecords: true });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openMoney(page);
     await openInvoices(page, "keyboard");
-    await openRevenue(page);
+    await openInvoiceDetail(page);
     await waitForAnimations(page);
 
-    await expectRoute(page, FINANCE_REVENUE);
+    await expect.poll(() => currentRoute(page)).toContain("/money/invoice/");
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(1);
     await expect(page.locator(".map-shell-trail-part")).toHaveText("Finance");
     await expect(page.locator(".map-shell-trail-job")).toHaveText(
@@ -537,16 +610,19 @@ test.describe("full map canvas slice 2", () => {
       )
       .toBe("translate(-3416px, -462px) scale(1)");
 
-    await windowContent(page).locator('a[href="#/money"]').first().click();
+    await windowContent(page)
+      .getByRole("navigation", { name: "Money views" })
+      .getByRole("link", { name: "Overview" })
+      .click();
     await expectMapWindow(page, 0);
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
-    await expectRoute(page, FINANCE_MONEY);
+    await expectRoute(page, "/money");
   });
 
   test("moves one level with close, browser history, peek, Escape, and Zoom out", async ({
     page,
   }) => {
-    await installFullMap(page);
+    await installFullMap(page, "light", { referenceMoneyRecords: true });
     await page.setViewportSize({ width: 1440, height: 900 });
 
     await openMoney(page);
@@ -576,7 +652,7 @@ test.describe("full map canvas slice 2", () => {
     await expectMapWindow(page, 0);
 
     await openInvoices(page);
-    await openRevenue(page);
+    await openInvoiceDetail(page);
     await page.getByRole("button", { name: "Zoom out" }).click();
     await expectMapWindow(page, 1);
     await page.getByRole("button", { name: "Zoom out" }).click();
@@ -705,11 +781,11 @@ test.describe("full map canvas slice 2", () => {
   test("Fit closes the complete trail and returns to the whole map", async ({
     page,
   }) => {
-    await installFullMap(page);
+    await installFullMap(page, "light", { referenceMoneyRecords: true });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openMoney(page);
     await openInvoices(page);
-    await openRevenue(page);
+    await openInvoiceDetail(page);
 
     await page.getByTestId("cofounder-map-fit").click();
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
@@ -742,6 +818,116 @@ test.describe("full map canvas slice 2", () => {
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
     await expect(page.locator(".map-shell-trail-part")).toHaveText("Sales");
     await expect(page.locator(".map-shell-trail-job")).toHaveText("Closing");
+  });
+
+  test("swaps Money view tabs in one map window", async ({ page }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openMoney(page);
+
+    const moneyTabs = windowContent(page).getByRole("navigation", {
+      name: "Money views",
+    });
+    await moneyTabs.getByRole("link", { name: "Revenue" }).click();
+    await expectRoute(page, FINANCE_REVENUE);
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+
+    const revenueTabs = windowContent(page).getByRole("navigation", {
+      name: "Money views",
+    });
+    await revenueTabs.getByRole("link", { name: "Invoices" }).focus();
+    await page.keyboard.press("Enter");
+    await expectRoute(page, FINANCE_INVOICES);
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+
+    await page.goBack();
+    await expectRoute(page, FINANCE_REVENUE);
+    await expectMapWindow(page, 0);
+    await page.goBack();
+    await expectRoute(page, FINANCE_MONEY);
+    await expectMapWindow(page, 0);
+  });
+
+  test("swaps Sales tabs and the Find prospects header action in one map window", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRoute(page, SALES_OUTREACH);
+
+    const leadsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await leadsTabs.getByRole("link", { name: "Lists" }).click();
+    await expectRoute(page, "/lists");
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
+
+    const listsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await listsTabs.getByRole("link", { name: "Pipeline" }).focus();
+    await page.keyboard.press("Enter");
+    await expectRoute(page, "/pipeline");
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
+
+    await page.goBack();
+    await expectRoute(page, "/lists");
+    await expectMapWindow(page, 0);
+    await page.goBack();
+    await expectRoute(page, SALES_OUTREACH);
+    await expectMapWindow(page, 0);
+
+    await windowContent(page)
+      .getByRole("button", { name: "Find prospects" })
+      .click();
+    await expectRoute(page, "/discovery");
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
+  });
+
+  test("keeps body links as a deeper map screen while tab bars contain only live views", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRoute(page, SALES_OUTREACH);
+
+    const leadsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await expect(leadsTabs.getByRole("link")).toHaveText([
+      "Leads",
+      "Lists",
+      "Pipeline",
+    ]);
+    await expect(leadsTabs.locator("[aria-disabled='true']")).toHaveCount(0);
+
+    await leadsTabs.getByRole("link", { name: "Lists" }).click();
+    const listsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await expect(listsTabs.getByRole("link")).toHaveText([
+      "Leads",
+      "Lists",
+      "Pipeline",
+    ]);
+    await expect(listsTabs.locator("[aria-disabled='true']")).toHaveCount(0);
+
+    await openMoney(page);
+    const bodyInvoice = windowContent(page).locator(
+      '.b3-kpi[href="#/money/invoices"]',
+    );
+    await expect(bodyInvoice).toBeVisible();
+    await bodyInvoice.click();
+    await expectMapWindow(page, 1);
+    await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
   });
 
   test("keeps one trail when another map job opens", async ({ page }) => {
@@ -889,6 +1075,106 @@ test.describe("full map canvas slice 2", () => {
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
   });
 
+  test("captures the FIX1 Sales and Outreach screen audit when requested", async ({
+    page,
+  }) => {
+    test.skip(
+      process.env.FIX1_CAPTURE !== "1",
+      "capture is requested only for owner-feedback proof",
+    );
+    test.setTimeout(180_000);
+    const screenshotDir =
+      process.env.FIX1_SCREENSHOT_DIR ?? "test-results/fix1";
+    mkdirSync(screenshotDir, { recursive: true });
+    await installFullMap(page, "light", { referenceOutreachBoard: true });
+    await installDiscoveryImageMocks(page);
+    await page.setViewportSize({ width: 1728, height: 1117 });
+
+    await openSalesOutreach(page);
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-leads",
+      "w10-leads-page",
+      0,
+    );
+
+    await openSalesView(page, "Lists", "/lists");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-lists",
+      "outreach-lists-page",
+      0,
+    );
+
+    await windowContent(page)
+      .getByRole("link", { name: "Melville guesthouses, Nov" })
+      .click();
+    await expectRoute(page, `/lists/${FIX1_OUTREACH_LIST_ID}`);
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-list-melville",
+      "outreach-list-detail",
+      1,
+    );
+
+    await openSalesOutreach(page);
+    await openSalesView(page, "Pipeline", "/pipeline");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-pipeline",
+      "w10-pipeline-page",
+      0,
+    );
+
+    for (const [view, testId] of [
+      ["needs-you", "outreach-desk-needs-you"],
+      ["pipeline", "outreach-desk-pipeline"],
+      ["chats", "whatsapp-outreach"],
+      ["discussion", "channel-drop-zone"],
+    ] as const) {
+      await openClosingDeskView(page, view);
+      await captureFix1Screen(
+        page,
+        screenshotDir,
+        `outreach-${view}`,
+        testId,
+        0,
+      );
+    }
+
+    await openSalesOutreach(page);
+    await windowContent(page)
+      .locator("tr")
+      .filter({ hasText: "Jacaranda Lane Guesthouse" })
+      .getByRole("link", { name: "Review lead" })
+      .click();
+    await expectRoute(page, `/sales/lead/${REFERENCE_PROSPECT_IDS.stillroom}`);
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-lead-jacaranda",
+      "w10-prospect-page",
+      1,
+    );
+
+    await openSalesOutreach(page);
+    await windowContent(page)
+      .getByRole("button", { name: "Find prospects" })
+      .click();
+    await expectRoute(page, "/discovery");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-discovery",
+      "w10-discovery-page",
+      0,
+    );
+  });
+
   for (const theme of ["light", "dark"] as const) {
     test(`captures approved ${theme} trails when requested`, async ({
       page,
@@ -902,7 +1188,10 @@ test.describe("full map canvas slice 2", () => {
         process.env.FULLMAP_S2_SCREENSHOT_DIR ?? "test-results/fullmap-s2";
       mkdirSync(screenshotDir, { recursive: true });
 
-      await installFullMap(page, theme, { seedClient: true });
+      await installFullMap(page, theme, {
+        referenceMoneyRecords: true,
+        seedClient: true,
+      });
       for (const viewport of [
         { height: 900, label: "1440", width: 1440 },
         { height: 1228, label: "2000", width: 2000 },
@@ -921,7 +1210,7 @@ test.describe("full map canvas slice 2", () => {
 
         await openMoney(page);
         await openInvoices(page);
-        await openRevenue(page);
+        await openInvoiceDetail(page);
         await waitForTheme(page, theme);
         await waitForAnimations(page);
         await page.screenshot({

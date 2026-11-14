@@ -1,9 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 import { test } from "./cofounder-map-test";
 import {
   MAP_CHANNEL_ID,
@@ -60,6 +61,20 @@ const WINDOW_JOBS: readonly WindowJob[] = [
 ];
 
 const OPEN_ZOOM_CANVAS_GAPS = { bottom: 34, left: 16 } as const;
+const OWNER_DIALOG_VIEWPORTS = [
+  { height: 900, label: "1440x900", width: 1440 },
+  { height: 1117, label: "1728x1117", width: 1728 },
+] as const;
+
+type DiscoveryShell = {
+  label: "map window" | "old shell";
+  mapHome: boolean;
+};
+
+const DISCOVERY_SHELLS: readonly DiscoveryShell[] = [
+  { label: "map window", mapHome: true },
+  { label: "old shell", mapHome: false },
+];
 
 function mapTarget({ functionId, jobName }: WindowJob): string {
   const route = getCompanyMapJobRoute(functionId, jobName);
@@ -130,6 +145,87 @@ async function openMapJob(page: Page, job: WindowJob) {
   await page.getByTestId(jobTestId(job)).click();
   await expect(page.getByTestId("fullmap-window")).toBeVisible();
   await waitForAnimations(page);
+}
+
+async function openDiscoveryForDialogProof(
+  page: Page,
+  mapHome: boolean,
+  viewport: { height: number; width: number },
+  theme: "light" | "dark" = "light",
+) {
+  await installFullMap(page, theme, { mapHome });
+  await installDiscoveryImageMocks(page);
+  await page.setViewportSize(viewport);
+  await page.goto(`/#${mapTarget(WINDOW_JOBS[0])}`);
+  const discovery = page.getByTestId("w10-discovery-page");
+  await expect(discovery).toBeVisible({ timeout: 15_000 });
+  await expect(discovery).toHaveAttribute("data-vertical-tags-loaded", "true", {
+    timeout: 15_000,
+  });
+  if (mapHome) {
+    await expect(page.getByTestId("fullmap-window")).toBeVisible();
+  } else {
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+  }
+  return discovery;
+}
+
+async function openGuesthouseDetails(page: Page, discovery: Locator) {
+  await discovery
+    .getByRole("textbox", {
+      name: /^Search (industries and )?business types/,
+    })
+    .fill("guest house");
+  const card = discovery.getByTestId(
+    "discovery-type-card-guesthouses-and-inns",
+  );
+  await expect(card).toBeVisible();
+  await card
+    .getByRole("button", { name: "Details for Guesthouses and inns" })
+    .click();
+  const details = page.getByTestId("discovery-type-details-dialog");
+  await expect(details).toBeVisible();
+  return { card, details };
+}
+
+async function dialogGeometry(dialog: Locator) {
+  return dialog.evaluate((node) => {
+    const panel = node as HTMLElement;
+    const bounds = panel.getBoundingClientRect();
+    const close = Array.from(panel.children).find(
+      (child): child is HTMLElement => child instanceof HTMLButtonElement,
+    );
+    const closeBounds = close?.getBoundingClientRect() ?? null;
+    return {
+      centerOffset: Math.abs(
+        bounds.left + bounds.width / 2 - window.innerWidth / 2,
+      ),
+      clientHeight: panel.clientHeight,
+      clientWidth: panel.clientWidth,
+      closeRightInset: closeBounds ? bounds.right - closeBounds.right : null,
+      closeTopInset: closeBounds ? closeBounds.top - bounds.top : null,
+      height: bounds.height,
+      maxCompactWidth:
+        42 *
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      scrollHeight: panel.scrollHeight,
+      scrollWidth: panel.scrollWidth,
+      width: bounds.width,
+    };
+  });
+}
+
+async function expectCompactCenteredDialog(dialog: Locator) {
+  const geometry = await dialogGeometry(dialog);
+  expect(geometry.width).toBeLessThanOrEqual(geometry.maxCompactWidth + 1);
+  expect(geometry.centerOffset).toBeLessThanOrEqual(1);
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+  expect(geometry.scrollHeight).toBeGreaterThanOrEqual(geometry.clientHeight);
+  expect(geometry.closeRightInset).not.toBeNull();
+  expect(geometry.closeTopInset).not.toBeNull();
+  expect(geometry.closeRightInset).toBeGreaterThanOrEqual(0);
+  expect(geometry.closeTopInset).toBeGreaterThanOrEqual(0);
 }
 
 async function dispatchPrimaryWorkspaceShortcut(page: Page, digit: string) {
@@ -289,6 +385,82 @@ function openWindowMarkupContract() {
 }
 
 test.describe("full map canvas slice 1", () => {
+  for (const shell of DISCOVERY_SHELLS) {
+    for (const viewport of OWNER_DIALOG_VIEWPORTS) {
+      test(`keeps Discovery detail and selection dialogs compact at ${viewport.label} in the ${shell.label}`, async ({
+        page,
+      }) => {
+        const discovery = await openDiscoveryForDialogProof(
+          page,
+          shell.mapHome,
+          viewport,
+        );
+        const { card, details } = await openGuesthouseDetails(page, discovery);
+
+        await expect(details.locator("img").first()).toBeVisible();
+        await expect(details.getByTestId("discovery-tag-picker")).toBeVisible();
+        await expect(
+          details.getByText("Find this type in", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          details.getByText("Also try", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          details.getByRole("button", { name: "Back to browsing" }),
+        ).toBeVisible();
+        await expect(
+          details.getByRole("button", { name: "Find prospects" }),
+        ).toBeVisible();
+        await expectCompactCenteredDialog(details);
+
+        await details.getByRole("button", { name: "Back to browsing" }).click();
+        await expect(details).toHaveCount(0);
+        await card
+          .getByRole("button", {
+            name: "Add Guesthouses and inns from selection",
+          })
+          .click();
+        await page.getByRole("button", { name: /View selection/ }).click();
+        const selection = page.locator(".d4-selection-dialog");
+        await expect(selection).toBeVisible();
+        await expect(
+          selection.getByText("Your discovery selection", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          selection.getByRole("button", { name: "Keep exploring" }),
+        ).toBeVisible();
+        await expectCompactCenteredDialog(selection);
+      });
+    }
+  }
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures the compact Discovery dialog in ${theme} when requested`, async ({
+      page,
+    }) => {
+      test.skip(
+        process.env.FIX1_CAPTURE !== "1",
+        "capture is requested only for owner-feedback proof",
+      );
+      const screenshotDir =
+        process.env.FIX1_SCREENSHOT_DIR ?? "test-results/fix1";
+      mkdirSync(screenshotDir, { recursive: true });
+      const discovery = await openDiscoveryForDialogProof(
+        page,
+        true,
+        { height: 1117, width: 1728 },
+        theme,
+      );
+      await openGuesthouseDetails(page, discovery);
+      await waitForTheme(page, theme);
+      await waitForAnimations(page);
+      await page.screenshot({
+        animations: "disabled",
+        path: join(screenshotDir, `dialog-after-${theme}-1728x1117.png`),
+      });
+    });
+  }
+
   test("keeps one map alive through open, Escape, Fit, and browser history", async ({
     page,
   }, testInfo) => {

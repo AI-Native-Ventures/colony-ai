@@ -37,7 +37,7 @@ type MapCanvasRouteSurfaceProps = {
 type PendingEmbeddedNavigation = {
   historyIndex: number | null;
   observedAt: number;
-  samePathNavigation: "append" | "replace";
+  samePathNavigation: "append" | "replace" | "swap";
   sourceHref: string;
   trail: MapCanvasTrail;
 };
@@ -202,6 +202,13 @@ function routerHrefForAnchor(anchor: HTMLAnchorElement): string | null {
   const destination = new URL(anchor.href, window.location.href);
   if (destination.origin !== window.location.origin) return null;
   return destination.hash.startsWith("#/") ? destination.hash.slice(1) : null;
+}
+
+function isSameDeskNavigationTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest("[data-map-canvas-same-desk]") !== null
+  );
 }
 
 function routerHrefForEmbeddedDeskTab(
@@ -528,6 +535,13 @@ export function MapCanvasRouteSurface({
         );
         return;
       }
+      if (navigation.kind === "swap") {
+        router.history.push(
+          href,
+          withTrailState(locationRef.current.state, navigation.trail),
+        );
+        return;
+      }
       const previousTrail = truncateMapCanvasTrail(
         navigation.trail,
         navigation.trail.entries.length - 2,
@@ -549,6 +563,7 @@ export function MapCanvasRouteSurface({
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key === "Enter" || event.key === " ") {
         const sourceHref = locationRef.current.href;
+        const tabHref = routerHrefForEmbeddedDeskTab(event.target, sourceHref);
         const actionHref = routerHrefForEmbeddedDeskAction(
           event.target,
           sourceHref,
@@ -562,7 +577,11 @@ export function MapCanvasRouteSurface({
           }
           return;
         }
-        captureCurrentTrail("replace");
+        captureCurrentTrail(
+          tabHref || isSameDeskNavigationTarget(event.target)
+            ? "swap"
+            : "replace",
+        );
       }
     },
     [captureCurrentTrail, commitAnchorNavigation],
@@ -586,7 +605,13 @@ export function MapCanvasRouteSurface({
         event.target,
         sourceHref,
       );
-      const pending = captureCurrentTrail(actionHref ? "append" : "replace");
+      const pending = captureCurrentTrail(
+        actionHref
+          ? "append"
+          : tabHref || isSameDeskNavigationTarget(event.target)
+            ? "swap"
+            : "replace",
+      );
       const href = anchor
         ? routerHrefForAnchor(anchor)
         : (tabHref ?? actionHref);

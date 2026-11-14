@@ -608,6 +608,7 @@ export function LeadsScreen(context: LeadContext) {
                 </button>
               ) : null}
               <button
+                data-map-canvas-same-desk="true"
                 onClick={() => void navigate({ to: "/discovery" })}
                 type="button"
               >
@@ -643,6 +644,7 @@ export function LeadsScreen(context: LeadContext) {
             ) : null}
             <button
               className="c3l-btn c3l-btn-primary"
+              data-map-canvas-same-desk="true"
               onClick={() => void navigate({ to: "/discovery" })}
               type="button"
             >
@@ -651,18 +653,16 @@ export function LeadsScreen(context: LeadContext) {
           </div>
         </div>
 
-        <nav aria-label="Business views" className="c3l-tabs">
+        <nav
+          aria-label="Business views"
+          className="c3l-tabs"
+          data-map-canvas-same-desk="true"
+        >
           <a aria-current="page" href="#/leads">
             Leads
           </a>
           <a href="#/lists">Lists</a>
           <a href="#/pipeline">Pipeline</a>
-          <span aria-disabled="true" className="c3l-tab-placeholder">
-            Proposals
-          </span>
-          <span aria-disabled="true" className="c3l-tab-placeholder">
-            Services
-          </span>
         </nav>
 
         <OutreachFitScoreDashboard
