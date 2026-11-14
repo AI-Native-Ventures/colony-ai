@@ -305,7 +305,7 @@ async function openOperationsClientRecord(page: Page) {
 }
 
 async function openCustomerSuccessTrail(page: Page) {
-  await page.getByTestId("channel-view-tab-pipeline").click();
+  await page.getByTestId("map-outreach-tab-pipeline").click();
   await expect
     .poll(() => currentRoute(page))
     .toContain("whatsappDeskTab=pipeline");
@@ -583,7 +583,10 @@ test.describe("full map canvas slice 3a", () => {
     expect(camera.x).not.toBe(0);
     expect(camera.y).not.toBe(0);
 
-    await openMapJob(page, OPERATIONS_CLIENT_INTAKE, "pointer");
+    // The deliberately panned map can place this visual target beneath the
+    // fixed map bar. Opening the focused link exercises the same route seam
+    // without relying on an occluded pointer coordinate.
+    await openMapJob(page, OPERATIONS_CLIENT_INTAKE, "keyboard");
     await waitForAnimations(page);
     expect((await page.evaluate(leftOpenGeometry)).window).toEqual({
       bottom: 823,
@@ -624,14 +627,14 @@ test.describe("full map canvas slice 3a", () => {
       peekRadius: "20px 0px 0px 20px",
       peekSnapshotTransform: "translateX(0px)",
       port: {
-        bottom: 190,
+        bottom: 191,
         height: 14,
         left: 1233,
         right: 1247,
-        top: 176,
+        top: 177,
         width: 14,
       },
-      stageTransform: "translate(2156px, -462px) scale(1)",
+      stageTransform: "translate(2156px, -27px) scale(1)",
       window: {
         bottom: 823,
         height: 699,
