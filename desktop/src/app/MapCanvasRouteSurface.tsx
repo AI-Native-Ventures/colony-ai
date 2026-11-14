@@ -42,6 +42,11 @@ type PendingEmbeddedNavigation = {
   trail: MapCanvasTrail;
 };
 
+type PendingSameDeskNavigation = Pick<
+  PendingEmbeddedNavigation,
+  "observedAt" | "samePathNavigation" | "sourceHref"
+>;
+
 const EMBEDDED_NAVIGATION_WINDOW_MS = 2_000;
 
 function isMapHome(pathname: string): boolean {
@@ -421,6 +426,12 @@ export function MapCanvasRouteSurface({
   const pendingNavigationRef = React.useRef<PendingEmbeddedNavigation | null>(
     null,
   );
+  const pendingSameDeskNavigationRef =
+    React.useRef<PendingSameDeskNavigation | null>(null);
+  const handledNavigationRef = React.useRef<{
+    observedAt: number;
+    sourceHref: string;
+  } | null>(null);
   const liveSnapshotsRef = React.useRef(new Map<string, MapCanvasSnapshot>());
   const snapshotCommunityRef = React.useRef(communityId);
   const previousHrefRef = React.useRef(location.href);
@@ -431,6 +442,21 @@ export function MapCanvasRouteSurface({
     liveSnapshotsRef.current.clear();
     snapshotCommunityRef.current = communityId;
   }
+
+  const markNavigationCaptureHandled = React.useCallback(
+    (sourceHref: string) => {
+      handledNavigationRef.current = { observedAt: Date.now(), sourceHref };
+    },
+    [],
+  );
+
+  const rememberSameDeskNavigation = React.useCallback((sourceHref: string) => {
+    pendingSameDeskNavigationRef.current = {
+      observedAt: Date.now(),
+      samePathNavigation: "swap",
+      sourceHref,
+    };
+  }, []);
 
   const closeWholeTrail = React.useCallback(() => {
     router.history.replace("/", withoutTrailState(locationRef.current.state));
@@ -451,6 +477,7 @@ export function MapCanvasRouteSurface({
         router.history.go(target.historyIndex - currentIndex);
         return;
       }
+      markNavigationCaptureHandled(locationRef.current.href);
       router.history.replace(
         target.href,
         withTrailState(
@@ -459,7 +486,7 @@ export function MapCanvasRouteSurface({
         ),
       );
     },
-    [router.history],
+    [markNavigationCaptureHandled, router.history],
   );
 
   const closeLatestWindow = React.useCallback(() => {
@@ -493,11 +520,14 @@ export function MapCanvasRouteSurface({
           liveSnapshot,
         );
       }
-      router.history.replace(
-        currentLocation.href,
+      // This is an update to the current browser slot, not a router
+      // navigation. Using RouterHistory.replace here would re-enter its
+      // asynchronous blocker and make this capture look like another leave.
+      window.history.replaceState(
         withTrailState(currentLocation.state, capturedTrail),
+        "",
+        router.history.createHref(currentLocation.href),
       );
-      router.history.flush();
       const pending = {
         historyIndex,
         observedAt: Date.now(),
@@ -528,6 +558,7 @@ export function MapCanvasRouteSurface({
         goToTrailEntry(navigation.targetIndex);
         return;
       }
+      markNavigationCaptureHandled(pending.sourceHref);
       if (navigation.kind === "replace") {
         router.history.replace(
           href,
@@ -556,35 +587,49 @@ export function MapCanvasRouteSurface({
         withTrailState(locationRef.current.state, navigation.trail),
       );
     },
-    [goToTrailEntry, router.history],
+    [goToTrailEntry, markNavigationCaptureHandled, router.history],
   );
 
   const handleContentKeyDownCapture = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.key === "Enter" || event.key === " ") {
-        const sourceHref = locationRef.current.href;
-        const tabHref = routerHrefForEmbeddedDeskTab(event.target, sourceHref);
-        const actionHref = routerHrefForEmbeddedDeskAction(
-          event.target,
-          sourceHref,
-        );
-        if (actionHref) {
-          const pending = captureCurrentTrail("append");
-          if (pending) {
-            event.preventDefault();
-            event.stopPropagation();
-            commitAnchorNavigation(actionHref, pending);
-          }
-          return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const sourceHref = locationRef.current.href;
+      const anchor = anchorForEventTarget(event.target);
+      const tabHref = routerHrefForEmbeddedDeskTab(event.target, sourceHref);
+      const actionHref = routerHrefForEmbeddedDeskAction(
+        event.target,
+        sourceHref,
+      );
+      const href = anchor
+        ? routerHrefForAnchor(anchor)
+        : (tabHref ?? actionHref);
+      if (!href || href === sourceHref) {
+        if (isSameDeskNavigationTarget(event.target)) {
+          rememberSameDeskNavigation(sourceHref);
         }
-        captureCurrentTrail(
-          tabHref || isSameDeskNavigationTarget(event.target)
+        return;
+      }
+      const pending = captureCurrentTrail(
+        actionHref
+          ? "append"
+          : tabHref || isSameDeskNavigationTarget(event.target)
             ? "swap"
             : "replace",
-        );
+      );
+      if (!pending) return;
+      markNavigationCaptureHandled(pending.sourceHref);
+      if (anchor || tabHref || actionHref) {
+        event.preventDefault();
+        event.stopPropagation();
       }
+      commitAnchorNavigation(href, pending);
     },
-    [captureCurrentTrail, commitAnchorNavigation],
+    [
+      captureCurrentTrail,
+      commitAnchorNavigation,
+      markNavigationCaptureHandled,
+      rememberSameDeskNavigation,
+    ],
   );
 
   const handleContentClickCapture = React.useCallback(
@@ -605,6 +650,15 @@ export function MapCanvasRouteSurface({
         event.target,
         sourceHref,
       );
+      const href = anchor
+        ? routerHrefForAnchor(anchor)
+        : (tabHref ?? actionHref);
+      if (!href || href === sourceHref) {
+        if (isSameDeskNavigationTarget(event.target)) {
+          rememberSameDeskNavigation(sourceHref);
+        }
+        return;
+      }
       const pending = captureCurrentTrail(
         actionHref
           ? "append"
@@ -612,18 +666,63 @@ export function MapCanvasRouteSurface({
             ? "swap"
             : "replace",
       );
-      const href = anchor
-        ? routerHrefForAnchor(anchor)
-        : (tabHref ?? actionHref);
-      if (!pending || !href || href === pending.sourceHref) return;
+      if (!pending) return;
+      markNavigationCaptureHandled(pending.sourceHref);
       if (anchor || tabHref || actionHref) {
         event.preventDefault();
         event.stopPropagation();
       }
       commitAnchorNavigation(href, pending);
     },
-    [captureCurrentTrail, commitAnchorNavigation],
+    [
+      captureCurrentTrail,
+      commitAnchorNavigation,
+      markNavigationCaptureHandled,
+      rememberSameDeskNavigation,
+    ],
   );
+
+  React.useEffect(() => {
+    if (!job) return;
+    return router.history.block({
+      enableBeforeUnload: false,
+      blockerFn: ({ action, currentLocation, nextLocation }) => {
+        if (action !== "PUSH" && action !== "REPLACE") {
+          return false;
+        }
+        if (
+          currentLocation.href === nextLocation.href ||
+          isMapHome(nextLocation.pathname)
+        ) {
+          return false;
+        }
+        const handled = handledNavigationRef.current;
+        if (
+          handled &&
+          handled.sourceHref === currentLocation.href &&
+          Date.now() - handled.observedAt <= EMBEDDED_NAVIGATION_WINDOW_MS
+        ) {
+          handledNavigationRef.current = null;
+          return false;
+        }
+        const currentTrail = trailRef.current;
+        if (currentTrail?.entries.at(-1)?.href !== currentLocation.href) {
+          return false;
+        }
+        const sameDeskNavigation = pendingSameDeskNavigationRef.current;
+        const samePathNavigation =
+          sameDeskNavigation &&
+          sameDeskNavigation.sourceHref === currentLocation.href &&
+          Date.now() - sameDeskNavigation.observedAt <=
+            EMBEDDED_NAVIGATION_WINDOW_MS
+            ? sameDeskNavigation.samePathNavigation
+            : "replace";
+        pendingSameDeskNavigationRef.current = null;
+        captureCurrentTrail(samePathNavigation);
+        return false;
+      },
+    });
+  }, [captureCurrentTrail, job, router.history]);
 
   React.useEffect(() => {
     const previousHref = previousHrefRef.current;
