@@ -10,6 +10,7 @@ import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
 import { CampaignRelaySync } from "./CampaignRelaySync";
 import { QualificationRendererBridge } from "./qualificationRuntime";
+import { MapOutreachDeskPipelineRoute } from "@/features/whatsapp-outreach/MapOutreachDesk";
 import { getDiscoveryCampaignProvider } from "./discoveryProvider";
 import {
   SALES_NOT_ALLOWED_MESSAGE,
@@ -129,7 +130,9 @@ function BusinessRecordsRoute({
   } else if (pathname === "/campaign") {
     screen = <CampaignScreen {...context} />;
   } else if (pathname === "/pipeline") {
-    screen = <PipelineScreen {...context} />;
+    screen = (
+      <MapOutreachDeskPipelineRoute legacy={<PipelineScreen {...context} />} />
+    );
   } else if (parts[0] === "sales" && parts[1] === "lead") {
     const prospectId = parts[2] ?? "";
     const prospect =

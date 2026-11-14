@@ -23,6 +23,8 @@ export type ChannelScreenProps = {
   initialWhatsAppContactWaId?: string | null;
   /** Opens an Outreach desk tab for an in-channel activity link. */
   initialWhatsAppDeskTab?: "needs-you" | "pipeline" | "chats" | "discussion";
+  /** Opens a map-only Outreach work area from the shared More menu. */
+  initialOutreachWorkArea?: "knowledge" | "canvas" | "files";
   /** Hides the Colony workspace top bar. */
   hideWorkspaceTopBar?: boolean;
   idleAuxiliaryPanel?: ReactNode;

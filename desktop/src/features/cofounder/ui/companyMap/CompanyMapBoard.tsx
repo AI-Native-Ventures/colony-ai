@@ -1,11 +1,5 @@
-import {
-  Fragment,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
-import type { FocusEvent, PointerEvent, ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { CSSProperties, FocusEvent, PointerEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
@@ -36,6 +30,7 @@ import {
 } from "@/features/cofounder/companyMapLayout";
 import {
   companyMapJobKey,
+  companyMapWhatsAppSearch,
   companyMapWindowSearch,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
@@ -310,11 +305,12 @@ function JobLink({
   const destination = getCompanyMapJobRoute(functionId, jobName);
   const fallback = isCompanyMapJobFallback(functionId, jobName);
   const mapWindowSearch = companyMapWindowSearch(functionId, jobName);
+  const mapJob = mapWindowSearch?.mapJob;
   const common = {
     "aria-label": fallback
       ? `${jobName}. No screen for this job yet. Opens ${FUNCTION_DETAILS[functionId].name}.`
       : destination.kind === "whatsapp" && !whatsappChannelId
-        ? `${jobName}. WhatsApp is not set up. Opens ${FUNCTION_DETAILS[functionId].name}.`
+        ? `${jobName}. WhatsApp is not set up. Opens Outreach setup.`
         : count > 0
           ? `${jobName}, ${countLabel(count)}`
           : jobName,
@@ -326,7 +322,6 @@ function JobLink({
     onMouseEnter,
     onMouseLeave,
   };
-
   if (destination.kind === "app") {
     return (
       <Link
@@ -360,24 +355,34 @@ function JobLink({
         {...common}
         className="company-map-job-link"
         params={{ channelId: whatsappChannelId }}
+        search={companyMapWhatsAppSearch(mapJob, destination.tab, "channel")}
         style={style}
-        search={{
-          mapJob: mapWindowSearch?.mapJob,
-          whatsappDeskTab: destination.tab,
-        }}
         to="/channels/$channelId"
       >
         {children}
       </Link>
     );
   }
-  const functionIdForLink =
+  if (destination.kind === "whatsapp") {
+    return (
+      <Link
+        {...common}
+        className="company-map-job-link"
+        search={companyMapWhatsAppSearch(mapJob, destination.tab, "setup")}
+        style={style}
+        to="/leads"
+      >
+        {children}
+      </Link>
+    );
+  }
+  const partId =
     destination.kind === "part" ? destination.functionId : functionId;
   return (
     <Link
       {...common}
       className="company-map-job-link"
-      params={{ function: functionIdForLink }}
+      params={{ function: partId }}
       search={mapWindowSearch}
       style={style}
       to="/company/function/$function"

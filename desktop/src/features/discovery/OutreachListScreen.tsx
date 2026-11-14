@@ -15,6 +15,8 @@ import {
   UserMinus,
 } from "lucide-react";
 import { AppTopChromePortal } from "@/app/AppTopChromePortal";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
+import { useMediaBreakpoint } from "@/shared/hooks/use-mobile";
 
 import {
   useWhatsAppLeadData,
@@ -38,6 +40,7 @@ import {
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
 } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
+import { MapOutreachDeskHeader } from "@/features/whatsapp-outreach/MapOutreachDesk";
 
 import "./colony3-leads.css";
 
@@ -135,6 +138,9 @@ export function OutreachListScreen({
   listId?: string;
 }) {
   const navigate = useNavigate();
+  const mapShellEnabled = useMapShellEnabled();
+  const isMapCanvasNarrow = useMediaBreakpoint(701);
+  const mapOutreachDesk = mapShellEnabled && !isMapCanvasNarrow;
   const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
   const channelsQuery = useChannelsQuery();
   const profileQuery = useProfileQuery();
@@ -151,6 +157,16 @@ export function OutreachListScreen({
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState("");
   const canWrite = canEdit(context.role);
+  const listOverviewActions = (
+    <button
+      className="c3l-btn c3l-btn-primary"
+      data-map-canvas-same-desk="true"
+      onClick={() => void navigate({ to: "/leads" })}
+      type="button"
+    >
+      <ListPlus aria-hidden="true" size={16} /> Add leads
+    </button>
+  );
   React.useEffect(() => {
     if (
       message !== "Default template updated." &&
@@ -391,7 +407,7 @@ export function OutreachListScreen({
     );
   }
 
-  const common = (
+  const common = !mapOutreachDesk ? (
     <nav
       aria-label="Business views"
       className="c3l-tabs"
@@ -403,29 +419,34 @@ export function OutreachListScreen({
       </a>
       <a href="#/pipeline">Pipeline</a>
     </nav>
-  );
+  ) : null;
 
   if (!listId) {
     return (
-      <main className="c3l-page" data-testid="outreach-lists-page">
+      <main
+        className={`c3l-page${mapOutreachDesk ? " map-outreach-desk-page" : ""}`}
+        data-testid="outreach-lists-page"
+      >
+        {mapOutreachDesk ? (
+          <MapOutreachDeskHeader
+            actions={listOverviewActions}
+            active="lists"
+            outreachChannelId={whatsappStatus.data?.outreachChannelId}
+          />
+        ) : null}
         <div className="c3l-wrap c3l-wrap-leads">
-          <div className="c3l-head">
-            <div className="c3l-head-text">
-              <h1 className="c3l-title">Lists</h1>
-              <span className="c3l-subtitle">
-                {visibleLists.length} shared outreach{" "}
-                {visibleLists.length === 1 ? "list" : "lists"}
-              </span>
+          {!mapOutreachDesk ? (
+            <div className="c3l-head">
+              <div className="c3l-head-text">
+                <h1 className="c3l-title">Lists</h1>
+                <span className="c3l-subtitle">
+                  {visibleLists.length} shared outreach{" "}
+                  {visibleLists.length === 1 ? "list" : "lists"}
+                </span>
+              </div>
+              {listOverviewActions}
             </div>
-            <button
-              className="c3l-btn c3l-btn-primary"
-              data-map-canvas-same-desk="true"
-              onClick={() => void navigate({ to: "/leads" })}
-              type="button"
-            >
-              <ListPlus aria-hidden="true" size={16} /> Add leads
-            </button>
-          </div>
+          ) : null}
           {common}
           <div className="c3l-list-toolbar">
             <label className="c3l-search">
@@ -464,7 +485,12 @@ export function OutreachListScreen({
                   {visibleLists.map(({ record }) => (
                     <tr key={record.listId}>
                       <td>
-                        <a href={`#/lists/${record.listId}`}>{record.name}</a>
+                        <a
+                          data-map-canvas-same-desk="true"
+                          href={`#/lists/${record.listId}`}
+                        >
+                          {record.name}
+                        </a>
                         {record.note ? <small>{record.note}</small> : null}
                       </td>
                       <td>{record.members.length}</td>
@@ -502,17 +528,32 @@ export function OutreachListScreen({
 
   if (!current) {
     return (
-      <main className="c3l-page" data-testid="outreach-list-unavailable">
+      <main
+        className={`c3l-page${mapOutreachDesk ? " map-outreach-desk-page" : ""}`}
+        data-testid="outreach-list-unavailable"
+      >
+        {mapOutreachDesk ? (
+          <MapOutreachDeskHeader
+            active="lists"
+            outreachChannelId={whatsappStatus.data?.outreachChannelId}
+          />
+        ) : null}
         <div className="c3l-wrap c3l-wrap-leads">
-          <button
-            className="c3l-text-button"
-            onClick={() => void navigate({ to: "/lists" })}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={15} /> Back to Lists
-          </button>
+          {!mapOutreachDesk ? (
+            <button
+              className="c3l-text-button"
+              onClick={() => void navigate({ to: "/lists" })}
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" size={15} /> Back to Lists
+            </button>
+          ) : null}
           <section className="c3l-card c3l-empty">
-            <h1>This list is no longer available</h1>
+            {mapOutreachDesk ? (
+              <h2>This list is no longer available</h2>
+            ) : (
+              <h1>This list is no longer available</h1>
+            )}
             <p>It may have been archived or removed.</p>
           </section>
         </div>
@@ -520,90 +561,175 @@ export function OutreachListScreen({
     );
   }
 
-  return (
-    <main className="c3l-page" data-testid="outreach-list-detail">
-      <AppTopChromePortal>
-        <nav
-          aria-label="Breadcrumb"
-          className="colony-breadcrumb"
-          data-testid="top-bar-breadcrumb"
-        >
-          <span>Business</span>
-          <span aria-hidden="true">/</span>
-          <span>Sales</span>
-          <span aria-hidden="true">/</span>
-          <a href="#/lists">Lists</a>
-          <span aria-hidden="true">/</span>
-          <span aria-current="page">{current.record.name}</span>
-        </nav>
-      </AppTopChromePortal>
-      <div className="c3l-wrap c3l-wrap-leads c3l-wrap-list-detail">
-        <header
-          className="c3l-mobile-list-header"
-          data-testid="list-mobile-header"
-        >
+  const listDetailActions = (
+    <>
+      <button
+        className="c3l-btn c3l-btn-outline"
+        onClick={() => void copyReference()}
+        type="button"
+      >
+        <Copy aria-hidden="true" size={14} /> Copy reference
+      </button>
+      <button
+        className="c3l-btn c3l-btn-outline"
+        onClick={() => void askScout()}
+        type="button"
+      >
+        <Sparkles aria-hidden="true" size={15} /> Ask Scout
+      </button>
+      <button
+        aria-label="Prepare WhatsApp batch"
+        className="c3l-btn c3l-btn-primary"
+        disabled={!canWrite || busy || current.record.status === "archived"}
+        onClick={() => setBatchOpen(true)}
+        type="button"
+      >
+        <MessageCircle aria-hidden="true" size={15} />
+        <span className="c3l-list-action-desktop">Prepare WhatsApp batch</span>
+        <span className="c3l-list-action-mobile">WhatsApp batch</span>
+      </button>
+      <details className="c3l-list-admin-menu c3l-list-desktop-menu">
+        <summary aria-label="List actions">
+          <MoreHorizontal aria-hidden="true" size={16} />
+        </summary>
+        <div className="c3l-list-row-menu-content">
           <button
-            aria-label="Back to lists"
-            onClick={() => void navigate({ to: "/lists" })}
+            disabled={!canWrite || busy}
+            onClick={() => {
+              setNameDraft(current.record.name);
+              setRenameOpen(true);
+            }}
             type="button"
           >
-            <ArrowLeft aria-hidden="true" size={20} />
+            <Save aria-hidden="true" size={14} /> Rename list
           </button>
-          <div>
-            <h1>{current.record.name}</h1>
-            <span>Outreach list · {current.record.members.length} leads</span>
-          </div>
-          <details className="c3l-mobile-list-menu">
-            <summary aria-label="List actions">
-              <MoreHorizontal aria-hidden="true" size={20} />
-            </summary>
-            <div className="c3l-list-row-menu-content">
-              <button
-                disabled={!canWrite || busy}
-                onClick={() => {
-                  setNameDraft(current.record.name);
-                  setRenameOpen(true);
-                }}
-                type="button"
-              >
-                <Save aria-hidden="true" size={14} /> Rename list
-              </button>
-              {current.record.status === "archived" ? (
-                <button
-                  disabled={!canWrite || busy}
-                  onClick={() => void unarchiveList()}
-                  type="button"
-                >
-                  <RotateCcw aria-hidden="true" size={14} /> Restore list
-                </button>
-              ) : (
-                <button
-                  disabled={!canWrite || busy}
-                  onClick={() => void archiveList()}
-                  type="button"
-                >
-                  <Archive aria-hidden="true" size={14} /> Archive list
-                </button>
-              )}
-            </div>
-          </details>
-        </header>
-        <div className="c3l-list-back-row">
-          <button
-            className="c3l-text-button"
-            onClick={() => void navigate({ to: "/lists" })}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={15} /> Business / Sales / Lists
-          </button>
+          {current.record.status === "archived" ? (
+            <button
+              disabled={!canWrite || busy}
+              onClick={() => void unarchiveList()}
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={14} /> Restore list
+            </button>
+          ) : (
+            <button
+              disabled={!canWrite || busy}
+              onClick={() => void archiveList()}
+              type="button"
+            >
+              <Archive aria-hidden="true" size={14} /> Archive list
+            </button>
+          )}
         </div>
+      </details>
+    </>
+  );
+
+  return (
+    <main
+      className={`c3l-page${mapOutreachDesk ? " map-outreach-desk-page" : ""}`}
+      data-testid="outreach-list-detail"
+    >
+      {!mapOutreachDesk ? (
+        <AppTopChromePortal>
+          <nav
+            aria-label="Breadcrumb"
+            className="colony-breadcrumb"
+            data-testid="top-bar-breadcrumb"
+          >
+            <span>Business</span>
+            <span aria-hidden="true">/</span>
+            <span>Sales</span>
+            <span aria-hidden="true">/</span>
+            <a href="#/lists">Lists</a>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">{current.record.name}</span>
+          </nav>
+        </AppTopChromePortal>
+      ) : null}
+      {mapOutreachDesk ? (
+        <MapOutreachDeskHeader
+          actions={listDetailActions}
+          active="lists"
+          outreachChannelId={whatsappStatus.data?.outreachChannelId}
+        />
+      ) : null}
+      <div className="c3l-wrap c3l-wrap-leads c3l-wrap-list-detail">
+        {!mapOutreachDesk ? (
+          <header
+            className="c3l-mobile-list-header"
+            data-testid="list-mobile-header"
+          >
+            <button
+              aria-label="Back to lists"
+              onClick={() => void navigate({ to: "/lists" })}
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" size={20} />
+            </button>
+            <div>
+              <h1>{current.record.name}</h1>
+              <span>Outreach list · {current.record.members.length} leads</span>
+            </div>
+            <details className="c3l-mobile-list-menu">
+              <summary aria-label="List actions">
+                <MoreHorizontal aria-hidden="true" size={20} />
+              </summary>
+              <div className="c3l-list-row-menu-content">
+                <button
+                  disabled={!canWrite || busy}
+                  onClick={() => {
+                    setNameDraft(current.record.name);
+                    setRenameOpen(true);
+                  }}
+                  type="button"
+                >
+                  <Save aria-hidden="true" size={14} /> Rename list
+                </button>
+                {current.record.status === "archived" ? (
+                  <button
+                    disabled={!canWrite || busy}
+                    onClick={() => void unarchiveList()}
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={14} /> Restore list
+                  </button>
+                ) : (
+                  <button
+                    disabled={!canWrite || busy}
+                    onClick={() => void archiveList()}
+                    type="button"
+                  >
+                    <Archive aria-hidden="true" size={14} /> Archive list
+                  </button>
+                )}
+              </div>
+            </details>
+          </header>
+        ) : null}
+        {!mapOutreachDesk ? (
+          <div className="c3l-list-back-row">
+            <button
+              className="c3l-text-button"
+              onClick={() => void navigate({ to: "/lists" })}
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" size={15} /> Business / Sales /
+              Lists
+            </button>
+          </div>
+        ) : null}
         {common}
         <div className="c3l-head c3l-list-detail-head">
           <div className="c3l-head-text">
             <div className="c3l-list-eyebrow">
               <List aria-hidden="true" size={14} /> Outreach list
             </div>
-            <h1 className="c3l-title">{current.record.name}</h1>
+            {mapOutreachDesk ? (
+              <h2 className="c3l-title">{current.record.name}</h2>
+            ) : (
+              <h1 className="c3l-title">{current.record.name}</h1>
+            )}
             <span className="c3l-list-mobile-subtitle">
               Outreach list · {current.record.members.length} leads
             </span>
@@ -685,71 +811,9 @@ export function OutreachListScreen({
               <p className="c3l-list-note">{current.record.note}</p>
             ) : null}
           </div>
-          <div className="c3l-head-actions">
-            <button
-              className="c3l-btn c3l-btn-outline"
-              onClick={() => void copyReference()}
-              type="button"
-            >
-              <Copy aria-hidden="true" size={14} /> Copy reference
-            </button>
-            <button
-              className="c3l-btn c3l-btn-outline"
-              onClick={() => void askScout()}
-              type="button"
-            >
-              <Sparkles aria-hidden="true" size={15} /> Ask Scout
-            </button>
-            <button
-              aria-label="Prepare WhatsApp batch"
-              className="c3l-btn c3l-btn-primary"
-              disabled={
-                !canWrite || busy || current.record.status === "archived"
-              }
-              onClick={() => setBatchOpen(true)}
-              type="button"
-            >
-              <MessageCircle aria-hidden="true" size={15} />
-              <span className="c3l-list-action-desktop">
-                Prepare WhatsApp batch
-              </span>
-              <span className="c3l-list-action-mobile">WhatsApp batch</span>
-            </button>
-            <details className="c3l-list-admin-menu c3l-list-desktop-menu">
-              <summary aria-label="List actions">
-                <MoreHorizontal aria-hidden="true" size={16} />
-              </summary>
-              <div className="c3l-list-row-menu-content">
-                <button
-                  disabled={!canWrite || busy}
-                  onClick={() => {
-                    setNameDraft(current.record.name);
-                    setRenameOpen(true);
-                  }}
-                  type="button"
-                >
-                  <Save aria-hidden="true" size={14} /> Rename list
-                </button>
-                {current.record.status === "archived" ? (
-                  <button
-                    disabled={!canWrite || busy}
-                    onClick={() => void unarchiveList()}
-                    type="button"
-                  >
-                    <RotateCcw aria-hidden="true" size={14} /> Restore list
-                  </button>
-                ) : (
-                  <button
-                    disabled={!canWrite || busy}
-                    onClick={() => void archiveList()}
-                    type="button"
-                  >
-                    <Archive aria-hidden="true" size={14} /> Archive list
-                  </button>
-                )}
-              </div>
-            </details>
-          </div>
+          {!mapOutreachDesk ? (
+            <div className="c3l-head-actions">{listDetailActions}</div>
+          ) : null}
         </div>
         <section aria-label="List summary" className="c3l-list-summary">
           <article className="c3l-list-summary-card">

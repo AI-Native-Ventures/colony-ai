@@ -511,6 +511,7 @@
       "specs": [
         "whatsapp-outreach-desk.spec.ts",
         "whatsapp-outreach-desk.visual.spec.ts",
+        "outreach-desk-map.visual.spec.ts",
         "whatsapp-outreach.spec.ts",
         "whatsapp-work-area.spec.ts",
         "whatsapp-decided-card.spec.ts",

@@ -13,8 +13,10 @@ export type CompanyMapJobRoute =
         | "/company/access";
     }
   | { kind: "work" }
-  | { kind: "whatsapp"; tab: "chats" | "pipeline" }
+  | { kind: "whatsapp"; tab: CompanyMapWhatsAppTab }
   | { kind: "part"; functionId: FunctionId };
+
+export type CompanyMapWhatsAppTab = "needs-you" | "chats" | "pipeline";
 
 /** A screen-backed job that can open in the persistent map canvas window. */
 export type CompanyMapWindowJob = {
@@ -24,7 +26,7 @@ export type CompanyMapWindowJob = {
 
 const ROUTES: Record<string, CompanyMapJobRoute> = {
   "sales:Lead finding": { kind: "app", to: "/discovery" },
-  "sales:Outreach": { kind: "app", to: "/leads" },
+  "sales:Outreach": { kind: "whatsapp", tab: "needs-you" },
   "sales:Follow-ups": { kind: "whatsapp", tab: "chats" },
   "sales:Calls": { kind: "part", functionId: "sales" },
   "sales:Quotes": { kind: "app", to: "/clients" },
@@ -121,6 +123,27 @@ export function companyMapWindowSearch(
   return Object.hasOwn(ROUTES, key) ? { mapJob: key } : undefined;
 }
 
+/** Builds the map-job trail search for a channel desk or its setup fallback. */
+export function companyMapWhatsAppSearch(
+  mapJob: string | undefined,
+  tab: CompanyMapWhatsAppTab,
+  target: "channel",
+): { mapJob: string | undefined; whatsappDeskTab: CompanyMapWhatsAppTab };
+export function companyMapWhatsAppSearch(
+  mapJob: string | undefined,
+  tab: CompanyMapWhatsAppTab,
+  target: "setup",
+): { mapJob: string | undefined; outreachDeskTab: CompanyMapWhatsAppTab };
+export function companyMapWhatsAppSearch(
+  mapJob: string | undefined,
+  tab: CompanyMapWhatsAppTab,
+  target: "channel" | "setup",
+) {
+  return target === "channel"
+    ? { mapJob, whatsappDeskTab: tab }
+    : { mapJob, outreachDeskTab: tab };
+}
+
 function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
   if (typeof value !== "string") return null;
   return (
@@ -135,6 +158,20 @@ function windowJobMatchesRoute(
   pathname: string,
   search: Record<string, unknown>,
 ): boolean {
+  if (
+    job.functionId === "sales" &&
+    job.jobName === "Outreach" &&
+    (pathname === "/leads" ||
+      pathname === "/lists" ||
+      pathname.startsWith("/lists/") ||
+      (pathname.startsWith("/channels/") &&
+        (search.whatsappDeskTab === "needs-you" ||
+          search.whatsappDeskTab === "pipeline" ||
+          search.whatsappDeskTab === "chats" ||
+          search.whatsappDeskTab === "discussion")))
+  ) {
+    return true;
+  }
   const route = getCompanyMapJobRoute(job.functionId, job.jobName);
   if (route.kind === "app") return pathname === route.to;
   return (
@@ -151,7 +188,11 @@ function defaultWindowJobForRoute(
   if (pathname === "/discovery") {
     return { functionId: "sales", jobName: "Lead finding" };
   }
-  if (pathname === "/leads") {
+  if (
+    pathname === "/leads" ||
+    pathname === "/lists" ||
+    pathname.startsWith("/lists/")
+  ) {
     return { functionId: "sales", jobName: "Outreach" };
   }
   if (pathname === "/clients") {
@@ -168,6 +209,13 @@ function defaultWindowJobForRoute(
   }
   if (pathname.startsWith("/channels/") && search.whatsappDeskTab === "chats") {
     return { functionId: "sales", jobName: "Follow-ups" };
+  }
+  if (
+    pathname.startsWith("/channels/") &&
+    (search.whatsappDeskTab === "needs-you" ||
+      search.whatsappDeskTab === "discussion")
+  ) {
+    return { functionId: "sales", jobName: "Outreach" };
   }
   if (
     pathname.startsWith("/channels/") &&

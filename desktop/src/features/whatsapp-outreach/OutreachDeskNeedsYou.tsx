@@ -51,9 +51,11 @@ import {
   WhatsAppSendHealthNeedsCard,
 } from "./WhatsAppSendHealthNotice";
 import { WhatsAppUnknownSendRecoveryCard } from "./WhatsAppUnknownSendRecovery";
+import { MapOutreachDeskHeaderAction } from "./MapOutreachDesk";
 
 type Props = {
   channelIsMember: boolean;
+  mapDesk?: boolean;
   onOpenChat: (waId: string) => void;
 };
 
@@ -466,7 +468,11 @@ function NeedsContactCard({
   );
 }
 
-export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
+export function OutreachDeskNeedsYou({
+  channelIsMember,
+  mapDesk = false,
+  onOpenChat,
+}: Props) {
   const navigate = useNavigate();
   const statusQuery = useWhatsAppStatusQuery();
   const contactsQuery = useWhatsAppContactsQuery();
@@ -594,34 +600,45 @@ export function OutreachDeskNeedsYou({ channelIsMember, onOpenChat }: Props) {
     );
   }
 
+  const aiPlanControl = (
+    <button
+      aria-label={`Open AI plan reserve settings. ${aiPlanReserveLabel}`}
+      className={`c3wa-desk-cap-pill c3wa-ai-plan-chip${
+        aiPlanReserveQuery.data?.admission.state === "paused"
+          ? " is-paused"
+          : ""
+      }`}
+      data-testid="ai-plan-usage-chip"
+      onClick={() =>
+        void navigate({ to: "/settings", search: { section: "whatsapp" } })
+      }
+      type="button"
+    >
+      <span>Your AI plan:</span> {aiPlanReserveLabel}
+    </button>
+  );
+
   return (
     <main
       className="c3wa-root c3wa-desk c3wa-desk-needs"
       data-testid="outreach-desk-needs-you"
     >
-      <header className="c3wa-desk-page-head">
-        <div className="c3wa-desk-needs-heading">
-          <h1>
-            {needsCount} {needsCount === 1 ? "thing needs" : "things need"} you
-          </h1>
-          <p>Scout prepared these. Nothing goes out until you say so.</p>
-        </div>
-        <button
-          aria-label={`Open AI plan reserve settings. ${aiPlanReserveLabel}`}
-          className={`c3wa-desk-cap-pill c3wa-ai-plan-chip${
-            aiPlanReserveQuery.data?.admission.state === "paused"
-              ? " is-paused"
-              : ""
-          }`}
-          data-testid="ai-plan-usage-chip"
-          onClick={() =>
-            void navigate({ to: "/settings", search: { section: "whatsapp" } })
-          }
-          type="button"
-        >
-          <span>Your AI plan:</span> {aiPlanReserveLabel}
-        </button>
-      </header>
+      {mapDesk ? (
+        <MapOutreachDeskHeaderAction>
+          {aiPlanControl}
+        </MapOutreachDeskHeaderAction>
+      ) : (
+        <header className="c3wa-desk-page-head">
+          <div className="c3wa-desk-needs-heading">
+            <h1>
+              {needsCount} {needsCount === 1 ? "thing needs" : "things need"}{" "}
+              you
+            </h1>
+            <p>Scout prepared these. Nothing goes out until you say so.</p>
+          </div>
+          {aiPlanControl}
+        </header>
+      )}
       {status ? (
         <WhatsAppSendHealthBanner canManage={canManage} status={status} />
       ) : null}
