@@ -30,6 +30,8 @@ export type CompanyMapBoardProps = {
   scoutPubkey?: string | null;
   summary: CompanyMapSummary | undefined;
   whatsAppChannelId?: string | null;
+  mapWindowDepth?: number;
   mapWindowJob?: CompanyMapWindowJob | null;
   onMapWindowClose?: () => void;
+  onMapWindowFit?: () => void;
 };

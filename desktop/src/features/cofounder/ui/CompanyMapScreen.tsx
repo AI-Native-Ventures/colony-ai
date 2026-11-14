@@ -21,10 +21,14 @@ import type { CompanyMapWindowJob } from "../companyMapJobRoutes";
 
 export function CompanyMapScreen({
   mapWindowJob = null,
+  mapWindowDepth = 0,
   onMapWindowClose,
+  onMapWindowFit,
 }: {
   mapWindowJob?: CompanyMapWindowJob | null;
+  mapWindowDepth?: number;
   onMapWindowClose?: () => void;
+  onMapWindowFit?: () => void;
 } = {}) {
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
@@ -136,8 +140,10 @@ export function CompanyMapScreen({
       scoutPubkey={scout?.pubkey}
       slots={slots}
       liveFunctionIds={liveFunctionIds}
+      mapWindowDepth={mapWindowDepth}
       mapWindowJob={mapWindowJob}
       onMapWindowClose={onMapWindowClose}
+      onMapWindowFit={onMapWindowFit}
       summary={needsYouSummary.data}
       whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
     />
