@@ -40,6 +40,11 @@ type WorkspaceSeed = {
   relayUrl: string;
 };
 
+type MapCaptureMetrics = {
+  historyReplaces: number;
+  snapshotCaptures: number;
+};
+
 const OPERATIONS_CLIENT_INTAKE: LeftWindowJob = {
   functionId: "operations",
   jobName: "Client intake",
@@ -109,6 +114,96 @@ function mapTarget(job: LeftWindowJob): string {
 
 function currentRoute(page: Page): string {
   return new URL(page.url()).hash.slice(1);
+}
+
+async function installLeftNoOpClickProbe(page: Page) {
+  await page.addInitScript(() => {
+    type Probe = MapCaptureMetrics & { armed: boolean };
+    type ProbeWindow = Window & {
+      __FULLMAP_S3_LEFT_NOOP__?: {
+        read: () => MapCaptureMetrics;
+        reset: () => void;
+      };
+    };
+    const probe: Probe = {
+      armed: false,
+      historyReplaces: 0,
+      snapshotCaptures: 0,
+    };
+    const reset = () => {
+      probe.armed = true;
+      probe.historyReplaces = 0;
+      probe.snapshotCaptures = 0;
+    };
+    const cloneNode = Node.prototype.cloneNode;
+    Node.prototype.cloneNode = function (deep?: boolean) {
+      if (
+        probe.armed &&
+        this instanceof HTMLElement &&
+        this.classList.contains("map-canvas-route-window-content")
+      ) {
+        probe.snapshotCaptures += 1;
+      }
+      return cloneNode.call(this, deep);
+    };
+    const replaceState = History.prototype.replaceState;
+    History.prototype.replaceState = function (...args) {
+      if (probe.armed) probe.historyReplaces += 1;
+      return replaceState.apply(this, args);
+    };
+    (window as ProbeWindow).__FULLMAP_S3_LEFT_NOOP__ = {
+      read: () => ({
+        historyReplaces: probe.historyReplaces,
+        snapshotCaptures: probe.snapshotCaptures,
+      }),
+      reset,
+    };
+  });
+}
+
+async function resetLeftNoOpClickProbe(page: Page) {
+  await page.evaluate(() => {
+    (
+      window as Window & {
+        __FULLMAP_S3_LEFT_NOOP__?: { reset: () => void };
+      }
+    ).__FULLMAP_S3_LEFT_NOOP__?.reset();
+  });
+}
+
+async function readLeftNoOpClickProbe(page: Page): Promise<MapCaptureMetrics> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  return page.evaluate(() => {
+    const probe = (
+      window as Window & {
+        __FULLMAP_S3_LEFT_NOOP__?: { read: () => MapCaptureMetrics };
+      }
+    ).__FULLMAP_S3_LEFT_NOOP__;
+    if (!probe) throw new Error("Expected the Slice 3 left click probe");
+    return probe.read();
+  });
+}
+
+async function readMapCamera(page: Page) {
+  return page.getByTestId("cofounder-map-stage").evaluate((node) => {
+    const value = getComputedStyle(node)
+      .getPropertyValue("--company-map-transform")
+      .trim();
+    const match = value.match(
+      /^translate\(([-\d.]+)px,\s*([-\d.]+)px\) scale\(([-\d.]+)\)$/,
+    );
+    if (!match) throw new Error(`Unexpected map transform: ${value}`);
+    return {
+      scale: Number(match[3]),
+      x: Number(match[1]),
+      y: Number(match[2]),
+    };
+  });
 }
 
 function hashRoute(route: string): string {
@@ -217,6 +312,10 @@ async function openCustomerSuccessTrail(page: Page) {
   await expect.poll(() => currentRoute(page)).not.toContain("mapJob=");
   await expectMapWindow(page, 0);
   await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+  await expect(page.locator(".map-shell-trail-part")).toHaveText(
+    "Customer Success",
+  );
+  await expect(page.locator(".map-shell-trail-job")).toHaveText("Client chats");
 
   await windowContent(page).getByRole("button", { name: "Open chat" }).click();
   await expectMapWindow(page, 1);
@@ -449,6 +548,51 @@ test.describe("full map canvas slice 3a", () => {
     await expectMapWindow(page, 0);
     await page.reload();
     await expectMapWindow(page, 0);
+  });
+
+  test("keeps a plain left-window click out of capture and history writes", async ({
+    page,
+  }) => {
+    await installLeftNoOpClickProbe(page);
+    await installFullMap(page, "light", { seedClient: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRoute(page, mapTarget(OPERATIONS_CLIENT_INTAKE));
+
+    await resetLeftNoOpClickProbe(page);
+    await windowContent(page).getByRole("heading", { name: "Clients" }).click();
+    expect(await readLeftNoOpClickProbe(page)).toEqual({
+      historyReplaces: 0,
+      snapshotCaptures: 0,
+    });
+  });
+
+  test("opens a left window at the mirrored box after panning and zooming", async ({
+    page,
+  }) => {
+    await installFullMap(page, "light", { seedClient: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#/");
+
+    const viewport = page.getByTestId("cofounder-map-viewport");
+    await viewport.focus();
+    await page.keyboard.press("Shift+Equal");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowDown");
+    const camera = await readMapCamera(page);
+    expect(camera.scale).toBeGreaterThan(1);
+    expect(camera.x).not.toBe(0);
+    expect(camera.y).not.toBe(0);
+
+    await openMapJob(page, OPERATIONS_CLIENT_INTAKE, "pointer");
+    await waitForAnimations(page);
+    expect((await page.evaluate(leftOpenGeometry)).window).toEqual({
+      bottom: 823,
+      height: 699,
+      left: 36,
+      right: 1240,
+      top: 124,
+      width: 1204,
+    });
   });
 
   test("keeps a painted Operations trail on the right and returns to known screens", async ({
