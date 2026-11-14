@@ -126,6 +126,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   const interactionActiveRef = useRef(false);
   const wheelGeometryRef = useRef<CameraGeometry | null>(null);
   const wheelEndTimerRef = useRef<number | null>(null);
+  const clickResetTimerRef = useRef<number | null>(null);
   const contextMenuResetTimerRef = useRef<number | null>(null);
 
   const readGeometry = useCallback((): CameraGeometry | null => {
@@ -205,6 +206,24 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     }
   }, []);
 
+  const clearPendingClick = useCallback(() => {
+    suppressClickRef.current = false;
+    if (clickResetTimerRef.current !== null) {
+      window.clearTimeout(clickResetTimerRef.current);
+      clickResetTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleClickReset = useCallback(() => {
+    if (clickResetTimerRef.current !== null) {
+      window.clearTimeout(clickResetTimerRef.current);
+    }
+    clickResetTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = false;
+      clickResetTimerRef.current = null;
+    }, 500);
+  }, []);
+
   const clearPendingContextMenu = useCallback(() => {
     suppressContextMenuRef.current = false;
     if (contextMenuResetTimerRef.current !== null) {
@@ -271,7 +290,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
   useEffect(() => {
     const clearTransientInput = () => {
       spacePressedRef.current = false;
-      suppressClickRef.current = false;
+      clearPendingClick();
       clearPendingContextMenu();
       endCurrentGesture();
     };
@@ -291,22 +310,41 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       clearPendingContextMenu();
       event.preventDefault();
     };
+    const onDocumentClick = (event: MouseEvent) => {
+      if (!suppressClickRef.current) return;
+      clearPendingClick();
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onDocumentPointerDown = () => {
+      if (suppressClickRef.current) clearPendingClick();
+    };
 
     window.addEventListener("blur", clearTransientInput);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    document.addEventListener("click", onDocumentClick, true);
     document.addEventListener("contextmenu", onDocumentContextMenu, true);
+    document.addEventListener("pointerdown", onDocumentPointerDown, true);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("blur", clearTransientInput);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      document.removeEventListener("click", onDocumentClick, true);
       document.removeEventListener("contextmenu", onDocumentContextMenu, true);
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearWheelEndTimer();
+      clearPendingClick();
       clearPendingContextMenu();
     };
-  }, [clearPendingContextMenu, clearWheelEndTimer, endCurrentGesture]);
+  }, [
+    clearPendingClick,
+    clearPendingContextMenu,
+    clearWheelEndTimer,
+    endCurrentGesture,
+  ]);
 
   const panBy = useCallback(
     (delta: CompanyMapPoint, synchronize = true) => {
@@ -518,6 +556,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
         const wasPinching = pinchGestureRef.current !== null;
         touchPointsRef.current.delete(event.pointerId);
         if (wasPinching) {
+          scheduleClickReset();
           endCurrentGesture();
           return;
         }
@@ -526,6 +565,9 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       pointerGestureRef.current = null;
       if (!gesture.started) return;
+      if (gesture.button === 0 || gesture.pointerType === "touch") {
+        scheduleClickReset();
+      }
       if (gesture.button === 2) {
         if (contextMenuResetTimerRef.current !== null) {
           window.clearTimeout(contextMenuResetTimerRef.current);
@@ -537,13 +579,13 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       }
       finishInteraction();
     },
-    [endCurrentGesture, finishInteraction],
+    [endCurrentGesture, finishInteraction, scheduleClickReset],
   );
 
   const onPointerCancel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.type === "pointercancel") {
-        suppressClickRef.current = false;
+        clearPendingClick();
         clearPendingContextMenu();
       }
       if (event.pointerType === "touch") {
@@ -556,17 +598,17 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
         endCurrentGesture();
       }
     },
-    [clearPendingContextMenu, endCurrentGesture],
+    [clearPendingClick, clearPendingContextMenu, endCurrentGesture],
   );
 
   const onClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!suppressClickRef.current) return;
-      suppressClickRef.current = false;
+      clearPendingClick();
       event.preventDefault();
       event.stopPropagation();
     },
-    [],
+    [clearPendingClick],
   );
 
   const onContextMenuCapture = useCallback(
