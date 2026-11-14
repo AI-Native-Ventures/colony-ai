@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, PointerEvent, ReactNode } from "react";
+import { Fragment, useEffect, useRef } from "react";
+import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
@@ -41,6 +41,7 @@ import {
 } from "@/features/cofounder/companyMapConnectorState";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
+import { useCompanyMapCamera } from "./useCompanyMapCamera";
 import { useCompanyMapDesktopOpenPart } from "./useCompanyMapDesktopOpenPart";
 import type {
   CompanyMapBoardProps,
@@ -876,8 +877,6 @@ function CompanyMapDesktop({
   onMapWindowClose,
   onMapWindowFit,
 }: CompanyMapBoardProps) {
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const {
     activePart: interactiveActivePart,
     blurPart,
@@ -889,6 +888,23 @@ function CompanyMapDesktop({
   } = useCompanyMapDesktopOpenPart();
   const activePart = mapWindowJob?.functionId ?? interactiveActivePart;
   const mapWindowOpen = mapWindowJob !== null;
+  const {
+    camera,
+    fitCamera,
+    onClickCapture,
+    onContextMenuCapture,
+    onKeyDown: onCameraKeyDown,
+    onKeyUp: onCameraKeyUp,
+    onLostPointerCapture,
+    onPointerCancel,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onWheel,
+    stageRef,
+    viewportRef,
+    zoomCameraBy,
+  } = useCompanyMapCamera({ disabled: mapWindowOpen });
   const wasMapWindowOpen = useRef(mapWindowOpen);
   useEffect(() => {
     if (wasMapWindowOpen.current && !mapWindowOpen) {
@@ -896,69 +912,15 @@ function CompanyMapDesktop({
     }
     wasMapWindowOpen.current = mapWindowOpen;
   }, [clearOpenPart, mapWindowOpen]);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    pointerId: number;
-    x: number;
-    y: number;
-    pan: { x: number; y: number };
-  } | null>(null);
-  const suppressClickRef = useRef(false);
-
-  function setBoardZoom(next: number) {
-    const bounded = Math.min(1.3, Math.max(0.7, next));
-    setZoom(bounded);
-    if (bounded <= 1) setPan({ x: 0, y: 0 });
-  }
-
-  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (
-      mapWindowOpen ||
-      zoom <= 1 ||
-      event.button !== 0 ||
-      (event.target instanceof HTMLElement &&
-        event.target.closest("button, a, [data-map-control]"))
-    ) {
-      return;
-    }
-    event.currentTarget.setPointerCapture(event.pointerId);
-    event.preventDefault();
-    suppressClickRef.current = false;
-    dragRef.current = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      pan,
-    };
-  }
-
-  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) {
-      suppressClickRef.current = true;
-    }
-    const maxX = (COMPANY_MAP_SIZE.width * (zoom - 1)) / 2;
-    const maxY = (COMPANY_MAP_SIZE.height * (zoom - 1)) / 2;
-    setPan({
-      x: Math.max(-maxX, Math.min(maxX, drag.pan.x + event.clientX - drag.x)),
-      y: Math.max(-maxY, Math.min(maxY, drag.pan.y + event.clientY - drag.y)),
-    });
-  }
-
-  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
-  }
-
   const mapWindowPart = mapWindowJob
     ? partPosition(mapWindowJob.functionId)
     : null;
   const trailDepth = Math.max(0, Math.floor(mapWindowDepth));
-  const stageStyle: StageStyle = {
-    "--company-map-transform": mapWindowPart
-      ? `translate(${84 - mapWindowPart.x - trailDepth * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
-      : `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-  };
+  const stageStyle: StageStyle | undefined = mapWindowPart
+    ? {
+        "--company-map-transform": `translate(${84 - mapWindowPart.x - trailDepth * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`,
+      }
+    : undefined;
   const jobs = activePart
     ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => ({
         functionId: activePart,
@@ -988,19 +950,19 @@ function CompanyMapDesktop({
   return (
     <div className="company-map-desktop" data-testid="cofounder-map-desktop">
       <div className="company-map-scroll">
-        {/* A plain group, not a fieldset: a fieldset clips everything inside
-            it when it is stretched by its minimum height. */}
-        {/* biome-ignore lint/a11y/useSemanticElements: see the note above */}
+        {/* The custom map owns arrow, zoom, and Escape keys. A fieldset clips
+            its stretched contents, so expose this keyboard interaction surface
+            as an application rather than a native form group. */}
         <div
-          aria-label={`${companyName} company map`}
+          aria-label={`${companyName} company map. Arrow keys pan, plus and minus zoom, and 0 fits the map.`}
           className="company-map-viewport"
-          role="group"
+          data-testid="cofounder-map-viewport"
+          role="application"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: This application map implements the documented keyboard panning and zooming controls.
+          tabIndex={0}
+          onClickCapture={onClickCapture}
           onClick={(event) => {
             if (mapWindowOpen) return;
-            if (suppressClickRef.current) {
-              suppressClickRef.current = false;
-              return;
-            }
             if (
               event.target === event.currentTarget ||
               event.target ===
@@ -1009,7 +971,9 @@ function CompanyMapDesktop({
               clearOpenPart();
             }
           }}
+          onContextMenuCapture={onContextMenuCapture}
           onKeyDown={(event) => {
+            if (onCameraKeyDown(event)) return;
             if (event.key !== "Escape") return;
             if (mapWindowOpen) {
               onMapWindowClose?.();
@@ -1017,13 +981,16 @@ function CompanyMapDesktop({
             }
             clearOpenPart();
           }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          data-zoomed={zoom > 1}
+          onKeyUp={onCameraKeyUp}
+          onLostPointerCapture={onLostPointerCapture}
+          onPointerCancel={onPointerCancel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onWheel={onWheel}
+          data-zoomed={camera.scale > 1}
           data-map-window-open={mapWindowOpen ? "true" : undefined}
-          ref={stageRef}
+          ref={viewportRef}
         >
           <div
             aria-hidden={mapWindowOpen ? true : undefined}
@@ -1032,6 +999,7 @@ function CompanyMapDesktop({
             data-map-window-open={mapWindowOpen ? "true" : undefined}
             data-testid="cofounder-map-stage"
             inert={mapWindowOpen ? true : undefined}
+            ref={stageRef}
             style={stageStyle}
           >
             <MapConnectors
@@ -1139,7 +1107,7 @@ function CompanyMapDesktop({
                   onMapWindowClose?.();
                   return;
                 }
-                setBoardZoom(zoom - 0.15);
+                zoomCameraBy(-0.15);
               }}
               type="button"
             >
@@ -1157,8 +1125,7 @@ function CompanyMapDesktop({
                   onMapWindowClose?.();
                   return;
                 }
-                setBoardZoom(1);
-                setPan({ x: 0, y: 0 });
+                fitCamera();
               }}
               type="button"
             >
@@ -1166,7 +1133,7 @@ function CompanyMapDesktop({
             </button>
             <button
               aria-label="Zoom in"
-              onClick={() => setBoardZoom(zoom + 0.15)}
+              onClick={() => zoomCameraBy(0.15)}
               type="button"
             >
               +
@@ -1178,7 +1145,7 @@ function CompanyMapDesktop({
         </div>
       </div>
       <span className="sr-only" data-testid="cofounder-map-zoom-level">
-        {Math.round(zoom * 100)} percent
+        {Math.round(camera.scale * 100)} percent
       </span>
     </div>
   );

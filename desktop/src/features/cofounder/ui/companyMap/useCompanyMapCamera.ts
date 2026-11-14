@@ -1,0 +1,850 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  WheelEvent as ReactWheelEvent,
+} from "react";
+
+import {
+  cameraForScaledPoint,
+  clampCompanyMapCamera,
+  clampCompanyMapScale,
+  formatCompanyMapTransform,
+  type CompanyMapCamera,
+  type CompanyMapPoint,
+  type CompanyMapRect,
+} from "./companyMapCamera";
+
+const CAMERA_DRAG_THRESHOLD = 4;
+const KEYBOARD_PAN_STEP = 48;
+const WHEEL_GESTURE_END_MS = 110;
+const WHEEL_SCALE_SENSITIVITY = 0.0015;
+
+const START_CAMERA: CompanyMapCamera = { scale: 1, x: 0, y: 0 };
+
+type CameraGeometry = {
+  origin: CompanyMapPoint;
+  stage: CompanyMapRect;
+  viewport: CompanyMapRect;
+};
+
+type PointerGesture = CameraGeometry & {
+  button: number;
+  camera: CompanyMapCamera;
+  pointerId: number;
+  pointerType: string;
+  start: CompanyMapPoint;
+  started: boolean;
+};
+
+type PinchGesture = CameraGeometry & {
+  camera: CompanyMapCamera;
+  distance: number;
+  source: CompanyMapPoint;
+};
+
+type LinkPress = {
+  link: HTMLAnchorElement;
+  pointerId: number;
+  start: CompanyMapPoint;
+};
+
+function toPoint(event: { clientX: number; clientY: number }): CompanyMapPoint {
+  return { x: event.clientX, y: event.clientY };
+}
+
+function centerOf(
+  first: CompanyMapPoint,
+  second: CompanyMapPoint,
+): CompanyMapPoint {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+function distanceBetween(
+  first: CompanyMapPoint,
+  second: CompanyMapPoint,
+): number {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function sameCamera(
+  first: CompanyMapCamera,
+  second: CompanyMapCamera,
+): boolean {
+  return (
+    first.scale === second.scale && first.x === second.x && first.y === second.y
+  );
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        "input, textarea, select, [contenteditable='true'], [role='textbox']",
+      ),
+    )
+  );
+}
+
+function isMapControlTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element && Boolean(target.closest("[data-map-control]"))
+  );
+}
+
+function isLeftDragCanvasTarget(target: EventTarget | null): boolean {
+  return (
+    !(target instanceof Element) ||
+    !target.closest("button, a, [data-map-control], .company-map-card")
+  );
+}
+
+function mapLinkTarget(target: EventTarget | null): HTMLAnchorElement | null {
+  if (!(target instanceof Element)) return null;
+  const link = target.closest("a");
+  return link instanceof HTMLAnchorElement ? link : null;
+}
+
+function normalizeWheelDelta(
+  event: ReactWheelEvent<HTMLDivElement>,
+  viewportHeight: number,
+): CompanyMapPoint {
+  const multiplier =
+    event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewportHeight : 1;
+  return { x: event.deltaX * multiplier, y: event.deltaY * multiplier };
+}
+
+/**
+ * Owns the one desktop-map camera for buttons, wheel, keyboard, pointer, and
+ * touch input. Gesture frames update only the stage transform; React state is
+ * synchronized at the end of a gesture for controls and assistive text.
+ */
+export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
+  const [camera, setCamera] = useState<CompanyMapCamera>(START_CAMERA);
+  const cameraRef = useRef<CompanyMapCamera>(START_CAMERA);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const pointerGestureRef = useRef<PointerGesture | null>(null);
+  const pinchGestureRef = useRef<PinchGesture | null>(null);
+  const linkPressRef = useRef<LinkPress | null>(null);
+  const pendingLinkActivationRef = useRef<HTMLAnchorElement | null>(null);
+  const touchPointsRef = useRef(new Map<number, CompanyMapPoint>());
+  const spacePressedRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const suppressContextMenuRef = useRef(false);
+  const interactionActiveRef = useRef(false);
+  const wheelGeometryRef = useRef<CameraGeometry | null>(null);
+  const wheelEndTimerRef = useRef<number | null>(null);
+  const clickResetTimerRef = useRef<number | null>(null);
+  const contextMenuResetTimerRef = useRef<number | null>(null);
+  const linkActivationFrameRef = useRef<number | null>(null);
+
+  const readGeometry = useCallback((): CameraGeometry | null => {
+    const stageElement = stageRef.current;
+    const viewportElement = viewportRef.current;
+    if (!stageElement || !viewportElement) return null;
+
+    const viewportBounds = viewportElement.getBoundingClientRect();
+    const width = stageElement.offsetWidth;
+    const height = stageElement.offsetHeight;
+    const stage = {
+      height,
+      left:
+        viewportBounds.left +
+        viewportElement.clientLeft +
+        stageElement.offsetLeft,
+      top:
+        viewportBounds.top + viewportElement.clientTop + stageElement.offsetTop,
+      width,
+    };
+    const viewport = {
+      height: viewportBounds.height,
+      left: viewportBounds.left,
+      top: viewportBounds.top,
+      width: viewportBounds.width,
+    };
+
+    return {
+      origin: {
+        x: stage.left + stage.width / 2,
+        y: stage.top + stage.height / 2,
+      },
+      stage,
+      viewport,
+    };
+  }, []);
+
+  const syncCameraState = useCallback((next: CompanyMapCamera) => {
+    setCamera((current) => (sameCamera(current, next) ? current : next));
+  }, []);
+
+  const writeCamera = useCallback(
+    (
+      next: CompanyMapCamera,
+      geometry: CameraGeometry | null = readGeometry(),
+      synchronize = false,
+    ): CompanyMapCamera => {
+      const bounded = geometry
+        ? clampCompanyMapCamera(next, geometry.stage, geometry.viewport)
+        : { ...next, scale: clampCompanyMapScale(next.scale) };
+      cameraRef.current = bounded;
+      if (!disabled) {
+        stageRef.current?.style.setProperty(
+          "--company-map-transform",
+          formatCompanyMapTransform(bounded),
+        );
+      }
+      if (synchronize) syncCameraState(bounded);
+      return bounded;
+    },
+    [disabled, readGeometry, syncCameraState],
+  );
+
+  const beginInteraction = useCallback(() => {
+    if (interactionActiveRef.current) return;
+    interactionActiveRef.current = true;
+    viewportRef.current?.setAttribute("data-camera-interacting", "true");
+  }, []);
+
+  const finishInteraction = useCallback(() => {
+    if (!interactionActiveRef.current) return;
+    interactionActiveRef.current = false;
+    viewportRef.current?.removeAttribute("data-camera-interacting");
+    syncCameraState(cameraRef.current);
+  }, [syncCameraState]);
+
+  const clearWheelEndTimer = useCallback(() => {
+    if (wheelEndTimerRef.current !== null) {
+      window.clearTimeout(wheelEndTimerRef.current);
+      wheelEndTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingClick = useCallback(() => {
+    suppressClickRef.current = false;
+    if (clickResetTimerRef.current !== null) {
+      window.clearTimeout(clickResetTimerRef.current);
+      clickResetTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleClickReset = useCallback(() => {
+    if (clickResetTimerRef.current !== null) {
+      window.clearTimeout(clickResetTimerRef.current);
+    }
+    clickResetTimerRef.current = window.setTimeout(() => {
+      suppressClickRef.current = false;
+      clickResetTimerRef.current = null;
+    }, 500);
+  }, []);
+
+  const clearPendingContextMenu = useCallback(() => {
+    suppressContextMenuRef.current = false;
+    if (contextMenuResetTimerRef.current !== null) {
+      window.clearTimeout(contextMenuResetTimerRef.current);
+      contextMenuResetTimerRef.current = null;
+    }
+  }, []);
+
+  const clearPendingLinkActivation = useCallback(() => {
+    pendingLinkActivationRef.current = null;
+    if (linkActivationFrameRef.current !== null) {
+      window.cancelAnimationFrame(linkActivationFrameRef.current);
+      linkActivationFrameRef.current = null;
+    }
+  }, []);
+
+  const queueLinkActivation = useCallback(
+    (link: HTMLAnchorElement) => {
+      clearPendingLinkActivation();
+      if (!link.isConnected) return;
+      pendingLinkActivationRef.current = link;
+      linkActivationFrameRef.current = window.requestAnimationFrame(() => {
+        linkActivationFrameRef.current = null;
+        const pendingLink = pendingLinkActivationRef.current;
+        pendingLinkActivationRef.current = null;
+        pendingLink?.click();
+      });
+    },
+    [clearPendingLinkActivation],
+  );
+
+  const endCurrentGesture = useCallback(() => {
+    clearWheelEndTimer();
+    pointerGestureRef.current = null;
+    pinchGestureRef.current = null;
+    touchPointsRef.current.clear();
+    wheelGeometryRef.current = null;
+    finishInteraction();
+  }, [clearWheelEndTimer, finishInteraction]);
+
+  const scheduleWheelEnd = useCallback(() => {
+    clearWheelEndTimer();
+    wheelEndTimerRef.current = window.setTimeout(() => {
+      wheelEndTimerRef.current = null;
+      wheelGeometryRef.current = null;
+      finishInteraction();
+    }, WHEEL_GESTURE_END_MS);
+  }, [clearWheelEndTimer, finishInteraction]);
+
+  useLayoutEffect(() => {
+    if (!disabled) writeCamera(cameraRef.current);
+  }, [disabled, writeCamera]);
+
+  useEffect(() => {
+    if (disabled) endCurrentGesture();
+  }, [disabled, endCurrentGesture]);
+
+  useEffect(() => {
+    const stageElement = stageRef.current;
+    const viewportElement = viewportRef.current;
+    if (
+      !stageElement ||
+      !viewportElement ||
+      disabled ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+
+    let frame: number | null = null;
+    const clampAfterResize = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        writeCamera(cameraRef.current, readGeometry(), true);
+      });
+    };
+    const observer = new ResizeObserver(clampAfterResize);
+    observer.observe(stageElement);
+    observer.observe(viewportElement);
+    return () => {
+      observer.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [disabled, readGeometry, writeCamera]);
+
+  useEffect(() => {
+    const clearTransientInput = () => {
+      spacePressedRef.current = false;
+      linkPressRef.current = null;
+      clearPendingClick();
+      clearPendingContextMenu();
+      clearPendingLinkActivation();
+      endCurrentGesture();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space" && !isEditableTarget(event.target)) {
+        spacePressedRef.current = true;
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") spacePressedRef.current = false;
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") clearTransientInput();
+    };
+    const onDocumentContextMenu = (event: MouseEvent) => {
+      if (!suppressContextMenuRef.current) return;
+      clearPendingContextMenu();
+      event.preventDefault();
+    };
+    const onDocumentClick = (event: MouseEvent) => {
+      if (!suppressClickRef.current) return;
+      clearPendingClick();
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onDocumentPointerDown = () => {
+      if (suppressClickRef.current) clearPendingClick();
+    };
+
+    window.addEventListener("blur", clearTransientInput);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    document.addEventListener("click", onDocumentClick, true);
+    document.addEventListener("contextmenu", onDocumentContextMenu, true);
+    document.addEventListener("pointerdown", onDocumentPointerDown, true);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", clearTransientInput);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      document.removeEventListener("click", onDocumentClick, true);
+      document.removeEventListener("contextmenu", onDocumentContextMenu, true);
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearWheelEndTimer();
+      clearPendingClick();
+      clearPendingContextMenu();
+      clearPendingLinkActivation();
+    };
+  }, [
+    clearPendingClick,
+    clearPendingContextMenu,
+    clearPendingLinkActivation,
+    clearWheelEndTimer,
+    endCurrentGesture,
+  ]);
+
+  const panBy = useCallback(
+    (delta: CompanyMapPoint, synchronize = true) => {
+      if (disabled) return;
+      const geometry = readGeometry();
+      const current = cameraRef.current;
+      writeCamera(
+        {
+          scale: current.scale,
+          x: current.x + delta.x,
+          y: current.y + delta.y,
+        },
+        geometry,
+        synchronize,
+      );
+    },
+    [disabled, readGeometry, writeCamera],
+  );
+
+  const zoomAt = useCallback(
+    (
+      nextScale: number,
+      source: CompanyMapPoint,
+      target = source,
+      geometry: CameraGeometry | null = readGeometry(),
+      synchronize = true,
+    ) => {
+      if (disabled || !geometry) return;
+      writeCamera(
+        cameraForScaledPoint({
+          camera: cameraRef.current,
+          origin: geometry.origin,
+          scale: nextScale,
+          source,
+          target,
+        }),
+        geometry,
+        synchronize,
+      );
+    },
+    [disabled, readGeometry, writeCamera],
+  );
+
+  const zoomCameraBy = useCallback(
+    (amount: number) => {
+      if (disabled) return;
+      const geometry = readGeometry();
+      if (!geometry) return;
+      const nextScale = clampCompanyMapScale(cameraRef.current.scale + amount);
+      if (nextScale <= 1) {
+        writeCamera({ scale: nextScale, x: 0, y: 0 }, geometry, true);
+        return;
+      }
+      const center = {
+        x: geometry.viewport.left + geometry.viewport.width / 2,
+        y: geometry.viewport.top + geometry.viewport.height / 2,
+      };
+      zoomAt(nextScale, center, center, geometry, true);
+    },
+    [disabled, readGeometry, writeCamera, zoomAt],
+  );
+
+  const fitCamera = useCallback(() => {
+    if (disabled) return;
+    writeCamera(START_CAMERA, readGeometry(), true);
+  }, [disabled, readGeometry, writeCamera]);
+
+  const startPointerPan = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>, gesture: PointerGesture) => {
+      if (gesture.started) return;
+      gesture.started = true;
+      if (gesture.button === 0 || gesture.pointerType === "touch") {
+        suppressClickRef.current = true;
+      }
+      if (gesture.button === 2) suppressContextMenuRef.current = true;
+      try {
+        event.currentTarget.setPointerCapture(gesture.pointerId);
+      } catch {
+        // A cancelled pointer cannot be captured. Its cancel handler clears it.
+      }
+      beginInteraction();
+    },
+    [beginInteraction],
+  );
+
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (disabled) return;
+      const geometry = readGeometry();
+      if (!geometry) return;
+      const point = toPoint(event);
+
+      linkPressRef.current =
+        event.button === 0
+          ? (() => {
+              const link = mapLinkTarget(event.target);
+              return link
+                ? { link, pointerId: event.pointerId, start: point }
+                : null;
+            })()
+          : null;
+
+      if (event.button === 2) {
+        clearPendingContextMenu();
+        suppressContextMenuRef.current = true;
+      }
+
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.set(event.pointerId, point);
+        const touches = [...touchPointsRef.current.values()];
+        if (touches.length >= 2) {
+          const [first, second] = touches;
+          if (!first || !second) return;
+          const distance = distanceBetween(first, second);
+          if (distance === 0) return;
+          pointerGestureRef.current = null;
+          pinchGestureRef.current = {
+            ...geometry,
+            camera: { ...cameraRef.current },
+            distance,
+            source: centerOf(first, second),
+          };
+          suppressClickRef.current = true;
+          for (const pointerId of touchPointsRef.current.keys()) {
+            try {
+              event.currentTarget.setPointerCapture(pointerId);
+            } catch {
+              // The platform may already have cancelled the first pointer.
+            }
+          }
+          beginInteraction();
+          event.preventDefault();
+          return;
+        }
+        pointerGestureRef.current = {
+          ...geometry,
+          button: 0,
+          camera: { ...cameraRef.current },
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          start: point,
+          started: false,
+        };
+        return;
+      }
+
+      const startsPan =
+        event.button === 1 ||
+        event.button === 2 ||
+        (event.button === 0 &&
+          (spacePressedRef.current || isLeftDragCanvasTarget(event.target)));
+      if (!startsPan) return;
+
+      pointerGestureRef.current = {
+        ...geometry,
+        button: event.button,
+        camera: { ...cameraRef.current },
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        start: point,
+        started: false,
+      };
+      if (event.button === 1) event.preventDefault();
+    },
+    [beginInteraction, clearPendingContextMenu, disabled, readGeometry],
+  );
+
+  const onPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (disabled) return;
+      const point = toPoint(event);
+      const linkPress = linkPressRef.current;
+      if (
+        linkPress?.pointerId === event.pointerId &&
+        Math.hypot(point.x - linkPress.start.x, point.y - linkPress.start.y) >=
+          CAMERA_DRAG_THRESHOLD
+      ) {
+        linkPressRef.current = null;
+      }
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.set(event.pointerId, point);
+        const pinch = pinchGestureRef.current;
+        if (pinch) {
+          const touches = [...touchPointsRef.current.values()];
+          const [first, second] = touches;
+          if (!first || !second) return;
+          const distance = distanceBetween(first, second);
+          if (distance === 0) return;
+          const target = centerOf(first, second);
+          const scale = pinch.camera.scale * (distance / pinch.distance);
+          writeCamera(
+            cameraForScaledPoint({
+              camera: pinch.camera,
+              origin: pinch.origin,
+              scale,
+              source: pinch.source,
+              target,
+            }),
+            pinch,
+          );
+          event.preventDefault();
+          return;
+        }
+      }
+
+      const gesture = pointerGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      const delta = {
+        x: point.x - gesture.start.x,
+        y: point.y - gesture.start.y,
+      };
+      if (
+        !gesture.started &&
+        Math.hypot(delta.x, delta.y) < CAMERA_DRAG_THRESHOLD
+      ) {
+        return;
+      }
+      startPointerPan(event, gesture);
+      writeCamera(
+        {
+          scale: gesture.camera.scale,
+          x: gesture.camera.x + delta.x,
+          y: gesture.camera.y + delta.y,
+        },
+        gesture,
+      );
+      event.preventDefault();
+    },
+    [disabled, startPointerPan, writeCamera],
+  );
+
+  const onPointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const linkPress = linkPressRef.current;
+      if (linkPress?.pointerId === event.pointerId) {
+        linkPressRef.current = null;
+        if (
+          Math.hypot(
+            event.clientX - linkPress.start.x,
+            event.clientY - linkPress.start.y,
+          ) < CAMERA_DRAG_THRESHOLD
+        ) {
+          queueLinkActivation(linkPress.link);
+        }
+      }
+      if (event.pointerType === "touch") {
+        const wasPinching = pinchGestureRef.current !== null;
+        touchPointsRef.current.delete(event.pointerId);
+        if (wasPinching) {
+          scheduleClickReset();
+          endCurrentGesture();
+          return;
+        }
+      }
+      const gesture = pointerGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+      pointerGestureRef.current = null;
+      if (!gesture.started) {
+        if (gesture.button === 2) clearPendingContextMenu();
+        return;
+      }
+      if (gesture.button === 0 || gesture.pointerType === "touch") {
+        scheduleClickReset();
+      }
+      if (gesture.button === 2) {
+        if (contextMenuResetTimerRef.current !== null) {
+          window.clearTimeout(contextMenuResetTimerRef.current);
+        }
+        contextMenuResetTimerRef.current = window.setTimeout(() => {
+          suppressContextMenuRef.current = false;
+          contextMenuResetTimerRef.current = null;
+        }, 500);
+      }
+      finishInteraction();
+    },
+    [
+      clearPendingContextMenu,
+      endCurrentGesture,
+      finishInteraction,
+      queueLinkActivation,
+      scheduleClickReset,
+    ],
+  );
+
+  const onPointerCancel = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.type === "pointercancel") {
+        linkPressRef.current = null;
+        clearPendingClick();
+        clearPendingContextMenu();
+        clearPendingLinkActivation();
+      }
+      if (event.pointerType === "touch") {
+        touchPointsRef.current.delete(event.pointerId);
+      }
+      if (
+        pointerGestureRef.current?.pointerId === event.pointerId ||
+        pinchGestureRef.current
+      ) {
+        endCurrentGesture();
+      }
+    },
+    [
+      clearPendingClick,
+      clearPendingContextMenu,
+      clearPendingLinkActivation,
+      endCurrentGesture,
+    ],
+  );
+
+  const onClickCapture = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const pendingLink = pendingLinkActivationRef.current;
+      if (pendingLink && mapLinkTarget(event.target) === pendingLink) {
+        clearPendingLinkActivation();
+      }
+      if (!suppressClickRef.current) return;
+      clearPendingClick();
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [clearPendingClick, clearPendingLinkActivation],
+  );
+
+  const onContextMenuCapture = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!suppressContextMenuRef.current) return;
+      clearPendingContextMenu();
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [clearPendingContextMenu],
+  );
+
+  const onWheel = useCallback(
+    (event: ReactWheelEvent<HTMLDivElement>) => {
+      if (disabled || isMapControlTarget(event.target)) return;
+      const geometry = wheelGeometryRef.current ?? readGeometry();
+      if (!geometry) return;
+      wheelGeometryRef.current = geometry;
+      const delta = normalizeWheelDelta(event, geometry.viewport.height);
+      if (delta.x === 0 && delta.y === 0) return;
+
+      event.preventDefault();
+      beginInteraction();
+      if (event.ctrlKey || event.metaKey) {
+        zoomAt(
+          cameraRef.current.scale *
+            Math.exp(-delta.y * WHEEL_SCALE_SENSITIVITY),
+          toPoint(event),
+          toPoint(event),
+          geometry,
+          false,
+        );
+      } else {
+        const current = cameraRef.current;
+        writeCamera(
+          {
+            scale: current.scale,
+            x: current.x - delta.x,
+            y: current.y - delta.y,
+          },
+          geometry,
+        );
+      }
+      scheduleWheelEnd();
+    },
+    [
+      beginInteraction,
+      disabled,
+      readGeometry,
+      scheduleWheelEnd,
+      writeCamera,
+      zoomAt,
+    ],
+  );
+
+  const onKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>): boolean => {
+      if (
+        disabled ||
+        event.currentTarget !== event.target ||
+        isEditableTarget(event.target)
+      ) {
+        return false;
+      }
+
+      if (event.code === "Space") {
+        spacePressedRef.current = true;
+        event.preventDefault();
+        return true;
+      }
+
+      switch (event.code) {
+        case "ArrowDown":
+          panBy({ x: 0, y: -KEYBOARD_PAN_STEP });
+          break;
+        case "ArrowLeft":
+          panBy({ x: KEYBOARD_PAN_STEP, y: 0 });
+          break;
+        case "ArrowRight":
+          panBy({ x: -KEYBOARD_PAN_STEP, y: 0 });
+          break;
+        case "ArrowUp":
+          panBy({ x: 0, y: KEYBOARD_PAN_STEP });
+          break;
+        case "Equal":
+        case "NumpadAdd":
+          zoomCameraBy(0.15);
+          break;
+        case "Minus":
+        case "NumpadSubtract":
+          zoomCameraBy(-0.15);
+          break;
+        case "Digit0":
+        case "Numpad0":
+          fitCamera();
+          break;
+        default:
+          return false;
+      }
+      event.preventDefault();
+      return true;
+    },
+    [disabled, fitCamera, panBy, zoomCameraBy],
+  );
+
+  const onKeyUp = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.code !== "Space") return;
+    spacePressedRef.current = false;
+    if (event.currentTarget === event.target) event.preventDefault();
+  }, []);
+
+  return {
+    camera,
+    fitCamera,
+    onClickCapture,
+    onContextMenuCapture,
+    onKeyDown,
+    onKeyUp,
+    onLostPointerCapture: onPointerCancel,
+    onPointerCancel,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp: onPointerEnd,
+    onWheel,
+    stageRef,
+    viewportRef,
+    zoomCameraBy,
+  };
+}
