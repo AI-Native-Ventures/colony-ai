@@ -950,14 +950,15 @@ function CompanyMapDesktop({
   return (
     <div className="company-map-desktop" data-testid="cofounder-map-desktop">
       <div className="company-map-scroll">
-        {/* A plain group, not a fieldset: a fieldset clips everything inside
-            it when it is stretched by its minimum height. */}
-        {/* biome-ignore lint/a11y/useSemanticElements: see the note above */}
+        {/* The custom map owns arrow, zoom, and Escape keys. A fieldset clips
+            its stretched contents, so expose this keyboard interaction surface
+            as an application rather than a native form group. */}
         <div
-          aria-label={`${companyName} company map`}
+          aria-label={`${companyName} company map. Arrow keys pan, plus and minus zoom, and 0 fits the map.`}
           className="company-map-viewport"
           data-testid="cofounder-map-viewport"
-          role="group"
+          role="application"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: This application map implements the documented keyboard panning and zooming controls.
           tabIndex={0}
           onClickCapture={onClickCapture}
           onClick={(event) => {
