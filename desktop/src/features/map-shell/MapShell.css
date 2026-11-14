@@ -228,7 +228,13 @@
   background: hsl(var(--colony-accent));
 }
 
-.map-shell-chat-dot {
+/*
+ * In a text item the dot follows the word. The Channels dot once kept the
+ * shared `position: absolute` and, with nothing to place it, sat on the
+ * middle of the word.
+ */
+.map-shell-chat-dot,
+.map-shell-channel-dot {
   position: static;
 }
 

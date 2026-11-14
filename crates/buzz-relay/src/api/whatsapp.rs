@@ -19,8 +19,8 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use buzz_db::whatsapp::{
-    OutreachFlags, WhatsappBatch, WhatsappBusinessStop, WhatsappContact, WhatsappMedia,
-    WhatsappMessage, WhatsappSuppression, WhatsappTemplate,
+    OutreachFlags, WhatsappBatch, WhatsappBusinessStop, WhatsappContact, WhatsappContactCursor,
+    WhatsappMedia, WhatsappMessage, WhatsappSuppression, WhatsappTemplate,
 };
 
 use super::{api_error, api_error_with_code, gifs, internal_error};
@@ -43,6 +43,10 @@ pub(crate) const DISCONNECT_PATH: &str = "/api/whatsapp/disconnect";
 pub(crate) const QUERY_PATH: &str = "/api/whatsapp/query";
 
 const DEFAULT_LIST_LIMIT: i64 = 50;
+/// Most contacts one `contacts` page returns, however large a `limit` is asked for.
+const CONTACT_PAGE_MAX: i64 = 200;
+/// Longest number a cursor may carry (E.164 allows 15 digits).
+const MAX_CURSOR_WA_ID_LEN: usize = 15;
 const MAX_SAFETY_CHECK_IDENTITIES: usize = 500;
 const SIGNATURE_HEADER: &str = "x-hub-signature-256";
 /// A desktop that knows the `queued` contact-stage enum sends this marker on every query.
@@ -145,6 +149,13 @@ struct QueryRequest {
     wa_id: Option<String>,
     #[serde(default)]
     limit: Option<i64>,
+    /// `contacts` only: the `nextCursor` of the previous page. Absent means the first page.
+    #[serde(default)]
+    before: Option<String>,
+    /// `contacts` only: also answer with true stage counts over every contact. Off by default
+    /// because it reads the whole contact list.
+    #[serde(default)]
+    counts: bool,
     /// Opt in to rows still waiting for a batch approval. Apps that do not send it never
     /// see a held row, so an older app cannot label one as approved.
     #[serde(default)]
@@ -489,6 +500,80 @@ async fn contacts_view_for_capability(
             })
             .collect::<Vec<_>>(),
     }))
+}
+
+/// The opaque cursor of a contact page: the sort time in microseconds and the number of the
+/// last contact, hex encoded so a client cannot mistake it for something it may build.
+fn encode_contact_cursor(cursor: &WhatsappContactCursor) -> String {
+    hex::encode(format!("{}.{}", cursor.at.timestamp_micros(), cursor.wa_id))
+}
+
+/// The cursor a page was started from, or `None` when `raw` is not one this relay issued.
+fn decode_contact_cursor(raw: &str) -> Option<WhatsappContactCursor> {
+    let text = String::from_utf8(hex::decode(raw).ok()?).ok()?;
+    let (micros, wa_id) = text.split_once('.')?;
+    let at = chrono::DateTime::from_timestamp_micros(micros.parse().ok()?)?;
+    if wa_id.is_empty()
+        || wa_id.len() > MAX_CURSOR_WA_ID_LEN
+        || !wa_id.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    Some(WhatsappContactCursor {
+        at,
+        wa_id: wa_id.to_owned(),
+    })
+}
+
+/// The `contacts` answer: one page of contacts (most recently active first) with `nextCursor`,
+/// the cursor of the next page or `null` on the last. When `counts` is set it also carries the
+/// stage counts over every contact of the community (`stageCounts`, `failedNotContacted`,
+/// `totalContacts`, `countsTruncated`). Every added field is additive.
+pub(crate) async fn contacts_page_view(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    limit: i64,
+    before: Option<&str>,
+    counts: bool,
+    now: chrono::DateTime<Utc>,
+    supports_queued_stage: bool,
+) -> Result<Value, (StatusCode, Json<Value>)> {
+    let cursor = before
+        .map(|raw| {
+            decode_contact_cursor(raw).ok_or_else(|| {
+                api_error(
+                    StatusCode::BAD_REQUEST,
+                    "before is not a cursor this relay issued",
+                )
+            })
+        })
+        .transpose()?;
+    let page_limit = limit.clamp(1, CONTACT_PAGE_MAX);
+    // One row more than the page tells whether another page exists.
+    let mut contacts = state
+        .db
+        .whatsapp_list_contacts_page(community, page_limit + 1, cursor.as_ref())
+        .await
+        .map_err(|error| internal_error(&format!("whatsapp query: {error}")))?;
+    let more = contacts.len() as i64 > page_limit;
+    contacts.truncate(page_limit as usize);
+    let next_cursor = contacts
+        .last()
+        .filter(|_| more)
+        .map(|last| encode_contact_cursor(&last.cursor()));
+    let mut view =
+        contacts_view_for_capability(state, community, &contacts, now, supports_queued_stage)
+            .await?;
+    if let Some(object) = view.as_object_mut() {
+        object.insert("nextCursor".to_owned(), json!(next_cursor));
+        if counts {
+            let counted = desk::stage_counts(state, community, supports_queued_stage)
+                .await
+                .map_err(|reason| internal_error(&reason))?;
+            object.extend(counted.fields());
+        }
+    }
+    Ok(view)
 }
 
 /// The `thread` answer: the contact and every message of the conversation, oldest first,
@@ -847,16 +932,13 @@ pub async fn query(
         }
         "contacts" => {
             private(access)?;
-            let contacts = state
-                .db
-                .whatsapp_list_contacts(community, limit_of(&request))
-                .await
-                .map_err(db_error)?;
             Ok(Json(
-                contacts_view_for_capability(
+                contacts_page_view(
                     &state,
                     community,
-                    &contacts,
+                    limit_of(&request),
+                    request.before.as_deref(),
+                    request.counts,
                     now,
                     queued_stage_supported,
                 )
@@ -1043,6 +1125,60 @@ mod tests {
         }))
         .expect("current query parses");
         assert!(supports_queued_stage(&current));
+    }
+
+    #[test]
+    fn contacts_paging_and_counts_are_opt_in_request_fields() {
+        let plain: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts", "limit": 200
+        }))
+        .expect("an older desktop's query still parses");
+        assert!(plain.before.is_none());
+        assert!(!plain.counts);
+        let paged: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts", "before": "abcd", "counts": true
+        }))
+        .expect("a paged counting query parses");
+        assert_eq!(paged.before.as_deref(), Some("abcd"));
+        assert!(paged.counts);
+    }
+
+    #[test]
+    fn a_contact_cursor_round_trips_and_keeps_microseconds() {
+        let at = chrono::DateTime::from_timestamp_micros(1_790_000_123_456_789).expect("time");
+        let cursor = WhatsappContactCursor {
+            at,
+            wa_id: "27821234567".to_owned(),
+        };
+        let encoded = encode_contact_cursor(&cursor);
+        assert!(encoded.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(decode_contact_cursor(&encoded), Some(cursor));
+    }
+
+    #[test]
+    fn a_malformed_contact_cursor_is_refused() {
+        let good = encode_contact_cursor(&WhatsappContactCursor {
+            at: chrono::DateTime::from_timestamp_micros(1_790_000_000_000_000).expect("time"),
+            wa_id: "27821234567".to_owned(),
+        });
+        assert!(decode_contact_cursor(&good).is_some());
+        for bad in [
+            String::new(),
+            "not hex".to_owned(),
+            // Odd length hex.
+            good[..good.len() - 1].to_owned(),
+            // Valid hex of bytes that are not UTF-8.
+            "ff".to_owned(),
+            hex::encode("no separator"),
+            hex::encode("abc.27821234567"),
+            hex::encode("1790000000000000."),
+            hex::encode("1790000000000000.2782x234567"),
+            hex::encode("1790000000000000.2782123456789012345"),
+            // Out of the representable time range.
+            hex::encode("9223372036854775807.27821234567"),
+        ] {
+            assert_eq!(decode_contact_cursor(&bad), None, "{bad:?}");
+        }
     }
 
     #[test]
