@@ -191,6 +191,198 @@ async function openGuesthouseDetails(page: Page, discovery: Locator) {
   return { card, details };
 }
 
+type MapClickCostMetrics = {
+  captureSpanMs: number | null;
+  historyReplaces: number;
+  pointerUpToCheckedPaintMs: number | null;
+  snapshotCaptures: number;
+};
+
+async function installMapClickCostProbe(page: Page) {
+  await page.addInitScript(() => {
+    type Probe = {
+      armed: boolean;
+      captureStartedAt: number | null;
+      captureSpanMs: number | null;
+      historyReplaces: number;
+      pointerUpAt: number | null;
+      pointerUpToCheckedPaintMs: number | null;
+      snapshotCaptures: number;
+    };
+    type ProbeWindow = Window & {
+      __FIX2_MAP_CLICK_COST__?: {
+        read: () => Omit<Probe, "armed" | "captureStartedAt" | "pointerUpAt">;
+        reset: () => void;
+      };
+    };
+    const probe: Probe = {
+      armed: false,
+      captureStartedAt: null,
+      captureSpanMs: null,
+      historyReplaces: 0,
+      pointerUpAt: null,
+      pointerUpToCheckedPaintMs: null,
+      snapshotCaptures: 0,
+    };
+    const reset = () => {
+      probe.armed = true;
+      probe.captureStartedAt = null;
+      probe.captureSpanMs = null;
+      probe.historyReplaces = 0;
+      probe.pointerUpAt = null;
+      probe.pointerUpToCheckedPaintMs = null;
+      probe.snapshotCaptures = 0;
+    };
+    const cloneNode = Node.prototype.cloneNode;
+    Node.prototype.cloneNode = function (deep?: boolean) {
+      if (
+        probe.armed &&
+        this instanceof HTMLElement &&
+        this.classList.contains("map-canvas-route-window-content")
+      ) {
+        probe.snapshotCaptures += 1;
+        probe.captureStartedAt ??= performance.now();
+      }
+      return cloneNode.call(this, deep);
+    };
+    const replaceState = History.prototype.replaceState;
+    History.prototype.replaceState = function (...args) {
+      if (probe.armed) {
+        probe.historyReplaces += 1;
+        if (probe.captureStartedAt !== null) {
+          probe.captureSpanMs = performance.now() - probe.captureStartedAt;
+        }
+      }
+      return replaceState.apply(this, args);
+    };
+    document.addEventListener(
+      "pointerup",
+      (event) => {
+        if (
+          probe.armed &&
+          event.target instanceof Element &&
+          event.target.closest(".c3d-approval")
+        ) {
+          probe.pointerUpAt = performance.now();
+        }
+      },
+      true,
+    );
+    document.addEventListener(
+      "input",
+      (event) => {
+        if (
+          !probe.armed ||
+          !(event.target instanceof HTMLInputElement) ||
+          event.target.type !== "checkbox" ||
+          !event.target.checked ||
+          probe.pointerUpAt === null
+        ) {
+          return;
+        }
+        window.requestAnimationFrame(() => {
+          if (probe.pointerUpAt !== null) {
+            probe.pointerUpToCheckedPaintMs =
+              performance.now() - probe.pointerUpAt;
+          }
+        });
+      },
+      true,
+    );
+    (window as ProbeWindow).__FIX2_MAP_CLICK_COST__ = {
+      read: () => ({
+        captureSpanMs: probe.captureSpanMs,
+        historyReplaces: probe.historyReplaces,
+        pointerUpToCheckedPaintMs: probe.pointerUpToCheckedPaintMs,
+        snapshotCaptures: probe.snapshotCaptures,
+      }),
+      reset,
+    };
+  });
+}
+
+async function resetMapClickCostProbe(page: Page) {
+  await page.evaluate(() => {
+    (
+      window as Window & {
+        __FIX2_MAP_CLICK_COST__?: { reset: () => void };
+      }
+    ).__FIX2_MAP_CLICK_COST__?.reset();
+  });
+}
+
+async function readMapClickCostProbe(page: Page): Promise<MapClickCostMetrics> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      ),
+  );
+  return page.evaluate(() => {
+    const probe = (
+      window as Window & {
+        __FIX2_MAP_CLICK_COST__?: { read: () => MapClickCostMetrics };
+      }
+    ).__FIX2_MAP_CLICK_COST__;
+    if (!probe) throw new Error("Expected the FIX2 click-cost probe");
+    return probe.read();
+  });
+}
+
+async function openFix2Discovery(page: Page, mapHome: boolean) {
+  await installMapClickCostProbe(page);
+  await installFullMap(page, "light", { mapHome });
+  await installDiscoveryImageMocks(page);
+  await page.setViewportSize({ height: 1117, width: 1728 });
+  if (mapHome) {
+    await page.goto("/#/");
+    await openMapJob(page, WINDOW_JOBS[0]);
+  } else {
+    await page.goto(`/#${mapTarget(WINDOW_JOBS[0])}`);
+  }
+  const discovery = page.getByTestId("w10-discovery-page");
+  await expect(discovery).toBeVisible({ timeout: 15_000 });
+  await expect(discovery).toHaveAttribute("data-vertical-tags-loaded", "true", {
+    timeout: 15_000,
+  });
+  if (mapHome) {
+    await expect(page.getByTestId("fullmap-window")).toBeVisible();
+  } else {
+    await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+  }
+  return discovery;
+}
+
+async function openFix2CampaignDialog(page: Page, mapHome: boolean) {
+  const discovery = await openFix2Discovery(page, mapHome);
+  await discovery
+    .getByRole("textbox", { name: "Search industries and business types" })
+    .fill("e");
+  const typeCards = discovery.locator(".d4-type-card");
+  await expect
+    .poll(() => typeCards.count(), { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(400);
+  await typeCards
+    .first()
+    .getByRole("button", { name: "Find prospects" })
+    .click();
+  const details = page.getByTestId("discovery-type-details-dialog");
+  await expect(details).toBeVisible();
+  await details.getByRole("button", { name: "Find prospects" }).click();
+  const dialog = page.getByTestId("discovery-campaign-dialog");
+  await expect(dialog).toBeVisible();
+  return { dialog, discovery, typeCards };
+}
+
+async function expectNoMapClickCost(page: Page, trigger: () => Promise<void>) {
+  await resetMapClickCostProbe(page);
+  await trigger();
+  const metrics = await readMapClickCostProbe(page);
+  expect(metrics.snapshotCaptures).toBe(0);
+  expect(metrics.historyReplaces).toBe(0);
+  return metrics;
+}
+
 async function dialogGeometry(dialog: Locator) {
   return dialog.evaluate((node) => {
     const panel = node as HTMLElement;
@@ -517,6 +709,169 @@ test.describe("full map canvas slice 1", () => {
       }
     });
   }
+
+  test("FIX2 keeps non-navigation controls out of the map capture path", async ({
+    page,
+  }) => {
+    const discovery = await openFix2Discovery(page, true);
+    await discovery.getByRole("button", { name: /Beauty & Wellness/ }).click();
+    await expect(
+      discovery.getByText("Filter by sector", { exact: true }),
+    ).toBeVisible();
+
+    const filterMetrics = await expectNoMapClickCost(page, async () => {
+      await discovery.getByRole("button", { name: /^All types/ }).click();
+    });
+    expect(filterMetrics.captureSpanMs).toBeNull();
+  });
+
+  test("FIX2 ticks the map-window campaign approval in one click, 20 times", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const { dialog } = await openFix2CampaignDialog(
+      page,
+      process.env.FIX2_MAP_HOME !== "0",
+    );
+    const approval = dialog.locator("label.c3d-approval");
+    const checkbox = dialog.getByRole("checkbox", {
+      name: "I approve this campaign’s maximum budget.",
+    });
+    const hitArea = await checkbox.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { height: bounds.height, width: bounds.width };
+    });
+    expect(hitArea.height).toBeGreaterThanOrEqual(24);
+    expect(hitArea.width).toBeGreaterThanOrEqual(24);
+    await checkbox.focus();
+    await expect(checkbox).toBeFocused();
+    expect(
+      await checkbox.evaluate((element) => {
+        const styles = window.getComputedStyle(element);
+        return {
+          offset: styles.outlineOffset,
+          style: styles.outlineStyle,
+          width: styles.outlineWidth,
+        };
+      }),
+    ).toEqual({ offset: "2px", style: "solid", width: "2px" });
+
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const checkedMetrics = await expectNoMapClickCost(page, () =>
+        approval.click(),
+      );
+      await expect(checkbox).toBeChecked();
+      expect(checkedMetrics.pointerUpToCheckedPaintMs).not.toBeNull();
+      expect(checkedMetrics.captureSpanMs).toBeNull();
+      const uncheckedMetrics = await expectNoMapClickCost(page, () =>
+        approval.click(),
+      );
+      await expect(checkbox).not.toBeChecked();
+      expect(uncheckedMetrics.captureSpanMs).toBeNull();
+    }
+  });
+
+  test("FIX2 ticks the focused map-window campaign approval with Space, 20 times", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const { dialog } = await openFix2CampaignDialog(
+      page,
+      process.env.FIX2_MAP_HOME !== "0",
+    );
+    const checkbox = dialog.getByRole("checkbox", {
+      name: "I approve this campaign’s maximum budget.",
+    });
+
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const checkedMetrics = await expectNoMapClickCost(page, async () => {
+        await checkbox.focus();
+        await page.keyboard.press("Space");
+      });
+      await expect(checkbox).toBeChecked();
+      expect(checkedMetrics.captureSpanMs).toBeNull();
+      const uncheckedMetrics = await expectNoMapClickCost(page, async () => {
+        await page.keyboard.press("Space");
+      });
+      await expect(checkbox).not.toBeChecked();
+      expect(uncheckedMetrics.captureSpanMs).toBeNull();
+    }
+  });
+
+  test("measures FIX2 map-window click cost at the owner viewport when requested", async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      process.env.FIX2_MEASURE !== "1",
+      "measurement is requested only for the FIX2 report",
+    );
+    test.setTimeout(180_000);
+    const mapHome = process.env.FIX2_MAP_HOME !== "0";
+    const { dialog, typeCards } = await openFix2CampaignDialog(page, mapHome);
+    const approval = dialog.locator("label.c3d-approval");
+    const checkbox = dialog.getByRole("checkbox", {
+      name: "I approve this campaign’s maximum budget.",
+    });
+
+    await resetMapClickCostProbe(page);
+    await approval.click();
+    const oneClick = await readMapClickCostProbe(page);
+    const checkedAfterOneClick = await checkbox.isChecked();
+    console.log(
+      `FIX2_MEASUREMENT ${JSON.stringify({
+        ...oneClick,
+        checkedAfterOneClick,
+        mapHome,
+        typeCardCount: await typeCards.count(),
+      })}`,
+    );
+    expect(checkedAfterOneClick).toBe(true);
+    const emittedEvents: unknown[] = [];
+    for (const delay of [0, 10_000, 10_000, 10_000]) {
+      if (delay) await page.waitForTimeout(delay);
+      emittedEvents.push(
+        await page.evaluate((sequence) => {
+          return (
+            window as Window & {
+              __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
+                channelName: string;
+                content: string;
+                id: string;
+              }) => unknown;
+            }
+          ).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+            channelName: "general",
+            content: `FIX2 live event ${sequence}`,
+            id: `f${String(sequence).padStart(63, "0")}`,
+          });
+        }, emittedEvents.length),
+      );
+    }
+    await expect(checkbox).toBeChecked();
+    expect(emittedEvents).not.toContain(undefined);
+    const metrics = {
+      ...oneClick,
+      checkedAfterOneClick,
+      mapHome,
+      typeCardCount: await typeCards.count(),
+    };
+    console.log(`FIX2_MEASUREMENT ${JSON.stringify(metrics)}`);
+    await testInfo.attach("fix2-click-cost.json", {
+      body: JSON.stringify(metrics),
+      contentType: "application/json",
+    });
+    if (process.env.FIX2_SCREENSHOT_DIR) {
+      mkdirSync(process.env.FIX2_SCREENSHOT_DIR, { recursive: true });
+      await waitForAnimations(page);
+      await page.screenshot({
+        animations: "disabled",
+        path: join(
+          process.env.FIX2_SCREENSHOT_DIR,
+          `approval-${mapHome ? "map-on" : "map-off"}-1728x1117.png`,
+        ),
+      });
+    }
+  });
 
   test("keeps one map alive through open, Escape, Fit, and browser history", async ({
     page,
