@@ -887,6 +887,21 @@ test.describe("full map canvas slice 3a", () => {
             ),
           });
 
+          // WalkCsChange is a 1440px light board. Keep a matching app capture
+          // so the required board comparison uses the actual mapped screen.
+          if (theme === "light" && viewport.label === "1440") {
+            await openRoute(page, mapTarget(CUSTOMER_SUCCESS_CHANGE_REQUESTS));
+            await waitForAnimations(page);
+            await page.screenshot({
+              animations: "disabled",
+              path: join(
+                screenshotDir,
+                "customer-success-change-light-1440.png",
+              ),
+            });
+            await openRoute(page, mapTarget(CUSTOMER_SUCCESS_CHATS));
+          }
+
           await openCustomerSuccessTrail(page);
           await waitForAnimations(page);
           await page.screenshot({
