@@ -356,6 +356,13 @@ export async function seedCompanyMapWhatsApp(
               : [],
           };
         }
+        if (
+          request.action === "post" &&
+          request.path === "/api/whatsapp/query" &&
+          request.body?.what === "batches"
+        ) {
+          return { batches: [] };
+        }
         return {};
       };
     },

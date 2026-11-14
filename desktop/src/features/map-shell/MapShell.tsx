@@ -4,6 +4,7 @@ import { ChevronDown, LogOut, Menu, Power, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { mapShellTrailForPath } from "@/app/topBarBreadcrumbs";
+import { mapCanvasTrailForHref } from "@/app/mapCanvasTrail";
 import { companyMapWindowJobForRoute } from "@/features/cofounder/companyMapJobRoutes";
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { useNeedsYouSummary } from "@/features/cofounder/needsYouSummary";
@@ -370,10 +371,17 @@ export function MapShell({
   const mapHomeRoute =
     location.pathname === "/" || location.pathname === "/company/map";
   const openMapPart = useCompanyMapOpenPart();
-  const mapWindowJob = companyMapWindowJobForRoute(
-    location.pathname,
-    location.search as Record<string, unknown>,
+  const mapCanvasTrail = mapCanvasTrailForHref(
+    location.state,
+    location.href,
+    activeWorkspace?.id ?? "no-active-community",
   );
+  const mapWindowJob =
+    mapCanvasTrail?.root ??
+    companyMapWindowJobForRoute(
+      location.pathname,
+      location.search as Record<string, unknown>,
+    );
   const isHome = mapHomeRoute && openMapPart === null;
   const activeChannel = channels.find(
     (channel) => channel.id === currentChannelId,
