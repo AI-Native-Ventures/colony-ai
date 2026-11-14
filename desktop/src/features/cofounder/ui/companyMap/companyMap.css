@@ -536,6 +536,21 @@
   color: hsl(var(--colony-accent));
 }
 
+.company-map-workflow-step-avatar,
+.company-map-workflow-step-worker {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.company-map-workflow-step-worker {
+  background: hsl(var(--colony-soft-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
 .company-map-workflow-step-name {
   min-width: 0;
   flex: 1;

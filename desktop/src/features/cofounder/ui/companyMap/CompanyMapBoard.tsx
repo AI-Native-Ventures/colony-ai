@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { Bot, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import type { TeamMember } from "@/features/company-team/teamModels";
@@ -1018,6 +1018,12 @@ function WorkflowStepNode({
   step,
   point,
   clientChannelId,
+  members,
+  profiles,
+  slots,
+  ownerName,
+  ownerPubkey,
+  ownerAvatarUrl,
   onSelect,
   ...interactions
 }: {
@@ -1025,6 +1031,12 @@ function WorkflowStepNode({
   step: CompanyMapOperationsStep;
   point: CompanyMapPoint;
   clientChannelId?: string | null;
+  members: TeamMember[];
+  profiles: ProfileLookup;
+  slots: FunctionSlotView[];
+  ownerName: string;
+  ownerPubkey?: string;
+  ownerAvatarUrl?: string | null;
   onSelect: () => void;
 } & OperationsInteractionProps) {
   const target = operationsWindowTarget(step, clientChannelId);
@@ -1072,7 +1084,16 @@ function WorkflowStepNode({
           data-owner={step.owner.kind}
           data-target={target}
         >
-          <span aria-hidden="true">{workflow.steps.indexOf(step) + 1}</span>
+          <WorkflowStepDoer
+            members={members}
+            ownerAvatarUrl={ownerAvatarUrl}
+            ownerName={ownerName}
+            ownerPubkey={ownerPubkey}
+            profiles={profiles}
+            step={step}
+            stepNumber={workflow.steps.indexOf(step) + 1}
+            slots={slots}
+          />
           <NeedsBadge
             count={step.waitingForOwner || step.target === "needs-you" ? 1 : 0}
             testId={`cofounder-map-workflow-step-needs-${workflow.playbookId}-${step.stepId}`}
@@ -1082,6 +1103,79 @@ function WorkflowStepNode({
       </span>
     </OperationsMapNodeLink>
   );
+}
+
+function WorkflowStepDoer({
+  step,
+  stepNumber,
+  members,
+  profiles,
+  slots,
+  ownerName,
+  ownerPubkey,
+  ownerAvatarUrl,
+}: {
+  step: CompanyMapOperationsStep;
+  stepNumber: number;
+  members: TeamMember[];
+  profiles: ProfileLookup;
+  slots: FunctionSlotView[];
+  ownerName: string;
+  ownerPubkey?: string;
+  ownerAvatarUrl?: string | null;
+}) {
+  const className = "company-map-workflow-step-avatar";
+  if (step.owner.kind === "owner") {
+    return (
+      <MapDoer
+        avatarUrl={ownerAvatarUrl}
+        className={className}
+        name={ownerName}
+        owner
+        pubkey={ownerPubkey}
+      />
+    );
+  }
+
+  const leadPubkey =
+    step.owner.kind === "lead_agent" ? step.owner.agentPubkey : null;
+  const functionSlot =
+    step.owner.kind === "function" && step.owner.functionId
+      ? slotForFunction(step.owner.functionId, slots)
+      : null;
+  const assignedPubkey =
+    leadPubkey ??
+    (functionSlot?.state === "filled" ? functionSlot.leadPubkey : null);
+  const member = assignedPubkey
+    ? members.find(
+        (candidate) =>
+          candidate.pubkey.toLowerCase() === assignedPubkey.toLowerCase(),
+      )
+    : undefined;
+  if (member) {
+    return (
+      <MapDoer
+        avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
+        className={className}
+        member={member}
+        name={fullName(member, profiles)}
+      />
+    );
+  }
+  if (functionSlot?.state === "covered_by_scout") {
+    return <MapDoer className={className} scout />;
+  }
+  if (step.owner.kind === "worker") {
+    return (
+      <span
+        aria-hidden="true"
+        className={`${className} company-map-workflow-step-worker`}
+      >
+        <Bot aria-hidden="true" size={14} strokeWidth={2.1} />
+      </span>
+    );
+  }
+  return <span aria-hidden="true">{stepNumber}</span>;
 }
 
 function AddStepNode({
@@ -1529,6 +1623,7 @@ function CompanyMapDesktop({
                         <WorkflowStepNode
                           clientChannelId={clientChannelId}
                           key={`step:${workflow.playbookId}:${step.stepId}`}
+                          members={members}
                           onGroupBlur={blurPart}
                           onGroupFocus={focusPart}
                           onGroupMouseEnter={enterPart}
@@ -1536,7 +1631,12 @@ function CompanyMapDesktop({
                           onSelect={() =>
                             setSelectedOperationsWorkflowId(workflow.playbookId)
                           }
+                          ownerAvatarUrl={ownerAvatarUrl}
+                          ownerName={ownerName}
+                          ownerPubkey={ownerPubkey}
                           point={position.point}
+                          profiles={profiles}
+                          slots={slots}
                           step={step}
                           workflow={workflow}
                         />
