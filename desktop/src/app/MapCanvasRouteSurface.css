@@ -41,8 +41,8 @@
   position: absolute;
   z-index: 9;
   top: 60px;
-  left: 20px;
-  width: 124px;
+  left: 0;
+  width: 144px;
   height: max(699px, calc(100% - 137px));
   min-height: 0;
   overflow: visible;

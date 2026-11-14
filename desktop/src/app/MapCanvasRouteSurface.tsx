@@ -277,7 +277,7 @@ function MapCanvasTrailPeek({
               dangerouslySetInnerHTML={{ __html: snapshotHtml }}
               style={{
                 height,
-                transform: `translateX(-${Math.max(0, width - 124)}px)`,
+                transform: `translateX(-${Math.max(0, width - 144)}px)`,
                 width,
               }}
             />

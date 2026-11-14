@@ -238,10 +238,15 @@ function deepGeometry() {
   if (!stage || !window) throw new Error("Expected map trail nodes");
   const windowStyle = getComputedStyle(window);
   const stageStyle = getComputedStyle(stage);
+  const peekSnapshot = document.querySelector<HTMLElement>(
+    ".map-canvas-route-peek-snapshot",
+  );
+  if (!peekSnapshot) throw new Error("Expected map trail peek snapshot");
   return {
     connector: box(".map-canvas-route-trail-connector"),
     mapTransform: stage.style.getPropertyValue("--company-map-transform"),
     peek: box('[data-testid="fullmap-window-peek"]'),
+    peekSnapshotTransform: peekSnapshot.style.transform,
     stageDuration: stageStyle.transitionDuration,
     stageTiming: stageStyle.transitionTimingFunction,
     window: box(".map-canvas-route-window-content"),
@@ -377,11 +382,12 @@ test.describe("full map canvas slice 2", () => {
       peek: {
         bottom: 823,
         height: 699,
-        left: 20,
+        left: 0,
         right: 144,
         top: 124,
-        width: 124,
+        width: 144,
       },
+      peekSnapshotTransform: "translateX(-1060px)",
       stageDuration: "0.45s, 0.45s, 0.45s",
       stageTiming:
         "cubic-bezier(0.3, 0.8, 0.3, 1), cubic-bezier(0.3, 0.8, 0.3, 1), cubic-bezier(0.3, 0.8, 0.3, 1)",
@@ -396,6 +402,27 @@ test.describe("full map canvas slice 2", () => {
       windowDuration: "0.45s",
       windowTiming: "cubic-bezier(0.3, 0.8, 0.3, 1)",
     });
+  });
+
+  test("runs the predecessor strip to the canvas edge at 2000 by 1228", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 2000, height: 1228 });
+    await openMoney(page);
+    await openInvoices(page);
+    await waitForAnimations(page);
+
+    const geometry = await page.evaluate(deepGeometry);
+    expect(geometry.peek).toEqual({
+      bottom: 1151,
+      height: 1027,
+      left: 0,
+      right: 144,
+      top: 124,
+      width: 144,
+    });
+    expect(geometry.peekSnapshotTransform).toBe("translateX(-1620px)");
   });
 
   test("opens a direct Finance deep link as one window", async ({ page }) => {
@@ -753,10 +780,10 @@ test.describe("full map canvas slice 2", () => {
       peek: {
         bottom: 1151,
         height: 1027,
-        left: 20,
+        left: 0,
         right: 144,
         top: 124,
-        width: 124,
+        width: 144,
       },
       window: {
         bottom: 1151,
