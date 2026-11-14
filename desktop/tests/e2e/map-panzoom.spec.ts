@@ -428,7 +428,11 @@ test.describe("company map pan and zoom", () => {
     expect(afterSpace.x).toBeLessThan(afterMiddle.x);
     expect(afterSpace.y).toBeLessThan(afterMiddle.y);
 
-    await dragMouse(page, start, { x: start.x + 80, y: start.y + 70 });
+    const emptyStart = await findBlankCanvasPoint(page);
+    await dragMouse(page, emptyStart, {
+      x: emptyStart.x + 80,
+      y: emptyStart.y + 70,
+    });
     const afterEmpty = await readCamera(page);
     expect(afterEmpty.x).toBeGreaterThan(afterSpace.x);
     expect(afterEmpty.y).toBeGreaterThan(afterSpace.y);
@@ -563,10 +567,17 @@ test.describe("company map pan and zoom", () => {
   }) => {
     await openMap(page);
     const stage = page.getByTestId("cofounder-map-stage");
+    const viewport = page.getByTestId("cofounder-map-viewport");
     const initialBox = await readBox(stage);
-    const start = await findBlankCanvasPoint(page);
 
-    await dragMouse(page, start, { x: start.x - 2_000, y: start.y + 2_000 });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const start = await findBlankCanvasPoint(page);
+      const end = await viewport.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return { x: bounds.left + 12, y: bounds.bottom - 12 };
+      });
+      await dragMouse(page, start, end, "right");
+    }
     const clamped = await stage.evaluate((node) => {
       const stageBox = node.getBoundingClientRect();
       const viewport = node.closest(".company-map-viewport");
