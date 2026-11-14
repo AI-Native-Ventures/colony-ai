@@ -18,6 +18,8 @@ import {
   seedCompanyMapWhatsApp,
 } from "./cofounder-map-fixtures";
 import { planeTreeCustomerRecord } from "../../src/testing/cofounderCustomerFixtures";
+import { REFERENCE_PROSPECT_IDS } from "../../src/testing/e2eReferenceWorkspace";
+import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 
 type Theme = "dark" | "light";
 
@@ -48,6 +50,7 @@ const FINANCE_INVOICES = "/money/invoices";
 const FINANCE_REVENUE = "/money/revenue";
 const SALES_OUTREACH = "/leads?mapJob=sales%3AOutreach";
 const SALES_CLOSING = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AClosing&whatsappDeskTab=pipeline`;
+const FIX1_OUTREACH_LIST_ID = "3f1a7000-0000-4000-9000-000000000001";
 const primedPages = new WeakSet<Page>();
 const SURFACE_BOOT_TIMEOUT_MS = 40_000;
 
@@ -65,11 +68,13 @@ async function installFullMap(
   {
     mapHome = true,
     referenceMoneyRecords = false,
+    referenceOutreachBoard = false,
     seedClient = false,
     workspaces,
   }: {
     mapHome?: boolean;
     referenceMoneyRecords?: boolean;
+    referenceOutreachBoard?: boolean;
     seedClient?: boolean;
     workspaces?: WorkspaceSeed[];
   } = {},
@@ -94,6 +99,14 @@ async function installFullMap(
       ...(seedClient ? { companyCustomerRecords: [customerRecord()] } : {}),
       ...(referenceMoneyRecords
         ? { referenceWorkspace: true, referenceWorkspaceMoneyRecords: true }
+        : {}),
+      ...(referenceOutreachBoard
+        ? {
+            referenceWorkspace: true,
+            referenceWorkspaceOutreachBoard: true,
+            referenceWorkspaceOutreachReady: true,
+            referenceWorkspaceOutreachSidebar: true,
+          }
         : {}),
       visualChannels: [{ id: MAP_CHANNEL_ID, name: "Outreach" }],
     },
@@ -195,6 +208,61 @@ async function openSalesChat(page: Page) {
   await expect(page.getByTestId("whatsapp-outreach")).toBeVisible({
     timeout: 15_000,
   });
+}
+
+async function captureFix1Screen(
+  page: Page,
+  screenshotDir: string,
+  name: string,
+  testId: string,
+  depth: number,
+) {
+  const screen = page.getByTestId(testId);
+  await expect(screen).toBeVisible({ timeout: 15_000 });
+  await expectMapWindow(page, depth);
+  if (testId === "w10-discovery-page") {
+    await expect(screen).toHaveAttribute("data-vertical-tags-loaded", "true");
+  }
+  await waitForAnimations(page);
+  await page.screenshot({
+    animations: "disabled",
+    path: join(screenshotDir, `audit-${name}-1728x1117.png`),
+  });
+}
+
+async function openSalesOutreach(page: Page) {
+  await openRoute(page, SALES_OUTREACH);
+  await expect(page.getByTestId("w10-leads-page")).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+async function openSalesView(
+  page: Page,
+  label: "Lists" | "Pipeline",
+  route: "/lists" | "/pipeline",
+) {
+  await windowContent(page)
+    .getByRole("navigation", { name: "Business views" })
+    .getByRole("link", { name: label })
+    .click();
+  await expectRoute(page, route);
+  await expectMapWindow(page, 0);
+}
+
+async function openClosingDeskView(
+  page: Page,
+  view: "needs-you" | "pipeline" | "chats" | "discussion",
+) {
+  await openRoute(page, SALES_CLOSING);
+  if (view !== "pipeline") {
+    await page.getByTestId(`channel-view-tab-${view}`).click();
+  }
+  await expect(page.getByTestId(`channel-view-tab-${view}`)).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expectMapWindow(page, 0);
 }
 
 async function waitForTheme(page: Page, theme: Theme) {
@@ -1005,6 +1073,106 @@ test.describe("full map canvas slice 2", () => {
       0,
     );
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+  });
+
+  test("captures the FIX1 Sales and Outreach screen audit when requested", async ({
+    page,
+  }) => {
+    test.skip(
+      process.env.FIX1_CAPTURE !== "1",
+      "capture is requested only for owner-feedback proof",
+    );
+    test.setTimeout(180_000);
+    const screenshotDir =
+      process.env.FIX1_SCREENSHOT_DIR ?? "test-results/fix1";
+    mkdirSync(screenshotDir, { recursive: true });
+    await installFullMap(page, "light", { referenceOutreachBoard: true });
+    await installDiscoveryImageMocks(page);
+    await page.setViewportSize({ width: 1728, height: 1117 });
+
+    await openSalesOutreach(page);
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-leads",
+      "w10-leads-page",
+      0,
+    );
+
+    await openSalesView(page, "Lists", "/lists");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-lists",
+      "outreach-lists-page",
+      0,
+    );
+
+    await windowContent(page)
+      .getByRole("link", { name: "Melville guesthouses, Nov" })
+      .click();
+    await expectRoute(page, `/lists/${FIX1_OUTREACH_LIST_ID}`);
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-list-melville",
+      "outreach-list-detail",
+      1,
+    );
+
+    await openSalesOutreach(page);
+    await openSalesView(page, "Pipeline", "/pipeline");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-pipeline",
+      "w10-pipeline-page",
+      0,
+    );
+
+    for (const [view, testId] of [
+      ["needs-you", "outreach-desk-needs-you"],
+      ["pipeline", "outreach-desk-pipeline"],
+      ["chats", "whatsapp-outreach"],
+      ["discussion", "channel-drop-zone"],
+    ] as const) {
+      await openClosingDeskView(page, view);
+      await captureFix1Screen(
+        page,
+        screenshotDir,
+        `outreach-${view}`,
+        testId,
+        0,
+      );
+    }
+
+    await openSalesOutreach(page);
+    await windowContent(page)
+      .locator("tr")
+      .filter({ hasText: "Jacaranda Lane Guesthouse" })
+      .getByRole("link", { name: "Review lead" })
+      .click();
+    await expectRoute(page, `/sales/lead/${REFERENCE_PROSPECT_IDS.stillroom}`);
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-lead-jacaranda",
+      "w10-prospect-page",
+      1,
+    );
+
+    await openSalesOutreach(page);
+    await windowContent(page)
+      .getByRole("button", { name: "Find prospects" })
+      .click();
+    await expectRoute(page, "/discovery");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
+      "sales-discovery",
+      "w10-discovery-page",
+      0,
+    );
   });
 
   for (const theme of ["light", "dark"] as const) {

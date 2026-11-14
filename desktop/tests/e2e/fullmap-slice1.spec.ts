@@ -151,8 +151,9 @@ async function openDiscoveryForDialogProof(
   page: Page,
   mapHome: boolean,
   viewport: { height: number; width: number },
+  theme: "light" | "dark" = "light",
 ) {
-  await installFullMap(page, "light", { mapHome });
+  await installFullMap(page, theme, { mapHome });
   await installDiscoveryImageMocks(page);
   await page.setViewportSize(viewport);
   await page.goto(`/#${mapTarget(WINDOW_JOBS[0])}`);
@@ -431,6 +432,33 @@ test.describe("full map canvas slice 1", () => {
         await expectCompactCenteredDialog(selection);
       });
     }
+  }
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`captures the compact Discovery dialog in ${theme} when requested`, async ({
+      page,
+    }) => {
+      test.skip(
+        process.env.FIX1_CAPTURE !== "1",
+        "capture is requested only for owner-feedback proof",
+      );
+      const screenshotDir =
+        process.env.FIX1_SCREENSHOT_DIR ?? "test-results/fix1";
+      mkdirSync(screenshotDir, { recursive: true });
+      const discovery = await openDiscoveryForDialogProof(
+        page,
+        true,
+        { height: 1117, width: 1728 },
+        theme,
+      );
+      await openGuesthouseDetails(page, discovery);
+      await waitForTheme(page, theme);
+      await waitForAnimations(page);
+      await page.screenshot({
+        animations: "disabled",
+        path: join(screenshotDir, `dialog-after-${theme}-1728x1117.png`),
+      });
+    });
   }
 
   test("keeps one map alive through open, Escape, Fit, and browser history", async ({

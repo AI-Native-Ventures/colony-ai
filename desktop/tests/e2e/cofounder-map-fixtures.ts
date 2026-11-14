@@ -203,6 +203,20 @@ export async function seedCofounderTheme(
 ) {
   await page.addInitScript(
     ({ name, pubkey, relayUrl }) => {
+      // The profile is intentionally persistent for browser locking. Clear
+      // every theme record so its newer outbox revision cannot override the
+      // proof's requested theme from an earlier test.
+      for (const key of Object.keys(localStorage)) {
+        if (
+          key === "buzz-theme-cache" ||
+          key.startsWith("colony.appearance.v1:") ||
+          key.startsWith("buzz-community-theme.v1:") ||
+          key.startsWith("buzz-community-theme-outbox.v1:") ||
+          key.startsWith("buzz-community-theme-migrated.v1:")
+        ) {
+          localStorage.removeItem(key);
+        }
+      }
       const preference = {
         version: 1,
         theme: name,
