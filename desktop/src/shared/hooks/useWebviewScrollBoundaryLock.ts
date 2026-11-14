@@ -2,6 +2,7 @@ import * as React from "react";
 
 const BOUNDARY_EPSILON_PX = 1;
 const CONVERSATION_SCROLL_SELECTOR = "[data-buzz-conversation-scroll]";
+const MAP_CAMERA_WHEEL_OWNER_SELECTOR = "[data-map-camera-wheel-owner]";
 const TERMINAL_SUBSTRATE_SELECTOR = '[data-terminal-owner="terminal"]';
 const SCROLLABLE_OVERFLOW_VALUES = new Set(["auto", "scroll", "overlay"]);
 
@@ -61,6 +62,13 @@ function isConversationScroller(element: HTMLElement) {
   return Boolean(element.closest(CONVERSATION_SCROLL_SELECTOR));
 }
 
+function isMapCameraWheelOwner(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest(MAP_CAMERA_WHEEL_OWNER_SELECTOR))
+  );
+}
+
 /**
  * Stops macOS/WKWebView rubber-band gestures from escaping into the viewport.
  *
@@ -86,7 +94,11 @@ export function useWebviewScrollBoundaryLock(enabled = true) {
     if (!enabled) return;
 
     function handleWheel(event: WheelEvent) {
-      if (event.defaultPrevented || event.ctrlKey) {
+      if (
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        isMapCameraWheelOwner(event.target)
+      ) {
         return;
       }
 

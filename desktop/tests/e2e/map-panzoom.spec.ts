@@ -153,6 +153,12 @@ async function dispatchWheel(
   const session = await page.context().newCDPSession(page);
   try {
     await session.send("Input.dispatchMouseEvent", {
+      modifiers,
+      type: "mouseMoved",
+      x: point.x,
+      y: point.y,
+    });
+    await session.send("Input.dispatchMouseEvent", {
       deltaX,
       deltaY,
       modifiers,
@@ -363,7 +369,7 @@ test.describe("company map pan and zoom", () => {
     });
   });
 
-  test("zooms for Ctrl and Cmd wheel input", async ({ page }, testInfo) => {
+  test("zooms for Ctrl wheel input", async ({ page }, testInfo) => {
     await openMap(page);
     const pointer = await pointAt(
       page.getByTestId("cofounder-map-company-hub"),
@@ -373,17 +379,34 @@ test.describe("company map pan and zoom", () => {
     await dispatchWheel(page, pointer, { deltaY: -90, modifiers: 2 });
     const afterControl = await readCamera(page);
     const controlSample = await readWheelSample(page);
+
+    expect(afterControl.scale).toBeGreaterThan(1);
+    expect(controlSample).toMatchObject({ ctrlKey: true, metaKey: false });
+    await testInfo.attach("control-wheel-sample.json", {
+      body: JSON.stringify(controlSample, null, 2),
+      contentType: "application/json",
+    });
+  });
+
+  test("zooms for Cmd wheel input", async ({ page }, testInfo) => {
+    await openMap(page);
+    const pointer = await pointAt(
+      page.getByTestId("cofounder-map-company-hub"),
+    );
+
     await recordNextWheel(page);
     await dispatchWheel(page, pointer, { deltaY: -90, modifiers: 4 });
     const afterCommand = await readCamera(page);
     const commandSample = await readWheelSample(page);
 
-    expect(afterControl.scale).toBeGreaterThan(1);
-    expect(afterCommand.scale).toBeGreaterThan(afterControl.scale);
-    expect(controlSample).toMatchObject({ ctrlKey: true, metaKey: false });
-    expect(commandSample).toMatchObject({ ctrlKey: false, metaKey: true });
-    await testInfo.attach("modifier-wheel-samples.json", {
-      body: JSON.stringify({ commandSample, controlSample }, null, 2),
+    expect(afterCommand.scale).toBeGreaterThan(1);
+    expect(commandSample).toMatchObject({
+      ctrlKey: false,
+      isTrusted: true,
+      metaKey: true,
+    });
+    await testInfo.attach("command-wheel-sample.json", {
+      body: JSON.stringify(commandSample, null, 2),
       contentType: "application/json",
     });
   });
@@ -392,26 +415,43 @@ test.describe("company map pan and zoom", () => {
     page,
   }, testInfo) => {
     await openMap(page);
-    const pointer = await findBlankCanvasPoint(page);
+    const pointer = await pointAt(
+      page.getByTestId("cofounder-map-company-hub"),
+    );
     const before = await readCamera(page);
 
     await recordNextWheel(page);
-    await dispatchWheel(page, pointer, { deltaX: 40, deltaY: 120 });
+    await dispatchWheel(page, pointer, { deltaY: 120 });
+    await waitForPaint(page);
+    const verticalSample = await readWheelSample(page);
+
+    await recordNextWheel(page);
+    await dispatchWheel(page, pointer, { deltaX: 40, deltaY: 0 });
     await waitForPaint(page);
 
     const after = await readCamera(page);
-    const sample = await readWheelSample(page);
+    const horizontalSample = await readWheelSample(page);
     expect(after.scale).toBe(before.scale);
     expect(after.x).toBeLessThan(before.x);
     expect(after.y).toBeLessThan(before.y);
-    expect(sample).toMatchObject({
+    expect(verticalSample).toMatchObject({
       ctrlKey: false,
       deltaMode: 0,
+      deltaX: 0,
+      deltaY: 120,
+      isTrusted: true,
+      metaKey: false,
+    });
+    expect(horizontalSample).toMatchObject({
+      ctrlKey: false,
+      deltaMode: 0,
+      deltaX: 40,
+      deltaY: 0,
       isTrusted: true,
       metaKey: false,
     });
     await testInfo.attach("plain-wheel-sample.json", {
-      body: JSON.stringify(sample, null, 2),
+      body: JSON.stringify({ horizontalSample, verticalSample }, null, 2),
       contentType: "application/json",
     });
   });
@@ -519,13 +559,37 @@ test.describe("company map pan and zoom", () => {
     await openMap(page);
     await openSalesJobs(page);
     const job = page.getByTestId("cofounder-map-job-disc-sales-lead-finding");
-    const point = await pointAt(job);
+    const jobPoint = await pointAt(job);
+    const point = { x: Math.round(jobPoint.x), y: Math.round(jobPoint.y) };
+
+    await job.evaluate((node) => {
+      type ProbeWindow = Window & {
+        __MAP_PANZOOM_LINK_CLICKS__?: number;
+      };
+      const testWindow = window as ProbeWindow;
+      testWindow.__MAP_PANZOOM_LINK_CLICKS__ = 0;
+      node.closest("a")?.addEventListener(
+        "click",
+        () => {
+          testWindow.__MAP_PANZOOM_LINK_CLICKS__ ??= 0;
+          testWindow.__MAP_PANZOOM_LINK_CLICKS__ += 1;
+        },
+        { once: true },
+      );
+    });
 
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
     await page.mouse.move(point.x + 3, point.y);
     await page.mouse.up();
 
+    await page.waitForTimeout(50);
+    const clickCount = await page.evaluate(
+      () =>
+        (window as Window & { __MAP_PANZOOM_LINK_CLICKS__?: number })
+          .__MAP_PANZOOM_LINK_CLICKS__,
+    );
+    expect(clickCount).toBe(1);
     await expect(page.getByTestId("fullmap-window")).toBeVisible();
   });
 

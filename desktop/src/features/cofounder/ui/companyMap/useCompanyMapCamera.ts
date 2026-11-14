@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import type {
+  DragEvent as ReactDragEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -280,6 +281,23 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     [clearPendingLinkActivation],
   );
 
+  const completeLinkPress = useCallback(
+    (event: { clientX: number; clientY: number; pointerId: number }) => {
+      const linkPress = linkPressRef.current;
+      if (linkPress?.pointerId !== event.pointerId) return;
+      linkPressRef.current = null;
+      if (
+        Math.hypot(
+          event.clientX - linkPress.start.x,
+          event.clientY - linkPress.start.y,
+        ) < CAMERA_DRAG_THRESHOLD
+      ) {
+        queueLinkActivation(linkPress.link);
+      }
+    },
+    [queueLinkActivation],
+  );
+
   const endCurrentGesture = useCallback(() => {
     clearWheelEndTimer();
     pointerGestureRef.current = null;
@@ -369,6 +387,9 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     const onDocumentPointerDown = () => {
       if (suppressClickRef.current) clearPendingClick();
     };
+    const onDocumentPointerUp = (event: PointerEvent) => {
+      completeLinkPress(event);
+    };
 
     window.addEventListener("blur", clearTransientInput);
     window.addEventListener("keydown", onKeyDown);
@@ -376,6 +397,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     document.addEventListener("click", onDocumentClick, true);
     document.addEventListener("contextmenu", onDocumentContextMenu, true);
     document.addEventListener("pointerdown", onDocumentPointerDown, true);
+    document.addEventListener("pointerup", onDocumentPointerUp, true);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("blur", clearTransientInput);
@@ -384,6 +406,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       document.removeEventListener("click", onDocumentClick, true);
       document.removeEventListener("contextmenu", onDocumentContextMenu, true);
       document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+      document.removeEventListener("pointerup", onDocumentPointerUp, true);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       clearWheelEndTimer();
       clearPendingClick();
@@ -395,6 +418,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     clearPendingContextMenu,
     clearPendingLinkActivation,
     clearWheelEndTimer,
+    completeLinkPress,
     endCurrentGesture,
   ]);
 
@@ -630,18 +654,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
 
   const onPointerEnd = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      const linkPress = linkPressRef.current;
-      if (linkPress?.pointerId === event.pointerId) {
-        linkPressRef.current = null;
-        if (
-          Math.hypot(
-            event.clientX - linkPress.start.x,
-            event.clientY - linkPress.start.y,
-          ) < CAMERA_DRAG_THRESHOLD
-        ) {
-          queueLinkActivation(linkPress.link);
-        }
-      }
+      completeLinkPress(event);
       if (event.pointerType === "touch") {
         const wasPinching = pinchGestureRef.current !== null;
         touchPointsRef.current.delete(event.pointerId);
@@ -674,9 +687,9 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     },
     [
       clearPendingContextMenu,
+      completeLinkPress,
       endCurrentGesture,
       finishInteraction,
-      queueLinkActivation,
       scheduleClickReset,
     ],
   );
@@ -729,6 +742,15 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
       event.stopPropagation();
     },
     [clearPendingContextMenu],
+  );
+
+  const onDragStartCapture = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      // Native link dragging takes the pointer away before the map can decide
+      // whether a sub-threshold move is still a click.
+      event.preventDefault();
+    },
+    [],
   );
 
   const onWheel = useCallback(
@@ -835,6 +857,7 @@ export function useCompanyMapCamera({ disabled }: { disabled: boolean }) {
     fitCamera,
     onClickCapture,
     onContextMenuCapture,
+    onDragStartCapture,
     onKeyDown,
     onKeyUp,
     onLostPointerCapture: onPointerCancel,

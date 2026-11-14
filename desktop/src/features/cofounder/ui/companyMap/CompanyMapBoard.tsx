@@ -893,6 +893,7 @@ function CompanyMapDesktop({
     fitCamera,
     onClickCapture,
     onContextMenuCapture,
+    onDragStartCapture,
     onKeyDown: onCameraKeyDown,
     onKeyUp: onCameraKeyUp,
     onLostPointerCapture,
@@ -956,6 +957,7 @@ function CompanyMapDesktop({
         <div
           aria-label={`${companyName} company map. Arrow keys pan, plus and minus zoom, and 0 fits the map.`}
           className="company-map-viewport"
+          data-map-camera-wheel-owner={mapWindowOpen ? undefined : "true"}
           data-testid="cofounder-map-viewport"
           role="application"
           // biome-ignore lint/a11y/noNoninteractiveTabindex: This application map implements the documented keyboard panning and zooming controls.
@@ -972,6 +974,7 @@ function CompanyMapDesktop({
             }
           }}
           onContextMenuCapture={onContextMenuCapture}
+          onDragStartCapture={onDragStartCapture}
           onKeyDown={(event) => {
             if (onCameraKeyDown(event)) return;
             if (event.key !== "Escape") return;
