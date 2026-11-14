@@ -117,6 +117,35 @@ async function seedUnreadChannel(page: Page) {
   await expect(page.locator(".map-shell-channel-dot")).toBeVisible({
     timeout: 15_000,
   });
+  // The dot follows the word, as it does on Chats. It once sat on top of it.
+  const boxes = await page.evaluate(() => {
+    const box = (element: Element | null | undefined) => {
+      const rect = element?.getBoundingClientRect();
+      return rect
+        ? {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          }
+        : null;
+    };
+    const button = document.querySelector(
+      '[data-testid="map-shell-channels-button"]',
+    );
+    return {
+      button: box(button),
+      label: box(button?.querySelector(":scope > span:not([aria-hidden])")),
+      dot: box(button?.querySelector(".map-shell-channel-dot")),
+    };
+  });
+  expect(boxes.button && boxes.label && boxes.dot).toBeTruthy();
+  if (boxes.button && boxes.label && boxes.dot) {
+    expect(boxes.dot.left).toBeGreaterThanOrEqual(boxes.label.right);
+    expect(boxes.dot.right).toBeLessThanOrEqual(boxes.button.right);
+    expect(boxes.dot.top).toBeGreaterThanOrEqual(boxes.button.top);
+    expect(boxes.dot.bottom).toBeLessThanOrEqual(boxes.button.bottom);
+  }
 }
 
 function pathname(url: string) {
