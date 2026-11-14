@@ -664,18 +664,17 @@ test.describe("full map canvas slice 3a", () => {
         .getByTestId("client-row-" + PLANE_TREE_CLIENT_ID),
     ).toBeAttached();
 
-    await windowContent(page)
-      .getByRole("button", { name: "Back to All clients" })
-      .click();
+    await page.goBack();
     await expectMapWindow(page, 0);
     await expect.poll(() => currentRoute(page)).toContain("/clients");
 
     await openOperationsClientRecord(page);
     await windowContent(page)
-      .getByRole("button", { name: "Open in Work" })
+      .getByRole("button", { name: "Open chat" })
       .click();
     await expectMapWindow(page, 2);
-    await expect.poll(() => currentRoute(page)).toContain("/work");
+    await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
+    await expect.poll(() => currentRoute(page)).toContain("/channels/");
     await page.getByTestId("fullmap-window-close").click();
     await expectMapWindow(page, 1);
     await page.getByTestId("fullmap-window-peek").click();

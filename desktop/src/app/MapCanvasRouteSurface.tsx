@@ -10,6 +10,7 @@ import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { CompanyMapScreen } from "@/features/cofounder/ui/CompanyMapScreen";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { acquireEscapeSurface } from "@/shared/hooks/escapeSurfaces";
 
 import {
   MAP_CANVAS_TRAIL_STATE_KEY,
@@ -807,6 +808,11 @@ export function MapCanvasRouteSurface({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [location.href, trail]);
+
+  React.useEffect(() => {
+    if (!job) return;
+    return acquireEscapeSurface();
+  }, [job]);
 
   React.useEffect(() => {
     if (!job) return;
