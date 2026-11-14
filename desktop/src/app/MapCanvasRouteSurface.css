@@ -37,6 +37,12 @@
   transition: opacity 300ms ease;
 }
 
+.map-canvas-route-window[data-side="left"] {
+  right: auto;
+  left: 36px;
+  transform-origin: 100% 60px;
+}
+
 .map-canvas-route-peek {
   position: absolute;
   z-index: 9;
@@ -49,6 +55,11 @@
   opacity: 0.8;
 }
 
+.map-canvas-route-peek[data-side="left"] {
+  right: 0;
+  left: auto;
+}
+
 .map-canvas-route-peek-shell {
   width: 100%;
   height: 100%;
@@ -58,6 +69,10 @@
   box-shadow:
     0 0 0 1px hsl(var(--colony-border-strong)),
     0 30px 60px -34px rgb(40 20 60 / 50%);
+}
+
+.map-canvas-route-peek[data-side="left"] .map-canvas-route-peek-shell {
+  border-radius: 20px 0 0 20px;
 }
 
 .map-canvas-route-peek-clip {
@@ -103,6 +118,10 @@
   border-radius: 0 20px 20px 0;
   background: transparent;
   cursor: pointer;
+}
+
+.map-canvas-route-peek[data-side="left"] .map-canvas-route-peek-back {
+  border-radius: 20px 0 0 20px;
 }
 
 .map-canvas-route-peek-back:focus-visible {
@@ -155,6 +174,11 @@
   cursor: pointer;
 }
 
+.map-canvas-route-window[data-side="left"] .map-canvas-route-close {
+  right: auto;
+  left: -14px;
+}
+
 .map-canvas-route-close:hover {
   filter: brightness(1.08);
 }
@@ -174,6 +198,11 @@
   background: hsl(var(--colony-fg-secondary));
 }
 
+.map-canvas-route-window[data-side="left"] .map-canvas-route-connector {
+  right: -52px;
+  left: auto;
+}
+
 .map-canvas-route-trail-connector {
   position: absolute;
   z-index: 0;
@@ -182,6 +211,11 @@
   width: 56px;
   height: 2px;
   background: hsl(var(--colony-fg-secondary));
+}
+
+.map-canvas-route-window[data-side="left"] .map-canvas-route-trail-connector {
+  right: -56px;
+  left: auto;
 }
 
 .map-canvas-route-trail-port {
@@ -194,6 +228,11 @@
   border-radius: 50%;
   background: hsl(var(--colony-fg-secondary));
   box-shadow: 0 0 0 4px hsl(var(--colony-canvas));
+}
+
+.map-canvas-route-window[data-side="left"] .map-canvas-route-trail-port {
+  right: -7px;
+  left: auto;
 }
 
 .map-canvas-route-job-ring {
@@ -209,6 +248,11 @@
   box-shadow:
     0 0 0 3px hsl(var(--colony-accent)),
     0 0 0 7px hsl(var(--colony-canvas));
+}
+
+.map-canvas-route-window[data-side="left"] .map-canvas-route-job-ring {
+  right: -34px;
+  left: auto;
 }
 
 .map-canvas-route-job-avatar {

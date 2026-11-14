@@ -47,6 +47,7 @@
       "cofounder-map.spec.ts",
       "fullmap-slice1.spec.ts",
       "fullmap-slice2.spec.ts",
+      "fullmap-slice3a.spec.ts",
       "map-shell.spec.ts",
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
@@ -129,6 +130,7 @@
         "cofounder-map.spec.ts",
         "fullmap-slice1.spec.ts",
         "fullmap-slice2.spec.ts",
+        "fullmap-slice3a.spec.ts",
         "workspace-header-icon.spec.ts",
         "cofounder-customer-record.spec.ts",
         "money-rails-pay-ui.spec.ts",
@@ -145,7 +147,8 @@
       "specs": [
         "map-shell.spec.ts",
         "fullmap-slice1.spec.ts",
-        "fullmap-slice2.spec.ts"
+        "fullmap-slice2.spec.ts",
+        "fullmap-slice3a.spec.ts"
       ]
     },
     {

@@ -31,6 +31,7 @@ import {
   COMPANY_MAP_LAYOUT,
   COMPANY_MAP_SIZE,
   companyMapJobPosition as jobPosition,
+  companyMapPartSide,
   companyMapPartPosition as partPosition,
   mapPercent,
 } from "@/features/cofounder/companyMapLayout";
@@ -53,7 +54,6 @@ import type {
   ProfileLookup,
 } from "./companyMapTypes";
 import "./companyMap.css";
-
 type StageStyle = CSSProperties & { "--company-map-transform": string };
 
 function fullName(member: TeamMember, profiles: ProfileLookup): string {
@@ -948,10 +948,13 @@ function CompanyMapDesktop({
   const mapWindowPart = mapWindowJob
     ? partPosition(mapWindowJob.functionId)
     : null;
+  const mapWindowSide = mapWindowJob
+    ? companyMapPartSide(mapWindowJob.functionId)
+    : null;
   const trailDepth = Math.max(0, Math.floor(mapWindowDepth));
   const stageStyle: StageStyle = {
     "--company-map-transform": mapWindowPart
-      ? `translate(${84 - mapWindowPart.x - trailDepth * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
+      ? `translate(${(mapWindowSide === -1 ? 1316 : 84) - mapWindowPart.x + (mapWindowSide === -1 ? trailDepth : -trailDepth) * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
       : `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
   };
   const jobs = activePart
@@ -1018,6 +1021,13 @@ function CompanyMapDesktop({
           onPointerCancel={handlePointerUp}
           data-zoomed={zoom > 1}
           data-map-window-open={mapWindowOpen ? "true" : undefined}
+          data-map-window-side={
+            mapWindowSide === -1
+              ? "left"
+              : mapWindowSide === 1
+                ? "right"
+                : undefined
+          }
           ref={stageRef}
         >
           <div
@@ -1178,7 +1188,6 @@ function CompanyMapDesktop({
     </div>
   );
 }
-
 export function CompanyMapBoard(props: CompanyMapBoardProps) {
   return (
     <main className="company-map-page" data-testid="cofounder-company-map">

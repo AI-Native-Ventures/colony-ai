@@ -488,6 +488,12 @@
   transform: translate(0, 0);
 }
 
+.company-map-viewport[data-map-window-side="left"][data-map-window-open="true"]
+  .company-map-zoom {
+  right: 16px;
+  left: auto;
+}
+
 .company-map-note {
   position: absolute;
   z-index: 3;

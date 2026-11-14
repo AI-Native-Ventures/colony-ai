@@ -30,6 +30,11 @@ const PART_SIDE: Record<FunctionId, CompanyMapSide> = {
   brand: -1,
 };
 
+/** Returns the fixed side of a company function on the approved map layout. */
+export function companyMapPartSide(functionId: FunctionId): CompanyMapSide {
+  return PART_SIDE[functionId];
+}
+
 /** Match the measured arm and job coordinates in the approved company board. */
 export function buildCompanyMapLayout(): CompanyMapLayout {
   const parts: CompanyMapPartPosition[] = [];
@@ -37,7 +42,7 @@ export function buildCompanyMapLayout(): CompanyMapLayout {
 
   for (const side of [1, -1] as const) {
     const group = FUNCTION_ORDER.filter(
-      (functionId) => PART_SIDE[functionId] === side,
+      (functionId) => companyMapPartSide(functionId) === side,
     );
     const pitch = side === 1 ? 54 : 48;
     const gap = side === 1 ? 26 : 20;

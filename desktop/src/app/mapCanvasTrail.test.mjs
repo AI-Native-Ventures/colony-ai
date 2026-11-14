@@ -143,3 +143,22 @@ test("rejects a persisted trail owned by another community", () => {
     null,
   );
 });
+
+test("restores a persisted left-side screen-backed trail", () => {
+  const leftRoot = { functionId: "operations", jobName: "Revisions" };
+  const trail = createMapCanvasTrail(
+    leftRoot,
+    "/work?mapJob=operations%3ARevisions",
+    3,
+    communityId,
+  );
+
+  assert.deepEqual(
+    mapCanvasTrailForHref(
+      { mapCanvasTrail: trail },
+      "/work?mapJob=operations%3ARevisions",
+      communityId,
+    ),
+    trail,
+  );
+});

@@ -1,4 +1,7 @@
-import type { CompanyMapWindowJob } from "@/features/cofounder/companyMapJobRoutes";
+import {
+  isCompanyMapWindowJob,
+  type CompanyMapWindowJob,
+} from "@/features/cofounder/companyMapJobRoutes";
 
 export const MAP_CANVAS_TRAIL_STATE_KEY = "mapCanvasTrail";
 
@@ -63,13 +66,7 @@ function isDimension(value: unknown): value is number {
 }
 
 function isMapCanvasRoot(value: unknown): value is CompanyMapWindowJob {
-  return (
-    isRecord(value) &&
-    (value.functionId === "sales" || value.functionId === "finance") &&
-    typeof value.jobName === "string" &&
-    value.jobName.length > 0 &&
-    value.jobName.length <= 160
-  );
+  return isCompanyMapWindowJob(value);
 }
 
 function isCommunityId(value: unknown): value is string {

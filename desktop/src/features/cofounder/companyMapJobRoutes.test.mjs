@@ -10,6 +10,7 @@ import {
   companyMapJobKey,
   getCompanyMapJobRoute,
   hasRouteForEveryCompanyMapJob,
+  isCompanyMapWindowJob,
   isCompanyMapJobFallback,
 } from "./companyMapJobRoutes.ts";
 
@@ -121,11 +122,52 @@ test("map-window routes retain the job that opened a shared screen", () => {
   assert.deepEqual(companyMapWindowSearch("operations", "Client intake"), {
     mapJob: "operations:Client intake",
   });
-  assert.equal(
+  assert.deepEqual(
     companyMapWindowJobForRoute("/clients", {
       mapJob: "operations:Client intake",
     }),
-    null,
+    { functionId: "operations", jobName: "Client intake" },
   );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/work", {
+      mapJob: "operations:Revisions",
+    }),
+    { functionId: "operations", jobName: "Revisions" },
+  );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/work", {
+      mapJob: "customer_success:Change requests",
+    }),
+    { functionId: "customer_success", jobName: "Change requests" },
+  );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/channels/outreach", {
+      mapJob: "customer_success:Client chats",
+      whatsappDeskTab: "chats",
+    }),
+    { functionId: "customer_success", jobName: "Client chats" },
+  );
+  assert.equal(companyMapWindowJobForRoute("/work/123"), null);
   assert.equal(companyMapWindowJobForRoute("/clients/record/123"), null);
+});
+
+test("accepts only the explicit screen-backed map roots", () => {
+  assert.equal(
+    isCompanyMapWindowJob({
+      functionId: "operations",
+      jobName: "Client intake",
+    }),
+    true,
+  );
+  assert.equal(
+    isCompanyMapWindowJob({
+      functionId: "customer_success",
+      jobName: "Renewals",
+    }),
+    false,
+  );
+  assert.equal(
+    isCompanyMapWindowJob({ functionId: "brand", jobName: "Voice" }),
+    false,
+  );
 });
