@@ -392,18 +392,16 @@ export function OutreachListScreen({
   }
 
   const common = (
-    <nav aria-label="Business views" className="c3l-tabs">
+    <nav
+      aria-label="Business views"
+      className="c3l-tabs"
+      data-map-canvas-same-desk="true"
+    >
       <a href="#/leads">Leads</a>
       <a aria-current="page" href="#/lists">
         Lists
       </a>
       <a href="#/pipeline">Pipeline</a>
-      <span aria-disabled="true" className="c3l-tab-placeholder">
-        Proposals
-      </span>
-      <span aria-disabled="true" className="c3l-tab-placeholder">
-        Services
-      </span>
     </nav>
   );
 
@@ -421,6 +419,7 @@ export function OutreachListScreen({
             </div>
             <button
               className="c3l-btn c3l-btn-primary"
+              data-map-canvas-same-desk="true"
               onClick={() => void navigate({ to: "/leads" })}
               type="button"
             >

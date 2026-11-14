@@ -38,7 +38,8 @@ export type MapCanvasTrailNavigation =
   | { kind: "append"; trail: MapCanvasTrail }
   | { kind: "none"; trail: MapCanvasTrail }
   | { kind: "replace"; trail: MapCanvasTrail }
-  | { kind: "return"; targetIndex: number; trail: MapCanvasTrail };
+  | { kind: "return"; targetIndex: number; trail: MapCanvasTrail }
+  | { kind: "swap"; trail: MapCanvasTrail };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -256,13 +257,26 @@ export function planMapCanvasTrailNavigation({
 }: {
   href: string;
   historyIndex: number | null;
-  samePathNavigation?: "append" | "replace";
+  samePathNavigation?: "append" | "replace" | "swap";
   snapshot: MapCanvasSnapshot | null;
   scroll: readonly MapCanvasScrollPosition[];
   trail: MapCanvasTrail;
 }): MapCanvasTrailNavigation {
   const latest = trail.entries.at(-1);
   if (!latest || latest.href === href) return { kind: "none", trail };
+
+  const nextEntry: MapCanvasTrailEntry = {
+    historyIndex: historyIndex === null ? null : historyIndex + 1,
+    href,
+    scroll: [],
+    snapshot: null,
+  };
+
+  // A declared desk tab or header action owns one visible canvas window.
+  // Keep the browser-history step, but do not retain a predecessor strip.
+  if (samePathNavigation === "swap") {
+    return { kind: "swap", trail: { ...trail, entries: [nextEntry] } };
+  }
 
   const destinationIdentity = mapCanvasRouteIdentity(href);
   const knownIndex = trail.entries.findIndex(
@@ -277,12 +291,6 @@ export function planMapCanvasTrailNavigation({
     scroll,
     snapshot,
   });
-  const nextEntry: MapCanvasTrailEntry = {
-    historyIndex: historyIndex === null ? null : historyIndex + 1,
-    href,
-    scroll: [],
-    snapshot: null,
-  };
 
   if (
     samePathNavigation === "replace" &&

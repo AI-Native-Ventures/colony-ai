@@ -39,6 +39,7 @@ export function PipelineScreen(context: LeadContext) {
             Find prospects
           </W10Button>
         }
+        sameDeskActions
         title="Pipeline"
       />
       <BusinessTabs active="pipeline" />

@@ -46,6 +46,7 @@ const MAP_WORKSPACES: WorkspaceSeed[] = [
 const FINANCE_MONEY = "/money?mapJob=finance%3AChasing+payments";
 const FINANCE_INVOICES = "/money/invoices";
 const FINANCE_REVENUE = "/money/revenue";
+const SALES_OUTREACH = "/leads?mapJob=sales%3AOutreach";
 const SALES_CLOSING = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AClosing&whatsappDeskTab=pipeline`;
 const primedPages = new WeakSet<Page>();
 const SURFACE_BOOT_TIMEOUT_MS = 40_000;
@@ -63,10 +64,12 @@ async function installFullMap(
   theme: Theme = "light",
   {
     mapHome = true,
+    referenceMoneyRecords = false,
     seedClient = false,
     workspaces,
   }: {
     mapHome?: boolean;
+    referenceMoneyRecords?: boolean;
     seedClient?: boolean;
     workspaces?: WorkspaceSeed[];
   } = {},
@@ -89,6 +92,9 @@ async function installFullMap(
     {
       ...fixture(),
       ...(seedClient ? { companyCustomerRecords: [customerRecord()] } : {}),
+      ...(referenceMoneyRecords
+        ? { referenceWorkspace: true, referenceWorkspaceMoneyRecords: true }
+        : {}),
       visualChannels: [{ id: MAP_CHANNEL_ID, name: "Outreach" }],
     },
     {
@@ -160,9 +166,9 @@ async function openInvoices(
   page: Page,
   method: "keyboard" | "pointer" = "pointer",
 ) {
-  const invoices = windowContent(page)
-    .locator('a[href="#/money/invoices"]')
-    .first();
+  const invoices = windowContent(page).locator(
+    '.b3-kpi[href="#/money/invoices"]',
+  );
   if (method === "keyboard") {
     await invoices.focus();
     await page.keyboard.press("Enter");
@@ -173,11 +179,10 @@ async function openInvoices(
   await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
 }
 
-async function openRevenue(page: Page) {
-  await windowContent(page)
-    .locator('a[href="#/money/revenue"]')
-    .first()
-    .click();
+async function openInvoiceDetail(page: Page) {
+  const invoice = windowContent(page).locator(".b3-invoice-link").first();
+  await expect(invoice).toBeVisible();
+  await invoice.click();
   await expectMapWindow(page, 2);
   await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
 }
@@ -511,17 +516,17 @@ test.describe("full map canvas slice 2", () => {
       .toContain("whatsappDeskTab=chats");
   });
 
-  test("opens by keyboard, supports a three-screen trail, and returns to a known screen", async ({
+  test("opens body routes by keyboard, supports a three-screen trail, and returns to a known screen", async ({
     page,
   }) => {
-    await installFullMap(page);
+    await installFullMap(page, "light", { referenceMoneyRecords: true });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openMoney(page);
     await openInvoices(page, "keyboard");
-    await openRevenue(page);
+    await openInvoiceDetail(page);
     await waitForAnimations(page);
 
-    await expectRoute(page, FINANCE_REVENUE);
+    await expect.poll(() => currentRoute(page)).toContain("/money/invoice/");
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(1);
     await expect(page.locator(".map-shell-trail-part")).toHaveText("Finance");
     await expect(page.locator(".map-shell-trail-job")).toHaveText(
@@ -537,16 +542,19 @@ test.describe("full map canvas slice 2", () => {
       )
       .toBe("translate(-3416px, -462px) scale(1)");
 
-    await windowContent(page).locator('a[href="#/money"]').first().click();
+    await windowContent(page)
+      .getByRole("navigation", { name: "Money views" })
+      .getByRole("link", { name: "Overview" })
+      .click();
     await expectMapWindow(page, 0);
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
-    await expectRoute(page, FINANCE_MONEY);
+    await expectRoute(page, "/money");
   });
 
   test("moves one level with close, browser history, peek, Escape, and Zoom out", async ({
     page,
   }) => {
-    await installFullMap(page);
+    await installFullMap(page, "light", { referenceMoneyRecords: true });
     await page.setViewportSize({ width: 1440, height: 900 });
 
     await openMoney(page);
@@ -576,7 +584,7 @@ test.describe("full map canvas slice 2", () => {
     await expectMapWindow(page, 0);
 
     await openInvoices(page);
-    await openRevenue(page);
+    await openInvoiceDetail(page);
     await page.getByRole("button", { name: "Zoom out" }).click();
     await expectMapWindow(page, 1);
     await page.getByRole("button", { name: "Zoom out" }).click();
@@ -705,11 +713,11 @@ test.describe("full map canvas slice 2", () => {
   test("Fit closes the complete trail and returns to the whole map", async ({
     page,
   }) => {
-    await installFullMap(page);
+    await installFullMap(page, "light", { referenceMoneyRecords: true });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openMoney(page);
     await openInvoices(page);
-    await openRevenue(page);
+    await openInvoiceDetail(page);
 
     await page.getByTestId("cofounder-map-fit").click();
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
@@ -742,6 +750,116 @@ test.describe("full map canvas slice 2", () => {
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
     await expect(page.locator(".map-shell-trail-part")).toHaveText("Sales");
     await expect(page.locator(".map-shell-trail-job")).toHaveText("Closing");
+  });
+
+  test("swaps Money view tabs in one map window", async ({ page }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openMoney(page);
+
+    const moneyTabs = windowContent(page).getByRole("navigation", {
+      name: "Money views",
+    });
+    await moneyTabs.getByRole("link", { name: "Revenue" }).click();
+    await expectRoute(page, FINANCE_REVENUE);
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+
+    const revenueTabs = windowContent(page).getByRole("navigation", {
+      name: "Money views",
+    });
+    await revenueTabs.getByRole("link", { name: "Invoices" }).focus();
+    await page.keyboard.press("Enter");
+    await expectRoute(page, FINANCE_INVOICES);
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+
+    await page.goBack();
+    await expectRoute(page, FINANCE_REVENUE);
+    await expectMapWindow(page, 0);
+    await page.goBack();
+    await expectRoute(page, FINANCE_MONEY);
+    await expectMapWindow(page, 0);
+  });
+
+  test("swaps Sales tabs and the Find prospects header action in one map window", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRoute(page, SALES_OUTREACH);
+
+    const leadsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await leadsTabs.getByRole("link", { name: "Lists" }).click();
+    await expectRoute(page, "/lists");
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
+
+    const listsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await listsTabs.getByRole("link", { name: "Pipeline" }).focus();
+    await page.keyboard.press("Enter");
+    await expectRoute(page, "/pipeline");
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
+
+    await page.goBack();
+    await expectRoute(page, "/lists");
+    await expectMapWindow(page, 0);
+    await page.goBack();
+    await expectRoute(page, SALES_OUTREACH);
+    await expectMapWindow(page, 0);
+
+    await windowContent(page)
+      .getByRole("button", { name: "Find prospects" })
+      .click();
+    await expectRoute(page, "/discovery");
+    await expectMapWindow(page, 0);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
+  });
+
+  test("keeps body links as a deeper map screen while tab bars contain only live views", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openRoute(page, SALES_OUTREACH);
+
+    const leadsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await expect(leadsTabs.getByRole("link")).toHaveText([
+      "Leads",
+      "Lists",
+      "Pipeline",
+    ]);
+    await expect(leadsTabs.locator("[aria-disabled='true']")).toHaveCount(0);
+
+    await leadsTabs.getByRole("link", { name: "Lists" }).click();
+    const listsTabs = windowContent(page).getByRole("navigation", {
+      name: "Business views",
+    });
+    await expect(listsTabs.getByRole("link")).toHaveText([
+      "Leads",
+      "Lists",
+      "Pipeline",
+    ]);
+    await expect(listsTabs.locator("[aria-disabled='true']")).toHaveCount(0);
+
+    await openMoney(page);
+    const bodyInvoice = windowContent(page).locator(
+      '.b3-kpi[href="#/money/invoices"]',
+    );
+    await expect(bodyInvoice).toBeVisible();
+    await bodyInvoice.click();
+    await expectMapWindow(page, 1);
+    await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
   });
 
   test("keeps one trail when another map job opens", async ({ page }) => {
@@ -902,7 +1020,10 @@ test.describe("full map canvas slice 2", () => {
         process.env.FULLMAP_S2_SCREENSHOT_DIR ?? "test-results/fullmap-s2";
       mkdirSync(screenshotDir, { recursive: true });
 
-      await installFullMap(page, theme, { seedClient: true });
+      await installFullMap(page, theme, {
+        referenceMoneyRecords: true,
+        seedClient: true,
+      });
       for (const viewport of [
         { height: 900, label: "1440", width: 1440 },
         { height: 1228, label: "2000", width: 2000 },
@@ -921,7 +1042,7 @@ test.describe("full map canvas slice 2", () => {
 
         await openMoney(page);
         await openInvoices(page);
-        await openRevenue(page);
+        await openInvoiceDetail(page);
         await waitForTheme(page, theme);
         await waitForAnimations(page);
         await page.screenshot({
