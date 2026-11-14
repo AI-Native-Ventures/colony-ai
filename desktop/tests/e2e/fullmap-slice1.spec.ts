@@ -686,8 +686,15 @@ test.describe("full map canvas slice 1", () => {
     await checkbox.focus();
     await expect(checkbox).toBeFocused();
     expect(
-      await checkbox.evaluate((element) => element.matches(":focus-visible")),
-    ).toBe(true);
+      await checkbox.evaluate((element) => {
+        const styles = window.getComputedStyle(element);
+        return {
+          offset: styles.outlineOffset,
+          style: styles.outlineStyle,
+          width: styles.outlineWidth,
+        };
+      }),
+    ).toEqual({ offset: "2px", style: "solid", width: "2px" });
 
     for (let attempt = 1; attempt <= 20; attempt += 1) {
       const checkedMetrics = await expectNoMapClickCost(page, () =>
@@ -770,7 +777,7 @@ test.describe("full map canvas slice 1", () => {
               }) => unknown;
             }
           ).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
-            channelName: "Outreach",
+            channelName: "general",
             content: `FIX2 live event ${sequence}`,
             id: `f${String(sequence).padStart(63, "0")}`,
           });
