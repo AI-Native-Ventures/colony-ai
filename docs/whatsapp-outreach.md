@@ -80,7 +80,7 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `safety_check` | `identities: [{kind: "phone"|"email"|"domain", value}]` | any member | `{ "matches": [{kind, value}] }` for caller-provided active suppressions only |
 | `suppressions` | `limit` | owner/admin | `{ "suppressions": [Suppression], "businessStops": [BusinessStop] }` |
 | `unknown_sends` | `limit` | owner/admin | `{ "unknownSends": [Message] }` whose result needs an owner decision |
-| `contacts` | `limit`, `before` | owner/admin, Outreach member | `{ "contacts": [Contact] }` |
+| `contacts` | `limit`, `before`, `counts` | owner/admin, Outreach member | `{ "contacts": [Contact], "nextCursor": string \| null }`, plus the count fields below when `counts` is true |
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
 | `thread` | `waId`, `limit`, `includeHeld` (rows still waiting for a batch approval are left out unless true, so an older app never labels them approved) | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
 
@@ -90,6 +90,43 @@ rows of a pending batch) and a `skipped` row reads `failed` with its reason in `
 state is always one of `draft rejected queued sending sent delivered read failed unconfirmed`.
 `Contact.displayName` is the WhatsApp profile name, else the name given on the batch row
 (`rows[].name`, only when the contact has none), else the number in E.164 form.
+
+### Paging and counting `contacts`
+
+The list is ordered by the contact's latest activity, newest first (`GREATEST(last_inbound_at,
+last_outbound_at, created_at)`, then `waId`, both descending), so paging is total and stable.
+Every field below is additive: an older desktop that sends neither request field and ignores the
+new response fields behaves exactly as before, and a newer desktop must tolerate an older relay
+that omits `nextCursor` and the count fields (treat a missing `nextCursor` as the last page and
+missing counts as "not available").
+
+Request fields (only for `what: "contacts"`):
+
+- `limit`: page size, clamped to 1 to 200 (default 50).
+- `before`: optional opaque cursor, the `nextCursor` of the previous page. Absent means the first
+  page. Treat it as a string you only echo back. A cursor the relay did not issue is refused with
+  `400` and `before is not a cursor this relay issued`; it never falls back to the first page.
+- `counts`: optional boolean, default `false`. When `true`, the answer also carries true stage
+  counts over every contact of the community, not over the page.
+
+Response fields:
+
+- `nextCursor`: always present for `contacts`. A string when more contacts follow this page,
+  `null` on the last page.
+- Only when `counts` is `true`:
+  - `stageCounts`: object mapping a stage string (the same values `Contact.stage` takes for the
+    caller, so the `queued` stage only appears for a desktop that advertised the queued-stage
+    capability) to its number of contacts. A stage with no contacts is absent.
+  - `failedNotContacted`: contacts whose stage is `none` and whose latest outbound message state
+    is `failed`.
+  - `totalContacts`: contacts counted. It equals the sum of `stageCounts`.
+  - `countsTruncated`: `true` when the community has more than 50,000 contacts. The counts then
+    cover the 50,000 most recently active contacts and every number is a floor.
+
+The counts use the same stage derivation as the list (desk facts, linked leads, customer records
+and the capability projection), so a count equals what paging through the whole list would show.
+Counting reads the whole contact list in chunks, so ask for it when a view needs totals, not on
+every poll. If counting fails the request fails; partial counts are never returned.
 
 Every `Contact` (in `contacts`, `inbox` and `thread`) carries `outreachStatus`, one of
 `waiting_for_approval` (a row of a pending batch, nothing approved), `queued` (approved, not sent),

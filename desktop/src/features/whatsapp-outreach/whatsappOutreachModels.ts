@@ -11,6 +11,19 @@ export type WhatsAppStage =
   | "no_thanks"
   | "stopped"
   | "not_on_whatsapp";
+const WHATSAPP_STAGES: ReadonlySet<WhatsAppStage> = new Set<WhatsAppStage>([
+  "none",
+  "queued",
+  "contacted",
+  "replied",
+  "wants_call",
+  "call_booked",
+  "quote_sent",
+  "client",
+  "no_thanks",
+  "stopped",
+  "not_on_whatsapp",
+]);
 export type WhatsAppLeadStatus =
   | "not-contacted"
   | "in-batch"
@@ -493,22 +506,66 @@ function parseDeliveryFailure(value: unknown): WhatsAppDeliveryFailure | null {
   };
 }
 
+/**
+ * True stage counts over every contact of the community, from the relay's `counts: true`
+ * contacts answer. A stage the relay does not list has no contacts.
+ */
+export type WhatsAppStageCounts = Readonly<{
+  stageCounts: Readonly<Partial<Record<WhatsAppStage, number>>>;
+  /** Contacts in stage `none` whose latest outbound message failed. */
+  failedNotContacted: number;
+  totalContacts: number;
+  /** The community has more contacts than the relay counts, so every number is a floor. */
+  countsTruncated: boolean;
+}>;
+
+function nonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`The relay returned an invalid WhatsApp ${label}.`);
+  }
+  return value;
+}
+
+/**
+ * Reads the count fields of a `contacts` answer. Returns `null` when the relay sent no
+ * `stageCounts` (an older relay that does not count); throws when it sent them malformed.
+ */
+export function parseWhatsAppStageCounts(
+  value: unknown,
+): WhatsAppStageCounts | null {
+  const response = record(value, "contact counts");
+  if (response.stageCounts === undefined) return null;
+  const rawCounts = record(response.stageCounts, "stage counts");
+  const stageCounts: Partial<Record<WhatsAppStage, number>> = {};
+  for (const [stage, count] of Object.entries(rawCounts)) {
+    // An unfamiliar future stage is ignored, as a contact in one reads `none`.
+    if (!WHATSAPP_STAGES.has(stage as WhatsAppStage)) continue;
+    stageCounts[stage as WhatsAppStage] = nonNegativeInteger(
+      count,
+      `${stage} count`,
+    );
+  }
+  return {
+    stageCounts,
+    failedNotContacted: nonNegativeInteger(
+      response.failedNotContacted,
+      "failed-not-contacted count",
+    ),
+    totalContacts: nonNegativeInteger(
+      response.totalContacts,
+      "total contact count",
+    ),
+    countsTruncated: booleanValue(
+      response.countsTruncated,
+      "contact counts truncation flag",
+    ),
+  };
+}
+
 export function parseWhatsAppContact(value: unknown): WhatsAppContact {
   const contact = record(value, "contact");
   const rawStage = typeof contact.stage === "string" ? contact.stage : "none";
-  const allowedStages = new Set<WhatsAppStage>([
-    "none",
-    "queued",
-    "contacted",
-    "replied",
-    "wants_call",
-    "call_booked",
-    "quote_sent",
-    "client",
-    "no_thanks",
-    "stopped",
-    "not_on_whatsapp",
-  ]);
+  const allowedStages = WHATSAPP_STAGES;
   const allowedOutreachStatuses = new Set<WhatsAppOutreachStatus>([
     "none",
     "waiting_for_approval",
