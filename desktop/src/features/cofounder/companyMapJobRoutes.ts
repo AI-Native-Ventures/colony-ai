@@ -20,7 +20,10 @@ export type CompanyMapWhatsAppTab = "needs-you" | "chats" | "pipeline";
 
 /** A screen-backed job that can open in the persistent map canvas window. */
 export type CompanyMapWindowJob = {
-  functionId: Extract<FunctionId, "sales" | "finance">;
+  functionId: Extract<
+    FunctionId,
+    "sales" | "finance" | "operations" | "customer_success"
+  >;
   jobName: string;
 };
 
@@ -74,6 +77,11 @@ const MAP_WINDOW_JOBS: readonly CompanyMapWindowJob[] = [
   { functionId: "finance", jobName: "Deposits" },
   { functionId: "finance", jobName: "Chasing payments" },
   { functionId: "finance", jobName: "Costs" },
+  { functionId: "operations", jobName: "Client intake" },
+  { functionId: "operations", jobName: "Revisions" },
+  { functionId: "operations", jobName: "Handover" },
+  { functionId: "customer_success", jobName: "Client chats" },
+  { functionId: "customer_success", jobName: "Change requests" },
 ];
 
 /** Resolve a job to an existing screen, the WhatsApp desk, or its part page. */
@@ -153,6 +161,19 @@ function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
   );
 }
 
+/** Confirms a persisted trail root is one of the screen-backed map jobs. */
+export function isCompanyMapWindowJob(
+  value: unknown,
+): value is CompanyMapWindowJob {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { functionId?: unknown; jobName?: unknown };
+  return MAP_WINDOW_JOBS.some(
+    (job) =>
+      job.functionId === candidate.functionId &&
+      job.jobName === candidate.jobName,
+  );
+}
+
 function windowJobMatchesRoute(
   job: CompanyMapWindowJob,
   pathname: string,
@@ -174,6 +195,7 @@ function windowJobMatchesRoute(
   }
   const route = getCompanyMapJobRoute(job.functionId, job.jobName);
   if (route.kind === "app") return pathname === route.to;
+  if (route.kind === "work") return pathname === "/work";
   return (
     route.kind === "whatsapp" &&
     pathname.startsWith("/channels/") &&

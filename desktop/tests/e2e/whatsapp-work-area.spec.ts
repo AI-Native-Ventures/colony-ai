@@ -33,6 +33,8 @@ async function emitWhatsAppEvent(
     tags: string[][];
     parentEventId?: string;
     pubkey?: string;
+    /** Event time in seconds. Defaults to now. */
+    createdAt?: number;
   },
 ) {
   await expect
@@ -47,7 +49,7 @@ async function emitWhatsAppEvent(
     )
     .toBe(true);
   const event = await page.evaluate(
-    ({ channelName, content, tags, parentEventId, pubkey }) =>
+    ({ channelName, content, tags, parentEventId, pubkey, createdAt }) =>
       (window as WhatsAppEventWindow).__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
         channelName,
         content,
@@ -55,7 +57,7 @@ async function emitWhatsAppEvent(
         pubkey: pubkey ?? "deadbeef".repeat(8),
         parentEventId,
         extraTags: tags,
-        createdAt: Math.floor(Date.now() / 1000),
+        createdAt: createdAt ?? Math.floor(Date.now() / 1000),
       }),
     input,
   );
@@ -75,21 +77,36 @@ test.describe("WhatsApp work area dock", () => {
     await expect(page.getByTestId("chat-title")).toHaveText("Outreach");
     await expect(page.getByTestId("message-composer")).toBeVisible();
 
+    // Same-second events are ordered by their random mock ids, so give the five events
+    // strictly increasing times, one second apart, ending now. The app groups updates by
+    // Johannesburg day (UTC+2, no DST); if the range would cross midnight there, end it at
+    // 23:59:59 of the previous day instead, so the events stay in the past and on one day.
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const secondsIntoJohannesburgDay = (nowSeconds + 2 * 3600) % 86_400;
+    const lastEventAt =
+      secondsIntoJohannesburgDay < 4
+        ? nowSeconds - secondsIntoJohannesburgDay - 1
+        : nowSeconds;
+    const eventAt = (index: number) => lastEventAt - 4 + index;
+
     await emitWhatsAppEvent(page, {
       channelName: "Outreach",
       content: "WhatsApp number connected.",
       tags: [["wa-notice", "connected"]],
+      createdAt: eventAt(0),
     });
     await emitWhatsAppEvent(page, {
       channelName: "Outreach",
       content:
         "Batch e2ewhats is waiting for approval: 3 message(s), template hl_vb. Nothing is sent until the owner or an admin approves it.",
       tags: [["wa-notice", "batch_pending"]],
+      createdAt: eventAt(1),
     });
     await emitWhatsAppEvent(page, {
       channelName: "Outreach",
       content: "Batch sent. 18 guesthouses messaged, 18 delivered, 11 read.",
       tags: [["wa-notice", "batch_completed"]],
+      createdAt: eventAt(2),
     });
     const root = await emitWhatsAppEvent(page, {
       channelName: "Outreach",
@@ -99,6 +116,7 @@ test.describe("WhatsApp work area dock", () => {
         ["wa-name", "Corner Cottage Parkhurst"],
         ["lead", REFERENCE_PROSPECT_IDS["sunday-edit"]],
       ],
+      createdAt: eventAt(3),
     });
     await emitWhatsAppEvent(page, {
       channelName: "Outreach",
@@ -110,6 +128,7 @@ test.describe("WhatsApp work area dock", () => {
         ["wa-dir", "in"],
         ["lead", REFERENCE_PROSPECT_IDS["sunday-edit"]],
       ],
+      createdAt: eventAt(4),
     });
 
     const activity = page.getByTestId("whatsapp-discussion-activity");

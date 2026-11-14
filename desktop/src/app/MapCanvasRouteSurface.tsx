@@ -5,10 +5,12 @@ import {
   companyMapWindowJobForRoute,
   type CompanyMapWindowJob,
 } from "@/features/cofounder/companyMapJobRoutes";
+import { companyMapPartSide } from "@/features/cofounder/companyMapLayout";
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { CompanyMapScreen } from "@/features/cofounder/ui/CompanyMapScreen";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { acquireEscapeSurface } from "@/shared/hooks/escapeSurfaces";
 
 import {
   MAP_CANVAS_TRAIL_STATE_KEY,
@@ -42,12 +44,18 @@ type PendingEmbeddedNavigation = {
   trail: MapCanvasTrail;
 };
 
+type MapCanvasWindowSide = "left" | "right";
+
 type PendingSameDeskNavigation = Pick<
   PendingEmbeddedNavigation,
   "observedAt" | "samePathNavigation" | "sourceHref"
 >;
 
 const EMBEDDED_NAVIGATION_WINDOW_MS = 2_000;
+
+function mapCanvasWindowSide(job: CompanyMapWindowJob): MapCanvasWindowSide {
+  return companyMapPartSide(job.functionId) === -1 ? "left" : "right";
+}
 
 function isMapHome(pathname: string): boolean {
   return pathname === "/" || pathname === "/company/map";
@@ -261,11 +269,13 @@ function MapCanvasTrailPeek({
   fallbackLabel,
   liveSnapshot,
   onBack,
+  side,
 }: {
   entry: MapCanvasTrailEntry;
   fallbackLabel: string;
   liveSnapshot: MapCanvasSnapshot | null;
   onBack: () => void;
+  side: MapCanvasWindowSide;
 }) {
   const snapshot = liveSnapshot ?? entry.snapshot;
   const snapshotHtml = React.useMemo(
@@ -278,6 +288,7 @@ function MapCanvasTrailPeek({
     <section
       aria-label="Previous map screen"
       className="map-canvas-route-peek"
+      data-side={side}
       data-testid="fullmap-window-peek"
     >
       <div className="map-canvas-route-peek-shell">
@@ -289,7 +300,10 @@ function MapCanvasTrailPeek({
               dangerouslySetInnerHTML={{ __html: snapshotHtml }}
               style={{
                 height,
-                transform: `translateX(-${Math.max(0, width - 144)}px)`,
+                transform:
+                  side === "left"
+                    ? "translateX(0px)"
+                    : `translateX(-${Math.max(0, width - 144)}px)`,
                 width,
               }}
             />
@@ -318,6 +332,7 @@ function MapCanvasWindow({
   onContentClickCapture,
   onContentKeyDownCapture,
   contentRef,
+  side,
 }: {
   children: React.ReactNode;
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -326,6 +341,7 @@ function MapCanvasWindow({
   onClose: () => void;
   onContentClickCapture: (event: React.MouseEvent<HTMLDivElement>) => void;
   onContentKeyDownCapture: (event: React.KeyboardEvent<HTMLDivElement>) => void;
+  side: MapCanvasWindowSide;
 }) {
   const partName = FUNCTION_DETAILS[job.functionId].name;
   return (
@@ -333,6 +349,7 @@ function MapCanvasWindow({
       aria-label={`${partName}, ${job.jobName}`}
       className="map-canvas-route-window"
       data-function={job.functionId}
+      data-side={side}
       data-testid="fullmap-window"
       data-trail-depth={depth}
     >
@@ -794,6 +811,11 @@ export function MapCanvasRouteSurface({
 
   React.useEffect(() => {
     if (!job) return;
+    return acquireEscapeSurface();
+  }, [job]);
+
+  React.useEffect(() => {
+    if (!job) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.key !== "Escape" ||
@@ -813,10 +835,12 @@ export function MapCanvasRouteSurface({
 
   const depth = Math.max(0, (trail?.entries.length ?? 1) - 1);
   const previousEntry = depth > 0 ? trail?.entries.at(-2) : null;
+  const side = job ? mapCanvasWindowSide(job) : null;
 
   return (
     <div
       className="map-canvas-route-surface"
+      data-side={side ?? undefined}
       data-testid="fullmap-canvas-route-surface"
       data-trail-depth={depth}
       data-window-open={job ? "true" : undefined}
@@ -840,6 +864,7 @@ export function MapCanvasRouteSurface({
                 null
               }
               onBack={closeLatestWindow}
+              side={side ?? "right"}
             />
           ) : null}
           <MapCanvasWindow
@@ -849,6 +874,7 @@ export function MapCanvasRouteSurface({
             onClose={closeLatestWindow}
             onContentClickCapture={handleContentClickCapture}
             onContentKeyDownCapture={handleContentKeyDownCapture}
+            side={side ?? "right"}
           >
             {children}
           </MapCanvasWindow>

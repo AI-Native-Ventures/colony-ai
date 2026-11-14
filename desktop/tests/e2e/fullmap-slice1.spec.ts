@@ -1187,7 +1187,7 @@ test.describe("full map canvas slice 1", () => {
     });
   });
 
-  test("keeps left-side jobs and phone jobs on their current full-page routes", async ({
+  test("keeps left-side jobs in the canvas and phone jobs on current full-page routes", async ({
     page,
   }) => {
     await installFullMap(page);
@@ -1201,8 +1201,11 @@ test.describe("full map canvas slice 1", () => {
     await expect(leftSideJob).toBeVisible();
     await leftSideJob.click();
     await expect.poll(() => new URL(page.url()).hash).toContain("#/clients");
-    await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
-    await expect(page.getByTestId("cofounder-company-map")).toHaveCount(0);
+    // Slice 3a made the screen-backed Operations jobs canvas windows. The
+    // phone assertion below stays a full-page fallback because map canvas is
+    // deliberately unavailable at the narrow layout.
+    await expect(page.getByTestId("fullmap-window")).toBeVisible();
+    await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/#/");
