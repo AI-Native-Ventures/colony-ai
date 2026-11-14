@@ -10,6 +10,7 @@ import { MOCK_TENANT_COMMUNITY_ID } from "../../src/testing/e2eTenant";
 import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
 import { waitForAnimations } from "../helpers/animations";
+import { answerFirstSearchWordOnly } from "./helpers/discoveryFirstWord";
 
 // A finished run is titled "Search complete", or "Found N of M" when it
 // ended short of the target.
@@ -138,6 +139,7 @@ async function installSearchFixture(
       };
     };
   }, ownerReplay);
+  await answerFirstSearchWordOnly(page);
   await installMockBridge(page, REAL_RUNNER);
 }
 

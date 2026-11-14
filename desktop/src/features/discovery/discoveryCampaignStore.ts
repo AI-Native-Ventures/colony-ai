@@ -17,9 +17,11 @@ import type {
 } from "./discoveryProvider";
 import { areasSearched, nearbyAreasLeft } from "./discoveryCampaignAreas";
 import { parseDiscoveryLocation } from "./discoveryLocation";
-import type {
-  DiscoveryPlace,
-  DiscoverySearchResponse,
+import {
+  MAX_SEARCH_WORDS,
+  normalizeSearchWords,
+  type DiscoveryPlace,
+  type DiscoverySearchResponse,
 } from "./discoverySearch";
 import { resolveVerticalId } from "./taxonomy";
 import {
@@ -73,6 +75,14 @@ export type CampaignInternals = {
    * it: a run never widens its area by itself.
    */
   nearbyApproved: boolean;
+  /**
+   * The plain words this campaign searches Maps with, in order. Empty for a
+   * campaign started before 14 Nov 2026, which keeps searching the way it
+   * began (the catalogue label, one map window). See `discoveryCampaignWords.ts`.
+   */
+  searchWords: string[];
+  /** Which of `searchWords` an untagged campaign is searching with now. */
+  wordIndex: number;
   /**
    * True for campaigns started by a build whose relay pages by a real offset.
    * Campaigns saved before 12 Nov 2026 lack it: the relay then sent an offset
@@ -268,6 +278,7 @@ function parsePageLog(value: unknown): DiscoveryPageLog[] {
     const costUsd = num(row.costUsd);
     const stopReason = str(row.stopReason);
     const area = str(row.area);
+    const word = str(row.word);
     if (
       page < 1 ||
       skip > 400 ||
@@ -294,6 +305,7 @@ function parsePageLog(value: unknown): DiscoveryPageLog[] {
           ? (stopReason as DiscoveryEndReason)
           : null,
       ...(area ? { area } : {}),
+      ...(word ? { word: word.slice(0, 120) } : {}),
     });
   }
   return logs;
@@ -414,6 +426,10 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     trustedCoverage: value.trustedCoverage === true,
     areaIndex: nonNegativeInt(value.areaIndex),
     nearbyApproved: value.nearbyApproved === true,
+    searchWords: normalizeSearchWords(
+      parseStringList(value.searchWords, MAX_SEARCH_WORDS),
+    ),
+    wordIndex: nonNegativeInt(value.wordIndex),
     skip: nonNegativeInt(value.skip),
     tagCursors: parseTagCursors(value.tagCursors, pickedTags.length),
     pendingTagCursors: Array.isArray(value.pendingTagCursors)

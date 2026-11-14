@@ -3,6 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { REFERENCE_CHANNEL_IDS } from "../../src/testing/e2eReferenceWorkspace";
 import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
+import {
+  answerFirstSearchWordOnly,
+  otherSearchWordCalls,
+} from "./helpers/discoveryFirstWord";
 
 test.beforeEach(async ({ page }) => {
   await installDiscoveryImageMocks(page);
@@ -141,6 +145,7 @@ async function installSearchStub(page: Page, mode: StubMode = "pages") {
       };
     };
   }, mode);
+  await answerFirstSearchWordOnly(page);
 }
 
 async function openDiscovery(page: Page, mode: StubMode = "pages") {
@@ -239,10 +244,23 @@ test.describe("Real discovery run", () => {
     expect(calls[0]).toMatchObject({
       location: "South Africa",
       country: "ZA",
-      coordinates: { latitude: -30.5595, longitude: 22.9375 },
       limit: 20,
     });
     expect(String(calls[0]?.query)).toMatch(/home furnishings/i);
+    // The named area is searched as a whole: no request is pinned to the
+    // one centre point of the place.
+    for (const call of calls) expect(call).not.toHaveProperty("coordinates");
+    // The first word ran out before the 100 asked for, so the type's other
+    // plain words were asked too, each once, also for the whole area.
+    const others = await otherSearchWordCalls(page);
+    expect(others.map((call) => call.query)).toEqual([
+      "home décor stores",
+      "housewares shops",
+    ]);
+    for (const call of others) {
+      expect(call).toMatchObject({ location: "South Africa", skip: 0 });
+      expect(call).not.toHaveProperty("coordinates");
+    }
 
     // Completed runs hide the progress panel on the campaign page. The
     // Discovery resume card presents the terminal state as "Ready to review".

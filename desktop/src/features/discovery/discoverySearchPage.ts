@@ -23,7 +23,7 @@ export type CampaignSearchSpec = Pick<
   | "pickedTags"
   | "tagCursors"
 > &
-  Partial<Pick<StoredCampaign, "pagesFetched">>;
+  Partial<Pick<StoredCampaign, "pagesFetched" | "searchWords" | "wordIndex">>;
 
 type SearchPage = (
   request: DiscoverySearchRequest,
@@ -43,6 +43,8 @@ export async function fetchCampaignPage(
     pickedTags: campaign.pickedTags,
     tagCursors: campaign.tagCursors,
     turn: campaign.pagesFetched ?? 0,
+    searchWords: campaign.searchWords,
+    wordIndex: campaign.wordIndex,
   });
   // One full page per turn: with tags they take turns, never share a page.
   const responses = await Promise.all(

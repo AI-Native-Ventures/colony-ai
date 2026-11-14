@@ -230,6 +230,12 @@ export function buildSearchRequest(input: {
   location: string;
   locationSelection?: DiscoveryLocation | null;
   skip: number;
+  /**
+   * Search the named area as a whole. The request then carries no point, so
+   * Maps covers the place the text names instead of one small window around
+   * its centre (a province searched from its centre point found 8 places).
+   */
+  wholeArea?: boolean;
 }): DiscoverySearchRequest {
   const location = input.location.trim();
   const selected = input.locationSelection ?? null;
@@ -238,7 +244,7 @@ export function buildSearchRequest(input: {
     location,
     ...(selected?.countryCode ? { country: selected.countryCode } : {}),
     ...(selected?.region ? { region: selected.region } : {}),
-    ...(selected
+    ...(selected && !input.wholeArea
       ? {
           coordinates: {
             latitude: selected.latitude,
@@ -258,6 +264,77 @@ export type PlannedDiscoverySearch = {
   request: DiscoverySearchRequest;
 };
 
+/** Words that end a catalogue label but that no business puts in its name. */
+const LABEL_FILLER_ENDINGS: ReadonlySet<string> = new Set([
+  "businesses",
+  "companies",
+  "establishments",
+  "firms",
+  "operators",
+  "outlets",
+  "providers",
+]);
+
+/** The most search words one campaign runs through, one after another. */
+export const MAX_SEARCH_WORDS = 5;
+
+/**
+ * A catalogue label as words Maps understands: "Furniture & Upholstery Repair
+ * Businesses" becomes "Furniture Upholstery Repair". Maps found 2 places in a
+ * whole province for the label as written and full pages for the plain words.
+ */
+export function plainSearchLabel(label: string): string {
+  const words = label.replace(/&/g, " ").split(/\s+/).filter(Boolean);
+  while (
+    words.length > 1 &&
+    LABEL_FILLER_ENDINGS.has((words.at(-1) ?? "").toLocaleLowerCase())
+  ) {
+    words.pop();
+  }
+  return words.join(" ").slice(0, 120).trim();
+}
+
+/**
+ * The words one campaign searches Maps with, in order: the plain label, then
+ * the catalogue's everyday names for the type ("upholsterers", "furniture
+ * restoration"). Each is its own Maps search; the campaign moves to the next
+ * when one runs out.
+ */
+export function buildSearchWords(
+  label: string,
+  aliases: readonly string[] = [],
+): string[] {
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const candidate of [plainSearchLabel(label), ...aliases]) {
+    const word = candidate.replace(/\s+/g, " ").trim().slice(0, 120).trim();
+    const key = word.toLocaleLowerCase();
+    if (!word || seen.has(key)) continue;
+    seen.add(key);
+    words.push(word);
+    if (words.length >= MAX_SEARCH_WORDS) break;
+  }
+  return words;
+}
+
+/** The stored words of a campaign, cleaned; empty for a campaign made before them. */
+export function normalizeSearchWords(searchWords: string[] = []): string[] {
+  return [
+    ...new Set(searchWords.map((word) => word.trim()).filter(Boolean)),
+  ].slice(0, MAX_SEARCH_WORDS);
+}
+
+/** The word a campaign is searching with now, or null for an older campaign. */
+export function searchWordAt(
+  searchWords: string[] = [],
+  wordIndex = 0,
+): string | null {
+  const words = normalizeSearchWords(searchWords);
+  if (!words.length) return null;
+  const index = Number.isFinite(wordIndex) ? Math.floor(wordIndex) : 0;
+  return words[Math.min(Math.max(index, 0), words.length - 1)] ?? null;
+}
+
 export function normalizePickedTags(pickedTags: string[] = []): string[] {
   return [
     ...new Set(pickedTags.map((tag) => tag.trim()).filter(Boolean)),
@@ -273,16 +350,24 @@ export function normalizePickedTags(pickedTags: string[] = []): string[] {
 export function discoveryCoverageKey(input: {
   verticalId: string;
   tag?: string | null;
+  /**
+   * The Maps search word of a campaign that has search words. It makes the
+   * key a new one, so pages an older version bought with the catalogue label
+   * and one small map window never mark this better search as finished.
+   */
+  word?: string | null;
   location: string;
   locationSelection?: DiscoveryLocation | null;
 }): string {
   const tag = input.tag?.trim().toLocaleLowerCase() ?? "";
+  const word = input.word?.trim().toLocaleLowerCase() ?? "";
   const place =
     discoveryLocationKey(input.locationSelection ?? null) ||
     `legacy:${input.location.trim().toLocaleLowerCase()}`;
   return [
     input.verticalId.trim().toLocaleLowerCase(),
     `tag:${tag}`,
+    ...(word ? [`word:${word}`] : []),
     place,
   ].join("::");
 }
@@ -291,15 +376,24 @@ export function discoveryCoverageKey(input: {
 export function discoveryCoverageKeys(input: {
   verticalId: string;
   pickedTags?: string[];
+  searchWords?: string[];
+  wordIndex?: number;
   location: string;
   locationSelection?: DiscoveryLocation | null;
 }): string[] {
   const tags = normalizePickedTags(input.pickedTags);
   const streams = tags.length ? tags : [null];
+  // A tag is searched together with the first word; an untagged campaign
+  // searches one word at a time.
+  const word = searchWordAt(
+    input.searchWords,
+    tags.length ? 0 : (input.wordIndex ?? 0),
+  );
   return streams.map((tag) =>
     discoveryCoverageKey({
       verticalId: input.verticalId,
       tag,
+      word,
       location: input.location,
       locationSelection: input.locationSelection,
     }),
@@ -320,18 +414,29 @@ export function buildDiscoverySearchPlan(input: {
   pickedTags?: string[];
   tagCursors?: Array<number | null>;
   turn?: number;
+  /** The campaign's Maps search words; empty for a campaign made before them. */
+  searchWords?: string[];
+  /** Which word an untagged campaign is searching with now. */
+  wordIndex?: number;
 }): {
   requests: PlannedDiscoverySearch[];
   totalRequestedResults: number;
   pickedTags: string[];
 } {
   const pickedTags = normalizePickedTags(input.pickedTags);
+  // With search words the campaign asks Maps in plain words and for the whole
+  // named area. Without them (a campaign from an older version) it keeps the
+  // request it was started with, so its saved cursors still mean the same.
+  const word = searchWordAt(input.searchWords, input.wordIndex);
+  const firstWord = searchWordAt(input.searchWords, 0);
+  const wholeArea = word !== null;
   if (!pickedTags.length) {
     const request = buildSearchRequest({
-      query: input.verticalName,
+      query: word ?? input.verticalName,
       location: input.location,
       locationSelection: input.locationSelection,
       skip: input.skip,
+      wholeArea,
     });
     return {
       requests: [{ tagIndex: null, request }],
@@ -354,10 +459,14 @@ export function buildDiscoverySearchPlan(input: {
         {
           tagIndex: next.index,
           request: buildSearchRequest({
-            query: buildTagSearchQuery(next.tag, input.verticalName),
+            query: buildTagSearchQuery(
+              next.tag,
+              firstWord ?? input.verticalName,
+            ),
             location: input.location,
             locationSelection: input.locationSelection,
             skip: next.cursor,
+            wholeArea,
           }),
         },
       ]
