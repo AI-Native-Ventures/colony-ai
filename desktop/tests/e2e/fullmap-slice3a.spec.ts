@@ -891,6 +891,9 @@ test.describe("full map canvas slice 3a", () => {
           // so the required board comparison uses the actual mapped screen.
           if (theme === "light" && viewport.label === "1440") {
             await openRoute(page, mapTarget(CUSTOMER_SUCCESS_CHANGE_REQUESTS));
+            await expect(
+              windowContent(page).getByRole("heading", { name: "Work" }),
+            ).toBeVisible();
             await waitForAnimations(page);
             await page.screenshot({
               animations: "disabled",
