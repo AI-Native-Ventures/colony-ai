@@ -13,6 +13,7 @@ import {
   parseWhatsAppMedia,
   parseWhatsAppMessage,
   parseWhatsAppContact,
+  parseWhatsAppStageCounts,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
   resetWhatsAppUnknownMessageStateWarning,
@@ -580,4 +581,46 @@ test("contact cards keep names and numbers and drop malformed entries", () => {
       [null, []],
     ],
   );
+});
+
+const goodCounts = {
+  contacts: [],
+  nextCursor: null,
+  stageCounts: { contacted: 174, replied: 12, mystery_future_stage: 9 },
+  failedNotContacted: 3,
+  totalContacts: 450,
+  countsTruncated: false,
+};
+
+test("stage counts parse, ignore unknown stages and read a missing stage as absent", () => {
+  const counts = parseWhatsAppStageCounts(goodCounts);
+  assert.deepEqual(counts, {
+    stageCounts: { contacted: 174, replied: 12 },
+    failedNotContacted: 3,
+    totalContacts: 450,
+    countsTruncated: false,
+  });
+  assert.equal(counts.stageCounts.client, undefined);
+});
+
+test("an answer without stageCounts is an older relay and reads as null", () => {
+  assert.equal(parseWhatsAppStageCounts({ contacts: [] }), null);
+});
+
+test("stage counts with wrong types are refused", () => {
+  const bad = [
+    { ...goodCounts, stageCounts: [] },
+    { ...goodCounts, stageCounts: null },
+    { ...goodCounts, stageCounts: { contacted: "174" } },
+    { ...goodCounts, stageCounts: { contacted: -1 } },
+    { ...goodCounts, stageCounts: { contacted: 1.5 } },
+    { ...goodCounts, failedNotContacted: undefined },
+    { ...goodCounts, failedNotContacted: -2 },
+    { ...goodCounts, totalContacts: "450" },
+    { ...goodCounts, countsTruncated: "no" },
+    "not an object",
+  ];
+  for (const value of bad) {
+    assert.throws(() => parseWhatsAppStageCounts(value), /WhatsApp|relay/u);
+  }
 });

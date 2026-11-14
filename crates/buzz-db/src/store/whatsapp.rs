@@ -308,6 +308,36 @@ pub struct WhatsappContact {
     pub created_at: DateTime<Utc>,
 }
 
+impl WhatsappContact {
+    /// The time the contact list sorts by: the latest of the last inbound message, the last
+    /// outbound message and the creation time. It mirrors the `GREATEST(...)` the list query
+    /// orders by, which ignores missing times.
+    pub fn activity_at(&self) -> DateTime<Utc> {
+        [self.last_inbound_at, self.last_outbound_at]
+            .into_iter()
+            .flatten()
+            .fold(self.created_at, |latest, at| latest.max(at))
+    }
+
+    /// The paging position of this contact in the contact list.
+    pub fn cursor(&self) -> WhatsappContactCursor {
+        WhatsappContactCursor {
+            at: self.activity_at(),
+            wa_id: self.wa_id.clone(),
+        }
+    }
+}
+
+/// A position in the contact list ordered by `(activity time, wa_id)` descending. A page
+/// starting at a cursor holds the contacts strictly after it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WhatsappContactCursor {
+    /// Activity time of the last contact of the previous page.
+    pub at: DateTime<Utc>,
+    /// Number of the last contact of the previous page; breaks ties between equal times.
+    pub wa_id: String,
+}
+
 /// One active or historical contact-safety decision. `identity_kind` is deliberately broader
 /// than WhatsApp numbers so email and domain safety can join the same ledger later.
 #[derive(Clone, Debug)]
@@ -2214,16 +2244,38 @@ impl Db {
         community: CommunityId,
         limit: i64,
     ) -> Result<Vec<WhatsappContact>> {
+        self.whatsapp_list_contacts_page(community, limit.clamp(1, 500), None)
+            .await
+    }
+
+    /// One page of contacts, most recently active first, strictly after `before` when given.
+    ///
+    /// The order is total (`GREATEST(last_inbound_at, last_outbound_at, created_at) DESC,
+    /// wa_id DESC`), so paging with the cursor of the last row returns every contact exactly
+    /// once. `limit` is clamped to 1..=1001; callers that need to know whether another page
+    /// exists ask for one row more than they show.
+    pub async fn whatsapp_list_contacts_page(
+        &self,
+        community: CommunityId,
+        limit: i64,
+        before: Option<&WhatsappContactCursor>,
+    ) -> Result<Vec<WhatsappContact>> {
         let rows = sqlx::query(
             "SELECT wa_id, display_name, lead_id, owner_pubkey, thread_root_event_id, \
                     last_inbound_at, last_outbound_at, outbound_since_inbound, opted_out_at, \
                     opt_out_reason, paused_at, pause_reason, retry_after, created_at \
              FROM whatsapp_contacts WHERE community_id = $1 \
-             ORDER BY GREATEST(last_inbound_at, last_outbound_at, created_at) DESC \
-             LIMIT $2",
+               AND ($2::timestamptz IS NULL \
+                    OR (GREATEST(last_inbound_at, last_outbound_at, created_at), wa_id) \
+                       < ($2::timestamptz, $3::text)) \
+             ORDER BY GREATEST(last_inbound_at, last_outbound_at, created_at) DESC, \
+                      wa_id DESC \
+             LIMIT $4",
         )
         .bind(community.as_uuid())
-        .bind(limit.clamp(1, 500))
+        .bind(before.map(|cursor| cursor.at))
+        .bind(before.map(|cursor| cursor.wa_id.as_str()))
+        .bind(limit.clamp(1, 1001))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_contact).collect()
