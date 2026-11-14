@@ -93,7 +93,11 @@ export function CompanyMapScreen({
     if (!scopedId) return null;
     return (
       channelsQuery.data?.find(
-        (channel) => channel.isMember && channel.id.toLowerCase() === scopedId,
+        (channel) =>
+          channel.isMember &&
+          channel.channelType === "stream" &&
+          channel.visibility === "private" &&
+          channel.id.toLowerCase() === scopedId,
       )?.id ?? null
     );
   }, [activeCommunity?.clientChannelId, channelsQuery.data]);
