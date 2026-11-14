@@ -16,7 +16,16 @@ import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useWhatsAppContactsQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import type { WhatsAppContact } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import type { Channel, Profile } from "@/shared/api/types";
-import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import {
+  DEFAULT_POPOVER_HOVER_OPEN_DELAY_MS,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/ui/popover";
+
+const CUSTOMER_CHAT_LIMIT = 8;
+const HOVER_CLOSE_DELAY_MS = 180;
 
 export type ChatsMenuProps = {
   channels: Channel[];
@@ -72,6 +81,7 @@ function displayCustomerName(contact: WhatsAppContact): string {
 }
 
 function ChatRow({
+  channelRow = false,
   icon,
   isUnread = false,
   label,
@@ -79,6 +89,7 @@ function ChatRow({
   testId,
   unread,
 }: {
+  channelRow?: boolean;
   icon: React.ReactNode;
   isUnread?: boolean;
   label: string;
@@ -90,6 +101,7 @@ function ChatRow({
     <button
       aria-label={unread ? `${label}, ${unread} unread` : label}
       className="map-shell-chat-row"
+      data-map-shell-channel-row={channelRow ? "true" : undefined}
       data-testid={testId}
       onClick={onClick}
       type="button"
@@ -173,6 +185,89 @@ function RoomIcon({ channel }: { channel: Channel }) {
   );
 }
 
+function unreadCountFor(
+  channel: Channel,
+  unreadChannelIds: ReadonlySet<string>,
+  unreadChannelCounts: ReadonlyMap<string, number>,
+) {
+  const count = unreadChannelCounts.get(channel.id) ?? 0;
+  return unreadChannelIds.has(channel.id) ? Math.max(count, 1) : count;
+}
+
+type ChannelMenuGroup = {
+  id: string;
+  items: Channel[];
+  label: string;
+};
+
+function useChannelMenuGroups(
+  channels: Channel[],
+  currentPubkey?: string,
+): ChannelMenuGroup[] {
+  const { activeCommunity } = useCommunities();
+  const rooms = React.useMemo(
+    () => channels.filter((channel) => channel.channelType !== "dm"),
+    [channels],
+  );
+  const { sections, assignments } = useChannelSections(
+    currentPubkey,
+    activeCommunity?.relayUrl,
+  );
+  const sectionIds = React.useMemo(
+    () => sections.map((section) => section.id),
+    [sections],
+  );
+  const { sortModeFor } = useChannelSortPreference(
+    currentPubkey,
+    activeCommunity?.relayUrl,
+    sectionIds,
+  );
+  const { starredChannelIds } = useChannelStars(
+    currentPubkey,
+    activeCommunity?.relayUrl,
+  );
+
+  return React.useMemo(() => {
+    const sectionIdSet = new Set(sections.map((section) => section.id));
+    const starred = sortChannelsForSidebar(
+      rooms.filter((channel) => starredChannelIds.has(channel.id)),
+      sortModeFor("starred"),
+    );
+    const bySection = sections
+      .map((section) => ({
+        id: section.id,
+        items: sortChannelsForSidebar(
+          rooms.filter(
+            (channel) =>
+              !starredChannelIds.has(channel.id) &&
+              assignments[channel.id] === section.id,
+          ),
+          sortModeFor(sectionSortGroupKey(section.id)),
+        ),
+        label: section.name,
+      }))
+      .filter((group) => group.items.length > 0);
+    const unassigned = sortChannelsForSidebar(
+      rooms.filter((channel) => {
+        if (starredChannelIds.has(channel.id)) return false;
+        const sectionId = assignments[channel.id];
+        return !sectionId || !sectionIdSet.has(sectionId);
+      }),
+      sortModeFor("channels"),
+    );
+
+    return [
+      ...(starred.length > 0
+        ? [{ id: "starred", items: starred, label: "Starred" }]
+        : []),
+      ...bySection,
+      ...(unassigned.length > 0
+        ? [{ id: "channels", items: unassigned, label: "Channels" }]
+        : []),
+    ];
+  }, [assignments, rooms, sections, sortModeFor, starredChannelIds]);
+}
+
 export function ChatsMenuContent({
   channels,
   currentPubkey,
@@ -192,7 +287,7 @@ export function ChatsMenuContent({
     () => channels.filter((channel) => channel.channelType !== "dm"),
     [channels],
   );
-  const { sections, assignments } = useChannelSections(
+  const { sections } = useChannelSections(
     currentPubkey,
     activeCommunity?.relayUrl,
   );
@@ -211,10 +306,6 @@ export function ChatsMenuContent({
     fallbackDisplayName,
     profileDisplayName: profile?.displayName,
   });
-  const { starredChannelIds } = useChannelStars(
-    currentPubkey,
-    activeCommunity?.relayUrl,
-  );
   const sortedDms = React.useMemo(
     () =>
       sortDmChannelsForSidebar(
@@ -242,42 +333,6 @@ export function ChatsMenuContent({
       ),
     [contactsQuery.data, customerChatChannel],
   );
-  const roomGroups = React.useMemo(() => {
-    const seen = new Set<string>();
-    const bySection = sections.map((section) => {
-      const items = sortChannelsForSidebar(
-        rooms.filter(
-          (channel) =>
-            assignments[channel.id] === section.id &&
-            !starredChannelIds.has(channel.id) &&
-            !seen.has(channel.id),
-        ),
-        sortModeFor(sectionSortGroupKey(section.id)),
-      );
-      for (const item of items) seen.add(item.id);
-      return { id: section.id, items, label: section.name };
-    });
-    const starred = sortChannelsForSidebar(
-      rooms.filter(
-        (channel) => starredChannelIds.has(channel.id) && !seen.has(channel.id),
-      ),
-      sortModeFor("starred"),
-    );
-    for (const item of starred) seen.add(item.id);
-    const unassigned = sortChannelsForSidebar(
-      rooms.filter((channel) => !seen.has(channel.id)),
-      sortModeFor("channels"),
-    );
-    return [
-      ...(starred.length > 0
-        ? [{ id: "starred", items: starred, label: "Starred" }]
-        : []),
-      ...bySection.filter((group) => group.items.length > 0),
-      ...(unassigned.length > 0
-        ? [{ id: "rooms", items: unassigned, label: "" }]
-        : []),
-    ];
-  }, [assignments, rooms, sections, sortModeFor, starredChannelIds]);
 
   return (
     <div className="map-shell-chats-list">
@@ -285,7 +340,7 @@ export function ChatsMenuContent({
         <GroupHeading>
           <span id="map-shell-customers-heading">Customers</span>
         </GroupHeading>
-        {contacts.map((contact) => (
+        {contacts.slice(0, CUSTOMER_CHAT_LIMIT).map((contact) => (
           <ChatRow
             icon={
               <span aria-hidden="true" className="map-shell-icon-tile">
@@ -326,9 +381,11 @@ export function ChatsMenuContent({
         </GroupHeading>
         {sortedDms.map((channel) => {
           const label = dmChannelLabels[channel.id] ?? channel.name;
-          const unreadCount = unreadChannelIds.has(channel.id)
-            ? Math.max(unreadChannelCounts.get(channel.id) ?? 0, 1)
-            : (unreadChannelCounts.get(channel.id) ?? 0);
+          const unreadCount = unreadCountFor(
+            channel,
+            unreadChannelIds,
+            unreadChannelCounts,
+          );
           return (
             <ChatRow
               icon={
@@ -348,29 +405,300 @@ export function ChatsMenuContent({
             />
           );
         })}
-        {roomGroups
-          .flatMap((group) => group.items)
-          .map((channel) => {
-            const unreadCount = unreadChannelIds.has(channel.id)
-              ? Math.max(unreadChannelCounts.get(channel.id) ?? 0, 1)
-              : (unreadChannelCounts.get(channel.id) ?? 0);
-            const roomLabel = channel.name.toLocaleLowerCase().endsWith("room")
-              ? channel.name
-              : `${channel.name} room`;
-            return (
-              <ChatRow
-                icon={<RoomIcon channel={channel} />}
-                isUnread={unreadCount > 0}
-                key={channel.id}
-                label={roomLabel}
-                onClick={() => onOpenChannel(channel.id)}
-                testId={`map-shell-room-${channel.id}`}
-                unread={unreadCount}
-              />
-            );
-          })}
       </section>
     </div>
+  );
+}
+
+export function ChannelsMenuContent({
+  channels,
+  currentPubkey,
+  hideDefaultGroupHeading = false,
+  unreadChannelIds,
+  unreadChannelCounts,
+  onOpenChannel,
+}: Pick<
+  ChatsMenuProps,
+  | "channels"
+  | "currentPubkey"
+  | "unreadChannelIds"
+  | "unreadChannelCounts"
+  | "onOpenChannel"
+> & {
+  hideDefaultGroupHeading?: boolean;
+}) {
+  const channelGroups = useChannelMenuGroups(channels, currentPubkey);
+
+  return (
+    <div className="map-shell-channels-list">
+      {channelGroups.length === 0 ? (
+        <p className="map-shell-empty">No channels yet.</p>
+      ) : (
+        channelGroups.map((group) => (
+          <section key={group.id}>
+            {hideDefaultGroupHeading && group.id === "channels" ? null : (
+              <GroupHeading>{group.label}</GroupHeading>
+            )}
+            {group.items.map((channel) => {
+              const unreadCount = unreadCountFor(
+                channel,
+                unreadChannelIds,
+                unreadChannelCounts,
+              );
+              return (
+                <ChatRow
+                  channelRow
+                  icon={<RoomIcon channel={channel} />}
+                  isUnread={unreadCount > 0}
+                  key={channel.id}
+                  label={channel.name}
+                  onClick={() => onOpenChannel(channel.id)}
+                  testId={`map-shell-channel-${channel.id}`}
+                  unread={unreadCount}
+                />
+              );
+            })}
+          </section>
+        ))
+      )}
+    </div>
+  );
+}
+
+export function ChannelsMenu({
+  channels,
+  currentPubkey,
+  unreadChannelIds,
+  unreadChannelCounts,
+  onOpenChannel,
+}: ChatsMenuProps) {
+  const [open, setOpen] = React.useState(false);
+  const [pendingFocus, setPendingFocus] = React.useState<
+    "first" | "last" | null
+  >(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const hoverOpenTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const hoverCloseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const openedByHoverRef = React.useRef(false);
+  const hasUnread = channels.some(
+    (channel) =>
+      channel.channelType !== "dm" && unreadChannelIds.has(channel.id),
+  );
+
+  const clearHoverOpenTimer = React.useCallback(() => {
+    if (hoverOpenTimerRef.current !== null) {
+      clearTimeout(hoverOpenTimerRef.current);
+      hoverOpenTimerRef.current = null;
+    }
+  }, []);
+  const clearHoverCloseTimer = React.useCallback(() => {
+    if (hoverCloseTimerRef.current !== null) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  }, []);
+  const clearHoverTimers = React.useCallback(() => {
+    clearHoverOpenTimer();
+    clearHoverCloseTimer();
+  }, [clearHoverCloseTimer, clearHoverOpenTimer]);
+  const openImmediately = React.useCallback(
+    (focusTarget: "first" | "last" | null = null) => {
+      clearHoverTimers();
+      openedByHoverRef.current = false;
+      setPendingFocus(focusTarget);
+      setOpen(true);
+    },
+    [clearHoverTimers],
+  );
+  const openWithDelay = React.useCallback(() => {
+    clearHoverCloseTimer();
+    if (open) return;
+    clearHoverOpenTimer();
+    hoverOpenTimerRef.current = setTimeout(() => {
+      openedByHoverRef.current = true;
+      setOpen(true);
+    }, DEFAULT_POPOVER_HOVER_OPEN_DELAY_MS);
+  }, [clearHoverCloseTimer, clearHoverOpenTimer, open]);
+  const closeWithDelay = React.useCallback(() => {
+    clearHoverOpenTimer();
+    clearHoverCloseTimer();
+    if (!open) return;
+    hoverCloseTimerRef.current = setTimeout(() => {
+      openedByHoverRef.current = false;
+      setOpen(false);
+    }, HOVER_CLOSE_DELAY_MS);
+  }, [clearHoverCloseTimer, clearHoverOpenTimer, open]);
+  const closeAndReturnFocus = React.useCallback(() => {
+    clearHoverTimers();
+    openedByHoverRef.current = false;
+    setPendingFocus(null);
+    setOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }, [clearHoverTimers]);
+  const getChannelRows = React.useCallback(
+    () =>
+      Array.from(
+        contentRef.current?.querySelectorAll<HTMLButtonElement>(
+          '[data-map-shell-channel-row="true"]',
+        ) ?? [],
+      ),
+    [],
+  );
+  const moveFocus = React.useCallback(
+    (direction: 1 | -1) => {
+      const rows = getChannelRows();
+      if (rows.length === 0) return;
+      const activeElement = document.activeElement;
+      const activeIndex =
+        activeElement instanceof HTMLButtonElement
+          ? rows.indexOf(activeElement)
+          : -1;
+      const nextIndex =
+        activeIndex === -1
+          ? direction === 1
+            ? 0
+            : rows.length - 1
+          : (activeIndex + direction + rows.length) % rows.length;
+      rows[nextIndex]?.focus();
+    },
+    [getChannelRows],
+  );
+
+  React.useEffect(() => () => clearHoverTimers(), [clearHoverTimers]);
+  React.useEffect(() => {
+    if (!open || pendingFocus === null) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const rows = getChannelRows();
+      const row = pendingFocus === "first" ? rows[0] : rows[rows.length - 1];
+      row?.focus();
+      setPendingFocus(null);
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [getChannelRows, open, pendingFocus]);
+
+  const handleTriggerClick = React.useCallback(() => {
+    clearHoverTimers();
+    if (open && openedByHoverRef.current) {
+      openedByHoverRef.current = false;
+      return;
+    }
+    openedByHoverRef.current = false;
+    setOpen((current) => !current);
+  }, [clearHoverTimers, open]);
+  const handleTriggerKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (
+        event.key === "Enter" ||
+        event.key === " " ||
+        event.key === "Spacebar"
+      ) {
+        event.preventDefault();
+        openImmediately("first");
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        event.preventDefault();
+        openImmediately("first");
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        openImmediately("last");
+      }
+    },
+    [openImmediately],
+  );
+  const handleContentKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAndReturnFocus();
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        event.preventDefault();
+        moveFocus(1);
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        moveFocus(-1);
+      }
+    },
+    [closeAndReturnFocus, moveFocus],
+  );
+
+  return (
+    <Popover
+      onOpenChange={(nextOpen) => {
+        clearHoverTimers();
+        if (!nextOpen) {
+          openedByHoverRef.current = false;
+          setPendingFocus(null);
+        }
+        setOpen(nextOpen);
+      }}
+      open={open}
+    >
+      <PopoverAnchor asChild>
+        <button
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-label={hasUnread ? "Channels, unread messages" : "Channels"}
+          className="map-shell-nav-button map-shell-channels-trigger"
+          data-testid="map-shell-channels-button"
+          onBlur={closeWithDelay}
+          onClick={handleTriggerClick}
+          onKeyDown={handleTriggerKeyDown}
+          onMouseEnter={openWithDelay}
+          onMouseLeave={closeWithDelay}
+          ref={triggerRef}
+          type="button"
+        >
+          <RoomIconGlyph />
+          <span>Channels</span>
+          {hasUnread ? (
+            <span aria-hidden="true" className="map-shell-channel-dot" />
+          ) : null}
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        aria-label="Channels"
+        className="map-shell-channels-popover"
+        data-testid="map-shell-channels-popover"
+        onEscapeKeyDown={(event) => {
+          event.preventDefault();
+          closeAndReturnFocus();
+        }}
+        onFocusCapture={clearHoverCloseTimer}
+        onKeyDown={handleContentKeyDown}
+        onMouseEnter={clearHoverCloseTimer}
+        onMouseLeave={closeWithDelay}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        ref={contentRef}
+        side="bottom"
+        sideOffset={6}
+      >
+        <ChannelsMenuContent
+          channels={channels}
+          currentPubkey={currentPubkey}
+          onOpenChannel={(channelId) => {
+            clearHoverTimers();
+            openedByHoverRef.current = false;
+            setOpen(false);
+            onOpenChannel(channelId);
+          }}
+          unreadChannelCounts={unreadChannelCounts}
+          unreadChannelIds={unreadChannelIds}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -385,7 +713,12 @@ export function ChatsMenu({
   onOpenWhatsAppContact,
 }: ChatsMenuProps) {
   const [open, setOpen] = React.useState(false);
-  const hasUnread = unreadChannelIds.size > 0;
+  const hasUnread = channels.some(
+    (channel) =>
+      unreadChannelIds.has(channel.id) &&
+      (channel.channelType === "dm" ||
+        channel.name.trim().toLocaleLowerCase() === "outreach"),
+  );
   const contentProps = {
     channels,
     currentPubkey,

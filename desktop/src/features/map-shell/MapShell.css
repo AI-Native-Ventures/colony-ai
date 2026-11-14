@@ -196,25 +196,29 @@
   color: hsl(var(--colony-fg));
 }
 
-.map-shell-chats-trigger {
+.map-shell-chats-trigger,
+.map-shell-channels-trigger {
   gap: 8px;
   padding: 0 12px;
   color: hsl(var(--colony-fg));
 }
 
-.map-shell-chats-trigger[aria-expanded="true"] {
+.map-shell-chats-trigger[aria-expanded="true"],
+.map-shell-channels-trigger[aria-expanded="true"] {
   border: 2px solid hsl(var(--colony-accent));
   border-radius: 10px;
   background: hsl(var(--colony-surface));
 }
 
-.map-shell-chats-trigger > svg {
+.map-shell-chats-trigger > svg,
+.map-shell-channels-trigger > svg {
   width: 18px;
   height: 18px;
   flex: none;
 }
 
 .map-shell-chat-dot,
+.map-shell-channel-dot,
 .map-shell-bell-dot {
   position: absolute;
   width: 8px;
@@ -345,8 +349,26 @@
   color: hsl(var(--colony-fg));
 }
 
+.map-shell-channels-popover {
+  --map-shell-channels-max-height: min(408px, calc(100dvh - 80px));
+  box-sizing: border-box;
+  width: 340px;
+  max-height: var(--map-shell-channels-max-height);
+  overflow: hidden;
+  padding: 12px;
+  border: 0;
+  border-radius: 20px;
+  color: hsl(var(--colony-fg));
+}
+
 .map-shell-chats-list {
   max-height: calc(var(--map-shell-chats-max-height) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.map-shell-channels-list {
+  max-height: calc(var(--map-shell-channels-max-height) - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -513,10 +535,12 @@
   flex: none;
 }
 
+.map-shell-mobile-channels,
 .map-shell-mobile-chats {
   min-height: 0;
 }
 
+.map-shell-mobile-channels .map-shell-channels-list,
 .map-shell-mobile-chats .map-shell-chats-list {
   max-height: 42dvh;
   padding-bottom: 4px;

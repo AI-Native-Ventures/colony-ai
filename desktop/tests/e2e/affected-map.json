@@ -144,6 +144,7 @@
       "paths": ["desktop/src/features/map-shell/**"],
       "specs": [
         "map-shell.spec.ts",
+        "map-channels-menu.spec.ts",
         "fullmap-slice1.spec.ts",
         "fullmap-slice2.spec.ts"
       ]
