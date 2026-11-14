@@ -243,6 +243,15 @@ export async function prepareMapShell(
     },
     { contactCount: options.contactCount ?? 1 },
   );
+  if (options.workspaces) {
+    await page.addInitScript((workspaces) => {
+      window.localStorage.setItem(
+        "buzz-communities",
+        JSON.stringify(workspaces),
+      );
+      window.localStorage.setItem("buzz-active-community-id", workspaces[0].id);
+    }, options.workspaces);
+  }
   await installMockBridge(
     page,
     mapShellFixture(options.cofounderEnabled, options.extraChannels),
