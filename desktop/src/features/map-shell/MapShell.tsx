@@ -42,7 +42,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/shared/ui/sheet";
-import { ChatsMenu, ChatsMenuContent } from "./ChatsMenu";
+import {
+  ChannelsMenu,
+  ChannelsMenuContent,
+  ChatsMenu,
+  ChatsMenuContent,
+} from "./ChatsMenu";
 import "./MapShell.css";
 
 type MapShellProps = {
@@ -531,6 +536,7 @@ export function MapShell({
       <div className="map-shell-spacer" />
       <div className="map-shell-desktop-actions">
         <ChatsMenu {...chatProps} />
+        <ChannelsMenu {...chatProps} />
         <nav aria-label="Company" className="map-shell-company-nav">
           <button
             className="map-shell-nav-button"
@@ -645,6 +651,20 @@ export function MapShell({
                 Search
               </button>
             </nav>
+            <h2 className="map-shell-group-heading">Channels</h2>
+            <div className="map-shell-mobile-channels">
+              <ChannelsMenuContent
+                channels={channels}
+                currentPubkey={currentPubkey}
+                hideDefaultGroupHeading
+                onOpenChannel={(channelId) => {
+                  setMobileMenuOpen(false);
+                  onOpenChannel(channelId);
+                }}
+                unreadChannelCounts={unreadChannelCounts}
+                unreadChannelIds={unreadChannelIds}
+              />
+            </div>
             <h2 className="map-shell-group-heading">Chats</h2>
             <div className="map-shell-mobile-chats">
               <ChatsMenuContent
