@@ -70,10 +70,14 @@ export function searchWordsLeft(campaign: WordCampaign): number {
   return Math.max(0, words.length - 1 - wordIndexOf(campaign));
 }
 
+/**
+ * A `provider_repeat` stop is not here on purpose: it is a suspected paging
+ * fault on the first word, the run stops as it always did, and Find more
+ * takes that word up again from its next page.
+ */
 const WORD_END_REASONS: ReadonlySet<string> = new Set([
   "provider_end",
   "provider_ceiling",
-  "provider_repeat",
 ]);
 
 /**
@@ -117,10 +121,18 @@ export function enterNextWord(
   const skip = stream?.nextSkip ?? 0;
   const hasPage =
     (stream?.terminalReason ?? null) === null && cursorHasPages(skip);
+  // The run did not stop at the page that ended the word before: only the
+  // page a search really ends on says so in Run details.
+  const pageLog = campaign.pageLog.map((entry, index, all) =>
+    index === all.length - 1 && entry.stopReason !== null
+      ? { ...entry, stopReason: null }
+      : entry,
+  );
   return {
     ...campaign,
     wordIndex,
     skip,
+    pageLog,
     pendingTagCursors: null,
     exhausted: !hasPage,
     endReason: hasPage ? null : "provider_end",
