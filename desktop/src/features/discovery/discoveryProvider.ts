@@ -51,6 +51,8 @@ export type DiscoveryPageLog = {
   stopReason: DiscoveryEndReason | null;
   /** The area this page searched. Pages saved before areas existed omit it. */
   area?: string;
+  /** The plain word Maps was asked for. Pages saved before search words omit it. */
+  word?: string;
 };
 
 /** What Find more can safely do without starting a separate campaign. */

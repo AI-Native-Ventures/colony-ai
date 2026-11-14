@@ -136,9 +136,12 @@ export function enterNextArea(
   const area = nextNearbyArea(campaign);
   if (!area) return campaign;
   const pickedTags = campaign.pickedTags ?? [];
+  // A nearby area starts again with the campaign's first search word.
   const coverage = discoveryCoverageKeys({
     verticalId: campaign.verticalId,
     pickedTags,
+    searchWords: campaign.searchWords,
+    wordIndex: 0,
     location: area.label,
     locationSelection: area,
   }).map(covered);
@@ -157,6 +160,7 @@ export function enterNextArea(
   return {
     ...campaign,
     areaIndex: areaIndexOf(campaign) + 1,
+    wordIndex: 0,
     skip,
     tagCursors,
     pendingTagCursors: null,
