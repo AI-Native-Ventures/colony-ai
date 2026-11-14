@@ -54,6 +54,33 @@ test("swaps same-route tabs without growing the trail", () => {
   assert.equal(result.trail.entries[0]?.href, "/leads?tab=sent");
 });
 
+test("swaps a cross-route desk control without retaining a visible trail", () => {
+  const trail = createMapCanvasTrail(
+    root,
+    "/leads?mapJob=sales%3AOutreach",
+    2,
+    communityId,
+  );
+  const result = planMapCanvasTrailNavigation({
+    historyIndex: 2,
+    href: "/pipeline",
+    samePathNavigation: "swap",
+    scroll: [],
+    snapshot: null,
+    trail,
+  });
+
+  assert.equal(result.kind, "swap");
+  assert.deepEqual(result.trail.entries, [
+    {
+      historyIndex: 3,
+      href: "/pipeline",
+      scroll: [],
+      snapshot: null,
+    },
+  ]);
+});
+
 test("returns to an existing trail screen instead of copying it", () => {
   const first = createMapCanvasTrail(root, "/discovery", 7, communityId);
   const second = planMapCanvasTrailNavigation({

@@ -472,8 +472,7 @@ test.describe("W10 discovery and sales", () => {
     await expect(views.getByRole("link", { name: "Lists" })).toBeVisible();
     await expect(views.getByRole("link", { name: "Pipeline" })).toBeVisible();
     for (const name of ["Proposals", "Services"]) {
-      await expect(views.getByText(name, { exact: true })).toBeVisible();
-      await expect(views.getByRole("link", { name })).toHaveCount(0);
+      await expect(views.getByText(name, { exact: true })).toHaveCount(0);
     }
     await expect(
       page.getByTestId("top-bar-breadcrumb").getByText("Leads"),
