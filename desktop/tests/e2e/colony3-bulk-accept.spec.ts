@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
+import { answerFirstSearchWordOnly } from "./helpers/discoveryFirstWord";
 
 // A finished run is titled "Search complete", or "Found N of M" when it
 // ended short of the target.
@@ -48,6 +49,7 @@ async function installManyPlaces(page: Page, count: number) {
       nextSkip: null,
     });
   }, count);
+  await answerFirstSearchWordOnly(page);
 }
 
 async function runSearch(page: Page, count: number) {

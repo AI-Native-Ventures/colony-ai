@@ -111,6 +111,7 @@ function PageLog({ entries }: { entries: DiscoveryPageLog[] }) {
               <strong>
                 Page {entry.page}
                 {entry.area ? <span> {shortAreaName(entry.area)}</span> : null}
+                {entry.word ? <span> · “{entry.word}”</span> : null}
               </strong>
               <span>
                 {entry.placesReturned}{" "}
