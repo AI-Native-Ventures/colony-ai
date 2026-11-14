@@ -314,7 +314,7 @@ function JobLink({
     "aria-label": fallback
       ? `${jobName}. No screen for this job yet. Opens ${FUNCTION_DETAILS[functionId].name}.`
       : destination.kind === "whatsapp" && !whatsappChannelId
-        ? `${jobName}. WhatsApp is not set up. Opens ${FUNCTION_DETAILS[functionId].name}.`
+        ? `${jobName}. WhatsApp is not set up. Opens Outreach setup.`
         : count > 0
           ? `${jobName}, ${countLabel(count)}`
           : jobName,
@@ -366,6 +366,22 @@ function JobLink({
           whatsappDeskTab: destination.tab,
         }}
         to="/channels/$channelId"
+      >
+        {children}
+      </Link>
+    );
+  }
+  if (destination.kind === "whatsapp") {
+    return (
+      <Link
+        {...common}
+        className="company-map-job-link"
+        search={{
+          mapJob: mapWindowSearch?.mapJob,
+          outreachDeskTab: destination.tab,
+        }}
+        style={style}
+        to="/leads"
       >
         {children}
       </Link>

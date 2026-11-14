@@ -54,31 +54,49 @@ test("swaps same-route tabs without growing the trail", () => {
   assert.equal(result.trail.entries[0]?.href, "/leads?tab=sent");
 });
 
-test("swaps a cross-route desk control without retaining a visible trail", () => {
+test("swaps a desk tab while retaining an earlier appended map screen for Back", () => {
   const trail = createMapCanvasTrail(
     root,
-    "/leads?mapJob=sales%3AOutreach",
+    "/channels/outreach?mapJob=sales%3AClosing&whatsappDeskTab=pipeline",
     2,
     communityId,
   );
-  const result = planMapCanvasTrailNavigation({
+  const chat = planMapCanvasTrailNavigation({
     historyIndex: 2,
-    href: "/pipeline",
-    samePathNavigation: "swap",
+    href: "/channels/outreach?whatsappContactWaId=27123456789&whatsappDeskTab=chats",
+    samePathNavigation: "append",
     scroll: [],
     snapshot: null,
     trail,
+  }).trail;
+  const result = planMapCanvasTrailNavigation({
+    historyIndex: 3,
+    href: "/channels/outreach?whatsappDeskTab=needs-you",
+    samePathNavigation: "swap",
+    scroll: [],
+    snapshot: null,
+    trail: chat,
   });
 
   assert.equal(result.kind, "swap");
   assert.deepEqual(result.trail.entries, [
     {
-      historyIndex: 3,
-      href: "/pipeline",
+      historyIndex: 2,
+      href: "/channels/outreach?mapJob=sales%3AClosing&whatsappDeskTab=pipeline",
+      scroll: [],
+      snapshot: null,
+    },
+    {
+      historyIndex: 4,
+      href: "/channels/outreach?whatsappDeskTab=needs-you",
       scroll: [],
       snapshot: null,
     },
   ]);
+  assert.equal(
+    truncateMapCanvasTrail(result.trail, 0).entries.at(-1)?.href,
+    "/channels/outreach?mapJob=sales%3AClosing&whatsappDeskTab=pipeline",
+  );
 });
 
 test("returns to an existing trail screen instead of copying it", () => {

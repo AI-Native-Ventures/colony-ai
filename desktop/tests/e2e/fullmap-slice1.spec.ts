@@ -165,7 +165,9 @@ async function openDiscoveryForDialogProof(
   if (mapHome) {
     await expect(page.getByTestId("fullmap-window")).toBeVisible();
   } else {
-    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    if (viewport.width >= 700) {
+      await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    }
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
   }
   return discovery;
@@ -226,6 +228,39 @@ async function expectCompactCenteredDialog(dialog: Locator) {
   expect(geometry.closeTopInset).not.toBeNull();
   expect(geometry.closeRightInset).toBeGreaterThanOrEqual(0);
   expect(geometry.closeTopInset).toBeGreaterThanOrEqual(0);
+}
+
+async function expectRelatedTypeNamesUncut(dialog: Locator) {
+  const names = await dialog
+    .locator(".d4-related-type > span:nth-child(2)")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const element = node as HTMLElement;
+        const style = getComputedStyle(element);
+        return {
+          clientHeight: element.clientHeight,
+          clientWidth: element.clientWidth,
+          scrollHeight: element.scrollHeight,
+          scrollWidth: element.scrollWidth,
+          text: element.textContent?.trim() ?? "",
+          textOverflow: style.textOverflow,
+        };
+      }),
+    );
+  expect(names.length).toBeGreaterThan(0);
+  for (const name of names) {
+    expect(name.textOverflow, `${name.text} must not use an ellipsis`).not.toBe(
+      "ellipsis",
+    );
+    expect(
+      name.scrollWidth,
+      `${name.text} must not clip horizontally`,
+    ).toBeLessThanOrEqual(name.clientWidth + 1);
+    expect(
+      name.scrollHeight,
+      `${name.text} must fit within three lines`,
+    ).toBeLessThanOrEqual(name.clientHeight + 1);
+  }
 }
 
 async function dispatchPrimaryWorkspaceShortcut(page: Page, digit: string) {
@@ -435,6 +470,19 @@ test.describe("full map canvas slice 1", () => {
   }
 
   for (const theme of ["light", "dark"] as const) {
+    test(`keeps every related type name readable at 672px in ${theme}`, async ({
+      page,
+    }) => {
+      const discovery = await openDiscoveryForDialogProof(
+        page,
+        false,
+        { height: 900, width: 672 },
+        theme,
+      );
+      const { details } = await openGuesthouseDetails(page, discovery);
+      await expectRelatedTypeNamesUncut(details);
+    });
+
     test(`captures the compact Discovery dialog in ${theme} when requested`, async ({
       page,
     }) => {
@@ -445,19 +493,28 @@ test.describe("full map canvas slice 1", () => {
       const screenshotDir =
         process.env.FIX1_SCREENSHOT_DIR ?? "test-results/fix1";
       mkdirSync(screenshotDir, { recursive: true });
-      const discovery = await openDiscoveryForDialogProof(
-        page,
-        true,
-        { height: 1117, width: 1728 },
-        theme,
-      );
-      await openGuesthouseDetails(page, discovery);
-      await waitForTheme(page, theme);
-      await waitForAnimations(page);
-      await page.screenshot({
-        animations: "disabled",
-        path: join(screenshotDir, `dialog-after-${theme}-1728x1117.png`),
-      });
+      for (const viewport of [
+        { height: 1117, label: "1728x1117", width: 1728 },
+        { height: 900, label: "672x900", width: 672 },
+      ]) {
+        const discovery = await openDiscoveryForDialogProof(
+          page,
+          viewport.width >= 700,
+          viewport,
+          theme,
+        );
+        const { details } = await openGuesthouseDetails(page, discovery);
+        await expectRelatedTypeNamesUncut(details);
+        await waitForTheme(page, theme);
+        await waitForAnimations(page);
+        await page.screenshot({
+          animations: "disabled",
+          path: join(
+            screenshotDir,
+            `dialog-after-${theme}-${viewport.label}.png`,
+          ),
+        });
+      }
     });
   }
 

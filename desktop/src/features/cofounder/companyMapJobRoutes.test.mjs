@@ -31,8 +31,8 @@ test("the supported app screens use their real route targets", () => {
     to: "/discovery",
   });
   assert.deepEqual(getCompanyMapJobRoute("sales", "Outreach"), {
-    kind: "app",
-    to: "/leads",
+    kind: "whatsapp",
+    tab: "needs-you",
   });
   assert.deepEqual(getCompanyMapJobRoute("finance", "Invoices"), {
     kind: "app",
@@ -113,6 +113,23 @@ test("map-window routes retain the job that opened a shared screen", () => {
       whatsappDeskTab: "pipeline",
     }),
     { functionId: "sales", jobName: "Closing" },
+  );
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/channels/outreach", {
+      mapJob: "sales:Outreach",
+      whatsappDeskTab: "needs-you",
+    }),
+    { functionId: "sales", jobName: "Outreach" },
+  );
+  assert.deepEqual(companyMapWindowJobForRoute("/lists/a-list"), {
+    functionId: "sales",
+    jobName: "Outreach",
+  });
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/channels/outreach", {
+      whatsappDeskTab: "discussion",
+    }),
+    { functionId: "sales", jobName: "Outreach" },
   );
   assert.deepEqual(companyMapWindowJobForRoute("/clients"), {
     functionId: "sales",

@@ -48,7 +48,7 @@ const MAP_WORKSPACES: WorkspaceSeed[] = [
 const FINANCE_MONEY = "/money?mapJob=finance%3AChasing+payments";
 const FINANCE_INVOICES = "/money/invoices";
 const FINANCE_REVENUE = "/money/revenue";
-const SALES_OUTREACH = "/leads?mapJob=sales%3AOutreach";
+const SALES_OUTREACH = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AOutreach&whatsappDeskTab=needs-you`;
 const SALES_CLOSING = `/channels/${MAP_CHANNEL_ID}?mapJob=sales%3AClosing&whatsappDeskTab=pipeline`;
 const FIX1_OUTREACH_LIST_ID = "3f1a7000-0000-4000-9000-000000000001";
 const primedPages = new WeakSet<Page>();
@@ -70,12 +70,16 @@ async function installFullMap(
     referenceMoneyRecords = false,
     referenceOutreachBoard = false,
     seedClient = false,
+    whatsappConnected = true,
+    whatsappOutreachChannelId = MAP_CHANNEL_ID,
     workspaces,
   }: {
     mapHome?: boolean;
     referenceMoneyRecords?: boolean;
     referenceOutreachBoard?: boolean;
     seedClient?: boolean;
+    whatsappConnected?: boolean;
+    whatsappOutreachChannelId?: string | null;
     workspaces?: WorkspaceSeed[];
   } = {},
 ) {
@@ -117,7 +121,12 @@ async function installFullMap(
   );
   await seedCompanyMapBusiness(page);
   await seedCompanyMapMoneyRails(page);
-  await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
+  await seedCompanyMapWhatsApp(
+    page,
+    whatsappOutreachChannelId,
+    true,
+    whatsappConnected,
+  );
   await page.emulateMedia({ colorScheme: theme });
 }
 
@@ -232,18 +241,18 @@ async function captureFix1Screen(
 
 async function openSalesOutreach(page: Page) {
   await openRoute(page, SALES_OUTREACH);
-  await expect(page.getByTestId("w10-leads-page")).toBeVisible({
+  await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible({
     timeout: 15_000,
   });
 }
 
 async function openSalesView(
   page: Page,
-  label: "Lists" | "Pipeline",
-  route: "/lists" | "/pipeline",
+  label: "Leads" | "Lists" | "Pipeline" | "Chats",
+  route: string,
 ) {
   await windowContent(page)
-    .getByRole("navigation", { name: "Business views" })
+    .getByRole("navigation", { name: "Outreach views" })
     .getByRole("link", { name: label })
     .click();
   await expectRoute(page, route);
@@ -256,9 +265,9 @@ async function openClosingDeskView(
 ) {
   await openRoute(page, SALES_CLOSING);
   if (view !== "pipeline") {
-    await page.getByTestId(`channel-view-tab-${view}`).click();
+    await page.getByTestId(`map-outreach-tab-${view}`).click();
   }
-  await expect(page.getByTestId(`channel-view-tab-${view}`)).toHaveAttribute(
+  await expect(page.getByTestId(`map-outreach-tab-${view}`)).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -270,6 +279,81 @@ async function waitForTheme(page: Page, theme: Theme) {
     "data-buzz-theme",
     theme === "dark" ? "buzz-dark" : "buzz",
   );
+}
+
+type OutreachDeskGeometry = {
+  header: { height: number; left: number; top: number; width: number };
+  tabs: { height: number; left: number; top: number; width: number };
+};
+
+async function outreachDeskGeometry(page: Page): Promise<OutreachDeskGeometry> {
+  const window = page.getByTestId("fullmap-window");
+  const [header, tabs] = await Promise.all([
+    window.getByTestId("map-outreach-desk-header").boundingBox(),
+    window.getByTestId("map-outreach-desk-tabs").boundingBox(),
+  ]);
+  if (!header || !tabs) throw new Error("Expected a measurable Outreach frame");
+  return {
+    header: {
+      height: Math.round(header.height),
+      left: Math.round(header.x),
+      top: Math.round(header.y),
+      width: Math.round(header.width),
+    },
+    tabs: {
+      height: Math.round(tabs.height),
+      left: Math.round(tabs.x),
+      top: Math.round(tabs.y),
+      width: Math.round(tabs.width),
+    },
+  };
+}
+
+async function expectOutreachDeskFrame(
+  page: Page,
+  active: "needs-you" | "leads" | "lists" | "pipeline" | "chats" | "discussion",
+  expectedGeometry?: OutreachDeskGeometry,
+) {
+  const header = page.getByTestId("map-outreach-desk-header");
+  const tabs = page.getByTestId("map-outreach-desk-tabs");
+  await expect(header).toBeVisible({ timeout: 15_000 });
+  await expect(
+    windowContent(page).getByRole("heading", { level: 1, name: "Outreach" }),
+  ).toHaveCount(1);
+  await expect(tabs).toHaveCount(1);
+  await expect(tabs).toBeVisible();
+  await expect(tabs.getByTestId("map-outreach-tab-needs-you")).toBeVisible();
+  await expect(tabs.getByTestId("map-outreach-tab-leads")).toBeVisible();
+  await expect(tabs.getByTestId("map-outreach-tab-lists")).toBeVisible();
+  await expect(tabs.getByTestId("map-outreach-tab-pipeline")).toBeVisible();
+  await expect(tabs.getByTestId("map-outreach-tab-chats")).toBeVisible();
+  await expect(tabs.getByTestId("map-outreach-tab-more")).toBeVisible();
+  if (active === "discussion") {
+    await expect(tabs.getByTestId("map-outreach-tab-more")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  } else {
+    await expect(
+      tabs.getByTestId(`map-outreach-tab-${active}`),
+    ).toHaveAttribute("aria-current", "page");
+  }
+  await expectMapWindow(page, 0);
+  await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+  await waitForAnimations(page);
+  const geometry = await outreachDeskGeometry(page);
+  if (expectedGeometry) expect(geometry).toEqual(expectedGeometry);
+  return geometry;
+}
+
+async function selectOutreachMoreView(
+  page: Page,
+  view: "discussion" | "knowledge" | "canvas" | "files",
+) {
+  const tabs = windowContent(page).getByTestId("map-outreach-desk-tabs");
+  await tabs.getByTestId("map-outreach-tab-more").click();
+  await expect(tabs.getByTestId(`map-outreach-tab-${view}`)).toBeVisible();
+  await tabs.getByTestId(`map-outreach-tab-${view}`).click();
 }
 
 async function dispatchPrimaryWorkspaceShortcut(page: Page, digit: string) {
@@ -584,7 +668,7 @@ test.describe("full map canvas slice 2", () => {
       .toContain("whatsappDeskTab=chats");
   });
 
-  test("opens body routes by keyboard, supports a three-screen trail, and returns to a known screen", async ({
+  test("opens body routes by keyboard and replaces only the newest same-desk screen", async ({
     page,
   }) => {
     await installFullMap(page, "light", { referenceMoneyRecords: true });
@@ -614,8 +698,8 @@ test.describe("full map canvas slice 2", () => {
       .getByRole("navigation", { name: "Money views" })
       .getByRole("link", { name: "Overview" })
       .click();
-    await expectMapWindow(page, 0);
-    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    await expectMapWindow(page, 2);
+    await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(1);
     await expectRoute(page, "/money");
   });
 
@@ -805,12 +889,12 @@ test.describe("full map canvas slice 2", () => {
     await openRoute(page, SALES_CLOSING);
     await expect(page.getByTestId("outreach-desk-pipeline")).toBeVisible();
 
-    await page.getByTestId("channel-view-tab-chats").click();
+    await page.getByTestId("map-outreach-tab-chats").click();
     await expect
       .poll(() => currentRoute(page))
       .toContain("whatsappDeskTab=chats");
     await expect.poll(() => currentRoute(page)).not.toContain("mapJob=");
-    await expect(page.getByTestId("channel-view-tab-chats")).toHaveAttribute(
+    await expect(page.getByTestId("map-outreach-tab-chats")).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -857,21 +941,24 @@ test.describe("full map canvas slice 2", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openRoute(page, SALES_OUTREACH);
 
-    const leadsTabs = windowContent(page).getByRole("navigation", {
-      name: "Business views",
+    const needsTabs = windowContent(page).getByRole("navigation", {
+      name: "Outreach views",
     });
-    await leadsTabs.getByRole("link", { name: "Lists" }).click();
+    await needsTabs.getByRole("link", { name: "Lists" }).click();
     await expectRoute(page, "/lists");
     await expectMapWindow(page, 0);
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
     await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
 
     const listsTabs = windowContent(page).getByRole("navigation", {
-      name: "Business views",
+      name: "Outreach views",
     });
     await listsTabs.getByRole("link", { name: "Pipeline" }).focus();
     await page.keyboard.press("Enter");
-    await expectRoute(page, "/pipeline");
+    await expectRoute(
+      page,
+      `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=pipeline`,
+    );
     await expectMapWindow(page, 0);
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
     await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
@@ -892,6 +979,169 @@ test.describe("full map canvas slice 2", () => {
     await expect(page.getByTestId("fullmap-trail-connector")).toHaveCount(0);
   });
 
+  test("keeps every Outreach view in one measured desk from the Sales map job", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await installFullMap(page, "light", { referenceOutreachBoard: true });
+
+    for (const { height, width } of [
+      { height: 1117, width: 1728 },
+      { height: 900, width: 1440 },
+    ]) {
+      await page.setViewportSize({ height, width });
+      await page.goto("/#/");
+      await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+      await page.getByTestId("cofounder-map-sales").click();
+      await page.getByTestId("cofounder-map-job-sales-outreach").click();
+
+      await expectRoute(page, SALES_OUTREACH);
+      await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
+      const geometry = await expectOutreachDeskFrame(page, "needs-you");
+
+      const tabs = windowContent(page).getByTestId("map-outreach-desk-tabs");
+      await tabs.getByTestId("map-outreach-tab-pipeline").click();
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=pipeline`,
+      );
+      await expect(page.getByTestId("outreach-desk-pipeline")).toBeVisible();
+      await expectOutreachDeskFrame(page, "pipeline", geometry);
+
+      await tabs.getByTestId("map-outreach-tab-chats").click();
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=chats`,
+      );
+      await expect(page.getByTestId("whatsapp-outreach")).toBeVisible();
+      await expectOutreachDeskFrame(page, "chats", geometry);
+
+      await tabs.getByTestId("map-outreach-tab-leads").click();
+      await expectRoute(page, "/leads");
+      await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+      await expectOutreachDeskFrame(page, "leads", geometry);
+
+      await tabs.getByTestId("map-outreach-tab-lists").click();
+      await expectRoute(page, "/lists");
+      await expect(page.getByTestId("outreach-lists-page")).toBeVisible();
+      await expectOutreachDeskFrame(page, "lists", geometry);
+
+      await windowContent(page)
+        .getByRole("link", { name: "Melville guesthouses, Nov" })
+        .click();
+      await expectRoute(page, `/lists/${FIX1_OUTREACH_LIST_ID}`);
+      await expect(page.getByTestId("outreach-list-detail")).toBeVisible();
+      await expectOutreachDeskFrame(page, "lists", geometry);
+
+      await selectOutreachMoreView(page, "discussion");
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=discussion`,
+      );
+      await expect(page.getByTestId("channel-drop-zone")).toBeVisible();
+      await expectOutreachDeskFrame(page, "discussion", geometry);
+
+      await selectOutreachMoreView(page, "knowledge");
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=discussion&outreachWorkArea=knowledge`,
+      );
+      await expect(page.getByTestId("map-outreach-work-area")).toBeVisible();
+      await expect(page.getByTestId("work-area-panel")).toHaveCount(0);
+      await expect(page.getByTestId("work-area-knowledge")).toBeVisible();
+      await expectOutreachDeskFrame(page, "discussion", geometry);
+
+      await selectOutreachMoreView(page, "canvas");
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=discussion&outreachWorkArea=canvas`,
+      );
+      await expect(page.getByTestId("work-area-canvas")).toBeVisible();
+      await expectOutreachDeskFrame(page, "discussion", geometry);
+
+      await selectOutreachMoreView(page, "files");
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=discussion&outreachWorkArea=files`,
+      );
+      await expect(page.getByTestId("map-outreach-work-area")).toBeVisible();
+      await expect(page.getByTestId("work-area-panel")).toHaveCount(0);
+      await expect(
+        page.locator("[data-testid^='work-area-files']").first(),
+      ).toBeVisible();
+      await expectOutreachDeskFrame(page, "discussion", geometry);
+
+      await page.goBack();
+      await expectRoute(
+        page,
+        `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=discussion&outreachWorkArea=canvas`,
+      );
+      await expectOutreachDeskFrame(page, "discussion", geometry);
+
+      await page.getByTestId("fullmap-window-close").click();
+      await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+      await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
+    }
+  });
+
+  test("keeps missing WhatsApp setup inside the same Outreach desk", async ({
+    page,
+  }) => {
+    await installFullMap(page, "light", {
+      whatsappConnected: false,
+      whatsappOutreachChannelId: null,
+    });
+    await page.setViewportSize({ width: 1728, height: 1117 });
+    await page.goto("/#/");
+    await page.getByTestId("cofounder-map-sales").click();
+    await page.getByTestId("cofounder-map-job-sales-outreach").click();
+
+    await expectRoute(
+      page,
+      "/leads?mapJob=sales%3AOutreach&outreachDeskTab=needs-you",
+    );
+    await expect(page.getByTestId("map-outreach-setup")).toBeVisible();
+    const geometry = await expectOutreachDeskFrame(page, "needs-you");
+    await expect(page.getByTestId("map-outreach-setup")).toContainText(
+      "WhatsApp is not connected",
+    );
+
+    const tabs = windowContent(page).getByTestId("map-outreach-desk-tabs");
+    for (const view of ["pipeline", "chats"] as const) {
+      await tabs.getByTestId(`map-outreach-tab-${view}`).click();
+      await expectRoute(page, `/leads?outreachDeskTab=${view}`);
+      await expect(page.getByTestId("map-outreach-setup")).toBeVisible();
+      await expectOutreachDeskFrame(page, view, geometry);
+    }
+
+    await tabs.getByTestId("map-outreach-tab-leads").click();
+    await expectRoute(page, "/leads");
+    await expect(page.getByTestId("w10-leads-page")).toBeVisible();
+    await expectOutreachDeskFrame(page, "leads", geometry);
+
+    await tabs.getByTestId("map-outreach-tab-lists").click();
+    await expectRoute(page, "/lists");
+    await expect(page.getByTestId("outreach-lists-page")).toBeVisible();
+    await expectOutreachDeskFrame(page, "lists", geometry);
+  });
+
+  test("routes the retired Pipeline path into the map Outreach desk", async ({
+    page,
+  }) => {
+    await installFullMap(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await primeMap(page);
+    await page.goto(hashRoute("/pipeline"));
+
+    await expectRoute(
+      page,
+      `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=pipeline`,
+    );
+    await expect(page.getByTestId("outreach-desk-pipeline")).toBeVisible();
+    await expect(page.getByTestId("w10-pipeline-page")).toHaveCount(0);
+    await expectOutreachDeskFrame(page, "pipeline");
+  });
+
   test("keeps body links as a deeper map screen while tab bars contain only live views", async ({
     page,
   }) => {
@@ -899,26 +1149,28 @@ test.describe("full map canvas slice 2", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openRoute(page, SALES_OUTREACH);
 
-    const leadsTabs = windowContent(page).getByRole("navigation", {
-      name: "Business views",
+    const needsTabs = windowContent(page).getByRole("navigation", {
+      name: "Outreach views",
     });
-    await expect(leadsTabs.getByRole("link")).toHaveText([
-      "Leads",
-      "Lists",
-      "Pipeline",
-    ]);
-    await expect(leadsTabs.locator("[aria-disabled='true']")).toHaveCount(0);
+    await expect(
+      needsTabs.getByTestId("map-outreach-tab-needs-you"),
+    ).toBeVisible();
+    await expect(needsTabs.getByTestId("map-outreach-tab-leads")).toBeVisible();
+    await expect(needsTabs.getByTestId("map-outreach-tab-lists")).toBeVisible();
+    await expect(
+      needsTabs.getByTestId("map-outreach-tab-pipeline"),
+    ).toBeVisible();
+    await expect(needsTabs.getByTestId("map-outreach-tab-chats")).toBeVisible();
+    await expect(needsTabs.getByTestId("map-outreach-tab-more")).toBeVisible();
+    await expect(needsTabs.locator("a[href='#/pipeline']")).toHaveCount(0);
 
-    await leadsTabs.getByRole("link", { name: "Lists" }).click();
+    await needsTabs.getByRole("link", { name: "Lists" }).click();
     const listsTabs = windowContent(page).getByRole("navigation", {
-      name: "Business views",
+      name: "Outreach views",
     });
-    await expect(listsTabs.getByRole("link")).toHaveText([
-      "Leads",
-      "Lists",
-      "Pipeline",
-    ]);
-    await expect(listsTabs.locator("[aria-disabled='true']")).toHaveCount(0);
+    await expect(
+      listsTabs.getByTestId("map-outreach-tab-lists"),
+    ).toHaveAttribute("aria-current", "page");
 
     await openMoney(page);
     const bodyInvoice = windowContent(page).locator(
@@ -1094,6 +1346,15 @@ test.describe("full map canvas slice 2", () => {
     await captureFix1Screen(
       page,
       screenshotDir,
+      "outreach-needs-you",
+      "outreach-desk-needs-you",
+      0,
+    );
+
+    await openSalesView(page, "Leads", "/leads");
+    await captureFix1Screen(
+      page,
+      screenshotDir,
       "sales-leads",
       "w10-leads-page",
       0,
@@ -1121,12 +1382,16 @@ test.describe("full map canvas slice 2", () => {
     );
 
     await openSalesOutreach(page);
-    await openSalesView(page, "Pipeline", "/pipeline");
+    await openSalesView(
+      page,
+      "Pipeline",
+      `/channels/${MAP_CHANNEL_ID}?whatsappDeskTab=pipeline`,
+    );
     await captureFix1Screen(
       page,
       screenshotDir,
-      "sales-pipeline",
-      "w10-pipeline-page",
+      "outreach-pipeline",
+      "outreach-desk-pipeline",
       0,
     );
 

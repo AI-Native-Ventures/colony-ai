@@ -2173,10 +2173,10 @@ button.c3d-search-chip {
 .d4-related-type > span:nth-child(2) {
   min-width: 0;
   flex: 1;
-  overflow: hidden;
   font-size: calc(11.5 * var(--colony-px));
   font-weight: 750;
-  text-overflow: ellipsis;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .d4-related-type > svg {
@@ -2201,6 +2201,24 @@ button.c3d-search-chip {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+@media (max-width: 44rem) {
+  .d4-type-dialog .d4-related-types {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .d4-type-dialog .d4-related-type {
+    min-height: 4.25rem;
+    align-items: flex-start;
+  }
+
+  .d4-type-dialog .d4-related-type > span:nth-child(2) {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
 }
 
 .d4-industry-links {
