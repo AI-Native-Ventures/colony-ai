@@ -3,13 +3,16 @@ import test from "node:test";
 
 import {
   buildWhatsAppNip98Header,
+  loadWhatsAppContacts,
   loadWhatsAppSafetyLedger,
+  loadWhatsAppStageCounts,
   loadWhatsAppThread,
   loadWhatsAppUnknownSends,
   makeWhatsAppCommand,
   postWhatsAppJson,
   publishWhatsAppCommand,
   queryWhatsApp,
+  WHATSAPP_CONTACT_MAX_PAGES,
   WHATSAPP_THREAD_VISIBLE_LIMIT,
   whatsappCommandKinds,
 } from "./whatsappOutreachApi.ts";
@@ -401,4 +404,172 @@ test("a command without an injected publisher publishes through the relay client
     batchId: "batch-id",
     decision: "send_now",
   });
+});
+
+function rawContact(waId) {
+  return {
+    waId,
+    e164: `+${waId}`,
+    displayName: `Contact ${waId}`,
+    leadId: null,
+    ownerPubkey: null,
+    threadRootEventId: null,
+    lastInboundAt: null,
+    windowOpen: false,
+    windowClosesAt: null,
+    optedOut: false,
+    paused: false,
+    pauseReason: null,
+    unanswered: false,
+  };
+}
+
+/** A relay stand-in: each request is recorded and answered by the next function. */
+function scriptedRelay(...answers) {
+  const bodies = [];
+  const testHook = async ({ body }) => {
+    bodies.push(body);
+    const answer = answers[Math.min(bodies.length, answers.length) - 1];
+    return typeof answer === "function" ? answer(body) : answer;
+  };
+  return { bodies, dependencies: { testHook } };
+}
+
+test("loading contacts follows nextCursor and joins the pages in order", async () => {
+  const relay = scriptedRelay(
+    {
+      contacts: [rawContact("27820000001"), rawContact("27820000002")],
+      nextCursor: "c1",
+    },
+    { contacts: [rawContact("27820000003")], nextCursor: "c2" },
+    { contacts: [rawContact("27820000004")], nextCursor: null },
+  );
+  const contacts = await loadWhatsAppContacts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+  assert.deepEqual(
+    contacts.map((contact) => contact.waId),
+    ["27820000001", "27820000002", "27820000003", "27820000004"],
+  );
+  assert.equal(relay.bodies.length, 3);
+  assert.equal("before" in relay.bodies[0], false);
+  assert.equal(relay.bodies[0].what, "contacts");
+  assert.equal(relay.bodies[0].limit, 200);
+  assert.equal(relay.bodies[1].before, "c1");
+  assert.equal(relay.bodies[2].before, "c2");
+});
+
+test("an older relay without nextCursor is one request, as before", async () => {
+  const relay = scriptedRelay({ contacts: [rawContact("27820000001")] });
+  const contacts = await loadWhatsAppContacts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+  assert.equal(contacts.length, 1);
+  assert.equal(relay.bodies.length, 1);
+});
+
+test("contact paging stops at the page cap without an error", async () => {
+  let served = 0;
+  const relay = scriptedRelay(() => {
+    served += 1;
+    return {
+      contacts: [rawContact(`2782${String(served).padStart(7, "0")}`)],
+      nextCursor: `cursor-${served}`,
+    };
+  });
+  const contacts = await loadWhatsAppContacts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+  assert.equal(relay.bodies.length, WHATSAPP_CONTACT_MAX_PAGES);
+  assert.equal(contacts.length, WHATSAPP_CONTACT_MAX_PAGES);
+});
+
+test("a repeated contact cursor throws instead of looping", async () => {
+  const relay = scriptedRelay(
+    { contacts: [rawContact("27820000001")], nextCursor: "same" },
+    { contacts: [rawContact("27820000002")], nextCursor: "same" },
+  );
+  await assert.rejects(
+    loadWhatsAppContacts("wss://relay.example", relay.dependencies),
+    /repeated a contact page cursor/u,
+  );
+  assert.equal(relay.bodies.length, 2);
+});
+
+test("a cursor that is not a string or null is an invalid answer", async () => {
+  for (const nextCursor of [5, true, {}, []]) {
+    const relay = scriptedRelay({
+      contacts: [rawContact("27820000001")],
+      nextCursor,
+    });
+    await assert.rejects(
+      loadWhatsAppContacts("wss://relay.example", relay.dependencies),
+      /invalid contact page cursor/u,
+    );
+  }
+});
+
+test("a contact that appears on two pages is kept once at its first place", async () => {
+  const relay = scriptedRelay(
+    {
+      contacts: [rawContact("27820000001"), rawContact("27820000002")],
+      nextCursor: "c1",
+    },
+    {
+      contacts: [rawContact("27820000002"), rawContact("27820000003")],
+      nextCursor: null,
+    },
+  );
+  const contacts = await loadWhatsAppContacts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+  assert.deepEqual(
+    contacts.map((contact) => contact.waId),
+    ["27820000001", "27820000002", "27820000003"],
+  );
+});
+
+test("a failing second page rejects the whole load", async () => {
+  const relay = scriptedRelay(
+    { contacts: [rawContact("27820000001")], nextCursor: "c1" },
+    () => {
+      throw new Error("relay down");
+    },
+  );
+  await assert.rejects(
+    loadWhatsAppContacts("wss://relay.example", relay.dependencies),
+    /relay down/u,
+  );
+});
+
+test("stage counts ask for one contact with counts and read the answer", async () => {
+  const relay = scriptedRelay({
+    contacts: [rawContact("27820000001")],
+    nextCursor: "c1",
+    stageCounts: { contacted: 174, replied: 12 },
+    failedNotContacted: 3,
+    totalContacts: 450,
+    countsTruncated: false,
+  });
+  const counts = await loadWhatsAppStageCounts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+  assert.equal(relay.bodies[0].what, "contacts");
+  assert.equal(relay.bodies[0].limit, 1);
+  assert.equal(relay.bodies[0].counts, true);
+  assert.equal(counts.totalContacts, 450);
+  assert.equal(counts.stageCounts.contacted, 174);
+});
+
+test("an older relay answers stage counts with null", async () => {
+  const relay = scriptedRelay({ contacts: [rawContact("27820000001")] });
+  assert.equal(
+    await loadWhatsAppStageCounts("wss://relay.example", relay.dependencies),
+    null,
+  );
 });

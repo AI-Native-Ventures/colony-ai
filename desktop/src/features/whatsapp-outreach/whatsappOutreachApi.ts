@@ -16,6 +16,7 @@ import {
   parseWhatsAppContact,
   parseWhatsAppDraft,
   parseWhatsAppMessage,
+  parseWhatsAppStageCounts,
   parseWhatsAppStatus,
   parseWhatsAppTemplate,
   parseWhatsAppThread,
@@ -24,6 +25,7 @@ import {
   type WhatsAppContact,
   type WhatsAppDraft,
   type WhatsAppMessage,
+  type WhatsAppStageCounts,
   type WhatsAppStatus,
   type WhatsAppTemplate,
   type WhatsAppThread,
@@ -42,6 +44,10 @@ const DISCONNECT_PATH = "/api/whatsapp/disconnect";
 const RELAY_CAPABILITIES = ["whatsapp-outreach-stage-queued"] as const;
 /** Current relay query cap. The drafting runtime has its own, separate context boundary. */
 export const WHATSAPP_THREAD_VISIBLE_LIMIT = 200;
+/** Contacts per page; the relay clamps a page to 200. */
+const CONTACT_PAGE_LIMIT = 200;
+/** Pages one contact load follows (5,000 contacts), so a relay fault cannot loop for ever. */
+export const WHATSAPP_CONTACT_MAX_PAGES = 25;
 
 export type WhatsAppCommandKind =
   | typeof KIND_WHATSAPP_BATCH
@@ -58,7 +64,7 @@ type WhatsAppQuery =
   | { what: "batches"; state?: string; limit?: number }
   | { what: "batch"; batchId: string }
   | { what: "drafts"; limit?: number }
-  | { what: "contacts"; limit?: number }
+  | { what: "contacts"; limit?: number; before?: string; counts?: boolean }
   | { what: "inbox"; limit?: number }
   | { what: "suppressions"; limit?: number }
   | { what: "unknown_sends"; limit?: number }
@@ -235,19 +241,72 @@ export async function loadWhatsAppTemplates(
   return response.templates.map(parseWhatsAppTemplate);
 }
 
+/**
+ * Every contact, newest activity first. Follows the relay's `nextCursor` page by page; an
+ * answer without one (an older relay) is the whole list in one request. A contact that moves
+ * between pages while loading is kept once, at its first position.
+ */
 export async function loadWhatsAppContacts(
   relayUrl: string,
   dependencies?: ApiDependencies,
 ): Promise<readonly WhatsAppContact[]> {
-  const response = await queryWhatsApp<{ contacts?: unknown }>(
-    relayUrl,
-    { what: "contacts", limit: 200 },
-    dependencies,
-  );
-  if (!Array.isArray(response.contacts)) {
-    throw new Error("The WhatsApp relay returned an invalid contact list.");
+  const contacts: WhatsAppContact[] = [];
+  const seenWaIds = new Set<string>();
+  const usedCursors = new Set<string>();
+  let before: string | undefined;
+  for (let page = 0; page < WHATSAPP_CONTACT_MAX_PAGES; page += 1) {
+    const response = await queryWhatsApp<{
+      contacts?: unknown;
+      nextCursor?: unknown;
+    }>(
+      relayUrl,
+      {
+        what: "contacts",
+        limit: CONTACT_PAGE_LIMIT,
+        ...(before ? { before } : {}),
+      },
+      dependencies,
+    );
+    if (!Array.isArray(response.contacts)) {
+      throw new Error("The WhatsApp relay returned an invalid contact list.");
+    }
+    for (const raw of response.contacts) {
+      const contact = parseWhatsAppContact(raw);
+      if (seenWaIds.has(contact.waId)) continue;
+      seenWaIds.add(contact.waId);
+      contacts.push(contact);
+    }
+    const next = response.nextCursor;
+    if (next === undefined || next === null || next === "") break;
+    if (typeof next !== "string") {
+      throw new Error(
+        "The WhatsApp relay returned an invalid contact page cursor.",
+      );
+    }
+    if (usedCursors.has(next)) {
+      throw new Error("The WhatsApp relay repeated a contact page cursor.");
+    }
+    usedCursors.add(next);
+    before = next;
   }
-  return response.contacts.map(parseWhatsAppContact);
+  return contacts;
+}
+
+/**
+ * True stage counts over every contact, or `null` when the relay is too old to count. Reads
+ * the whole contact list on the relay, so poll it slowly.
+ */
+export async function loadWhatsAppStageCounts(
+  relayUrl: string,
+  dependencies?: ApiDependencies,
+): Promise<WhatsAppStageCounts | null> {
+  return parseWhatsAppStageCounts(
+    await queryWhatsApp(
+      relayUrl,
+      { what: "contacts", limit: 1, counts: true },
+      dependencies,
+    ),
+  );
 }
 
 export async function loadWhatsAppBatches(

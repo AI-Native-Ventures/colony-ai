@@ -10,6 +10,7 @@ import {
   loadWhatsAppDrafts,
   loadWhatsAppPendingBatchDetails,
   loadWhatsAppSafetyLedger,
+  loadWhatsAppStageCounts,
   loadWhatsAppStatus,
   loadWhatsAppTemplates,
   loadWhatsAppThread,
@@ -21,6 +22,8 @@ import {
 const ROOT_QUERY_KEY = ["whatsapp-outreach"] as const;
 const STATUS_REFETCH_MS = 15_000;
 const THREAD_REFETCH_MS = 8_000;
+/** Counting reads the whole contact list on the relay, so it polls far less than the list. */
+const STAGE_COUNTS_REFETCH_MS = 60_000;
 
 export const whatsappOutreachQueryKeys = {
   all: ROOT_QUERY_KEY,
@@ -30,6 +33,8 @@ export const whatsappOutreachQueryKeys = {
     [...ROOT_QUERY_KEY, relayUrl, "templates"] as const,
   contacts: (relayUrl: string | null) =>
     [...ROOT_QUERY_KEY, relayUrl, "contacts"] as const,
+  contactCounts: (relayUrl: string | null) =>
+    [...ROOT_QUERY_KEY, relayUrl, "contact-counts"] as const,
   batches: (relayUrl: string | null, state?: string) =>
     [...ROOT_QUERY_KEY, relayUrl, "batches", state ?? "all"] as const,
   batch: (relayUrl: string | null, batchId: string) =>
@@ -90,6 +95,23 @@ export function useWhatsAppContactsQuery(enabled = true) {
     },
     staleTime: 5_000,
     refetchInterval: STATUS_REFETCH_MS,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+}
+
+/** True stage counts over every contact. Data is `null` on a relay that cannot count. */
+export function useWhatsAppStageCountsQuery(enabled = true) {
+  const relayUrl = useWhatsAppRelayUrl();
+  return useQuery({
+    enabled: enabled && relayUrl !== null,
+    queryKey: whatsappOutreachQueryKeys.contactCounts(relayUrl),
+    queryFn: async () => {
+      if (!relayUrl) throw new Error("The active community relay is missing.");
+      return loadWhatsAppStageCounts(relayUrl);
+    },
+    staleTime: 15_000,
+    refetchInterval: STAGE_COUNTS_REFETCH_MS,
     refetchOnWindowFocus: true,
     retry: 1,
   });

@@ -5,6 +5,7 @@ import { parseWhatsAppContact } from "./whatsappOutreachModels.ts";
 import {
   contactDisplayName,
   getWhatsAppNeedsYouItems,
+  pipelineStageTotal,
 } from "./whatsappOutreachStages.ts";
 
 function contact(overrides = {}) {
@@ -83,4 +84,96 @@ test("contact labels override profile and business names", () => {
     ),
     "+27 82 123 7135",
   );
+});
+
+const counts = {
+  stageCounts: { contacted: 174, replied: 20, no_thanks: 7 },
+  failedNotContacted: 5,
+  totalContacts: 450,
+  countsTruncated: false,
+};
+
+test("a pipeline column shows the relay's true count, not the loaded one", () => {
+  // 450 contacts, 200 loaded: the loaded list holds only 62 contacted.
+  assert.equal(
+    pipelineStageTotal({
+      stage: "replied",
+      loadedCount: 11,
+      searching: false,
+      counts,
+    }),
+    20,
+  );
+  assert.equal(
+    pipelineStageTotal({
+      stage: "no_thanks",
+      loadedCount: 2,
+      searching: false,
+      counts,
+    }),
+    7,
+  );
+  // A stage the relay does not list has no contacts.
+  assert.equal(
+    pipelineStageTotal({
+      stage: "client",
+      loadedCount: 4,
+      searching: false,
+      counts,
+    }),
+    0,
+  );
+});
+
+test("the Contacted column adds contacts that never reached anyone", () => {
+  assert.equal(
+    pipelineStageTotal({
+      stage: "contacted",
+      loadedCount: 62,
+      searching: false,
+      counts,
+    }),
+    179,
+  );
+  const regression = {
+    stageCounts: { contacted: 174 },
+    failedNotContacted: 0,
+    totalContacts: 450,
+    countsTruncated: false,
+  };
+  assert.equal(
+    pipelineStageTotal({
+      stage: "contacted",
+      loadedCount: 62,
+      searching: false,
+      counts: regression,
+    }),
+    174,
+  );
+});
+
+test("a search counts the matching loaded contacts", () => {
+  assert.equal(
+    pipelineStageTotal({
+      stage: "contacted",
+      loadedCount: 3,
+      searching: true,
+      counts,
+    }),
+    3,
+  );
+});
+
+test("without counts the loaded number stands", () => {
+  for (const missing of [null, undefined]) {
+    assert.equal(
+      pipelineStageTotal({
+        stage: "contacted",
+        loadedCount: 62,
+        searching: false,
+        counts: missing,
+      }),
+      62,
+    );
+  }
 });
