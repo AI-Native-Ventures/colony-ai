@@ -54,13 +54,23 @@
   flex: 1 0 auto;
   margin: 0;
   overflow: hidden;
-  touch-action: pan-x pan-y;
+  touch-action: none;
   border: 0;
   padding: 0;
 }
 
 .company-map-viewport[data-zoomed="true"] {
   cursor: grab;
+}
+
+.company-map-viewport:focus-visible {
+  outline: 3px solid hsl(var(--colony-accent));
+  outline-offset: -3px;
+}
+
+.company-map-viewport[data-camera-interacting="true"] {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .company-map-hover-bridge {
@@ -71,6 +81,7 @@
 }
 
 .company-map-stage {
+  --company-map-transform: translate(0px, 0px) scale(1);
   position: absolute;
   /* Centred in the canvas. 20px from its top at the design's window height. */
   top: max(20px, calc(50% - 398px));
@@ -80,6 +91,11 @@
   transform: var(--company-map-transform);
   transform-origin: center;
   transition: transform 200ms ease;
+  will-change: transform;
+}
+
+.company-map-viewport[data-camera-interacting="true"] .company-map-stage {
+  transition: none;
 }
 
 .company-map-viewport[data-map-window-open="true"] {
