@@ -1,9 +1,11 @@
 import * as React from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ChevronDown, MoreHorizontal } from "lucide-react";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useProfileQuery } from "@/features/profile/hooks";
 import { useRouteOrigin } from "@/app/navigation/RouteOriginContext";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
+import { useMediaBreakpoint } from "@/shared/hooks/use-mobile";
 
 import { useCustomerRecords } from "@/features/cofounder/customerHooks";
 import { useCustomerRecordCapabilities } from "@/features/cofounder/customerRecordAccess";
@@ -46,6 +48,11 @@ import {
   getWhatsAppLeadStatus,
   useWhatsAppLeadData,
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
+import {
+  MapOutreachDeskHeader,
+  MapOutreachDeskSetupState,
+  type MapOutreachDeskView,
+} from "@/features/whatsapp-outreach/MapOutreachDesk";
 import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import type { ProspectStage, QualifySignal } from "./businessRecordContract";
 import { buildLeadLink } from "@/shared/lib/entityLink";
@@ -76,8 +83,12 @@ function whatsappStatusLabel(status: OutreachWhatsAppStatus): string {
 }
 
 export function LeadsScreen(context: LeadContext) {
+  const location = useLocation();
   const navigate = useNavigate();
   const routeOrigin = useRouteOrigin();
+  const mapShellEnabled = useMapShellEnabled();
+  const isMapCanvasNarrow = useMediaBreakpoint(701);
+  const mapOutreachDesk = mapShellEnabled && !isMapCanvasNarrow;
   const restored = routeOrigin.pageSnapshot?.viewState as
     | {
         query?: string;
@@ -92,7 +103,7 @@ export function LeadsScreen(context: LeadContext) {
   const { campaign } = useDiscoveryCampaign();
   const customerAccess = useCustomerRecordCapabilities();
   const customerRecordsQuery = useCustomerRecords(customerAccess.enabled);
-  const { contactsQuery, inBatchLeadIds } = useWhatsAppLeadData();
+  const { contactsQuery, inBatchLeadIds, statusQuery } = useWhatsAppLeadData();
   const [query, setQuery] = React.useState(restored?.query ?? "");
   const [filters, setFilters] = React.useState<OutreachFilters>(
     () =>
@@ -576,94 +587,142 @@ export function LeadsScreen(context: LeadContext) {
     }
   }
 
-  return (
-    <main className="c3l-page" data-testid="w10-leads-page">
-      <div className="c3l-wrap c3l-wrap-leads">
-        <header
-          className="c3l-mobile-leads-header"
-          data-testid="leads-mobile-header"
+  const requestedDeskTab = (location.search as Record<string, unknown>)
+    .outreachDeskTab;
+  const fallbackView: MapOutreachDeskView | null =
+    requestedDeskTab === "needs-you" ||
+    requestedDeskTab === "pipeline" ||
+    requestedDeskTab === "chats" ||
+    requestedDeskTab === "discussion"
+      ? requestedDeskTab
+      : null;
+  const showsOutreachSetup =
+    mapOutreachDesk &&
+    fallbackView !== null &&
+    statusQuery.isSuccess &&
+    !statusQuery.data?.outreachChannelId;
+  const leadHeaderActions = (
+    <>
+      {canWrite ? (
+        <button
+          className="c3l-btn c3l-btn-outline"
+          onClick={() => setDialogOpen(true)}
+          type="button"
         >
-          <button
-            aria-label="Back to discovery"
-            onClick={() => void navigate({ to: "/discovery" })}
-            type="button"
+          <PlusGlyph />
+          Add lead
+        </button>
+      ) : null}
+      <button
+        className="c3l-btn c3l-btn-primary"
+        data-map-canvas-same-desk="true"
+        onClick={() => void navigate({ to: "/discovery" })}
+        type="button"
+      >
+        Find prospects <span aria-hidden="true">→</span>
+      </button>
+    </>
+  );
+
+  if (showsOutreachSetup && fallbackView) {
+    return (
+      <main
+        className="c3l-page map-outreach-desk-page"
+        data-testid="w10-leads-page"
+      >
+        <MapOutreachDeskHeader active={fallbackView} />
+        <MapOutreachDeskSetupState
+          connected={statusQuery.data?.connected === true}
+        />
+      </main>
+    );
+  }
+
+  return (
+    <main
+      className={`c3l-page${mapOutreachDesk ? " map-outreach-desk-page" : ""}`}
+      data-testid="w10-leads-page"
+    >
+      {mapOutreachDesk ? (
+        <MapOutreachDeskHeader
+          actions={leadHeaderActions}
+          active="leads"
+          outreachChannelId={statusQuery.data?.outreachChannelId}
+        />
+      ) : null}
+      <div className="c3l-wrap c3l-wrap-leads">
+        {!mapOutreachDesk ? (
+          <header
+            className="c3l-mobile-leads-header"
+            data-testid="leads-mobile-header"
           >
-            <ArrowLeft aria-hidden="true" size={20} />
-          </button>
-          <div className="c3l-mobile-leads-heading">
-            <h1>Leads</h1>
-            <span>
-              {activeProspects.length}{" "}
-              {activeProspects.length === 1 ? "lead" : "leads"} · Sales
-            </span>
-          </div>
-          <details className="c3l-mobile-leads-menu">
-            <summary aria-label="Lead actions">
-              <MoreHorizontal aria-hidden="true" size={20} />
-            </summary>
-            <div className="c3l-list-row-menu-content">
-              {canWrite ? (
-                <button onClick={() => setDialogOpen(true)} type="button">
-                  Add lead
-                </button>
-              ) : null}
-              <button
-                data-map-canvas-same-desk="true"
-                onClick={() => void navigate({ to: "/discovery" })}
-                type="button"
-              >
-                Find prospects
-              </button>
-            </div>
-          </details>
-        </header>
-        <div className="c3l-head c3l-leads-desktop-head">
-          <div className="c3l-head-text">
-            <h1 className="c3l-title">Leads</h1>
-            <span className="c3l-subtitle c3l-subtitle-inline">
-              {activeProspects.length}{" "}
-              {activeProspects.length === 1 ? "lead" : "leads"}
-              {runnerName ? (
-                <>
-                  {" · sourced by "}
-                  {runnerName}’s Discovery campaigns
-                </>
-              ) : null}
-            </span>
-          </div>
-          <div className="c3l-head-actions">
-            {canWrite ? (
-              <button
-                className="c3l-btn c3l-btn-outline"
-                onClick={() => setDialogOpen(true)}
-                type="button"
-              >
-                <PlusGlyph />
-                Add lead
-              </button>
-            ) : null}
             <button
-              className="c3l-btn c3l-btn-primary"
-              data-map-canvas-same-desk="true"
+              aria-label="Back to discovery"
               onClick={() => void navigate({ to: "/discovery" })}
               type="button"
             >
-              Find prospects <span aria-hidden="true">→</span>
+              <ArrowLeft aria-hidden="true" size={20} />
             </button>
+            <div className="c3l-mobile-leads-heading">
+              <h1>Leads</h1>
+              <span>
+                {activeProspects.length}{" "}
+                {activeProspects.length === 1 ? "lead" : "leads"} · Sales
+              </span>
+            </div>
+            <details className="c3l-mobile-leads-menu">
+              <summary aria-label="Lead actions">
+                <MoreHorizontal aria-hidden="true" size={20} />
+              </summary>
+              <div className="c3l-list-row-menu-content">
+                {canWrite ? (
+                  <button onClick={() => setDialogOpen(true)} type="button">
+                    Add lead
+                  </button>
+                ) : null}
+                <button
+                  data-map-canvas-same-desk="true"
+                  onClick={() => void navigate({ to: "/discovery" })}
+                  type="button"
+                >
+                  Find prospects
+                </button>
+              </div>
+            </details>
+          </header>
+        ) : null}
+        {!mapOutreachDesk ? (
+          <div className="c3l-head c3l-leads-desktop-head">
+            <div className="c3l-head-text">
+              <h1 className="c3l-title">Leads</h1>
+              <span className="c3l-subtitle c3l-subtitle-inline">
+                {activeProspects.length}{" "}
+                {activeProspects.length === 1 ? "lead" : "leads"}
+                {runnerName ? (
+                  <>
+                    {" · sourced by "}
+                    {runnerName}’s Discovery campaigns
+                  </>
+                ) : null}
+              </span>
+            </div>
+            <div className="c3l-head-actions">{leadHeaderActions}</div>
           </div>
-        </div>
+        ) : null}
 
-        <nav
-          aria-label="Business views"
-          className="c3l-tabs"
-          data-map-canvas-same-desk="true"
-        >
-          <a aria-current="page" href="#/leads">
-            Leads
-          </a>
-          <a href="#/lists">Lists</a>
-          <a href="#/pipeline">Pipeline</a>
-        </nav>
+        {!mapOutreachDesk ? (
+          <nav
+            aria-label="Business views"
+            className="c3l-tabs"
+            data-map-canvas-same-desk="true"
+          >
+            <a aria-current="page" href="#/leads">
+              Leads
+            </a>
+            <a href="#/lists">Lists</a>
+            <a href="#/pipeline">Pipeline</a>
+          </nav>
+        ) : null}
 
         <OutreachFitScoreDashboard
           leads={outreachFitLeads}

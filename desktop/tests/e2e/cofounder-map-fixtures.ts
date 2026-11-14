@@ -309,13 +309,16 @@ export async function seedCompanyMapWhatsApp(
   page: import("@playwright/test").Page,
   outreachChannelId: string | null,
   includeCallRequest = true,
+  connected = true,
 ) {
   await page.addInitScript(
     ({
       channelId,
+      connected,
       includeCallRequest,
     }: {
       channelId: string | null;
+      connected: boolean;
       includeCallRequest: boolean;
     }) => {
       const testWindow = window as Window & {
@@ -332,7 +335,7 @@ export async function seedCompanyMapWhatsApp(
           request.body?.what === "status"
         ) {
           return {
-            connected: true,
+            connected,
             connectionId: "e2e-company-map-whatsapp",
             displayPhoneNumber: "+27 61 534 0627",
             verifiedName: "Horizon Labs",
@@ -380,6 +383,6 @@ export async function seedCompanyMapWhatsApp(
         return {};
       };
     },
-    { channelId: outreachChannelId, includeCallRequest },
+    { channelId: outreachChannelId, connected, includeCallRequest },
   );
 }

@@ -28,6 +28,7 @@ type ChannelRouteSearch = {
   whatsappContactWaId?: string;
   whatsappBatchId?: string;
   whatsappDeskTab?: "needs-you" | "pipeline" | "chats" | "discussion";
+  outreachWorkArea?: "knowledge" | "canvas" | "files";
 };
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -39,6 +40,14 @@ function outreachTab(value: unknown): ChannelRouteSearch["whatsappDeskTab"] {
     value === "pipeline" ||
     value === "chats" ||
     value === "discussion"
+    ? value
+    : undefined;
+}
+
+function outreachWorkArea(
+  value: unknown,
+): ChannelRouteSearch["outreachWorkArea"] {
+  return value === "knowledge" || value === "canvas" || value === "files"
     ? value
     : undefined;
 }
@@ -58,6 +67,7 @@ function validateChannelSearch(
     whatsappContactWaId: nonEmptyString(search.whatsappContactWaId),
     whatsappBatchId: nonEmptyString(search.whatsappBatchId),
     whatsappDeskTab: outreachTab(search.whatsappDeskTab),
+    outreachWorkArea: outreachWorkArea(search.outreachWorkArea),
   };
 }
 
@@ -91,6 +101,7 @@ function ChannelRouteComponent() {
         whatsappContactWaId={search.whatsappContactWaId ?? null}
         whatsappBatchId={search.whatsappBatchId ?? null}
         whatsappDeskTab={search.whatsappDeskTab}
+        outreachWorkArea={search.outreachWorkArea}
       />
     </React.Suspense>
   );

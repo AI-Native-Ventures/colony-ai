@@ -7,12 +7,15 @@ import type { OutreachDeskTab } from "@/features/channels/ui/ChannelWorkspaceTab
 import { WhatsAppOutreachScreen } from "./WhatsAppOutreachScreen";
 import { OutreachDeskNeedsYou } from "./OutreachDeskNeedsYou";
 import { OutreachPipeline } from "./OutreachPipeline";
+import { MapOutreachDeskSetupState } from "./MapOutreachDesk";
+import { useWhatsAppStatusQuery } from "./whatsappOutreachQueries";
 
 export function OutreachDeskWorkspace({
   activeTab,
   channelId,
   channelIsMember,
   initialContactWaId,
+  mapDesk = false,
   onSelectedContactChange,
   onTabChange,
 }: {
@@ -20,10 +23,12 @@ export function OutreachDeskWorkspace({
   channelId: string;
   channelIsMember: boolean;
   initialContactWaId: string | null;
+  mapDesk?: boolean;
   onSelectedContactChange: (waId: string) => void;
   onTabChange: (tab: OutreachDeskTab) => void;
 }) {
   const navigate = useNavigate();
+  const statusQuery = useWhatsAppStatusQuery();
   const [selectedWaId, setSelectedWaId] = React.useState(initialContactWaId);
   const dock = useWorkAreaDock(channelId);
   const activeWhatsAppTab = dock.tabs.find(
@@ -95,6 +100,10 @@ export function OutreachDeskWorkspace({
     [navigate],
   );
 
+  if (mapDesk && statusQuery.isSuccess && !statusQuery.data?.connected) {
+    return <MapOutreachDeskSetupState />;
+  }
+
   if (activeTab === "chats") {
     return (
       <div className="c3wa-desk-container">
@@ -104,6 +113,7 @@ export function OutreachDeskWorkspace({
           hideSelectedConversation={dockWhatsAppOpen}
           initialContactWaId={selectedWaId}
           initialThreadRootId={null}
+          mapDesk={mapDesk}
           mode="desk"
           onContactSelected={selectDeskContact}
           onSelectedContactChange={onSelectedContactChange}
@@ -115,6 +125,7 @@ export function OutreachDeskWorkspace({
     return (
       <OutreachPipeline
         channelIsMember={channelIsMember}
+        mapDesk={mapDesk}
         onOpenChat={openChat}
         onOpenLead={openLead}
       />
@@ -123,6 +134,7 @@ export function OutreachDeskWorkspace({
   return (
     <OutreachDeskNeedsYou
       channelIsMember={channelIsMember}
+      mapDesk={mapDesk}
       onOpenChat={openChat}
     />
   );

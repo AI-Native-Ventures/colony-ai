@@ -272,10 +272,13 @@ export function planMapCanvasTrailNavigation({
     snapshot: null,
   };
 
-  // A declared desk tab or header action owns one visible canvas window.
-  // Keep the browser-history step, but do not retain a predecessor strip.
+  // A declared desk tab replaces the newest canvas window. Keep any earlier
+  // windows so Back still returns to the route that opened this desk.
   if (samePathNavigation === "swap") {
-    return { kind: "swap", trail: { ...trail, entries: [nextEntry] } };
+    return {
+      kind: "swap",
+      trail: { ...trail, entries: [...trail.entries.slice(0, -1), nextEntry] },
+    };
   }
 
   const destinationIdentity = mapCanvasRouteIdentity(href);
