@@ -49,6 +49,7 @@
       "fullmap-slice2.spec.ts",
       "fullmap-slice3a.spec.ts",
       "fullmap-slice3b.spec.ts",
+      "fullmap-slice4.spec.ts",
       "map-panzoom.spec.ts",
       "map-shell.spec.ts",
       "edit-agent.spec.ts",
@@ -134,6 +135,7 @@
         "fullmap-slice2.spec.ts",
         "fullmap-slice3a.spec.ts",
         "fullmap-slice3b.spec.ts",
+        "fullmap-slice4.spec.ts",
         "map-panzoom.spec.ts",
         "workspace-header-icon.spec.ts",
         "cofounder-customer-record.spec.ts",
@@ -154,7 +156,8 @@
         "fullmap-slice1.spec.ts",
         "fullmap-slice2.spec.ts",
         "fullmap-slice3a.spec.ts",
-        "fullmap-slice3b.spec.ts"
+        "fullmap-slice3b.spec.ts",
+        "fullmap-slice4.spec.ts"
       ]
     },
     {
