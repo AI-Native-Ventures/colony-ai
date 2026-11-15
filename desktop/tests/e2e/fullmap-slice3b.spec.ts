@@ -200,16 +200,6 @@ async function captureComparisonState(
     animations: "disabled",
     path: join(screenshotDir, `comparison-${board}-app-1440x900.png`),
   });
-  await page.screenshot({
-    animations: "disabled",
-    clip: { height: 900, width: 330, x: 0, y: 0 },
-    path: join(screenshotDir, `comparison-${board}-app-left-edge-330.png`),
-  });
-  await page.screenshot({
-    animations: "disabled",
-    clip: { height: 900, width: 330, x: 1110, y: 0 },
-    path: join(screenshotDir, `comparison-${board}-app-right-edge-330.png`),
-  });
 }
 
 async function captureOperationsComparisonStates(
@@ -716,7 +706,9 @@ test.describe("full map canvas slice 3b", () => {
         { height: 1117, label: "1728x1117", width: 1728 },
       ]) {
         await page.setViewportSize(viewport);
-        if (theme === "light" && viewport.label === "1440x900") {
+        const isComparisonViewport =
+          theme === "light" && viewport.label === "1440x900";
+        if (isComparisonViewport) {
           await openOperationsMap(page);
           await captureOperationsComparisonStates(page, screenshotDir);
         }
@@ -739,13 +731,15 @@ test.describe("full map canvas slice 3b", () => {
           .click();
         await expectMapWindow(page);
         await waitForAnimations(page);
-        await page.screenshot({
-          animations: "disabled",
-          path: join(
-            screenshotDir,
-            `operations-workflow-work-${theme}-${viewport.label}.png`,
-          ),
-        });
+        if (!isComparisonViewport) {
+          await page.screenshot({
+            animations: "disabled",
+            path: join(
+              screenshotDir,
+              `operations-workflow-work-${theme}-${viewport.label}.png`,
+            ),
+          });
+        }
       }
     });
   }
