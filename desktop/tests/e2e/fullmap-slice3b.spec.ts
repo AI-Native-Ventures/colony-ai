@@ -168,6 +168,19 @@ async function openOperationsMap(page: Page) {
   await selectMapPart(page, "operations", "Operations");
 }
 
+async function revealDeliverySteps(page: Page) {
+  await page
+    .getByTestId(`cofounder-map-workflow-${DELIVERY_PLAYBOOK_ID}`)
+    .hover();
+  await expect(
+    page.getByTestId(
+      `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`,
+    ),
+  ).toBeVisible();
+  await page.mouse.move(0, 0);
+  await waitForAnimations(page);
+}
+
 async function closeMapWindow(page: Page) {
   await page.getByTestId("fullmap-window-close").click();
   await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
@@ -175,6 +188,73 @@ async function closeMapWindow(page: Page) {
 
 function windowContent(page: Page) {
   return page.locator(".map-canvas-route-window-content");
+}
+
+async function captureComparisonState(
+  page: Page,
+  screenshotDir: string,
+  board: string,
+) {
+  await waitForAnimations(page);
+  await page.screenshot({
+    animations: "disabled",
+    path: join(screenshotDir, `comparison-${board}-app-1440x900.png`),
+  });
+  await page.screenshot({
+    animations: "disabled",
+    clip: { height: 900, width: 330, x: 0, y: 0 },
+    path: join(screenshotDir, `comparison-${board}-app-left-edge-330.png`),
+  });
+  await page.screenshot({
+    animations: "disabled",
+    clip: { height: 900, width: 330, x: 1110, y: 0 },
+    path: join(screenshotDir, `comparison-${board}-app-right-edge-330.png`),
+  });
+}
+
+async function captureOperationsComparisonStates(
+  page: Page,
+  screenshotDir: string,
+) {
+  await captureComparisonState(page, screenshotDir, "ArmOperations");
+
+  const delivery = page.getByTestId(
+    `cofounder-map-workflow-${DELIVERY_PLAYBOOK_ID}`,
+  );
+  await delivery.hover();
+  await captureComparisonState(page, screenshotDir, "ArmDelivery");
+  await page.mouse.move(0, 0);
+  await captureComparisonState(page, screenshotDir, "WalkOps");
+
+  await delivery.click();
+  await expectMapWindow(page);
+  await captureComparisonState(page, screenshotDir, "WalkOpsFlow");
+
+  await closeMapWindow(page);
+  await openOperationsMap(page);
+  await revealDeliverySteps(page);
+  await page
+    .getByTestId(`cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`)
+    .click();
+  await expectMapWindow(page);
+  await captureComparisonState(page, screenshotDir, "WalkOpsBuild");
+
+  await windowContent(page)
+    .getByRole("button", { name: "Board", exact: true })
+    .click();
+  await windowContent(page)
+    .getByRole("button", { name: /Produce the spring content campaign/ })
+    .click();
+  await expectMapWindow(page, 1);
+  await captureComparisonState(page, screenshotDir, "WalkOpsDeep");
+
+  await page.goto("/#/");
+  await openOperationsMap(page);
+  await page
+    .getByTestId(`cofounder-map-workflow-${FOLLOW_UP_PLAYBOOK_ID}`)
+    .click();
+  await expectMapWindow(page);
+  await captureComparisonState(page, screenshotDir, "WalkOpsFollow");
 }
 
 async function readMapCamera(page: Page) {
@@ -288,6 +368,28 @@ test.describe("full map canvas slice 3b", () => {
       page.getByTestId(
         `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`,
       ),
+    ).toHaveCount(0);
+    await expect(
+      page.getByTestId(`cofounder-map-add-step-${DELIVERY_PLAYBOOK_ID}`),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("cofounder-map-add-workflow")).toBeVisible();
+    await waitForAnimations(page);
+
+    expect(await workflowGeometry(page)).toEqual({
+      stage: { height: 790, width: 1400 },
+      delivery: { x: 220, y: 79 },
+      brief: null,
+      build: null,
+      addStep: null,
+      proposal: { x: 220, y: 127 },
+      addWorkflow: { x: 220, y: 175 },
+    });
+
+    await revealDeliverySteps(page);
+    await expect(
+      page.getByTestId(
+        `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`,
+      ),
     ).toHaveAttribute("aria-label", "Website build. Opens Work.");
     await expect(
       page.getByTestId(
@@ -297,8 +399,6 @@ test.describe("full map canvas slice 3b", () => {
     await expect(
       page.getByTestId(`cofounder-map-add-step-${DELIVERY_PLAYBOOK_ID}`),
     ).toBeVisible();
-    await expect(page.getByTestId("cofounder-map-add-workflow")).toBeVisible();
-    await waitForAnimations(page);
 
     expect(await workflowGeometry(page)).toEqual({
       stage: { height: 790, width: 1400 },
@@ -341,6 +441,7 @@ test.describe("full map canvas slice 3b", () => {
     await closeMapWindow(page);
 
     await openOperationsMap(page);
+    await revealDeliverySteps(page);
     const build = page.getByTestId(
       `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`,
     );
@@ -354,6 +455,7 @@ test.describe("full map canvas slice 3b", () => {
     await closeMapWindow(page);
 
     await openOperationsMap(page);
+    await revealDeliverySteps(page);
     await page
       .getByTestId(
         `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-approval`,
@@ -367,6 +469,7 @@ test.describe("full map canvas slice 3b", () => {
     await closeMapWindow(page);
 
     await openOperationsMap(page);
+    await revealDeliverySteps(page);
     await page
       .getByTestId(`cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-brief`)
       .click();
@@ -380,6 +483,7 @@ test.describe("full map canvas slice 3b", () => {
     await closeMapWindow(page);
 
     await openOperationsMap(page);
+    await revealDeliverySteps(page);
     await page
       .getByTestId(`cofounder-map-add-step-${DELIVERY_PLAYBOOK_ID}`)
       .click();
@@ -407,6 +511,7 @@ test.describe("full map canvas slice 3b", () => {
     });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openOperationsMap(page);
+    await revealDeliverySteps(page);
 
     await page
       .getByTestId(
@@ -471,6 +576,7 @@ test.describe("full map canvas slice 3b", () => {
     await installWorkflowMap(page, { referenceWorkspace: true });
     await page.setViewportSize({ width: 1440, height: 900 });
     await openOperationsMap(page);
+    await revealDeliverySteps(page);
     await page
       .getByTestId(`cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`)
       .click();
@@ -603,14 +709,20 @@ test.describe("full map canvas slice 3b", () => {
         process.env.FULLMAP_S3B_SCREENSHOT_DIR ?? "test-results/fullmap-s3b";
       mkdirSync(screenshotDir, { recursive: true });
 
-      await installWorkflowMap(page, { theme });
+      await installWorkflowMap(page, { referenceWorkspace: true, theme });
       for (const viewport of [
         { height: 900, label: "1440x900", width: 1440 },
         { height: 1228, label: "2000x1228", width: 2000 },
         { height: 1117, label: "1728x1117", width: 1728 },
       ]) {
         await page.setViewportSize(viewport);
+        if (theme === "light" && viewport.label === "1440x900") {
+          await openOperationsMap(page);
+          await captureOperationsComparisonStates(page, screenshotDir);
+        }
         await openOperationsMap(page);
+        await revealDeliverySteps(page);
+        await page.mouse.move(0, 0);
         await waitForAnimations(page);
         await page.screenshot({
           animations: "disabled",

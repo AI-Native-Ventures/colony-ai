@@ -1394,9 +1394,7 @@ function CompanyMapDesktop({
   const openOperationsWorkflowId =
     activePart === "operations"
       ? (mapWindowWorkflowId ??
-        (selectedWorkflowIsPresent ? selectedOperationsWorkflowId : null) ??
-        operationsWorkflows[0]?.playbookId ??
-        null)
+        (selectedWorkflowIsPresent ? selectedOperationsWorkflowId : null))
       : null;
   const operationsLayout = useMemo(
     () =>
