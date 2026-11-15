@@ -1,12 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
-import { Bot, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import type { TeamMember } from "@/features/company-team/teamModels";
-import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
-import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type {
   FunctionId,
   FunctionSlotView,
@@ -31,13 +29,11 @@ import {
 } from "@/features/cofounder/companyMapLayout";
 import {
   companyMapJobKey,
-  companyMapOperationsWindowSearch,
   companyMapWhatsAppSearch,
   companyMapWindowSearch,
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
-import type { CompanyMapOperationsWindowTarget } from "@/features/cofounder/companyMapJobRoutes";
 import {
   companyMapJobConnectorState,
   type CompanyMapConnectorState,
@@ -46,12 +42,17 @@ import {
   buildCompanyMapOperationsLayout,
   type CompanyMapOperationsLayout,
 } from "@/features/cofounder/companyMapOperationsLayout";
-import type {
-  CompanyMapOperationsStep,
-  CompanyMapOperationsWorkflow,
-} from "@/features/cofounder/companyMapOperations";
+import type { CompanyMapOperationsWorkflow } from "@/features/cofounder/companyMapOperations";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
+import {
+  AddWorkflowNode,
+  CompanyMapOperationsNodes,
+  fullName,
+  MapDoer,
+  NeedsBadge,
+  slotForFunction,
+} from "./CompanyMapOperationsNodes";
 import { useCompanyMapCamera } from "./useCompanyMapCamera";
 import { useCompanyMapDesktopOpenPart } from "./useCompanyMapDesktopOpenPart";
 import type {
@@ -83,25 +84,6 @@ function partInLayout(
   );
 }
 
-function operationsWindowTarget(
-  step: CompanyMapOperationsStep,
-  clientChannelId: string | null | undefined,
-): CompanyMapOperationsWindowTarget {
-  if (step.target === "client-conversation" && clientChannelId) {
-    return "channel";
-  }
-  return step.target === "client-conversation" ? "operations" : step.target;
-}
-
-function fullName(member: TeamMember, profiles: ProfileLookup): string {
-  return (
-    profiles[member.pubkey.toLowerCase()]?.displayName?.trim() ||
-    member.managedAgent?.name?.trim() ||
-    member.fallbackName?.trim() ||
-    "Company agent"
-  );
-}
-
 function greetingPeriod(date = new Date()): string {
   const hour = date.getHours();
   if (hour >= 5 && hour < 12) return "Morning";
@@ -121,19 +103,6 @@ function partCountSentence(count: number): string {
     : `${count} things here need you.`;
 }
 
-function slotForFunction(
-  functionId: FunctionId,
-  slots: FunctionSlotView[],
-): FunctionSlotView {
-  return (
-    slots.find((slot) => slot.functionId === functionId) ?? {
-      functionId,
-      state: "empty",
-      leadPubkey: null,
-    }
-  );
-}
-
 function jobLead(
   functionId: FunctionId,
   jobName: string,
@@ -143,72 +112,6 @@ function jobLead(
     return { kind: "scout" };
   }
   return null;
-}
-
-function MapDoer({
-  className,
-  member,
-  name,
-  avatarUrl,
-  pubkey,
-  scout = false,
-  owner = false,
-}: {
-  className: string;
-  member?: TeamMember;
-  name?: string;
-  avatarUrl?: string | null;
-  pubkey?: string;
-  scout?: boolean;
-  owner?: boolean;
-}) {
-  if (owner) {
-    return (
-      <ProfileAvatar
-        avatarUrl={avatarUrl ?? null}
-        className={className}
-        initialsLabel={name}
-        label={name ?? "Company owner"}
-        pubkey={pubkey ?? member?.pubkey ?? null}
-        shape="circle"
-      />
-    );
-  }
-  if (scout) {
-    return (
-      <EmployeeAvatar
-        className={className}
-        name="Scout"
-        pubkey={pubkey ?? member?.pubkey ?? null}
-      />
-    );
-  }
-  if (member) {
-    const display = name ?? "Company agent";
-    return member.kind === "employee" ? (
-      <EmployeeAvatar
-        className={className}
-        instance={member.managedAgent?.avatarUrl}
-        name={display}
-        personaId={member.managedAgent?.personaId}
-        profile={avatarUrl}
-        pubkey={member.pubkey}
-      />
-    ) : (
-      <ProfileAvatar
-        avatarUrl={avatarUrl ?? null}
-        className={className}
-        label={display}
-        pubkey={member.pubkey ?? null}
-        shape="circle"
-      />
-    );
-  }
-  return (
-    <span aria-hidden="true" className={`${className} company-map-plus`}>
-      <Plus size={24} strokeWidth={2.2} />
-    </span>
-  );
 }
 
 function DoerForPart({
@@ -292,14 +195,6 @@ function JobDoer({
       <Plus size={20} strokeWidth={2.2} />
     </span>
   );
-}
-
-function NeedsBadge({ count, testId }: { count: number; testId: string }) {
-  return count > 0 ? (
-    <span className="company-map-needs-badge" data-testid={testId}>
-      {count}
-    </span>
-  ) : null;
 }
 
 function FunctionLink({
@@ -840,434 +735,6 @@ function JobNode({
   );
 }
 
-type OperationsMapNodeProps = {
-  children: ReactNode;
-  ariaLabel: string;
-  className: string;
-  dataTestId: string;
-  kind: "add-step" | "add-workflow" | "step" | "workflow";
-  mapWindowSearch: { mapJob: string };
-  target: CompanyMapOperationsWindowTarget;
-  channelId?: string | null;
-  playbookId?: string | null;
-  stepId?: string | null;
-  style: CSSProperties;
-  onBlur: (event: FocusEvent<HTMLElement>) => void;
-  onFocus: () => void;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-};
-
-function OperationsMapNodeLink({
-  children,
-  ariaLabel,
-  className,
-  dataTestId,
-  kind,
-  mapWindowSearch,
-  target,
-  channelId,
-  playbookId = null,
-  stepId = null,
-  style,
-  onBlur,
-  onFocus,
-  onMouseEnter,
-  onMouseLeave,
-}: OperationsMapNodeProps) {
-  const common = {
-    "aria-label": ariaLabel,
-    "data-map-group": "operations",
-    "data-map-kind": kind,
-    "data-map-step": stepId ?? undefined,
-    "data-map-workflow": playbookId ?? undefined,
-    "data-testid": dataTestId,
-    className,
-    onBlur,
-    onFocus,
-    onMouseEnter,
-    onMouseLeave,
-    style,
-  };
-
-  if (target === "channel" && channelId) {
-    return (
-      <Link
-        {...common}
-        params={{ channelId }}
-        search={mapWindowSearch}
-        to="/channels/$channelId"
-      >
-        {children}
-      </Link>
-    );
-  }
-  if (target === "work") {
-    return (
-      <Link
-        {...common}
-        params={{ workSurface: "work" }}
-        search={mapWindowSearch}
-        to="/$workSurface"
-      >
-        {children}
-      </Link>
-    );
-  }
-  if (target === "needs-you") {
-    return (
-      <Link {...common} search={mapWindowSearch} to="/today/needs-you">
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <Link
-      {...common}
-      params={{ function: "operations" }}
-      search={mapWindowSearch}
-      to="/company/function/$function"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function operationsWorkflowStyle(point: CompanyMapPoint): CSSProperties {
-  return {
-    left: mapPercent(point.x + 24 - 232, COMPANY_MAP_SIZE.width),
-    top: mapPercent(point.y - 24, COMPANY_MAP_SIZE.height),
-  };
-}
-
-function operationsStepStyle(point: CompanyMapPoint): CSSProperties {
-  return {
-    left: mapPercent(point.x - 212, COMPANY_MAP_SIZE.width),
-    top: mapPercent(point.y - 14, COMPANY_MAP_SIZE.height),
-  };
-}
-
-type OperationsInteractionProps = {
-  onGroupBlur: (event: FocusEvent<HTMLElement>, functionId: FunctionId) => void;
-  onGroupFocus: (functionId: FunctionId) => void;
-  onGroupMouseEnter: (functionId: FunctionId) => void;
-  onGroupMouseLeave: () => void;
-};
-
-function WorkflowNode({
-  workflow,
-  point,
-  onSelect,
-  ...interactions
-}: {
-  workflow: CompanyMapOperationsWorkflow;
-  point: CompanyMapPoint;
-  onSelect: () => void;
-} & OperationsInteractionProps) {
-  const waitingCount = workflow.steps.filter(
-    (step) => step.waitingForOwner,
-  ).length;
-  return (
-    <OperationsMapNodeLink
-      ariaLabel={
-        workflow.isNew
-          ? `${workflow.title}. New workflow waiting for your yes.`
-          : `${workflow.title}. ${workflow.runningJobCount} running ${workflow.runningJobCount === 1 ? "job" : "jobs"}.`
-      }
-      className="company-map-workflow-link"
-      dataTestId={`cofounder-map-workflow-${workflow.playbookId}`}
-      kind="workflow"
-      mapWindowSearch={companyMapOperationsWindowSearch({
-        kind: "workflow",
-        playbookId: workflow.playbookId,
-        target: "operations",
-      })}
-      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
-      onFocus={() => {
-        onSelect();
-        interactions.onGroupFocus("operations");
-      }}
-      onMouseEnter={() => {
-        onSelect();
-        interactions.onGroupMouseEnter("operations");
-      }}
-      onMouseLeave={interactions.onGroupMouseLeave}
-      playbookId={workflow.playbookId}
-      style={operationsWorkflowStyle(point)}
-      target="operations"
-    >
-      <span className="company-map-workflow-row" data-side="-1">
-        <span
-          className="company-map-workflow-disc"
-          data-new={workflow.isNew ? "true" : undefined}
-        >
-          <MapDoer className="company-map-workflow-avatar" scout />
-          <NeedsBadge
-            count={workflow.isNew ? 1 : waitingCount}
-            testId={`cofounder-map-workflow-needs-${workflow.playbookId}`}
-          />
-        </span>
-        <span className="company-map-workflow-name">{workflow.title}</span>
-      </span>
-    </OperationsMapNodeLink>
-  );
-}
-
-function WorkflowStepNode({
-  workflow,
-  step,
-  point,
-  clientChannelId,
-  members,
-  profiles,
-  slots,
-  ownerName,
-  ownerPubkey,
-  ownerAvatarUrl,
-  onSelect,
-  ...interactions
-}: {
-  workflow: CompanyMapOperationsWorkflow;
-  step: CompanyMapOperationsStep;
-  point: CompanyMapPoint;
-  clientChannelId?: string | null;
-  members: TeamMember[];
-  profiles: ProfileLookup;
-  slots: FunctionSlotView[];
-  ownerName: string;
-  ownerPubkey?: string;
-  ownerAvatarUrl?: string | null;
-  onSelect: () => void;
-} & OperationsInteractionProps) {
-  const target = operationsWindowTarget(step, clientChannelId);
-  return (
-    <OperationsMapNodeLink
-      ariaLabel={
-        step.waitingForOwner || step.target === "needs-you"
-          ? `${step.title}. Needs your yes.`
-          : `${step.title}. Opens ${
-              target === "work"
-                ? "Work"
-                : target === "channel"
-                  ? "the client conversation"
-                  : "Operations"
-            }.`
-      }
-      channelId={target === "channel" ? clientChannelId : null}
-      className="company-map-workflow-step-link"
-      dataTestId={`cofounder-map-workflow-step-${workflow.playbookId}-${step.stepId}`}
-      kind="step"
-      mapWindowSearch={companyMapOperationsWindowSearch({
-        kind: "step",
-        playbookId: workflow.playbookId,
-        stepId: step.stepId,
-        target,
-      })}
-      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
-      onFocus={() => {
-        onSelect();
-        interactions.onGroupFocus("operations");
-      }}
-      onMouseEnter={() => {
-        onSelect();
-        interactions.onGroupMouseEnter("operations");
-      }}
-      onMouseLeave={interactions.onGroupMouseLeave}
-      playbookId={workflow.playbookId}
-      stepId={step.stepId}
-      style={operationsStepStyle(point)}
-      target={target}
-    >
-      <span className="company-map-workflow-step-row" data-side="-1">
-        <span
-          className="company-map-workflow-step-disc"
-          data-owner={step.owner.kind}
-          data-target={target}
-        >
-          <WorkflowStepDoer
-            members={members}
-            ownerAvatarUrl={ownerAvatarUrl}
-            ownerName={ownerName}
-            ownerPubkey={ownerPubkey}
-            profiles={profiles}
-            step={step}
-            stepNumber={workflow.steps.indexOf(step) + 1}
-            slots={slots}
-          />
-          <NeedsBadge
-            count={step.waitingForOwner || step.target === "needs-you" ? 1 : 0}
-            testId={`cofounder-map-workflow-step-needs-${workflow.playbookId}-${step.stepId}`}
-          />
-        </span>
-        <span className="company-map-workflow-step-name">{step.title}</span>
-      </span>
-    </OperationsMapNodeLink>
-  );
-}
-
-function WorkflowStepDoer({
-  step,
-  stepNumber,
-  members,
-  profiles,
-  slots,
-  ownerName,
-  ownerPubkey,
-  ownerAvatarUrl,
-}: {
-  step: CompanyMapOperationsStep;
-  stepNumber: number;
-  members: TeamMember[];
-  profiles: ProfileLookup;
-  slots: FunctionSlotView[];
-  ownerName: string;
-  ownerPubkey?: string;
-  ownerAvatarUrl?: string | null;
-}) {
-  const className = "company-map-workflow-step-avatar";
-  if (step.owner.kind === "owner") {
-    return (
-      <MapDoer
-        avatarUrl={ownerAvatarUrl}
-        className={className}
-        name={ownerName}
-        owner
-        pubkey={ownerPubkey}
-      />
-    );
-  }
-
-  const leadPubkey =
-    step.owner.kind === "lead_agent" ? step.owner.agentPubkey : null;
-  const functionSlot =
-    step.owner.kind === "function" && step.owner.functionId
-      ? slotForFunction(step.owner.functionId, slots)
-      : null;
-  const assignedPubkey =
-    leadPubkey ??
-    (functionSlot?.state === "filled" ? functionSlot.leadPubkey : null);
-  const member = assignedPubkey
-    ? members.find(
-        (candidate) =>
-          candidate.pubkey.toLowerCase() === assignedPubkey.toLowerCase(),
-      )
-    : undefined;
-  if (member) {
-    return (
-      <MapDoer
-        avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
-        className={className}
-        member={member}
-        name={fullName(member, profiles)}
-      />
-    );
-  }
-  if (functionSlot?.state === "covered_by_scout") {
-    return <MapDoer className={className} scout />;
-  }
-  if (step.owner.kind === "worker") {
-    return (
-      <span
-        aria-hidden="true"
-        className={`${className} company-map-workflow-step-worker`}
-      >
-        <Bot aria-hidden="true" size={14} strokeWidth={2.1} />
-      </span>
-    );
-  }
-  return <span aria-hidden="true">{stepNumber}</span>;
-}
-
-function AddStepNode({
-  workflow,
-  point,
-  onSelect,
-  ...interactions
-}: {
-  workflow: CompanyMapOperationsWorkflow;
-  point: CompanyMapPoint;
-  onSelect: () => void;
-} & OperationsInteractionProps) {
-  return (
-    <OperationsMapNodeLink
-      ariaLabel={`Add a step to ${workflow.title}. Opens Operations.`}
-      className="company-map-workflow-step-link"
-      dataTestId={`cofounder-map-add-step-${workflow.playbookId}`}
-      kind="add-step"
-      mapWindowSearch={companyMapOperationsWindowSearch({
-        kind: "add-step",
-        playbookId: workflow.playbookId,
-        target: "operations",
-      })}
-      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
-      onFocus={() => {
-        onSelect();
-        interactions.onGroupFocus("operations");
-      }}
-      onMouseEnter={() => {
-        onSelect();
-        interactions.onGroupMouseEnter("operations");
-      }}
-      onMouseLeave={interactions.onGroupMouseLeave}
-      playbookId={workflow.playbookId}
-      style={operationsStepStyle(point)}
-      target="operations"
-    >
-      <span className="company-map-workflow-step-row" data-side="-1">
-        <span className="company-map-workflow-step-disc" data-add="true">
-          <Plus aria-hidden="true" size={13} strokeWidth={2.2} />
-        </span>
-        <span className="company-map-workflow-step-name" data-add="true">
-          Add a step
-        </span>
-      </span>
-    </OperationsMapNodeLink>
-  );
-}
-
-function AddWorkflowNode({
-  point,
-  scoutChannelId,
-  ...interactions
-}: {
-  point: CompanyMapPoint;
-  scoutChannelId?: string | null;
-} & OperationsInteractionProps) {
-  const target = scoutChannelId ? "channel" : "operations";
-  return (
-    <OperationsMapNodeLink
-      ariaLabel={
-        scoutChannelId
-          ? "Add a workflow. Opens your conversation with Scout."
-          : "Add a workflow. Opens Operations."
-      }
-      channelId={scoutChannelId}
-      className="company-map-workflow-link"
-      dataTestId="cofounder-map-add-workflow"
-      kind="add-workflow"
-      mapWindowSearch={companyMapOperationsWindowSearch({
-        kind: "add-workflow",
-        target,
-      })}
-      onBlur={(event) => interactions.onGroupBlur(event, "operations")}
-      onFocus={() => interactions.onGroupFocus("operations")}
-      onMouseEnter={() => interactions.onGroupMouseEnter("operations")}
-      onMouseLeave={interactions.onGroupMouseLeave}
-      style={operationsWorkflowStyle(point)}
-      target={target}
-    >
-      <span className="company-map-workflow-row" data-side="-1">
-        <span className="company-map-workflow-disc" data-add="true">
-          <Plus aria-hidden="true" size={16} strokeWidth={2.2} />
-        </span>
-        <span className="company-map-workflow-name" data-add="true">
-          Add a workflow
-        </span>
-      </span>
-    </OperationsMapNodeLink>
-  );
-}
-
 function PartNode({
   functionId,
   active,
@@ -1588,92 +1055,23 @@ function CompanyMapDesktop({
                 {functionId === "operations" &&
                 activePart === "operations" &&
                 operationsLayout ? (
-                  <>
-                    {operationsLayout.workflows.map((position) => {
-                      const workflow = operationsWorkflows.find(
-                        (candidate) =>
-                          candidate.playbookId === position.playbookId,
-                      );
-                      return workflow ? (
-                        <WorkflowNode
-                          key={`workflow:${workflow.playbookId}`}
-                          onGroupBlur={blurPart}
-                          onGroupFocus={focusPart}
-                          onGroupMouseEnter={enterPart}
-                          onGroupMouseLeave={closeHoverSoon}
-                          onSelect={() =>
-                            setSelectedOperationsWorkflowId(workflow.playbookId)
-                          }
-                          point={position.point}
-                          workflow={workflow}
-                        />
-                      ) : null;
-                    })}
-                    {operationsLayout.steps.map((position) => {
-                      const workflow = operationsWorkflows.find(
-                        (candidate) =>
-                          candidate.playbookId === position.playbookId,
-                      );
-                      const step = workflow?.steps.find(
-                        (candidate) => candidate.stepId === position.stepId,
-                      );
-                      return workflow && step ? (
-                        <WorkflowStepNode
-                          clientChannelId={clientChannelId}
-                          key={`step:${workflow.playbookId}:${step.stepId}`}
-                          members={members}
-                          onGroupBlur={blurPart}
-                          onGroupFocus={focusPart}
-                          onGroupMouseEnter={enterPart}
-                          onGroupMouseLeave={closeHoverSoon}
-                          onSelect={() =>
-                            setSelectedOperationsWorkflowId(workflow.playbookId)
-                          }
-                          ownerAvatarUrl={ownerAvatarUrl}
-                          ownerName={ownerName}
-                          ownerPubkey={ownerPubkey}
-                          point={position.point}
-                          profiles={profiles}
-                          slots={slots}
-                          step={step}
-                          workflow={workflow}
-                        />
-                      ) : null;
-                    })}
-                    {operationsLayout.addStep
-                      ? (() => {
-                          const workflow = operationsWorkflows.find(
-                            (candidate) =>
-                              candidate.playbookId ===
-                              operationsLayout.addStep?.playbookId,
-                          );
-                          return workflow ? (
-                            <AddStepNode
-                              key={`add-step:${workflow.playbookId}`}
-                              onGroupBlur={blurPart}
-                              onGroupFocus={focusPart}
-                              onGroupMouseEnter={enterPart}
-                              onGroupMouseLeave={closeHoverSoon}
-                              onSelect={() =>
-                                setSelectedOperationsWorkflowId(
-                                  workflow.playbookId,
-                                )
-                              }
-                              point={operationsLayout.addStep.point}
-                              workflow={workflow}
-                            />
-                          ) : null;
-                        })()
-                      : null}
-                    <AddWorkflowNode
-                      onGroupBlur={blurPart}
-                      onGroupFocus={focusPart}
-                      onGroupMouseEnter={enterPart}
-                      onGroupMouseLeave={closeHoverSoon}
-                      point={operationsLayout.addWorkflow.point}
-                      scoutChannelId={scoutChannelId}
-                    />
-                  </>
+                  <CompanyMapOperationsNodes
+                    clientChannelId={clientChannelId}
+                    members={members}
+                    onGroupBlur={blurPart}
+                    onGroupFocus={focusPart}
+                    onGroupMouseEnter={enterPart}
+                    onGroupMouseLeave={closeHoverSoon}
+                    onSelectWorkflow={setSelectedOperationsWorkflowId}
+                    operationsLayout={operationsLayout}
+                    operationsWorkflows={operationsWorkflows}
+                    ownerAvatarUrl={ownerAvatarUrl}
+                    ownerName={ownerName}
+                    ownerPubkey={ownerPubkey}
+                    profiles={profiles}
+                    scoutChannelId={scoutChannelId}
+                    slots={slots}
+                  />
                 ) : null}
                 {functionId === "operations" &&
                 activePart === "operations" &&
