@@ -4,6 +4,7 @@ import type {
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
 import type { CompanyMapWindowJob } from "@/features/cofounder/companyMapJobRoutes";
+import type { CompanyMapOperationsWorkflow } from "@/features/cofounder/companyMapOperations";
 
 export type ProfileLookup = Record<
   string,
@@ -30,6 +31,12 @@ export type CompanyMapBoardProps = {
   scoutPubkey?: string | null;
   summary: CompanyMapSummary | undefined;
   whatsAppChannelId?: string | null;
+  /** Data-backed Operations workflows. Phone keeps the established static map. */
+  operationsWorkflows?: readonly CompanyMapOperationsWorkflow[];
+  /** A real Scout conversation for the data-backed workflow affordances. */
+  scoutChannelId?: string | null;
+  /** A scoped client channel when the active company explicitly provides one. */
+  clientChannelId?: string | null;
   mapWindowDepth?: number;
   mapWindowJob?: CompanyMapWindowJob | null;
   onMapWindowClose?: () => void;

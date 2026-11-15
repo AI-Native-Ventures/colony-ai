@@ -1,12 +1,10 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 import type { TeamMember } from "@/features/company-team/teamModels";
-import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { WorkspaceMark } from "@/features/communities/ui/WorkspaceMark";
-import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import type {
   FunctionId,
   FunctionSlotView,
@@ -24,9 +22,9 @@ import {
   COMPANY_MAP_CENTER,
   COMPANY_MAP_LAYOUT,
   COMPANY_MAP_SIZE,
-  companyMapJobPosition as jobPosition,
-  companyMapPartSide,
-  companyMapPartPosition as partPosition,
+  type CompanyMapJobPosition,
+  type CompanyMapPartPosition,
+  type CompanyMapPoint,
   mapPercent,
 } from "@/features/cofounder/companyMapLayout";
 import {
@@ -40,8 +38,21 @@ import {
   companyMapJobConnectorState,
   type CompanyMapConnectorState,
 } from "@/features/cofounder/companyMapConnectorState";
+import {
+  buildCompanyMapOperationsLayout,
+  type CompanyMapOperationsLayout,
+} from "@/features/cofounder/companyMapOperationsLayout";
+import type { CompanyMapOperationsWorkflow } from "@/features/cofounder/companyMapOperations";
 import { CompanyMapPhone } from "./CompanyMapPhone";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
+import {
+  AddWorkflowNode,
+  CompanyMapOperationsNodes,
+  fullName,
+  MapDoer,
+  NeedsBadge,
+  slotForFunction,
+} from "./CompanyMapOperationsNodes";
 import { useCompanyMapCamera } from "./useCompanyMapCamera";
 import { useCompanyMapDesktopOpenPart } from "./useCompanyMapDesktopOpenPart";
 import type {
@@ -52,12 +63,24 @@ import type {
 import "./companyMap.css";
 type StageStyle = CSSProperties & { "--company-map-transform": string };
 
-function fullName(member: TeamMember, profiles: ProfileLookup): string {
+const STATIC_OPERATIONS_ADD_WORKFLOW_POINT = { x: 220, y: 271 } as const;
+
+type CompanyMapLayoutSurface = {
+  jobs: readonly CompanyMapJobPosition[];
+  parts: readonly CompanyMapPartPosition[];
+};
+
+function partInLayout(
+  layout: CompanyMapLayoutSurface,
+  functionId: FunctionId,
+): CompanyMapPartPosition {
   return (
-    profiles[member.pubkey.toLowerCase()]?.displayName?.trim() ||
-    member.managedAgent?.name?.trim() ||
-    member.fallbackName?.trim() ||
-    "Company agent"
+    layout.parts.find((part) => part.functionId === functionId) ??
+    COMPANY_MAP_LAYOUT.parts.find((part) => part.functionId === functionId) ?? {
+      functionId,
+      point: { x: COMPANY_MAP_SIZE.width / 2, y: COMPANY_MAP_SIZE.height / 2 },
+      side: functionId === "sales" || functionId === "finance" ? 1 : -1,
+    }
   );
 }
 
@@ -80,19 +103,6 @@ function partCountSentence(count: number): string {
     : `${count} things here need you.`;
 }
 
-function slotForFunction(
-  functionId: FunctionId,
-  slots: FunctionSlotView[],
-): FunctionSlotView {
-  return (
-    slots.find((slot) => slot.functionId === functionId) ?? {
-      functionId,
-      state: "empty",
-      leadPubkey: null,
-    }
-  );
-}
-
 function jobLead(
   functionId: FunctionId,
   jobName: string,
@@ -102,72 +112,6 @@ function jobLead(
     return { kind: "scout" };
   }
   return null;
-}
-
-function MapDoer({
-  className,
-  member,
-  name,
-  avatarUrl,
-  pubkey,
-  scout = false,
-  owner = false,
-}: {
-  className: string;
-  member?: TeamMember;
-  name?: string;
-  avatarUrl?: string | null;
-  pubkey?: string;
-  scout?: boolean;
-  owner?: boolean;
-}) {
-  if (owner) {
-    return (
-      <ProfileAvatar
-        avatarUrl={avatarUrl ?? null}
-        className={className}
-        initialsLabel={name}
-        label={name ?? "Company owner"}
-        pubkey={pubkey ?? member?.pubkey ?? null}
-        shape="circle"
-      />
-    );
-  }
-  if (scout) {
-    return (
-      <EmployeeAvatar
-        className={className}
-        name="Scout"
-        pubkey={pubkey ?? member?.pubkey ?? null}
-      />
-    );
-  }
-  if (member) {
-    const display = name ?? "Company agent";
-    return member.kind === "employee" ? (
-      <EmployeeAvatar
-        className={className}
-        instance={member.managedAgent?.avatarUrl}
-        name={display}
-        personaId={member.managedAgent?.personaId}
-        profile={avatarUrl}
-        pubkey={member.pubkey}
-      />
-    ) : (
-      <ProfileAvatar
-        avatarUrl={avatarUrl ?? null}
-        className={className}
-        label={display}
-        pubkey={member.pubkey ?? null}
-        shape="circle"
-      />
-    );
-  }
-  return (
-    <span aria-hidden="true" className={`${className} company-map-plus`}>
-      <Plus size={24} strokeWidth={2.2} />
-    </span>
-  );
 }
 
 function DoerForPart({
@@ -251,14 +195,6 @@ function JobDoer({
       <Plus size={20} strokeWidth={2.2} />
     </span>
   );
-}
-
-function NeedsBadge({ count, testId }: { count: number; testId: string }) {
-  return count > 0 ? (
-    <span className="company-map-needs-badge" data-testid={testId}>
-      {count}
-    </span>
-  ) : null;
 }
 
 function FunctionLink({
@@ -415,11 +351,17 @@ function MapConnectors({
   activePart,
   slots,
   liveFunctionIds,
+  layout,
+  operationsLayout,
+  operationsWorkflows,
 }: {
   summary: MapSummary | undefined;
   activePart: FunctionId | null;
   slots: FunctionSlotView[];
   liveFunctionIds: readonly FunctionId[];
+  layout: CompanyMapLayoutSurface;
+  operationsLayout: CompanyMapOperationsLayout | null;
+  operationsWorkflows: readonly CompanyMapOperationsWorkflow[];
 }) {
   return (
     <svg
@@ -428,10 +370,8 @@ function MapConnectors({
       viewBox={`0 0 ${COMPANY_MAP_SIZE.width} ${COMPANY_MAP_SIZE.height}`}
     >
       {FUNCTION_ORDER.map((functionId) => {
-        const position = partPosition(functionId);
-        const side = COMPANY_MAP_LAYOUT.parts.find(
-          (part) => part.functionId === functionId,
-        )?.side;
+        const part = partInLayout(layout, functionId);
+        const { point: position, side } = part;
         const slot = slotForFunction(functionId, slots);
         const state: CompanyMapConnectorState = liveFunctionIds.includes(
           functionId,
@@ -457,67 +397,84 @@ function MapConnectors({
         );
       })}
       {activePart
-        ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => {
-            const position = jobPosition(activePart, name);
-            const side = COMPANY_MAP_LAYOUT.jobs.find(
-              (job) => job.functionId === activePart && job.name === name,
-            )?.side;
-            const state = companyMapJobConnectorState(
-              activePart,
-              name,
-              slotForFunction(activePart, slots).state,
-              liveFunctionIds.includes(activePart),
-              countForJob(summary, activePart, name) > 0,
+        ? layout.jobs
+            .filter((job) => job.functionId === activePart)
+            .map((job) => {
+              const { name, point: position, side } = job;
+              const state = companyMapJobConnectorState(
+                activePart,
+                name,
+                slotForFunction(activePart, slots).state,
+                liveFunctionIds.includes(activePart),
+                countForJob(summary, activePart, name) > 0,
+              );
+              const part = partInLayout(layout, activePart).point;
+              return (
+                <path
+                  className="company-map-job-line"
+                  d={connectorPath(
+                    part.x + (side ?? 1) * 46,
+                    part.y,
+                    position.x - (side ?? 1) * 26,
+                    position.y,
+                  )}
+                  data-map-connector
+                  data-map-target={`${activePart}:${name}`}
+                  data-state={state}
+                  key={name}
+                />
+              );
+            })
+        : layout.jobs
+            .filter((job) => countForJob(summary, job.functionId, job.name) > 0)
+            .map((job) => {
+              const { functionId, name, point: position, side } = job;
+              const part = partInLayout(layout, functionId).point;
+              return (
+                <path
+                  className="company-map-job-line"
+                  d={connectorPath(
+                    part.x + (side ?? 1) * 46,
+                    part.y,
+                    position.x - (side ?? 1) * 26,
+                    position.y,
+                  )}
+                  data-map-connector
+                  data-map-target={`${functionId}:${name}`}
+                  data-state={companyMapJobConnectorState(
+                    functionId,
+                    name,
+                    slotForFunction(functionId, slots).state,
+                    liveFunctionIds.includes(functionId),
+                    countForJob(summary, functionId, name) > 0,
+                  )}
+                  key={`${functionId}:${name}`}
+                />
+              );
+            })}
+      {activePart === "operations" && operationsLayout
+        ? operationsLayout.workflows.map((position) => {
+            const workflow = operationsWorkflows.find(
+              (candidate) => candidate.playbookId === position.playbookId,
             );
-            const part = partPosition(activePart);
+            const part = partInLayout(layout, "operations").point;
             return (
               <path
                 className="company-map-job-line"
                 d={connectorPath(
-                  part.x + (side ?? 1) * 46,
+                  part.x - 46,
                   part.y,
-                  position.x - (side ?? 1) * 26,
-                  position.y,
+                  position.point.x + 26,
+                  position.point.y,
                 )}
                 data-map-connector
-                data-map-target={`${activePart}:${name}`}
-                data-state={state}
-                key={name}
+                data-map-target={`operations:${position.playbookId}`}
+                data-state={workflow?.isNew ? "seat" : "on"}
+                key={`operations:${position.playbookId}`}
               />
             );
           })
-        : FUNCTION_ORDER.flatMap((functionId) =>
-            FUNCTION_DETAILS[functionId].subFunctions
-              .filter((name) => countForJob(summary, functionId, name) > 0)
-              .map((name) => {
-                const position = jobPosition(functionId, name);
-                const side = COMPANY_MAP_LAYOUT.jobs.find(
-                  (job) => job.functionId === functionId && job.name === name,
-                )?.side;
-                const part = partPosition(functionId);
-                return (
-                  <path
-                    className="company-map-job-line"
-                    d={connectorPath(
-                      part.x + (side ?? 1) * 46,
-                      part.y,
-                      position.x - (side ?? 1) * 26,
-                      position.y,
-                    )}
-                    data-map-connector
-                    data-map-target={`${functionId}:${name}`}
-                    data-state={companyMapJobConnectorState(
-                      functionId,
-                      name,
-                      slotForFunction(functionId, slots).state,
-                      liveFunctionIds.includes(functionId),
-                      countForJob(summary, functionId, name) > 0,
-                    )}
-                    key={`${functionId}:${name}`}
-                  />
-                );
-              }),
-          )}
+        : null}
     </svg>
   );
 }
@@ -710,6 +667,7 @@ function JobNode({
   count,
   slot,
   side,
+  point,
   members,
   profiles,
   whatsappChannelId,
@@ -723,6 +681,7 @@ function JobNode({
   count: number;
   slot: FunctionSlotView;
   side: -1 | 1;
+  point: CompanyMapPoint;
   members: TeamMember[];
   profiles: ProfileLookup;
   whatsappChannelId?: string | null;
@@ -731,7 +690,6 @@ function JobNode({
   onGroupMouseEnter: (functionId: FunctionId) => void;
   onGroupMouseLeave: () => void;
 }) {
-  const point = jobPosition(functionId, name);
   const left = side === 1 ? point.x - 24 : point.x + 24 - 232;
   const style = {
     left: mapPercent(left, COMPANY_MAP_SIZE.width),
@@ -783,6 +741,7 @@ function PartNode({
   faded,
   count,
   slot,
+  point,
   members,
   profiles,
   onClick,
@@ -796,6 +755,7 @@ function PartNode({
   faded: boolean;
   count: number;
   slot: FunctionSlotView;
+  point: CompanyMapPoint;
   members: TeamMember[];
   profiles: ProfileLookup;
   onClick: () => void;
@@ -805,7 +765,6 @@ function PartNode({
   onMouseLeave: () => void;
 }) {
   const detail = FUNCTION_DETAILS[functionId];
-  const point = partPosition(functionId);
   const style = {
     left: mapPercent(point.x - 80, COMPANY_MAP_SIZE.width),
     top: mapPercent(point.y - 44, COMPANY_MAP_SIZE.height),
@@ -872,6 +831,9 @@ function CompanyMapDesktop({
   liveFunctionIds,
   summary,
   whatsAppChannelId: whatsappChannelId,
+  operationsWorkflows = [],
+  scoutChannelId,
+  clientChannelId,
   mapWindowDepth = 0,
   mapWindowJob = null,
   onMapWindowClose,
@@ -887,6 +849,35 @@ function CompanyMapDesktop({
     togglePinnedPart,
   } = useCompanyMapDesktopOpenPart();
   const activePart = mapWindowJob?.functionId ?? interactiveActivePart;
+  const [selectedOperationsWorkflowId, setSelectedOperationsWorkflowId] =
+    useState<string | null>(null);
+  const mapWindowWorkflowId =
+    mapWindowJob && "playbookId" in mapWindowJob
+      ? mapWindowJob.playbookId
+      : null;
+  const selectedWorkflowIsPresent = operationsWorkflows.some(
+    (workflow) => workflow.playbookId === selectedOperationsWorkflowId,
+  );
+  const openOperationsWorkflowId =
+    activePart === "operations"
+      ? (mapWindowWorkflowId ??
+        (selectedWorkflowIsPresent ? selectedOperationsWorkflowId : null))
+      : null;
+  const operationsLayout = useMemo(
+    () =>
+      operationsWorkflows.length > 0
+        ? buildCompanyMapOperationsLayout({
+            openPlaybookId: openOperationsWorkflowId,
+            workflows: operationsWorkflows.map((workflow) => ({
+              playbookId: workflow.playbookId,
+              stepIds: workflow.steps.map((step) => step.stepId),
+            })),
+          })
+        : null,
+    [openOperationsWorkflowId, operationsWorkflows],
+  );
+  const layout: CompanyMapLayoutSurface =
+    operationsLayout ?? COMPANY_MAP_LAYOUT;
   const mapWindowOpen = mapWindowJob !== null;
   const {
     camera,
@@ -914,42 +905,26 @@ function CompanyMapDesktop({
     wasMapWindowOpen.current = mapWindowOpen;
   }, [clearOpenPart, mapWindowOpen]);
   const mapWindowPart = mapWindowJob
-    ? partPosition(mapWindowJob.functionId)
+    ? partInLayout(layout, mapWindowJob.functionId)
     : null;
-  const mapWindowSide = mapWindowJob
-    ? companyMapPartSide(mapWindowJob.functionId)
-    : null;
+  const mapWindowSide = mapWindowPart?.side ?? null;
   const trailDepth = Math.max(0, Math.floor(mapWindowDepth));
   const stageStyle: StageStyle = {
     "--company-map-transform": mapWindowPart
-      ? `translate(${(mapWindowSide === -1 ? 1316 : 84) - mapWindowPart.x + (mapWindowSide === -1 ? trailDepth : -trailDepth) * 1260}px, ${100 - mapWindowPart.y}px) scale(1)`
+      ? `translate(${(mapWindowSide === -1 ? 1316 : 84) - mapWindowPart.point.x + (mapWindowSide === -1 ? trailDepth : -trailDepth) * 1260}px, ${100 - mapWindowPart.point.y}px) scale(1)`
       : `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
   };
   const jobs = activePart
-    ? FUNCTION_DETAILS[activePart].subFunctions.map((name) => ({
-        functionId: activePart,
-        name,
-        point: jobPosition(activePart, name),
-        side:
-          COMPANY_MAP_LAYOUT.jobs.find(
-            (job) => job.functionId === activePart && job.name === name,
-          )?.side ?? 1,
-      }))
+    ? layout.jobs.filter((job) => job.functionId === activePart)
     : summary
-      ? FUNCTION_ORDER.flatMap((functionId) =>
-          FUNCTION_DETAILS[functionId].subFunctions
-            .filter((name) => countForJob(summary, functionId, name) > 0)
-            .map((name) => ({
-              functionId,
-              name,
-              point: jobPosition(functionId, name),
-              side:
-                COMPANY_MAP_LAYOUT.jobs.find(
-                  (job) => job.functionId === functionId && job.name === name,
-                )?.side ?? 1,
-            })),
+      ? layout.jobs.filter(
+          (job) => countForJob(summary, job.functionId, job.name) > 0,
         )
       : [];
+  const mapHint =
+    activePart === "operations" && operationsWorkflows.length > 0
+      ? "Tap a workflow or a step. Its screen opens right here."
+      : "Point at a part to open it. Tap a job to go in.";
 
   return (
     <div className="company-map-desktop" data-testid="cofounder-map-desktop">
@@ -1017,7 +992,10 @@ function CompanyMapDesktop({
           >
             <MapConnectors
               activePart={activePart}
+              layout={layout}
               liveFunctionIds={liveFunctionIds}
+              operationsLayout={operationsLayout}
+              operationsWorkflows={operationsWorkflows}
               slots={slots}
               summary={summary}
             />
@@ -1028,8 +1006,8 @@ function CompanyMapDesktop({
               style={
                 activePart
                   ? {
-                      left: partPosition(activePart).x - 50,
-                      top: partPosition(activePart).y - 50,
+                      left: partInLayout(layout, activePart).point.x - 50,
+                      top: partInLayout(layout, activePart).point.y - 50,
                       width: 100,
                       height: 100,
                     }
@@ -1054,6 +1032,7 @@ function CompanyMapDesktop({
                   onFocus={() => focusPart(functionId)}
                   onMouseEnter={() => enterPart(functionId)}
                   onMouseLeave={closeHoverSoon}
+                  point={partInLayout(layout, functionId).point}
                   profiles={profiles}
                   slot={slotForFunction(functionId, slots)}
                 />
@@ -1070,12 +1049,40 @@ function CompanyMapDesktop({
                       onGroupFocus={focusPart}
                       onGroupMouseEnter={enterPart}
                       onGroupMouseLeave={closeHoverSoon}
+                      point={job.point}
                       profiles={profiles}
                       side={job.side}
                       slot={slotForFunction(job.functionId, slots)}
                       whatsappChannelId={whatsappChannelId}
                     />
                   ))}
+                {functionId === "operations" &&
+                activePart === "operations" &&
+                operationsLayout ? (
+                  <CompanyMapOperationsNodes
+                    clientChannelId={clientChannelId}
+                    onGroupBlur={blurPart}
+                    onGroupFocus={focusPart}
+                    onGroupMouseEnter={enterPart}
+                    onGroupMouseLeave={closeHoverSoon}
+                    onSelectWorkflow={setSelectedOperationsWorkflowId}
+                    operationsLayout={operationsLayout}
+                    operationsWorkflows={operationsWorkflows}
+                    scoutChannelId={scoutChannelId}
+                  />
+                ) : null}
+                {functionId === "operations" &&
+                activePart === "operations" &&
+                operationsWorkflows.length === 0 ? (
+                  <AddWorkflowNode
+                    onGroupBlur={blurPart}
+                    onGroupFocus={focusPart}
+                    onGroupMouseEnter={enterPart}
+                    onGroupMouseLeave={closeHoverSoon}
+                    point={STATIC_OPERATIONS_ADD_WORKFLOW_POINT}
+                    scoutChannelId={scoutChannelId}
+                  />
+                ) : null}
                 <CompanyMapHoverBridge
                   functionId={functionId}
                   onEnter={() => enterPart(functionId)}
@@ -1152,9 +1159,7 @@ function CompanyMapDesktop({
               +
             </button>
           </div>
-          <p className="company-map-note">
-            Point at a part to open it. Tap a job to go in.
-          </p>
+          <p className="company-map-note">{mapHint}</p>
         </div>
       </div>
       <span className="sr-only" data-testid="cofounder-map-zoom-level">

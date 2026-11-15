@@ -8,7 +8,10 @@
  */
 type Crumb = { label: string };
 
-export type MapShellTrail = { part: string; job: string } | { screen: string };
+export type MapShellTrail =
+  | { part: string; job: string }
+  | { part: string; workflow: string; step?: string }
+  | { screen: string };
 
 /** Optional screen data used when a route ID is not enough to identify its part. */
 export type MapShellTrailContext = {

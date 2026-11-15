@@ -278,7 +278,13 @@ function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
   );
 }
 
-export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
+export function FunctionScreen({
+  functionId,
+  selectedOperationsPlaybookId,
+}: {
+  functionId: FunctionId;
+  selectedOperationsPlaybookId?: string;
+}) {
   const routeBack = useRouteBack({
     to: "/company/map",
     label: "Company map",
@@ -467,6 +473,7 @@ export function FunctionScreen({ functionId }: { functionId: FunctionId }) {
               {goals}
             </div>
           }
+          selectedPlaybookId={selectedOperationsPlaybookId}
         />
       </div>
     );

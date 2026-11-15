@@ -19,13 +19,52 @@ export type CompanyMapJobRoute =
 export type CompanyMapWhatsAppTab = "needs-you" | "chats" | "pipeline";
 
 /** A screen-backed job that can open in the persistent map canvas window. */
-export type CompanyMapWindowJob = {
+export type CompanyMapStaticWindowJob = {
   functionId: Extract<
     FunctionId,
     "sales" | "finance" | "operations" | "customer_success"
   >;
   jobName: string;
 };
+
+/** The real route category that a data-backed Operations map node can use. */
+export type CompanyMapOperationsWindowTarget =
+  | "channel"
+  | "needs-you"
+  | "operations"
+  | "work";
+
+/** A persisted workflow or workflow-step map root. */
+export type CompanyMapOperationsWindowJob = {
+  functionId: "operations";
+  jobName: "Operations";
+  kind: "add-step" | "add-workflow" | "step" | "workflow";
+  playbookId: string | null;
+  stepId: string | null;
+  target: CompanyMapOperationsWindowTarget;
+};
+
+export type CompanyMapOperationsWindowSearchInput =
+  | {
+      kind: "add-step" | "workflow";
+      playbookId: string;
+      target: "operations";
+    }
+  | {
+      kind: "add-workflow";
+      target: "channel" | "operations";
+    }
+  | {
+      kind: "step";
+      playbookId: string;
+      stepId: string;
+      target: CompanyMapOperationsWindowTarget;
+    };
+
+/** A screen-backed static job or a real Operations workflow map node. */
+export type CompanyMapWindowJob =
+  | CompanyMapOperationsWindowJob
+  | CompanyMapStaticWindowJob;
 
 const ROUTES: Record<string, CompanyMapJobRoute> = {
   "sales:Lead finding": { kind: "app", to: "/discovery" },
@@ -66,7 +105,7 @@ const ROUTES: Record<string, CompanyMapJobRoute> = {
   "brand:Marketing": { kind: "part", functionId: "brand" },
 };
 
-const MAP_WINDOW_JOBS: readonly CompanyMapWindowJob[] = [
+const MAP_WINDOW_JOBS: readonly CompanyMapStaticWindowJob[] = [
   { functionId: "sales", jobName: "Lead finding" },
   { functionId: "sales", jobName: "Outreach" },
   { functionId: "sales", jobName: "Follow-ups" },
@@ -131,6 +170,29 @@ export function companyMapWindowSearch(
   return Object.hasOwn(ROUTES, key) ? { mapJob: key } : undefined;
 }
 
+/**
+ * Stores a data-backed Operations workflow node as a bounded map-window root.
+ * The node's screen target remains separate from its label, so a renamed
+ * playbook cannot turn a saved URL into a new route.
+ */
+export function companyMapOperationsWindowSearch(
+  input: CompanyMapOperationsWindowSearchInput,
+): { mapJob: string } {
+  switch (input.kind) {
+    case "add-workflow":
+      return { mapJob: `operations:add-workflow:${input.target}` };
+    case "add-step":
+    case "workflow":
+      return {
+        mapJob: `operations:${input.kind}:${input.playbookId}:${input.target}`,
+      };
+    case "step":
+      return {
+        mapJob: `operations:step:${input.playbookId}:${input.stepId}:${input.target}`,
+      };
+  }
+}
+
 /** Builds the map-job trail search for a channel desk or its setup fallback. */
 export function companyMapWhatsAppSearch(
   mapJob: string | undefined,
@@ -154,10 +216,128 @@ export function companyMapWhatsAppSearch(
 
 function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
   if (typeof value !== "string") return null;
+  const staticJob = MAP_WINDOW_JOBS.find(
+    (job) => companyMapJobKey(job.functionId, job.jobName) === value,
+  );
+  return staticJob ?? operationsWindowJobFromKey(value);
+}
+
+const PLAYBOOK_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
+const STEP_ID_PATTERN = /^[a-z0-9_-]{1,32}$/;
+
+function isOperationsTarget(
+  value: string,
+): value is CompanyMapOperationsWindowTarget {
   return (
-    MAP_WINDOW_JOBS.find(
-      (job) => companyMapJobKey(job.functionId, job.jobName) === value,
-    ) ?? null
+    value === "channel" ||
+    value === "needs-you" ||
+    value === "operations" ||
+    value === "work"
+  );
+}
+
+function operationsWindowJobFromKey(
+  value: string,
+): CompanyMapOperationsWindowJob | null {
+  const segments = value.split(":");
+  if (segments[0] !== "operations") return null;
+
+  if (
+    (segments[1] === "add-step" || segments[1] === "workflow") &&
+    segments.length === 4 &&
+    PLAYBOOK_ID_PATTERN.test(segments[2]) &&
+    segments[3] === "operations"
+  ) {
+    return {
+      functionId: "operations",
+      jobName: "Operations",
+      kind: segments[1],
+      playbookId: segments[2],
+      stepId: null,
+      target: "operations",
+    };
+  }
+
+  if (
+    segments[1] === "add-workflow" &&
+    segments.length === 3 &&
+    (segments[2] === "channel" || segments[2] === "operations")
+  ) {
+    return {
+      functionId: "operations",
+      jobName: "Operations",
+      kind: "add-workflow",
+      playbookId: null,
+      stepId: null,
+      target: segments[2],
+    };
+  }
+
+  if (
+    segments[1] === "step" &&
+    segments.length === 5 &&
+    PLAYBOOK_ID_PATTERN.test(segments[2]) &&
+    STEP_ID_PATTERN.test(segments[3]) &&
+    isOperationsTarget(segments[4])
+  ) {
+    return {
+      functionId: "operations",
+      jobName: "Operations",
+      kind: "step",
+      playbookId: segments[2],
+      stepId: segments[3],
+      target: segments[4],
+    };
+  }
+
+  return null;
+}
+
+function isCompanyMapOperationsWindowJob(
+  value: unknown,
+): value is CompanyMapOperationsWindowJob {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as {
+    functionId?: unknown;
+    jobName?: unknown;
+    kind?: unknown;
+    playbookId?: unknown;
+    stepId?: unknown;
+    target?: unknown;
+  };
+  if (
+    candidate.functionId !== "operations" ||
+    candidate.jobName !== "Operations" ||
+    typeof candidate.kind !== "string" ||
+    typeof candidate.target !== "string" ||
+    !isOperationsTarget(candidate.target)
+  ) {
+    return false;
+  }
+
+  if (candidate.kind === "add-workflow") {
+    return (
+      candidate.playbookId === null &&
+      candidate.stepId === null &&
+      (candidate.target === "channel" || candidate.target === "operations")
+    );
+  }
+
+  if (candidate.kind === "add-step" || candidate.kind === "workflow") {
+    return (
+      typeof candidate.playbookId === "string" &&
+      PLAYBOOK_ID_PATTERN.test(candidate.playbookId) &&
+      candidate.stepId === null &&
+      candidate.target === "operations"
+    );
+  }
+
+  return (
+    candidate.kind === "step" &&
+    typeof candidate.playbookId === "string" &&
+    PLAYBOOK_ID_PATTERN.test(candidate.playbookId) &&
+    typeof candidate.stepId === "string" &&
+    STEP_ID_PATTERN.test(candidate.stepId)
   );
 }
 
@@ -165,6 +345,7 @@ function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
 export function isCompanyMapWindowJob(
   value: unknown,
 ): value is CompanyMapWindowJob {
+  if (isCompanyMapOperationsWindowJob(value)) return true;
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { functionId?: unknown; jobName?: unknown };
   return MAP_WINDOW_JOBS.some(
@@ -179,6 +360,16 @@ function windowJobMatchesRoute(
   pathname: string,
   search: Record<string, unknown>,
 ): boolean {
+  if (isCompanyMapOperationsWindowJob(job)) {
+    if (job.target === "operations") {
+      return pathname === "/company/function/operations";
+    }
+    if (job.target === "work") {
+      return pathname === "/work" || pathname.startsWith("/work/");
+    }
+    if (job.target === "needs-you") return pathname === "/today/needs-you";
+    return pathname.startsWith("/channels/");
+  }
   if (
     job.functionId === "sales" &&
     job.jobName === "Outreach" &&

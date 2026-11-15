@@ -7,6 +7,7 @@ import {
   COMPANY_MAP_NO_SCREEN_JOBS,
   companyMapWindowJobForRoute,
   companyMapWindowSearch,
+  companyMapOperationsWindowSearch,
   companyMapWhatsAppSearch,
   companyMapJobKey,
   getCompanyMapJobRoute,
@@ -199,4 +200,56 @@ test("WhatsApp map searches preserve a job trail through setup", () => {
     companyMapWhatsAppSearch("sales:Outreach", "needs-you", "setup"),
     { mapJob: "sales:Outreach", outreachDeskTab: "needs-you" },
   );
+});
+
+test("data-backed Operations workflow nodes retain only their real screen route", () => {
+  const workflow = companyMapOperationsWindowSearch({
+    kind: "workflow",
+    playbookId: "3c2f6a0e-1b7d-4f0a-9c55-7a1d0e4b2f11",
+    target: "operations",
+  });
+  const workStep = companyMapOperationsWindowSearch({
+    kind: "step",
+    playbookId: "3c2f6a0e-1b7d-4f0a-9c55-7a1d0e4b2f11",
+    stepId: "build",
+    target: "work",
+  });
+  const approvalStep = companyMapOperationsWindowSearch({
+    kind: "step",
+    playbookId: "3c2f6a0e-1b7d-4f0a-9c55-7a1d0e4b2f11",
+    stepId: "approval",
+    target: "needs-you",
+  });
+
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/company/function/operations", workflow),
+    {
+      functionId: "operations",
+      jobName: "Operations",
+      kind: "workflow",
+      playbookId: "3c2f6a0e-1b7d-4f0a-9c55-7a1d0e4b2f11",
+      stepId: null,
+      target: "operations",
+    },
+  );
+  assert.deepEqual(companyMapWindowJobForRoute("/work", workStep), {
+    functionId: "operations",
+    jobName: "Operations",
+    kind: "step",
+    playbookId: "3c2f6a0e-1b7d-4f0a-9c55-7a1d0e4b2f11",
+    stepId: "build",
+    target: "work",
+  });
+  assert.deepEqual(
+    companyMapWindowJobForRoute("/today/needs-you", approvalStep),
+    {
+      functionId: "operations",
+      jobName: "Operations",
+      kind: "step",
+      playbookId: "3c2f6a0e-1b7d-4f0a-9c55-7a1d0e4b2f11",
+      stepId: "approval",
+      target: "needs-you",
+    },
+  );
+  assert.equal(companyMapWindowJobForRoute("/work", approvalStep), null);
 });

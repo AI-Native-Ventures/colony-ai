@@ -332,8 +332,10 @@ function EmptyOperationsPlaybook({
 
 export function OperationsPlaybookScreen({
   scorecardAndGoals,
+  selectedPlaybookId,
 }: {
   scorecardAndGoals: ReactNode;
+  selectedPlaybookId?: string;
 }) {
   const navigation = useAppNavigation();
   const membership = useMyRelayMembershipQuery();
@@ -358,9 +360,13 @@ export function OperationsPlaybookScreen({
   );
   const canApprove =
     membership.data?.role === "owner" || membership.data?.role === "admin";
-  const playbook = (playbooksQuery.data?.playbooks ?? []).find(
+  const operationPlaybooks = (playbooksQuery.data?.playbooks ?? []).filter(
     isOperationsPlaybook,
   );
+  const playbook =
+    operationPlaybooks.find(
+      (candidate) => candidate.playbookId === selectedPlaybookId,
+    ) ?? operationPlaybooks[0];
   const jobs = useMemo(
     () =>
       playbook
