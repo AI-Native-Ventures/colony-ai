@@ -68,7 +68,7 @@ test("the supported app screens use their real route targets", () => {
   });
 });
 
-test("jobs without screens fall back to their owning function page", () => {
+test("jobs without screens retain their owning function page address", () => {
   assert.deepEqual(COMPANY_MAP_NO_SCREEN_JOBS, [
     "sales:Calls",
     "finance:Recurring plans",
@@ -78,6 +78,8 @@ test("jobs without screens fall back to their owning function page", () => {
     "brand:Website",
     "brand:Portfolio",
     "brand:Marketing",
+    "brand:Offer and prices",
+    "brand:Voice",
   ]);
   for (const key of COMPANY_MAP_FALLBACK_JOBS) {
     const separator = key.indexOf(":");
@@ -94,6 +96,39 @@ test("jobs without screens fall back to their owning function page", () => {
     assert.equal(isCompanyMapJobFallback(functionId, jobName), true);
   }
   assert.equal(isCompanyMapJobFallback("finance", "Invoices"), false);
+});
+
+test("no-screen jobs validate as map card roots only at their part address", () => {
+  for (const key of COMPANY_MAP_NO_SCREEN_JOBS) {
+    const separator = key.indexOf(":");
+    const functionId = FUNCTION_ORDER.find(
+      (candidate) => candidate === key.slice(0, separator),
+    );
+    assert.ok(functionId, `${key} names an app function`);
+    const jobName = key.slice(separator + 1);
+    assert.deepEqual(
+      companyMapWindowJobForRoute(`/company/function/${functionId}`, {
+        mapJob: key,
+      }),
+      { functionId, jobName, noScreen: true },
+    );
+    assert.equal(
+      isCompanyMapWindowJob({ functionId, jobName, noScreen: true }),
+      true,
+    );
+  }
+  assert.equal(
+    companyMapWindowJobForRoute("/company/function/finance", {
+      mapJob: "sales:Calls",
+    }),
+    null,
+  );
+  assert.equal(
+    companyMapWindowJobForRoute("/company/function/operations", {
+      mapJob: "operations:Delivery",
+    }),
+    null,
+  );
 });
 
 test("map-window routes retain the job that opened a shared screen", () => {
@@ -170,7 +205,7 @@ test("map-window routes retain the job that opened a shared screen", () => {
   assert.equal(companyMapWindowJobForRoute("/clients/record/123"), null);
 });
 
-test("accepts only the explicit screen-backed map roots", () => {
+test("accepts only the explicit screen-backed and no-screen map roots", () => {
   assert.equal(
     isCompanyMapWindowJob({
       functionId: "operations",
@@ -183,11 +218,15 @@ test("accepts only the explicit screen-backed map roots", () => {
       functionId: "customer_success",
       jobName: "Renewals",
     }),
-    false,
+    true,
   );
   assert.equal(
-    isCompanyMapWindowJob({ functionId: "brand", jobName: "Voice" }),
-    false,
+    isCompanyMapWindowJob({
+      functionId: "brand",
+      jobName: "Voice",
+      noScreen: true,
+    }),
+    true,
   );
 });
 
