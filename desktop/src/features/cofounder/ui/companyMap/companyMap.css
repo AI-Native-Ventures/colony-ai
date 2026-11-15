@@ -509,46 +509,68 @@
   place-items: center;
   box-sizing: border-box;
   overflow: visible;
-  border: 1px solid hsl(var(--colony-accent-line));
+  border: 0;
   border-radius: 50%;
   background: hsl(var(--colony-accent-soft));
+  box-shadow: 0 0 0 1px var(--colony-accent-line);
   color: hsl(var(--colony-accent-ink));
   font-size: calc(12.5 * var(--colony-px));
   font-weight: 800;
   line-height: 1;
 }
 
-.company-map-workflow-step-disc[data-target="work"] {
-  border-color: hsl(var(--colony-border-strong));
-  background: var(--colony-overlay);
-  color: hsl(var(--colony-fg));
-}
-
-.company-map-workflow-step-disc[data-target="needs-you"] {
-  border-color: hsl(var(--colony-need));
-  background: hsl(var(--colony-need-bg));
-  color: hsl(var(--colony-need));
+.company-map-workflow-step-disc[data-owner="owner"] {
+  background: var(--colony-ink-button);
+  box-shadow: none;
+  color: hsl(var(--colony-surface));
 }
 
 .company-map-workflow-step-disc[data-add="true"] {
   border: 1.5px dashed hsl(var(--colony-accent));
   background: hsl(var(--colony-surface));
+  box-shadow: none;
   color: hsl(var(--colony-accent));
 }
 
-.company-map-workflow-step-avatar,
-.company-map-workflow-step-worker {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  overflow: hidden;
+.company-map-workflow-step-need-dot {
+  position: absolute;
+  z-index: 1;
+  top: -3px;
+  right: -3px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
+  background: hsl(var(--colony-need));
 }
 
-.company-map-workflow-step-worker {
-  background: hsl(var(--colony-soft-track));
-  color: hsl(var(--colony-fg-secondary));
+@media (prefers-reduced-motion: no-preference) {
+  .company-map-workflow-step-need-dot {
+    animation: company-map-workflow-step-need-ping 2s ease-out infinite;
+  }
+}
+
+@keyframes company-map-workflow-step-need-ping {
+  0% {
+    box-shadow: 0 0 0 0 hsl(var(--colony-need));
+  }
+
+  80%,
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+.company-map-workflow-step-rail {
+  position: absolute;
+  z-index: 1;
+  width: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-left: 2px solid var(--colony-accent-line);
+}
+
+.company-map-workflow-step-rail[data-style="dashed"] {
+  border-left-style: dashed;
 }
 
 .company-map-workflow-step-name {
@@ -1152,6 +1174,7 @@
 .company-map-stage[data-map-window-open="true"] .company-map-job-link,
 .company-map-stage[data-map-window-open="true"] .company-map-workflow-link,
 .company-map-stage[data-map-window-open="true"] .company-map-workflow-step-link,
+.company-map-stage[data-map-window-open="true"] .company-map-workflow-step-rail,
 .company-map-stage[data-map-window-open="true"] .company-map-card,
 .company-map-stage[data-map-window-open="true"] .company-map-hub,
 .company-map-stage[data-map-window-open="true"] .company-map-hover-bridge,
@@ -1164,6 +1187,7 @@
 .company-map-stage[data-map-window-open="true"] .company-map-job-link,
 .company-map-stage[data-map-window-open="true"] .company-map-workflow-link,
 .company-map-stage[data-map-window-open="true"] .company-map-workflow-step-link,
+.company-map-stage[data-map-window-open="true"] .company-map-workflow-step-rail,
 .company-map-stage[data-map-window-open="true"] .company-map-job-line {
   opacity: 0;
   pointer-events: none;

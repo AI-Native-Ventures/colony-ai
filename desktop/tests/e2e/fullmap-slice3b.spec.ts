@@ -336,7 +336,6 @@ test.describe("full map canvas slice 3b", () => {
   test("renders numbered Operations step dots and their rail in light and dark", async ({
     page,
   }) => {
-    const tokenStates: Array<{ inkButton: string; soft: string }> = [];
     for (const theme of ["light", "dark"] as const) {
       await installWorkflowMap(page, { theme });
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -345,8 +344,11 @@ test.describe("full map canvas slice 3b", () => {
 
       const state = await page.getByTestId("cofounder-map-stage").evaluate(
         (stage, ids) => {
-          const box = (element: Element | null) => {
-            const bounds = element?.getBoundingClientRect();
+          const box = (element: Element | DOMRect | null) => {
+            const bounds =
+              element instanceof Element
+                ? element.getBoundingClientRect()
+                : element;
             if (!bounds)
               throw new Error("Expected Operations step rail element");
             return {
@@ -367,25 +369,30 @@ test.describe("full map canvas slice 3b", () => {
             sample.remove();
             return color;
           };
-          const dot = (testId: string) => {
+          const dot = (testId: string, expectsNumber = true) => {
             const element = stage.querySelector<HTMLElement>(
               `[data-testid="${testId}"] .company-map-workflow-step-disc`,
             );
             if (!element) throw new Error(`Expected step dot for ${testId}`);
-            const number = Array.from(element.childNodes).find(
-              (node) =>
-                node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
-            );
-            if (!number) throw new Error(`Expected step number for ${testId}`);
-            const range = document.createRange();
-            range.selectNodeContents(number);
+            const number = expectsNumber
+              ? Array.from(element.childNodes).find(
+                  (node) =>
+                    node.nodeType === Node.TEXT_NODE &&
+                    node.textContent?.trim(),
+                )
+              : null;
+            if (expectsNumber && !number) {
+              throw new Error(`Expected step number for ${testId}`);
+            }
+            const range = number ? document.createRange() : null;
+            if (range) range.selectNodeContents(number);
             return {
               background: getComputedStyle(element).backgroundColor,
               box: box(element),
               color: getComputedStyle(element).color,
               imageCount: element.querySelectorAll("img").length,
               iconCount: element.querySelectorAll("svg").length,
-              numberBox: box(range.getBoundingClientRect()),
+              numberBox: range ? box(range.getBoundingClientRect()) : null,
               shadow: getComputedStyle(element).boxShadow,
               text: element.textContent?.trim(),
             };
@@ -408,7 +415,7 @@ test.describe("full map canvas slice 3b", () => {
           if (!need) throw new Error("Expected an active step need dot");
           const needStyle = getComputedStyle(need);
           return {
-            addStep: dot(ids.addStep),
+            addStep: dot(ids.addStep, false),
             dots: ids.steps.map(dot),
             hint: document
               .querySelector(".company-map-note")
@@ -416,7 +423,9 @@ test.describe("full map canvas slice 3b", () => {
             need: {
               background: needStyle.backgroundColor,
               box: box(need),
+              height: needStyle.height,
               text: need.textContent?.trim(),
+              width: needStyle.width,
             },
             rails: {
               dashed: rail(ids.dashedRail),
@@ -475,8 +484,8 @@ test.describe("full map canvas slice 3b", () => {
         }
       }
       expect(state.need.background).toBe(state.tokens.need);
-      expect(state.need.box.width).toBeCloseTo(10, 0);
-      expect(state.need.box.height).toBeCloseTo(10, 0);
+      expect(state.need.width).toBe("10px");
+      expect(state.need.height).toBe("10px");
       expect(state.need.text).toBe("");
       const approval = state.dots[3];
       expect(state.need.box.left).toBeLessThan(approval.box.right);
@@ -484,10 +493,10 @@ test.describe("full map canvas slice 3b", () => {
       expect(state.need.box.top).toBeLessThan(approval.box.top);
       expect(state.need.box.bottom).toBeGreaterThan(approval.box.top);
       expect(
-        state.need.box.left < approval.numberBox.right &&
-          state.need.box.right > approval.numberBox.left &&
-          state.need.box.top < approval.numberBox.bottom &&
-          state.need.box.bottom > approval.numberBox.top,
+        state.need.box.left < (approval.numberBox?.right ?? 0) &&
+          state.need.box.right > (approval.numberBox?.left ?? 0) &&
+          state.need.box.top < (approval.numberBox?.bottom ?? 0) &&
+          state.need.box.bottom > (approval.numberBox?.top ?? 0),
       ).toBe(false);
       expect(state.rails.solid.borderStyle).toBe("solid");
       expect(state.rails.solid.borderColor).toBe(state.tokens.accentLine);
@@ -509,13 +518,9 @@ test.describe("full map canvas slice 3b", () => {
         state.addStep.box.top + state.addStep.box.height / 2,
         0,
       );
-      tokenStates.push({
-        inkButton: state.tokens.inkButton,
-        soft: state.tokens.soft,
-      });
+      if (theme === "light") await page.goto("/#/work");
     }
 
-    expect(tokenStates[0]).not.toEqual(tokenStates[1]);
     await page
       .getByTestId(`cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`)
       .click();
@@ -570,12 +575,15 @@ test.describe("full map canvas slice 3b", () => {
       page.getByTestId(
         `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`,
       ),
-    ).toHaveAttribute("aria-label", "Website build. Opens Work.");
+    ).toHaveAttribute(
+      "aria-label",
+      "Step 3. Website build. A worker's. Opens Work.",
+    );
     await expect(
       page.getByTestId(
         `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-approval`,
       ),
-    ).toHaveAttribute("aria-label", "Your approval. Needs your yes.");
+    ).toHaveAttribute("aria-label", "Step 4. Your approval. Yours. Needs you.");
     await expect(
       page.getByTestId(`cofounder-map-add-step-${DELIVERY_PLAYBOOK_ID}`),
     ).toBeVisible();

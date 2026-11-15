@@ -921,6 +921,10 @@ function CompanyMapDesktop({
           (job) => countForJob(summary, job.functionId, job.name) > 0,
         )
       : [];
+  const mapHint =
+    activePart === "operations" && operationsWorkflows.length > 0
+      ? "Tap a workflow or a step. Its screen opens right here."
+      : "Point at a part to open it. Tap a job to go in.";
 
   return (
     <div className="company-map-desktop" data-testid="cofounder-map-desktop">
@@ -1057,7 +1061,6 @@ function CompanyMapDesktop({
                 operationsLayout ? (
                   <CompanyMapOperationsNodes
                     clientChannelId={clientChannelId}
-                    members={members}
                     onGroupBlur={blurPart}
                     onGroupFocus={focusPart}
                     onGroupMouseEnter={enterPart}
@@ -1065,12 +1068,7 @@ function CompanyMapDesktop({
                     onSelectWorkflow={setSelectedOperationsWorkflowId}
                     operationsLayout={operationsLayout}
                     operationsWorkflows={operationsWorkflows}
-                    ownerAvatarUrl={ownerAvatarUrl}
-                    ownerName={ownerName}
-                    ownerPubkey={ownerPubkey}
-                    profiles={profiles}
                     scoutChannelId={scoutChannelId}
-                    slots={slots}
                   />
                 ) : null}
                 {functionId === "operations" &&
@@ -1161,9 +1159,7 @@ function CompanyMapDesktop({
               +
             </button>
           </div>
-          <p className="company-map-note">
-            Point at a part to open it. Tap a job to go in.
-          </p>
+          <p className="company-map-note">{mapHint}</p>
         </div>
       </div>
       <span className="sr-only" data-testid="cofounder-map-zoom-level">

@@ -1,6 +1,6 @@
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Bot, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
@@ -238,6 +238,22 @@ function operationsWindowTarget(
   return step.target === "client-conversation" ? "operations" : step.target;
 }
 
+function stepOwnerDescription(step: CompanyMapOperationsStep): string {
+  if (step.owner.kind === "owner") return "Yours";
+  if (step.owner.kind === "lead_agent") return "An agent's";
+  if (step.owner.kind === "worker") return "A worker's";
+  if (step.owner.functionId) {
+    return `The ${step.owner.functionId.replaceAll("_", " ")} team's`;
+  }
+  return "Your team's";
+}
+
+function stepDestinationDescription(target: CompanyMapOperationsWindowTarget) {
+  if (target === "work") return "Opens Work.";
+  if (target === "channel") return "Opens the client conversation.";
+  return "Opens Operations.";
+}
+
 function operationsWorkflowStyle(point: CompanyMapPoint): CSSProperties {
   return {
     left: mapPercent(point.x + 24 - 232, COMPANY_MAP_SIZE.width),
@@ -314,42 +330,26 @@ function WorkflowNode({
 function WorkflowStepNode({
   workflow,
   step,
+  stepNumber,
   point,
   clientChannelId,
-  members,
-  profiles,
-  slots,
-  ownerName,
-  ownerPubkey,
-  ownerAvatarUrl,
   onSelect,
   ...interactions
 }: {
   workflow: CompanyMapOperationsWorkflow;
   step: CompanyMapOperationsStep;
+  stepNumber: number;
   point: CompanyMapPoint;
   clientChannelId?: string | null;
-  members: TeamMember[];
-  profiles: ProfileLookup;
-  slots: FunctionSlotView[];
-  ownerName: string;
-  ownerPubkey?: string;
-  ownerAvatarUrl?: string | null;
   onSelect: () => void;
 } & OperationsInteractionProps) {
   const target = operationsWindowTarget(step, clientChannelId);
+  const needsYou = step.waitingForOwner || step.target === "needs-you";
   return (
     <OperationsMapNodeLink
       ariaLabel={
-        step.waitingForOwner || step.target === "needs-you"
-          ? `${step.title}. Needs your yes.`
-          : `${step.title}. Opens ${
-              target === "work"
-                ? "Work"
-                : target === "channel"
-                  ? "the client conversation"
-                  : "Operations"
-            }.`
+        `Step ${stepNumber}. ${step.title}. ${stepOwnerDescription(step)}.` +
+        (needsYou ? " Needs you." : ` ${stepDestinationDescription(target)}`)
       }
       channelId={target === "channel" ? clientChannelId : null}
       className="company-map-workflow-step-link"
@@ -380,100 +380,20 @@ function WorkflowStepNode({
         <span
           className="company-map-workflow-step-disc"
           data-owner={step.owner.kind}
-          data-target={target}
         >
-          <WorkflowStepDoer
-            members={members}
-            ownerAvatarUrl={ownerAvatarUrl}
-            ownerName={ownerName}
-            ownerPubkey={ownerPubkey}
-            profiles={profiles}
-            step={step}
-            stepNumber={workflow.steps.indexOf(step) + 1}
-            slots={slots}
-          />
-          <NeedsBadge
-            count={step.waitingForOwner || step.target === "needs-you" ? 1 : 0}
-            testId={`cofounder-map-workflow-step-needs-${workflow.playbookId}-${step.stepId}`}
-          />
+          {stepNumber}
+          {needsYou ? (
+            <span
+              aria-hidden="true"
+              className="company-map-workflow-step-need-dot"
+              data-testid={`cofounder-map-workflow-step-needs-${workflow.playbookId}-${step.stepId}`}
+            />
+          ) : null}
         </span>
         <span className="company-map-workflow-step-name">{step.title}</span>
       </span>
     </OperationsMapNodeLink>
   );
-}
-
-function WorkflowStepDoer({
-  step,
-  stepNumber,
-  members,
-  profiles,
-  slots,
-  ownerName,
-  ownerPubkey,
-  ownerAvatarUrl,
-}: {
-  step: CompanyMapOperationsStep;
-  stepNumber: number;
-  members: TeamMember[];
-  profiles: ProfileLookup;
-  slots: FunctionSlotView[];
-  ownerName: string;
-  ownerPubkey?: string;
-  ownerAvatarUrl?: string | null;
-}) {
-  const className = "company-map-workflow-step-avatar";
-  if (step.owner.kind === "owner") {
-    return (
-      <MapDoer
-        avatarUrl={ownerAvatarUrl}
-        className={className}
-        name={ownerName}
-        owner
-        pubkey={ownerPubkey}
-      />
-    );
-  }
-
-  const leadPubkey =
-    step.owner.kind === "lead_agent" ? step.owner.agentPubkey : null;
-  const functionSlot =
-    step.owner.kind === "function" && step.owner.functionId
-      ? slotForFunction(step.owner.functionId, slots)
-      : null;
-  const assignedPubkey =
-    leadPubkey ??
-    (functionSlot?.state === "filled" ? functionSlot.leadPubkey : null);
-  const member = assignedPubkey
-    ? members.find(
-        (candidate) =>
-          candidate.pubkey.toLowerCase() === assignedPubkey.toLowerCase(),
-      )
-    : undefined;
-  if (member) {
-    return (
-      <MapDoer
-        avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
-        className={className}
-        member={member}
-        name={fullName(member, profiles)}
-      />
-    );
-  }
-  if (functionSlot?.state === "covered_by_scout") {
-    return <MapDoer className={className} scout />;
-  }
-  if (step.owner.kind === "worker") {
-    return (
-      <span
-        aria-hidden="true"
-        className={`${className} company-map-workflow-step-worker`}
-      >
-        <Bot aria-hidden="true" size={14} strokeWidth={2.1} />
-      </span>
-    );
-  }
-  return <span aria-hidden="true">{stepNumber}</span>;
 }
 
 function AddStepNode({
@@ -566,17 +486,69 @@ export function AddWorkflowNode({
   );
 }
 
+function stepRailStyle({
+  point,
+  startY,
+  endY,
+}: {
+  point: CompanyMapPoint;
+  startY: number;
+  endY: number;
+}): CSSProperties {
+  return {
+    height: mapPercent(endY - startY, COMPANY_MAP_SIZE.height),
+    left: mapPercent(point.x - 1, COMPANY_MAP_SIZE.width),
+    top: mapPercent(startY, COMPANY_MAP_SIZE.height),
+  };
+}
+
+function WorkflowStepRail({
+  operationsLayout,
+}: {
+  operationsLayout: CompanyMapOperationsLayout;
+}) {
+  const addStep = operationsLayout.addStep;
+  if (!addStep) return null;
+  const steps = [...operationsLayout.steps]
+    .filter((step) => step.playbookId === addStep.playbookId)
+    .sort((first, second) => first.point.y - second.point.y);
+  const first = steps[0];
+  const last = steps.at(-1);
+  if (!first || !last) return null;
+  return (
+    <>
+      {steps.length > 1 ? (
+        <span
+          aria-hidden="true"
+          className="company-map-workflow-step-rail"
+          data-testid={`cofounder-map-workflow-step-rail-${addStep.playbookId}-solid`}
+          style={stepRailStyle({
+            endY: last.point.y,
+            point: first.point,
+            startY: first.point.y,
+          })}
+        />
+      ) : null}
+      <span
+        aria-hidden="true"
+        className="company-map-workflow-step-rail"
+        data-style="dashed"
+        data-testid={`cofounder-map-workflow-step-rail-${addStep.playbookId}-dashed`}
+        style={stepRailStyle({
+          endY: addStep.point.y,
+          point: last.point,
+          startY: last.point.y,
+        })}
+      />
+    </>
+  );
+}
+
 export function CompanyMapOperationsNodes({
   operationsLayout,
   operationsWorkflows,
   clientChannelId,
   scoutChannelId,
-  members,
-  profiles,
-  slots,
-  ownerName,
-  ownerPubkey,
-  ownerAvatarUrl,
   onSelectWorkflow,
   ...interactions
 }: {
@@ -584,16 +556,11 @@ export function CompanyMapOperationsNodes({
   operationsWorkflows: readonly CompanyMapOperationsWorkflow[];
   clientChannelId?: string | null;
   scoutChannelId?: string | null;
-  members: TeamMember[];
-  profiles: ProfileLookup;
-  slots: FunctionSlotView[];
-  ownerName: string;
-  ownerPubkey?: string;
-  ownerAvatarUrl?: string | null;
   onSelectWorkflow: (playbookId: string) => void;
 } & OperationsInteractionProps) {
   return (
     <>
+      <WorkflowStepRail operationsLayout={operationsLayout} />
       {operationsLayout.workflows.map((position) => {
         const workflow = operationsWorkflows.find(
           (candidate) => candidate.playbookId === position.playbookId,
@@ -619,15 +586,10 @@ export function CompanyMapOperationsNodes({
           <WorkflowStepNode
             clientChannelId={clientChannelId}
             key={`step:${workflow.playbookId}:${step.stepId}`}
-            members={members}
             onSelect={() => onSelectWorkflow(workflow.playbookId)}
-            ownerAvatarUrl={ownerAvatarUrl}
-            ownerName={ownerName}
-            ownerPubkey={ownerPubkey}
             point={position.point}
-            profiles={profiles}
-            slots={slots}
             step={step}
+            stepNumber={workflow.steps.indexOf(step) + 1}
             workflow={workflow}
             {...interactions}
           />
