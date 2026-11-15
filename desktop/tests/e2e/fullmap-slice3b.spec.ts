@@ -18,6 +18,7 @@ import {
 import {
   DELIVERY_PLAYBOOK_ID,
   FOLLOW_UP_PLAYBOOK_ID,
+  PLANE_TREE_JOB_ID,
   deliveryJobs,
   deliveryPlaybook,
   followUpPlaybook,
@@ -27,10 +28,32 @@ import { companyMapOperationsWindowSearch } from "../../src/features/cofounder/c
 
 type Theme = "dark" | "light";
 
+type WorkspaceSeed = {
+  addedAt: string;
+  id: string;
+  name: string;
+  relayUrl: string;
+};
+
 const workflowInput = {
   ownerPubkey: OWNER_PUBKEY,
   scoutPubkey: SCOUT_PUBKEY,
 };
+const OLIVE_WORK_ID = "b1b17000-0000-4000-8000-000000000001";
+const MAP_WORKSPACES: WorkspaceSeed[] = [
+  {
+    addedAt: "2026-11-14T00:00:00.000Z",
+    id: "fullmap-s3b-workspace-one",
+    name: "Horizon Labs",
+    relayUrl: "ws://localhost:3000",
+  },
+  {
+    addedAt: "2026-11-14T00:01:00.000Z",
+    id: "fullmap-s3b-workspace-two",
+    name: "Second workspace",
+    relayUrl: "ws://localhost:3001",
+  },
+];
 
 function proposedOperationsPlaybook() {
   const proposal = followUpPlaybook(workflowInput);
@@ -74,19 +97,36 @@ async function installWorkflowMap(
     playbooks = true,
     referenceWorkspace = false,
     theme = "light",
+    workspaces,
   }: {
     clientChannelId?: string | null;
     mapHome?: boolean;
     playbooks?: boolean;
     referenceWorkspace?: boolean;
     theme?: Theme;
+    workspaces?: WorkspaceSeed[];
   } = {},
 ) {
   await seedCofounderTheme(page, theme);
+  if (workspaces) {
+    await page.addInitScript((seededWorkspaces) => {
+      window.localStorage.setItem(
+        "buzz-communities",
+        JSON.stringify(seededWorkspaces),
+      );
+      window.localStorage.setItem(
+        "buzz-active-community-id",
+        seededWorkspaces[0]?.id ?? "",
+      );
+    }, workspaces);
+  }
   await installMockBridge(
     page,
     workflowFixture({ playbooks, referenceWorkspace }),
-    { previewFeatureOverrides: { map_home: mapHome } },
+    {
+      previewFeatureOverrides: { map_home: mapHome },
+      skipCommunitySeed: Boolean(workspaces),
+    },
   );
   if (clientChannelId) {
     await page.addInitScript((channelId) => {
@@ -131,6 +171,43 @@ async function openOperationsMap(page: Page) {
 async function closeMapWindow(page: Page) {
   await page.getByTestId("fullmap-window-close").click();
   await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+}
+
+function windowContent(page: Page) {
+  return page.locator(".map-canvas-route-window-content");
+}
+
+async function readMapCamera(page: Page) {
+  return page.getByTestId("cofounder-map-stage").evaluate((node) => {
+    const value = getComputedStyle(node)
+      .getPropertyValue("--company-map-transform")
+      .trim();
+    const match = value.match(
+      /^translate\(([-\d.]+)px,\s*([-\d.]+)px\) scale\(([-\d.]+)\)$/,
+    );
+    if (!match) throw new Error(`Unexpected map transform: ${value}`);
+    return {
+      scale: Number(match[3]),
+      x: Number(match[1]),
+      y: Number(match[2]),
+    };
+  });
+}
+
+async function dispatchPrimaryWorkspaceShortcut(page: Page, digit: string) {
+  const cancelled = await page.evaluate((key) => {
+    const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform);
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: !isMac,
+      key,
+      metaKey: isMac,
+    });
+    const wasNotCancelled = window.dispatchEvent(event);
+    return !wasNotCancelled && event.defaultPrevented;
+  }, digit);
+  expect(cancelled).toBe(true);
 }
 
 async function workflowGeometry(page: Page) {
@@ -235,18 +312,15 @@ test.describe("full map canvas slice 3b", () => {
 
     await page.setViewportSize({ width: 2000, height: 1228 });
     await waitForAnimations(page);
-    const large = await workflowGeometry(page);
-    expect(large.stage).toEqual({ height: 790, width: 1400 });
-    for (const point of [
-      large.delivery,
-      large.brief,
-      large.build,
-      large.addStep,
-      large.proposal,
-      large.addWorkflow,
-    ]) {
-      expect(point).not.toBeNull();
-    }
+    expect(await workflowGeometry(page)).toEqual({
+      stage: { height: 790, width: 1400 },
+      delivery: { x: 220, y: 23 },
+      brief: { x: 220, y: 68 },
+      build: { x: 220, y: 128 },
+      addStep: { x: 220, y: 278 },
+      proposal: { x: 220, y: 323 },
+      addWorkflow: { x: 220, y: 371 },
+    });
   });
 
   test("opens data-backed workflow nodes by pointer and keyboard with a three-part trail", async ({
@@ -324,7 +398,7 @@ test.describe("full map canvas slice 3b", () => {
     );
   });
 
-  test("uses the configured private client stream and redraws after a real playbook update", async ({
+  test("uses the configured private client stream and redraws after real playbook and job updates", async ({
     page,
   }) => {
     await installWorkflowMap(page, {
@@ -374,6 +448,58 @@ test.describe("full map canvas slice 3b", () => {
     await expect(
       page.getByTestId(`cofounder-map-workflow-${FOLLOW_UP_PLAYBOOK_ID}`),
     ).toHaveAttribute("aria-label", "Lead follow-up. 0 running jobs.");
+
+    const deliveryNeeds = page.getByTestId(
+      `cofounder-map-workflow-needs-${DELIVERY_PLAYBOOK_ID}`,
+    );
+    await expect(deliveryNeeds).toHaveText("1");
+    await page
+      .getByTestId(`cofounder-map-workflow-${DELIVERY_PLAYBOOK_ID}`)
+      .click();
+    await expectMapWindow(page);
+    await page.getByTestId(`playbook-job-${PLANE_TREE_JOB_ID}`).click();
+    const detail = page.getByTestId("playbook-job-detail");
+    await expect(detail).toContainText("Current step: Website build.");
+    await page.getByTestId("playbook-job-complete-step").click();
+    await expect(detail).toContainText("Current step: Your approval.");
+    await expect(deliveryNeeds).toHaveText("2");
+  });
+
+  test("keeps the dynamic work trail through a real work item, back, and Fit", async ({
+    page,
+  }) => {
+    await installWorkflowMap(page, { referenceWorkspace: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOperationsMap(page);
+    await page
+      .getByTestId(`cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`)
+      .click();
+    await expectMapWindow(page);
+    await windowContent(page)
+      .getByRole("button", { name: "Board", exact: true })
+      .click();
+    await windowContent(page)
+      .getByRole("button", { name: /Produce the spring content campaign/ })
+      .click();
+    await expectMapWindow(page, 1);
+    await expect
+      .poll(() => currentRoute(page))
+      .toContain(`/work/${OLIVE_WORK_ID}`);
+    await expect(
+      page.getByRole("heading", {
+        name: "Produce the spring content campaign",
+      }),
+    ).toBeVisible();
+    await expect(page.getByTestId("map-shell-trail")).toHaveText(
+      "Operations/Delivery playbook/Website build",
+    );
+
+    await page.getByTestId("fullmap-window-close").click();
+    await expectMapWindow(page);
+    await expect.poll(() => currentRoute(page)).toContain("/work");
+    await page.getByTestId("cofounder-map-fit").click();
+    await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+    await expect.poll(() => currentRoute(page)).toBe("/");
   });
 
   test("keeps the static five Operations jobs and the phone surface when no workflow exists", async ({
@@ -429,6 +555,38 @@ test.describe("full map canvas slice 3b", () => {
     await expect(page.getByTestId("fullmap-canvas-route-surface")).toHaveCount(
       0,
     );
+    await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
+  });
+
+  test("keeps the second ring recoverable through pan, zoom, Fit, and a company switch", async ({
+    page,
+  }) => {
+    await installWorkflowMap(page, { workspaces: MAP_WORKSPACES });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOperationsMap(page);
+    const viewport = page.getByTestId("cofounder-map-viewport");
+    await viewport.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Shift+Equal");
+    const pannedAndZoomed = await readMapCamera(page);
+    expect(pannedAndZoomed.x).toBeLessThan(0);
+    expect(pannedAndZoomed.scale).toBeGreaterThan(1);
+    await page.getByTestId("cofounder-map-fit").click();
+    expect(await readMapCamera(page)).toEqual({ scale: 1, x: 0, y: 0 });
+
+    await page
+      .getByTestId(`cofounder-map-workflow-${DELIVERY_PLAYBOOK_ID}`)
+      .click();
+    await expectMapWindow(page);
+    await dispatchPrimaryWorkspaceShortcut(page, "2");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.localStorage.getItem("buzz-active-community-id"),
+        ),
+      )
+      .toBe("fullmap-s3b-workspace-two");
+    await expect.poll(() => currentRoute(page)).toBe("/");
     await expect(page.getByTestId("fullmap-window")).toHaveCount(0);
   });
 

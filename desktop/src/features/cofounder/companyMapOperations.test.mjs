@@ -4,7 +4,6 @@ import test from "node:test";
 import { operationsMapWorkflows } from "./companyMapOperations.ts";
 
 const SCOUT = "a".repeat(64);
-const OWNER = "b".repeat(64);
 
 function step({ id, owner, title, approvalPoint = null, tools = [] }) {
   return {
