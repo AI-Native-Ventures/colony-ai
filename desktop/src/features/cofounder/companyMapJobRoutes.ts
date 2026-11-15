@@ -27,6 +27,13 @@ export type CompanyMapStaticWindowJob = {
   jobName: string;
 };
 
+/** A validated map root for a job whose app screen has not been built yet. */
+export type CompanyMapNoScreenWindowJob = {
+  functionId: FunctionId;
+  jobName: string;
+  noScreen: true;
+};
+
 /** The real route category that a data-backed Operations map node can use. */
 export type CompanyMapOperationsWindowTarget =
   | "channel"
@@ -61,9 +68,10 @@ export type CompanyMapOperationsWindowSearchInput =
       target: CompanyMapOperationsWindowTarget;
     };
 
-/** A screen-backed static job or a real Operations workflow map node. */
+/** A static job, no-screen card, or real Operations workflow map root. */
 export type CompanyMapWindowJob =
   | CompanyMapOperationsWindowJob
+  | CompanyMapNoScreenWindowJob
   | CompanyMapStaticWindowJob;
 
 const ROUTES: Record<string, CompanyMapJobRoute> = {
@@ -131,24 +139,30 @@ export function getCompanyMapJobRoute(
   return ROUTES[`${functionId}:${jobName}`] ?? { kind: "part", functionId };
 }
 
+const NO_SCREEN_MAP_WINDOW_JOBS: readonly CompanyMapNoScreenWindowJob[] = [
+  { functionId: "sales", jobName: "Calls", noScreen: true },
+  { functionId: "finance", jobName: "Recurring plans", noScreen: true },
+  {
+    functionId: "customer_success",
+    jobName: "Renewals",
+    noScreen: true,
+  },
+  { functionId: "customer_success", jobName: "Upsell", noScreen: true },
+  { functionId: "customer_success", jobName: "Reviews", noScreen: true },
+  { functionId: "brand", jobName: "Website", noScreen: true },
+  { functionId: "brand", jobName: "Portfolio", noScreen: true },
+  { functionId: "brand", jobName: "Marketing", noScreen: true },
+  { functionId: "brand", jobName: "Offer and prices", noScreen: true },
+  { functionId: "brand", jobName: "Voice", noScreen: true },
+];
+
 /** Jobs whose dedicated app screens do not exist in this checkout. */
-export const COMPANY_MAP_NO_SCREEN_JOBS = [
-  "sales:Calls",
-  "finance:Recurring plans",
-  "customer_success:Renewals",
-  "customer_success:Upsell",
-  "customer_success:Reviews",
-  "brand:Website",
-  "brand:Portfolio",
-  "brand:Marketing",
-] as const;
+export const COMPANY_MAP_NO_SCREEN_JOBS = NO_SCREEN_MAP_WINDOW_JOBS.map((job) =>
+  companyMapJobKey(job.functionId, job.jobName),
+);
 
 /** Current app jobs that intentionally fall back to their part page. */
-export const COMPANY_MAP_FALLBACK_JOBS = [
-  ...COMPANY_MAP_NO_SCREEN_JOBS,
-  "brand:Offer and prices",
-  "brand:Voice",
-] as const;
+export const COMPANY_MAP_FALLBACK_JOBS = COMPANY_MAP_NO_SCREEN_JOBS;
 
 export function companyMapJobKey(
   functionId: FunctionId,
@@ -219,7 +233,10 @@ function windowJobFromKey(value: unknown): CompanyMapWindowJob | null {
   const staticJob = MAP_WINDOW_JOBS.find(
     (job) => companyMapJobKey(job.functionId, job.jobName) === value,
   );
-  return staticJob ?? operationsWindowJobFromKey(value);
+  const noScreenJob = NO_SCREEN_MAP_WINDOW_JOBS.find(
+    (job) => companyMapJobKey(job.functionId, job.jobName) === value,
+  );
+  return staticJob ?? noScreenJob ?? operationsWindowJobFromKey(value);
 }
 
 const PLAYBOOK_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
@@ -341,11 +358,32 @@ function isCompanyMapOperationsWindowJob(
   );
 }
 
-/** Confirms a persisted trail root is one of the screen-backed map jobs. */
+/** Confirms that persisted map state names one of the explicit empty spots. */
+export function isCompanyMapNoScreenWindowJob(
+  value: unknown,
+): value is CompanyMapNoScreenWindowJob {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as {
+    functionId?: unknown;
+    jobName?: unknown;
+    noScreen?: unknown;
+  };
+  return (
+    candidate.noScreen === true &&
+    NO_SCREEN_MAP_WINDOW_JOBS.some(
+      (job) =>
+        job.functionId === candidate.functionId &&
+        job.jobName === candidate.jobName,
+    )
+  );
+}
+
+/** Confirms a persisted trail root is one of the supported map jobs. */
 export function isCompanyMapWindowJob(
   value: unknown,
 ): value is CompanyMapWindowJob {
   if (isCompanyMapOperationsWindowJob(value)) return true;
+  if (isCompanyMapNoScreenWindowJob(value)) return true;
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { functionId?: unknown; jobName?: unknown };
   return MAP_WINDOW_JOBS.some(
@@ -369,6 +407,9 @@ function windowJobMatchesRoute(
     }
     if (job.target === "needs-you") return pathname === "/today/needs-you";
     return pathname.startsWith("/channels/");
+  }
+  if (isCompanyMapNoScreenWindowJob(job)) {
+    return pathname === `/company/function/${job.functionId}`;
   }
   if (
     job.functionId === "sales" &&

@@ -2,6 +2,7 @@ import * as React from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 
 import {
+  isCompanyMapNoScreenWindowJob,
   companyMapWindowJobForRoute,
   type CompanyMapWindowJob,
 } from "@/features/cofounder/companyMapJobRoutes";
@@ -11,6 +12,8 @@ import { CompanyMapScreen } from "@/features/cofounder/ui/CompanyMapScreen";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { acquireEscapeSurface } from "@/shared/hooks/escapeSurfaces";
+
+import { MapCanvasNoScreenCard } from "./MapCanvasNoScreenCard";
 
 import {
   MAP_CANVAS_TRAIL_STATE_KEY,
@@ -328,6 +331,7 @@ function MapCanvasWindow({
   children,
   depth,
   job,
+  noScreenCard,
   onClose,
   onContentClickCapture,
   onContentKeyDownCapture,
@@ -338,6 +342,7 @@ function MapCanvasWindow({
   contentRef: React.RefObject<HTMLDivElement | null>;
   depth: number;
   job: CompanyMapWindowJob;
+  noScreenCard: boolean;
   onClose: () => void;
   onContentClickCapture: (event: React.MouseEvent<HTMLDivElement>) => void;
   onContentKeyDownCapture: (event: React.KeyboardEvent<HTMLDivElement>) => void;
@@ -350,6 +355,7 @@ function MapCanvasWindow({
       className="map-canvas-route-window"
       data-function={job.functionId}
       data-side={side}
+      data-no-screen={noScreenCard ? "true" : undefined}
       data-testid="fullmap-window"
       data-trail-depth={depth}
     >
@@ -836,6 +842,8 @@ export function MapCanvasRouteSurface({
   const depth = Math.max(0, (trail?.entries.length ?? 1) - 1);
   const previousEntry = depth > 0 ? trail?.entries.at(-2) : null;
   const side = job ? mapCanvasWindowSide(job) : null;
+  const noScreenCardJob =
+    job && depth === 0 && isCompanyMapNoScreenWindowJob(job) ? job : null;
 
   return (
     <div
@@ -871,12 +879,20 @@ export function MapCanvasRouteSurface({
             contentRef={contentRef}
             depth={depth}
             job={job}
+            noScreenCard={noScreenCardJob !== null}
             onClose={closeLatestWindow}
             onContentClickCapture={handleContentClickCapture}
             onContentKeyDownCapture={handleContentKeyDownCapture}
             side={side ?? "right"}
           >
-            {children}
+            {noScreenCardJob ? (
+              <MapCanvasNoScreenCard
+                job={noScreenCardJob}
+                key={`${noScreenCardJob.functionId}:${noScreenCardJob.jobName}`}
+              />
+            ) : (
+              children
+            )}
           </MapCanvasWindow>
         </>
       ) : null}

@@ -217,6 +217,7 @@ test("accepts only the explicit screen-backed and no-screen map roots", () => {
     isCompanyMapWindowJob({
       functionId: "customer_success",
       jobName: "Renewals",
+      noScreen: true,
     }),
     true,
   );

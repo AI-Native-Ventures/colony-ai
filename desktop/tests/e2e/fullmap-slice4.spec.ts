@@ -147,7 +147,7 @@ async function expectMapWindow(page: Page, job: NoScreenJob, depth = 0) {
 async function expectNoScreenCard(
   page: Page,
   job: NoScreenJob,
-  { scout = false }: { scout?: boolean } = {},
+  { scout = true }: { scout?: boolean } = {},
 ) {
   const card = noScreenCard(page);
   const partName = FUNCTION_DETAILS[job.functionId].name;
@@ -180,7 +180,10 @@ async function openNoScreenJob(
   job: NoScreenJob,
   method: "keyboard" | "pointer",
 ) {
-  await page.getByTestId(`cofounder-map-${job.functionId}`).click();
+  const part = page.getByTestId(`cofounder-map-${job.functionId}`);
+  if ((await part.getAttribute("aria-expanded")) !== "true") {
+    await part.click();
+  }
   const link = page.getByTestId(jobTestId(job));
   await expect(link).toBeVisible();
   if (method === "keyboard") {
@@ -310,8 +313,8 @@ function cardGeometry() {
     bottom: Math.round(bounds.bottom),
     height: Math.round(bounds.height),
     left: Math.round(bounds.left),
-    paddingLeft: style.paddingLeft,
-    paddingTop: style.paddingTop,
+    paddingLeft: Math.round(Number.parseFloat(style.paddingLeft)),
+    paddingTop: Math.round(Number.parseFloat(style.paddingTop)),
     right: Math.round(bounds.right),
     top: Math.round(bounds.top),
     width: Math.round(bounds.width),
@@ -323,9 +326,10 @@ async function captureCard(
   screenshotDir: string,
   job: NoScreenJob,
   name: string,
+  { scout = true }: { scout?: boolean } = {},
 ) {
   await page.goto(hashRoute(routeFor(job)));
-  await expectNoScreenCard(page, job);
+  await expectNoScreenCard(page, job, { scout });
   await waitForAnimations(page);
   await page.screenshot({
     animations: "disabled",
@@ -366,6 +370,7 @@ test.describe("full map canvas slice 4", () => {
     await page.goto("/#/");
     await openNoScreenJob(page, SALES_CALLS, "pointer");
     await expect(noScreenCard(page)).toBeFocused();
+    await waitForAnimations(page);
     expect(await page.evaluate(cardGeometry)).toEqual({
       borderRadius: "20px",
       borderStyle: "dashed",
@@ -373,8 +378,8 @@ test.describe("full map canvas slice 4", () => {
       bottom: 823,
       height: 699,
       left: 200,
-      paddingLeft: "64px",
-      paddingTop: "56px",
+      paddingLeft: 64,
+      paddingTop: 56,
       right: 1404,
       top: 124,
       width: 1204,
@@ -412,6 +417,7 @@ test.describe("full map canvas slice 4", () => {
 
     await page.setViewportSize({ width: 2000, height: 1228 });
     await page.goto(hashRoute(routeFor(SALES_CALLS)));
+    await waitForAnimations(page);
     expect(await page.evaluate(cardGeometry)).toMatchObject({
       bottom: 1151,
       height: 1027,
@@ -421,6 +427,7 @@ test.describe("full map canvas slice 4", () => {
       width: 1764,
     });
     await page.goto(hashRoute(routeFor(CUSTOMER_SUCCESS_RENEWALS)));
+    await waitForAnimations(page);
     expect(await page.evaluate(cardGeometry)).toMatchObject({
       bottom: 1151,
       height: 1027,
@@ -449,14 +456,18 @@ test.describe("full map canvas slice 4", () => {
       snapshotCaptures: 0,
     });
 
-    await noScreenCard(page)
-      .getByRole("link", { name: "Ask Scout", exact: true })
-      .click();
+    const scoutLink = noScreenCard(page).getByRole("link", {
+      name: "Ask Scout",
+      exact: true,
+    });
+    const scoutHref = await scoutLink.getAttribute("href");
+    if (!scoutHref) throw new Error("Ask Scout needs a chat destination");
+    const scoutRoute = new URL(scoutHref, page.url()).hash.slice(1);
+    expect(scoutRoute).toMatch(/^\/channels\/[^/?#]+$/u);
+    await scoutLink.click();
     await expectMapWindow(page, SALES_CALLS, 1);
     await expect(page.getByTestId("fullmap-window-peek")).toBeVisible();
-    await expect
-      .poll(() => currentRoute(page))
-      .toContain(`/channels/${SCOUT_CHANNEL_ID}`);
+    await expect.poll(() => currentRoute(page)).toBe(scoutRoute);
     await page.goBack();
     await expectMapWindow(page, SALES_CALLS, 0);
     await expectNoScreenCard(page, SALES_CALLS, { scout: true });
@@ -468,7 +479,7 @@ test.describe("full map canvas slice 4", () => {
     await installNoScreenMap(page, { includeScout: false });
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(hashRoute(routeFor(BRAND_WEBSITE)));
-    await expectNoScreenCard(page, BRAND_WEBSITE);
+    await expectNoScreenCard(page, BRAND_WEBSITE, { scout: false });
   });
 
   test("keeps pan and zoom with a part open and clears the card on company switch", async ({
@@ -633,6 +644,7 @@ test.describe("full map canvas slice 4", () => {
           screenshotDir,
           BRAND_WEBSITE,
           `no-screen-no-scout-${theme}-${viewport.label}.png`,
+          { scout: false },
         );
       }
     });

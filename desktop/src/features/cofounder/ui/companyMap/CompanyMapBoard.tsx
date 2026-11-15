@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { CSSProperties, FocusEvent, ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -55,6 +55,7 @@ import {
 } from "./CompanyMapOperationsNodes";
 import { useCompanyMapCamera } from "./useCompanyMapCamera";
 import { useCompanyMapDesktopOpenPart } from "./useCompanyMapDesktopOpenPart";
+import { useCompanyMapNoScreenCloseFocus } from "./useCompanyMapNoScreenCloseFocus";
 import type {
   CompanyMapBoardProps,
   CompanyMapSummary as MapSummary,
@@ -897,13 +898,12 @@ function CompanyMapDesktop({
     viewportRef,
     zoomCameraBy,
   } = useCompanyMapCamera({ disabled: mapWindowOpen });
-  const wasMapWindowOpen = useRef(mapWindowOpen);
-  useEffect(() => {
-    if (wasMapWindowOpen.current && !mapWindowOpen) {
-      clearOpenPart();
-    }
-    wasMapWindowOpen.current = mapWindowOpen;
-  }, [clearOpenPart, mapWindowOpen]);
+  useCompanyMapNoScreenCloseFocus({
+    activePart: interactiveActivePart,
+    clearOpenPart,
+    focusPart,
+    mapWindowJob,
+  });
   const mapWindowPart = mapWindowJob
     ? partInLayout(layout, mapWindowJob.functionId)
     : null;
