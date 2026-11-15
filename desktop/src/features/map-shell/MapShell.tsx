@@ -5,9 +5,15 @@ import { toast } from "sonner";
 
 import { mapShellTrailForPath } from "@/app/topBarBreadcrumbs";
 import { mapCanvasTrailForHref } from "@/app/mapCanvasTrail";
-import { companyMapWindowJobForRoute } from "@/features/cofounder/companyMapJobRoutes";
+import {
+  companyMapWindowJobForRoute,
+  type CompanyMapOperationsWindowJob,
+  type CompanyMapWindowJob,
+} from "@/features/cofounder/companyMapJobRoutes";
+import { operationsMapWorkflows } from "@/features/cofounder/companyMapOperations";
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { useNeedsYouSummary } from "@/features/cofounder/needsYouSummary";
+import { usePlaybooksQuery } from "@/features/cofounder/playbookHooks";
 import {
   setCompanyMapOpenPart,
   useCompanyMapOpenPart,
@@ -91,6 +97,12 @@ type MapShellProps = {
   unreadChannelCounts: ReadonlyMap<string, number>;
   workspaces: Community[];
 };
+
+function isOperationsMapWindowJob(
+  job: CompanyMapWindowJob | null,
+): job is CompanyMapOperationsWindowJob {
+  return job !== null && "kind" in job;
+}
 
 function MapMark({ activePart }: { activePart?: string }) {
   const partFill = (part: string, inactiveToken: string) =>
@@ -387,23 +399,59 @@ export function MapShell({
       location.pathname,
       location.search as Record<string, unknown>,
     );
+  const operationsMapWindowJob = isOperationsMapWindowJob(mapWindowJob)
+    ? mapWindowJob
+    : null;
+  const playbooksQuery = usePlaybooksQuery(Boolean(operationsMapWindowJob));
+  const operationsWorkflows = React.useMemo(
+    () =>
+      operationsMapWorkflows({
+        jobs: playbooksQuery.data?.jobs ?? [],
+        playbooks: playbooksQuery.data?.playbooks ?? [],
+      }),
+    [playbooksQuery.data],
+  );
+  const mapWorkflow = operationsMapWindowJob?.playbookId
+    ? (operationsWorkflows.find(
+        (workflow) => workflow.playbookId === operationsMapWindowJob.playbookId,
+      ) ?? null)
+    : null;
   const isHome = mapHomeRoute && openMapPart === null;
   const activeChannel = channels.find(
     (channel) => channel.id === currentChannelId,
   );
-  const trail = mapWindowJob
+  const trail = operationsMapWindowJob
     ? {
-        part: FUNCTION_DETAILS[mapWindowJob.functionId].name,
-        job: mapWindowJob.jobName,
+        part: "Operations",
+        workflow:
+          mapWorkflow?.title ??
+          (operationsMapWindowJob.kind === "add-workflow"
+            ? "New workflow"
+            : "Workflow"),
+        ...(operationsMapWindowJob.kind === "step"
+          ? {
+              step:
+                mapWorkflow?.steps.find(
+                  (step) => step.stepId === operationsMapWindowJob.stepId,
+                )?.title ?? "Step",
+            }
+          : operationsMapWindowJob.kind === "add-step"
+            ? { step: "Add a step" }
+            : {}),
       }
-    : mapHomeRoute && openMapPart
+    : mapWindowJob
       ? {
-          part: FUNCTION_DETAILS[openMapPart].name,
-          job: `All of ${FUNCTION_DETAILS[openMapPart].name}`,
+          part: FUNCTION_DETAILS[mapWindowJob.functionId].name,
+          job: mapWindowJob.jobName,
         }
-      : mapShellTrailForPath(location.pathname, {
-          channelName: activeChannel?.name,
-        });
+      : mapHomeRoute && openMapPart
+        ? {
+            part: FUNCTION_DETAILS[openMapPart].name,
+            job: `All of ${FUNCTION_DETAILS[openMapPart].name}`,
+          }
+        : mapShellTrailForPath(location.pathname, {
+            channelName: activeChannel?.name,
+          });
   const activePart = trail && "part" in trail ? trail.part : undefined;
   const workspaceName = activeWorkspace?.name ?? "No workspace";
   const workspaceInitial =
@@ -514,7 +562,33 @@ export function MapShell({
                 className="map-shell-trail"
                 data-testid="map-shell-trail"
               >
-                {"part" in trail ? (
+                {"part" in trail && "workflow" in trail ? (
+                  <>
+                    <span className="map-shell-trail-part">{trail.part}</span>
+                    <span
+                      aria-hidden="true"
+                      className="map-shell-trail-separator"
+                    >
+                      /
+                    </span>
+                    <span className="map-shell-trail-job">
+                      {trail.workflow}
+                    </span>
+                    {trail.step ? (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="map-shell-trail-separator"
+                        >
+                          /
+                        </span>
+                        <span className="map-shell-trail-job">
+                          {trail.step}
+                        </span>
+                      </>
+                    ) : null}
+                  </>
+                ) : "part" in trail ? (
                   <>
                     <span className="map-shell-trail-part">{trail.part}</span>
                     <span
