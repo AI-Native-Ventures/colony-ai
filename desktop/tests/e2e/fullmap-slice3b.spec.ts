@@ -333,6 +333,196 @@ function dynamicRoute(
 test.describe("full map canvas slice 3b", () => {
   test.describe.configure({ timeout: 90_000 });
 
+  test("renders numbered Operations step dots and their rail in light and dark", async ({
+    page,
+  }) => {
+    const tokenStates: Array<{ inkButton: string; soft: string }> = [];
+    for (const theme of ["light", "dark"] as const) {
+      await installWorkflowMap(page, { theme });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openOperationsMap(page);
+      await revealDeliverySteps(page);
+
+      const state = await page.getByTestId("cofounder-map-stage").evaluate(
+        (stage, ids) => {
+          const box = (element: Element | null) => {
+            const bounds = element?.getBoundingClientRect();
+            if (!bounds)
+              throw new Error("Expected Operations step rail element");
+            return {
+              bottom: bounds.bottom,
+              height: bounds.height,
+              left: bounds.left,
+              right: bounds.right,
+              top: bounds.top,
+              width: bounds.width,
+            };
+          };
+          const tokenColor = (value: string) => {
+            const sample = document.createElement("span");
+            sample.hidden = true;
+            sample.style.color = value;
+            document.body.append(sample);
+            const color = getComputedStyle(sample).color;
+            sample.remove();
+            return color;
+          };
+          const dot = (testId: string) => {
+            const element = stage.querySelector<HTMLElement>(
+              `[data-testid="${testId}"] .company-map-workflow-step-disc`,
+            );
+            if (!element) throw new Error(`Expected step dot for ${testId}`);
+            const number = Array.from(element.childNodes).find(
+              (node) =>
+                node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+            );
+            if (!number) throw new Error(`Expected step number for ${testId}`);
+            const range = document.createRange();
+            range.selectNodeContents(number);
+            return {
+              background: getComputedStyle(element).backgroundColor,
+              box: box(element),
+              color: getComputedStyle(element).color,
+              imageCount: element.querySelectorAll("img").length,
+              iconCount: element.querySelectorAll("svg").length,
+              numberBox: box(range.getBoundingClientRect()),
+              shadow: getComputedStyle(element).boxShadow,
+              text: element.textContent?.trim(),
+            };
+          };
+          const rail = (testId: string) => {
+            const element = stage.querySelector<HTMLElement>(
+              `[data-testid="${testId}"]`,
+            );
+            if (!element) throw new Error(`Expected rail ${testId}`);
+            const style = getComputedStyle(element);
+            return {
+              borderColor: style.borderLeftColor,
+              borderStyle: style.borderLeftStyle,
+              box: box(element),
+            };
+          };
+          const need = stage.querySelector<HTMLElement>(
+            `[data-testid="${ids.need}"]`,
+          );
+          if (!need) throw new Error("Expected an active step need dot");
+          const needStyle = getComputedStyle(need);
+          return {
+            addStep: dot(ids.addStep),
+            dots: ids.steps.map(dot),
+            hint: document
+              .querySelector(".company-map-note")
+              ?.textContent?.trim(),
+            need: {
+              background: needStyle.backgroundColor,
+              box: box(need),
+              text: need.textContent?.trim(),
+            },
+            rails: {
+              dashed: rail(ids.dashedRail),
+              solid: rail(ids.solidRail),
+            },
+            tokens: {
+              accentInk: tokenColor("hsl(var(--colony-accent-ink))"),
+              accentLine: tokenColor("var(--colony-accent-line)"),
+              inkButton: tokenColor("var(--colony-ink-button)"),
+              need: tokenColor("hsl(var(--colony-need))"),
+              ownerForeground: tokenColor("hsl(var(--colony-surface))"),
+              soft: tokenColor("hsl(var(--colony-accent-soft))"),
+            },
+          };
+        },
+        {
+          addStep: `cofounder-map-add-step-${DELIVERY_PLAYBOOK_ID}`,
+          dashedRail: `cofounder-map-workflow-step-rail-${DELIVERY_PLAYBOOK_ID}-dashed`,
+          need: `cofounder-map-workflow-step-needs-${DELIVERY_PLAYBOOK_ID}-approval`,
+          solidRail: `cofounder-map-workflow-step-rail-${DELIVERY_PLAYBOOK_ID}-solid`,
+          steps: [
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-brief`,
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-logins`,
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`,
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-approval`,
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-present`,
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-revisions`,
+            `cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-launch`,
+          ],
+        },
+      );
+
+      expect(state.hint).toBe(
+        "Tap a workflow or a step. Its screen opens right here.",
+      );
+      expect(state.dots.map((step) => step.text)).toEqual([
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+      ]);
+      for (const [index, step] of state.dots.entries()) {
+        expect(step.imageCount).toBe(0);
+        expect(step.iconCount).toBe(0);
+        if (index === 1 || index === 3) {
+          expect(step.background).toBe(state.tokens.inkButton);
+          expect(step.color).toBe(state.tokens.ownerForeground);
+          expect(step.shadow).toBe("none");
+        } else {
+          expect(step.background).toBe(state.tokens.soft);
+          expect(step.color).toBe(state.tokens.accentInk);
+          expect(step.shadow).toContain(state.tokens.accentLine);
+        }
+      }
+      expect(state.need.background).toBe(state.tokens.need);
+      expect(state.need.box.width).toBeCloseTo(10, 0);
+      expect(state.need.box.height).toBeCloseTo(10, 0);
+      expect(state.need.text).toBe("");
+      const approval = state.dots[3];
+      expect(state.need.box.left).toBeLessThan(approval.box.right);
+      expect(state.need.box.right).toBeGreaterThan(approval.box.right);
+      expect(state.need.box.top).toBeLessThan(approval.box.top);
+      expect(state.need.box.bottom).toBeGreaterThan(approval.box.top);
+      expect(
+        state.need.box.left < approval.numberBox.right &&
+          state.need.box.right > approval.numberBox.left &&
+          state.need.box.top < approval.numberBox.bottom &&
+          state.need.box.bottom > approval.numberBox.top,
+      ).toBe(false);
+      expect(state.rails.solid.borderStyle).toBe("solid");
+      expect(state.rails.solid.borderColor).toBe(state.tokens.accentLine);
+      expect(state.rails.solid.box.top).toBeCloseTo(
+        state.dots[0].box.top + state.dots[0].box.height / 2,
+        0,
+      );
+      expect(state.rails.solid.box.bottom).toBeCloseTo(
+        state.dots[6].box.top + state.dots[6].box.height / 2,
+        0,
+      );
+      expect(state.rails.dashed.borderStyle).toBe("dashed");
+      expect(state.rails.dashed.borderColor).toBe(state.tokens.accentLine);
+      expect(state.rails.dashed.box.top).toBeCloseTo(
+        state.dots[6].box.top + state.dots[6].box.height / 2,
+        0,
+      );
+      expect(state.rails.dashed.box.bottom).toBeCloseTo(
+        state.addStep.box.top + state.addStep.box.height / 2,
+        0,
+      );
+      tokenStates.push({
+        inkButton: state.tokens.inkButton,
+        soft: state.tokens.soft,
+      });
+    }
+
+    expect(tokenStates[0]).not.toEqual(tokenStates[1]);
+    await page
+      .getByTestId(`cofounder-map-workflow-step-${DELIVERY_PLAYBOOK_ID}-build`)
+      .click();
+    await expectMapWindow(page);
+    await expect(page.getByTestId("fullmap-window-job-ring")).toBeVisible();
+  });
+
   test("renders active and proposed Operations workflows at the board geometry", async ({
     page,
   }) => {
