@@ -4854,6 +4854,8 @@
 }
 
 .c3l-list-toolbar .c3l-search {
+  height: 2.875rem;
+  flex: 0 0 2.875rem;
   width: 100%;
 }
 
@@ -4954,18 +4956,29 @@
 }
 
 .c3l-outreach-status-menu {
+  box-sizing: border-box;
   width: 330px;
+  border-radius: 0.875rem;
   padding: 0.375rem;
 }
 
+.c3l-outreach-status-menu-options {
+  display: grid;
+  gap: 0.25rem;
+}
+
 .c3l-outreach-status-menu-item {
+  box-sizing: border-box;
+  height: auto;
   min-height: 0;
   align-items: flex-start;
+  border-radius: 0.625rem;
   padding: 0.625rem 0.75rem;
 }
 
+.c3l-outreach-status-menu-item[data-highlighted],
 .c3l-outreach-status-menu-item[data-state="checked"] {
-  background: var(--c3l-wash);
+  background: var(--colony-row-hover);
 }
 
 .c3l-outreach-status-menu-copy {
@@ -4974,8 +4987,24 @@
   gap: 0.75rem;
 }
 
-.c3l-outreach-status-menu-copy > .c3l-outreach-status-dot {
-  margin-top: 0.35rem;
+.c3l-outreach-status-option-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  flex: none;
+  margin-top: 0.375rem;
+  border-radius: 999px;
+}
+
+.c3l-outreach-status-option-dot-not_started {
+  background: hsl(var(--colony-faint));
+}
+
+.c3l-outreach-status-option-dot-in_progress {
+  background: hsl(var(--colony-info));
+}
+
+.c3l-outreach-status-option-dot-done {
+  background: hsl(var(--colony-success));
 }
 
 .c3l-outreach-status-menu-copy strong,
@@ -4984,20 +5013,20 @@
 }
 
 .c3l-outreach-status-menu-copy strong {
-  color: var(--c3l-ink);
+  color: hsl(var(--colony-fg));
   font-weight: 700;
 }
 
 .c3l-outreach-status-menu-copy small {
   margin-top: 0.125rem;
-  color: var(--c3l-ink2);
+  color: hsl(var(--colony-fg-secondary));
 }
 
 .c3l-outreach-status-footnote {
   margin: 0.375rem 0.375rem 0.125rem;
-  border-top: 1px solid var(--c3l-line);
+  border-top: 1px solid hsl(var(--colony-border));
   padding-top: 0.625rem;
-  color: var(--c3l-muted);
+  color: hsl(var(--colony-muted));
   line-height: 1.4;
 }
 

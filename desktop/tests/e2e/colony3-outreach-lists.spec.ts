@@ -145,6 +145,7 @@ const RESTAURANT_NO_PHONE_CONTACT_ROWS = [
 
 type ReferenceOptions = {
   colony3Sidebar?: boolean;
+  mapShell?: boolean;
   whatsappGuesthouses?: boolean;
   mockWhatsApp?: boolean;
   outreachBoard?: boolean;
@@ -464,7 +465,10 @@ async function openReference(
       },
     );
   }
-  await installMockBridge(page, {
+  const mapShellOptions = options.mapShell
+    ? { previewFeatureOverrides: { map_home: true } }
+    : undefined;
+  const mockBridge = {
     referenceWorkspace: true,
     referenceWorkspaceBusinessName: "Horizon Labs",
     referenceWorkspaceOutreachReady: true,
@@ -585,7 +589,8 @@ async function openReference(
     relayRequiresMembership: true,
     relayMembers: [{ pubkey: "deadbeef".repeat(8), role: "owner" }],
     relaySelf: RELAY_SELF,
-  });
+  };
+  await installMockBridge(page, mockBridge, mapShellOptions);
   await page.goto(`/#${route}`);
   await page.reload();
   if (route.startsWith("/channels/")) {
@@ -842,6 +847,12 @@ test.describe("Outreach lists", () => {
     });
     const lists = page.getByTestId("outreach-lists-page");
     const table = lists.getByRole("table", { name: "Outreach lists" });
+    const searchBox = await lists
+      .locator(".c3l-list-toolbar .c3l-search")
+      .boundingBox();
+    if (!searchBox) throw new Error("The list search field needs bounds.");
+    expect(searchBox.height).toBeGreaterThanOrEqual(45);
+    expect(searchBox.height).toBeLessThanOrEqual(47);
     await expect(table.locator("thead th")).toHaveText([
       "Name",
       "Leads",
@@ -883,8 +894,83 @@ test.describe("Outreach lists", () => {
     if (!menuBox) throw new Error("The outreach-status menu needs bounds.");
     expect(menuBox.width).toBeGreaterThanOrEqual(328);
     expect(menuBox.width).toBeLessThanOrEqual(332);
+    const menuMetrics = await tableMenu.evaluate((menu) => {
+      const options = menu.querySelector<HTMLElement>(
+        ".c3l-outreach-status-menu-options",
+      );
+      const rows = [
+        ...menu.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+      ];
+      if (!options || rows.length !== 3) {
+        throw new Error("The outreach-status menu needs three option rows.");
+      }
+      const readPixels = (value: string) => Number.parseFloat(value);
+      return {
+        gap: readPixels(getComputedStyle(options).gap),
+        menuPadding: readPixels(getComputedStyle(menu).paddingTop),
+        menuRadius: readPixels(getComputedStyle(menu).borderTopLeftRadius),
+        rowMetrics: rows.map((row) => {
+          const styles = getComputedStyle(row);
+          return {
+            paddingTop: readPixels(styles.paddingTop),
+            paddingRight: readPixels(styles.paddingRight),
+            paddingBottom: readPixels(styles.paddingBottom),
+            paddingLeft: readPixels(styles.paddingLeft),
+            radius: readPixels(styles.borderTopLeftRadius),
+          };
+        }),
+        selectedBackground: getComputedStyle(
+          rows.find((row) => row.dataset.state === "checked") ?? rows[0],
+        ).backgroundColor,
+        unselectedBackground: getComputedStyle(
+          rows.find((row) => row.dataset.state !== "checked") ?? rows[1],
+        ).backgroundColor,
+      };
+    });
+    expect(menuMetrics.menuPadding).toBe(6);
+    expect(menuMetrics.menuRadius).toBe(14);
+    expect(menuMetrics.gap).toBe(4);
+    for (const row of menuMetrics.rowMetrics) {
+      expect(row.paddingTop).toBe(10);
+      expect(row.paddingRight).toBe(12);
+      expect(row.paddingBottom).toBe(10);
+      expect(row.paddingLeft).toBe(12);
+      expect(row.radius).toBe(10);
+    }
+    expect(menuMetrics.selectedBackground).not.toBe(
+      menuMetrics.unselectedBackground,
+    );
+    const dotColors = await Promise.all(
+      ["not_started", "in_progress", "done"].map(async (status) => {
+        const dot = tableMenu.getByTestId(
+          `outreach-status-option-dot-${status}`,
+        );
+        await expect(dot).toBeVisible();
+        return dot.evaluate(
+          (element) => getComputedStyle(element).backgroundColor,
+        );
+      }),
+    );
+    expect(new Set(dotColors).size).toBe(3);
     await menuItems.nth(1).click();
     await expect(tableStatus).toContainText("In progress");
+    const feedback = lists.getByRole("status");
+    await expect(feedback).toHaveText("Outreach marked In progress.");
+    await tableStatus.click();
+    await expect(tableMenu).toBeVisible();
+    const footnoteMetrics = await tableMenu
+      .locator(".c3l-outreach-status-footnote")
+      .evaluate((footnote) => {
+        const styles = getComputedStyle(footnote);
+        return {
+          borderTopWidth: Number.parseFloat(styles.borderTopWidth),
+          paddingTop: Number.parseFloat(styles.paddingTop),
+        };
+      });
+    expect(footnoteMetrics.borderTopWidth).toBe(1);
+    expect(footnoteMetrics.paddingTop).toBe(10);
+    await page.keyboard.press("Escape");
+    await expect(feedback).toBeHidden({ timeout: 3_500 });
     await expect(
       table
         .locator("tbody tr")
@@ -989,6 +1075,7 @@ test.describe("Outreach lists", () => {
 
     for (const state of proofStates) {
       await openReference(page, "/lists", state.width, state.theme, {
+        mapShell: true,
         outreachBoard: true,
         outreachStatusBoard: true,
       });
@@ -998,6 +1085,12 @@ test.describe("Outreach lists", () => {
       });
       const suffix = `${state.theme}-${state.width}x${state.height}`;
       const lists = page.getByTestId("outreach-lists-page");
+      await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+      await expect(page.getByTestId("map-outreach-desk-header")).toBeVisible();
+      await expect(page.getByTestId("map-outreach-tab-lists")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
       const tableStatus = page.getByTestId(`outreach-status-${STATUS_LIST_ID}`);
       await tableStatus.click();
       await page
@@ -1005,6 +1098,9 @@ test.describe("Outreach lists", () => {
         .getByRole("menuitemradio", { name: /^Done/ })
         .click();
       await expect(tableStatus).toContainText("Done");
+      const feedback = lists.getByRole("status");
+      await expect(feedback).toHaveText("Outreach marked Done.");
+      await expect(feedback).toBeHidden({ timeout: 3_500 });
       await capture(page, `LS-Lists-all-${suffix}`);
 
       await lists.getByRole("button", { name: /^Done / }).click();

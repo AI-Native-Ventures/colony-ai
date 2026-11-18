@@ -120,7 +120,11 @@ export function OutreachStatusControl({
           data-testid={testId ? `${testId}-menu` : undefined}
           sideOffset={8}
         >
-          <DropdownMenuRadioGroup onValueChange={chooseStatus} value={status}>
+          <DropdownMenuRadioGroup
+            className="c3l-outreach-status-menu-options"
+            onValueChange={chooseStatus}
+            value={status}
+          >
             {OUTREACH_STATUS_OPTIONS.map((candidate) => (
               <DropdownMenuRadioItem
                 className="c3l-outreach-status-menu-item"
@@ -131,7 +135,8 @@ export function OutreachStatusControl({
                 <span className="c3l-outreach-status-menu-copy">
                   <span
                     aria-hidden="true"
-                    className={`c3l-outreach-status-dot c3l-outreach-status-${candidate.value}`}
+                    className={`c3l-outreach-status-option-dot c3l-outreach-status-option-dot-${candidate.value}`}
+                    data-testid={`outreach-status-option-dot-${candidate.value}`}
                   />
                   <span>
                     <strong>{candidate.label}</strong>

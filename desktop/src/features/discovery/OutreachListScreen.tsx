@@ -179,10 +179,11 @@ export function OutreachListScreen({
     </button>
   );
   React.useEffect(() => {
-    if (
-      message !== "Default template updated." &&
-      message !== "Default template cleared."
-    ) {
+    const shouldClear =
+      message === "Default template updated." ||
+      message === "Default template cleared." ||
+      /^Outreach marked (Not started|In progress|Done)\.$/u.test(message);
+    if (!shouldClear) {
       return;
     }
     const timeout = window.setTimeout(() => setMessage(""), 2400);
