@@ -41,8 +41,21 @@ import {
 } from "./CampaignProspectTable";
 import { CampaignRunPanel, type RunAction } from "./CampaignRunPanel";
 import { CampaignQualificationPanel } from "./CampaignQualificationPanel";
+import {
+  MultiCityCampaignTabs,
+  multiCityTabId,
+  type MultiCityCampaignTab,
+} from "./MultiCityCampaignTabs";
 import type { DiscoveryLocation } from "./discoveryLocation";
 import { useDiscoveryCampaign } from "./discoveryProvider";
+import {
+  groupCampaignStatus,
+  groupProgress,
+  groupSummaryCampaign,
+  shortPlaceName,
+  type MultiCityCampaignGroup,
+} from "./multiCityDiscovery";
+import { useMultiCityDiscovery } from "./useMultiCityDiscovery";
 import {
   DiscoveryTypeDetailsDialog,
   RelatedVerticalOptions,
@@ -108,7 +121,10 @@ export function CampaignScreen(context: CampaignContext) {
       }
     | undefined;
   const channelsQuery = useChannelsQuery();
-  const { campaign, provider } = useDiscoveryCampaign();
+  const { campaign: selectedCampaign, provider } = useDiscoveryCampaign();
+  const multiCity = useMultiCityDiscovery(provider);
+  const [multiCityTab, setMultiCityTab] =
+    React.useState<MultiCityCampaignTab>("all");
   const [query, setQuery] = React.useState(restored?.query ?? "");
   const [filter, setFilter] = React.useState<ProspectFilter>(
     restored?.filter ?? "all",
@@ -143,7 +159,7 @@ export function CampaignScreen(context: CampaignContext) {
   const recordsRef = React.useRef(context.records);
   recordsRef.current = context.records;
 
-  const campaignId = campaign?.id;
+  const campaignId = selectedCampaign?.id;
   const lastCampaignId = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     if (campaignId === undefined) return;
@@ -163,14 +179,14 @@ export function CampaignScreen(context: CampaignContext) {
   }, [campaignId, restored?.campaignId]);
 
   React.useEffect(() => {
-    if (!campaign) return;
+    if (!selectedCampaign) return;
     const scrollTarget = document.querySelector<HTMLElement>(".c3d-root");
     const save = () =>
       routeOrigin.savePageSnapshot({
-        backLabel: campaign.name,
-        breadcrumbs: ["Business", "Discovery", campaign.name],
+        backLabel: selectedCampaign.name,
+        breadcrumbs: ["Business", "Discovery", selectedCampaign.name],
         viewState: {
-          campaignId: campaign.id,
+          campaignId: selectedCampaign.id,
           query,
           filter,
           sort,
@@ -186,7 +202,7 @@ export function CampaignScreen(context: CampaignContext) {
     scrollHost.addEventListener("scroll", save, { passive: true });
     return () => scrollHost.removeEventListener("scroll", save);
   }, [
-    campaign,
+    selectedCampaign,
     filter,
     outreachFilters,
     page,
@@ -216,8 +232,8 @@ export function CampaignScreen(context: CampaignContext) {
   ]);
 
   React.useEffect(() => {
-    if (!provider || !campaign) void navigate({ to: "/discovery" });
-  }, [campaign, navigate, provider]);
+    if (!provider || !selectedCampaign) void navigate({ to: "/discovery" });
+  }, [navigate, provider, selectedCampaign]);
 
   React.useEffect(() => {
     try {
@@ -242,10 +258,34 @@ export function CampaignScreen(context: CampaignContext) {
     };
   }, []);
 
-  if (!provider || !campaign) {
+  if (!provider || !selectedCampaign) {
     return null;
   }
+  const group =
+    multiCity.coordinator?.getGroupForCampaign(selectedCampaign.id) ?? null;
+  const activeMultiCityTab =
+    group &&
+    (multiCityTab === "all" ||
+      group.cities.some((city) => city.cityId === multiCityTab))
+      ? multiCityTab
+      : "all";
+  const activeCity =
+    group && activeMultiCityTab !== "all"
+      ? (group.cities.find((city) => city.cityId === activeMultiCityTab) ??
+        null)
+      : null;
+  const activeCityCampaign = activeCity?.campaignId
+    ? (multiCity.campaigns.find(
+        (candidate) => candidate.id === activeCity.campaignId,
+      ) ?? null)
+    : null;
+  const allCities = Boolean(group && activeMultiCityTab === "all");
+  const waitingCity = Boolean(group && activeCity && !activeCityCampaign);
+  const campaign = allCities
+    ? groupSummaryCampaign(group as MultiCityCampaignGroup, multiCity.campaigns)
+    : (activeCityCampaign ?? selectedCampaign);
   const currentCampaign = campaign;
+  const sourceCampaignId = allCities ? undefined : campaign.id;
   const campaignRunner = campaign.runBy;
 
   const campaignRows = campaign.prospectIds
@@ -419,9 +459,24 @@ export function CampaignScreen(context: CampaignContext) {
   async function changeRun(action: RunAction) {
     if (!provider) return;
     try {
-      await provider[action]();
+      if (group && !allCities && multiCity.coordinator) {
+        await multiCity.coordinator.performAction(campaign.id, action);
+      } else {
+        await provider[action]();
+      }
     } catch (runError) {
       setError(errorMessage(runError));
+    }
+  }
+
+  async function selectMultiCityTab(tab: MultiCityCampaignTab) {
+    if (!group) return;
+    setMultiCityTab(tab);
+    if (tab === "all" || !multiCity.coordinator) return;
+    try {
+      await multiCity.coordinator.selectCity(group.groupId, tab);
+    } catch (selectionError) {
+      setError(errorMessage(selectionError));
     }
   }
 
@@ -594,9 +649,13 @@ export function CampaignScreen(context: CampaignContext) {
 
   async function startWidenSearch(input: CampaignFormInput) {
     if (!provider || !widenPending) return;
+    const { locations, ...campaignInput } = input;
+    if (locations.length !== 1) {
+      throw new Error("Choose one location for a widened search.");
+    }
     await provider.start({
       ...widenPending,
-      ...input,
+      ...campaignInput,
       runBy: campaignRunner ?? undefined,
     });
     setWidenOpen(false);
@@ -640,194 +699,242 @@ export function CampaignScreen(context: CampaignContext) {
     <>
       <main className="c3d-root" data-testid="w10-campaign-page">
         <div className="c3d-page is-campaign">
-          <CampaignRunPanel
-            campaign={campaign}
-            onChangeRun={(action) => void changeRun(action)}
-            onDiscuss={shareInSales}
-            onFindMore={() => void openFindMore()}
-            onNewSearch={() => void navigate({ to: "/discovery" })}
-            onOpenDetails={() => setDialogMode("details")}
-            onOpenSettings={() => setDialogMode("settings")}
-          />
-          <CampaignQualificationPanel
-            campaign={campaign}
-            context={context}
-            provider={provider}
-            rows={campaignRows}
-          />
-          {relatedTypes.length ? (
-            <section
-              aria-labelledby="c3d-widen-title"
-              className="c3d-related-search"
-            >
-              <div>
-                <h2 id="c3d-widen-title">Widen this search</h2>
-                <p>
-                  Choose a related business type to start a separate campaign.
-                </p>
-              </div>
-              <RelatedVerticalOptions
-                onSelect={setRelatedTypeId}
-                types={relatedTypes}
-              />
-            </section>
-          ) : null}
-          <CampaignToolbar
-            exportDisabled={!visibleRows.length}
-            filter={filter}
-            onExport={() =>
-              exportProspects(visibleRows.map(({ campaign: row }) => row))
-            }
-            onFilter={(value) => {
-              setFilter(value);
-              setSelected(new Set());
-              setPage(0);
-            }}
-            onQuery={(value) => {
-              setQuery(value);
-              setSelected(new Set());
-              setPage(0);
-            }}
-            onSort={(value) => {
-              setSort(value);
-              setPage(0);
-            }}
-            query={query}
-            sort={sort}
-          />
-          <OutreachFilterControls
-            allMatchingSelected={allMatchingSelected}
-            filters={outreachFilters}
-            matching={visibleRows.length}
-            onSelectAllMatching={selectAllMatching}
-            onChange={(next) => {
-              setOutreachFilters(next);
-              setSelected(new Set());
-              setPage(0);
-            }}
-            pageSelectedCount={0}
-            query={query}
-            rows={campaignFilterRows}
-            showSelectAll={false}
-          />
-          {selectedPageCount > 0 ? (
-            <div
-              aria-live="polite"
-              className="c3d-page-selection-notice"
-              data-testid="campaign-selection-page-notice"
-            >
-              <span>
-                {allMatchingSelected
-                  ? `All ${visibleRows.length} matching prospects are selected.`
-                  : selectedPageCount === pageRows.length
-                    ? `All ${pageRows.length} on this page are selected.`
-                    : `${selectedPageCount} selected on this page.`}
-              </span>
-              {!allMatchingSelected ? (
-                <button onClick={selectAllMatching} type="button">
-                  Select all {visibleRows.length} matching prospects
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          {selectedRows.length ? (
-            <CampaignSelectionBar
-              accept={acceptButtonState({
-                rows: selectedRows,
-                canWrite,
-                progress,
-              })}
-              count={selectedRows.length}
-              canWrite={canWrite}
-              busy={Boolean(progress)}
-              onAddToList={() => setListDialogOpen(true)}
-              onAskScout={() => void askScout()}
-              onAccept={() => void acceptSelected()}
-              onBatch={() => setBatchDialogOpen(true)}
-              onChangeStage={(stage) => void changeSelectedStage(stage)}
-              onClear={() => setSelected(new Set())}
+          {group ? (
+            <MultiCityCampaignTabs
+              campaigns={multiCity.campaigns}
+              group={group}
               onDiscuss={shareInSales}
-              onMarkLost={() => void markSelectedLost()}
+              onSelect={(tab) => void selectMultiCityTab(tab)}
+              selectedTab={activeMultiCityTab}
             />
           ) : null}
-          {notice ? (
-            <p className="c3d-notice" role="status">
-              {notice}
-            </p>
-          ) : null}
-          {pendingBulkUpdate ? (
-            <PendingBulkProspectUpdateNotice
-              busy={Boolean(progress)}
-              onRetry={() => void retryPendingBulkUpdate()}
-              pending={pendingBulkUpdate}
-            />
-          ) : null}
-          {error ? (
-            <p className="c3d-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-          {visibleRows.length ? (
-            <>
-              <CampaignTable
-                onToggle={toggleRow}
-                onToggleAll={toggleAll}
-                outreachByLead={outreachByLead}
-                rows={visibleProspectRows}
-                selected={selected}
+          <MultiCityContentPanel
+            labelledBy={
+              group ? multiCityTabId(group.groupId, activeMultiCityTab) : null
+            }
+          >
+            {allCities ? (
+              <MultiCityAllSummary
+                campaigns={multiCity.campaigns}
+                group={group as MultiCityCampaignGroup}
+                onRetry={
+                  multiCity.coordinator
+                    ? () =>
+                        void multiCity.coordinator?.retryGroup(
+                          group?.groupId ?? "",
+                        )
+                    : null
+                }
               />
-              {pageCount > 1 ? (
-                <nav aria-label="Campaign prospect pages" className="c3d-pages">
-                  <button
-                    className="c3d-btn c3d-btn--outline c3d-btn--sm"
-                    disabled={page === 0}
-                    onClick={() => setPage((value) => Math.max(0, value - 1))}
-                    type="button"
+            ) : waitingCity && activeCity ? (
+              <MultiCityWaitingCity
+                city={activeCity.label}
+                group={group as MultiCityCampaignGroup}
+              />
+            ) : (
+              <>
+                <CampaignRunPanel
+                  campaign={campaign}
+                  onChangeRun={(action) => void changeRun(action)}
+                  onDiscuss={shareInSales}
+                  onFindMore={() => void openFindMore()}
+                  onNewSearch={() => void navigate({ to: "/discovery" })}
+                  onOpenDetails={() => setDialogMode("details")}
+                  onOpenSettings={() => setDialogMode("settings")}
+                  showHeading={!group}
+                />
+                <CampaignQualificationPanel
+                  campaign={campaign}
+                  context={context}
+                  provider={provider}
+                  rows={campaignRows}
+                />
+                {relatedTypes.length ? (
+                  <section
+                    aria-labelledby="c3d-widen-title"
+                    className="c3d-related-search"
                   >
-                    Previous
-                  </button>
+                    <div>
+                      <h2 id="c3d-widen-title">Widen this search</h2>
+                      <p>
+                        Choose a related business type to start a separate
+                        campaign.
+                      </p>
+                    </div>
+                    <RelatedVerticalOptions
+                      onSelect={setRelatedTypeId}
+                      types={relatedTypes}
+                    />
+                  </section>
+                ) : null}
+              </>
+            )}
+          </MultiCityContentPanel>
+          {!waitingCity ? (
+            <>
+              <CampaignToolbar
+                exportDisabled={!visibleRows.length}
+                filter={filter}
+                onExport={() =>
+                  exportProspects(visibleRows.map(({ campaign: row }) => row))
+                }
+                onFilter={(value) => {
+                  setFilter(value);
+                  setSelected(new Set());
+                  setPage(0);
+                }}
+                onQuery={(value) => {
+                  setQuery(value);
+                  setSelected(new Set());
+                  setPage(0);
+                }}
+                onSort={(value) => {
+                  setSort(value);
+                  setPage(0);
+                }}
+                query={query}
+                sort={sort}
+              />
+              <OutreachFilterControls
+                allMatchingSelected={allMatchingSelected}
+                filters={outreachFilters}
+                matching={visibleRows.length}
+                onSelectAllMatching={selectAllMatching}
+                onChange={(next) => {
+                  setOutreachFilters(next);
+                  setSelected(new Set());
+                  setPage(0);
+                }}
+                pageSelectedCount={0}
+                query={query}
+                rows={campaignFilterRows}
+                showSelectAll={false}
+              />
+              {selectedPageCount > 0 ? (
+                <div
+                  aria-live="polite"
+                  className="c3d-page-selection-notice"
+                  data-testid="campaign-selection-page-notice"
+                >
                   <span>
-                    Page {page + 1} of {pageCount}
+                    {allMatchingSelected
+                      ? `All ${visibleRows.length} matching prospects are selected.`
+                      : selectedPageCount === pageRows.length
+                        ? `All ${pageRows.length} on this page are selected.`
+                        : `${selectedPageCount} selected on this page.`}
                   </span>
+                  {!allMatchingSelected ? (
+                    <button onClick={selectAllMatching} type="button">
+                      Select all {visibleRows.length} matching prospects
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              {selectedRows.length ? (
+                <CampaignSelectionBar
+                  accept={acceptButtonState({
+                    rows: selectedRows,
+                    canWrite,
+                    progress,
+                  })}
+                  count={selectedRows.length}
+                  canWrite={canWrite}
+                  busy={Boolean(progress)}
+                  onAddToList={() => setListDialogOpen(true)}
+                  onAskScout={() => void askScout()}
+                  onAccept={() => void acceptSelected()}
+                  onBatch={() => setBatchDialogOpen(true)}
+                  onChangeStage={(stage) => void changeSelectedStage(stage)}
+                  onClear={() => setSelected(new Set())}
+                  onDiscuss={shareInSales}
+                  onMarkLost={() => void markSelectedLost()}
+                />
+              ) : null}
+              {notice ? (
+                <p className="c3d-notice" role="status">
+                  {notice}
+                </p>
+              ) : null}
+              {pendingBulkUpdate ? (
+                <PendingBulkProspectUpdateNotice
+                  busy={Boolean(progress)}
+                  onRetry={() => void retryPendingBulkUpdate()}
+                  pending={pendingBulkUpdate}
+                />
+              ) : null}
+              {error ? (
+                <p className="c3d-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              {visibleRows.length ? (
+                <>
+                  <CampaignTable
+                    onToggle={toggleRow}
+                    onToggleAll={toggleAll}
+                    outreachByLead={outreachByLead}
+                    rows={visibleProspectRows}
+                    selected={selected}
+                  />
+                  {pageCount > 1 ? (
+                    <nav
+                      aria-label="Campaign prospect pages"
+                      className="c3d-pages"
+                    >
+                      <button
+                        className="c3d-btn c3d-btn--outline c3d-btn--sm"
+                        disabled={page === 0}
+                        onClick={() =>
+                          setPage((value) => Math.max(0, value - 1))
+                        }
+                        type="button"
+                      >
+                        Previous
+                      </button>
+                      <span>
+                        Page {page + 1} of {pageCount}
+                      </span>
+                      <button
+                        className="c3d-btn c3d-btn--outline c3d-btn--sm"
+                        disabled={page + 1 >= pageCount}
+                        onClick={() =>
+                          setPage((value) => Math.min(pageCount - 1, value + 1))
+                        }
+                        type="button"
+                      >
+                        Next
+                      </button>
+                    </nav>
+                  ) : null}
+                  <p className="c3d-footnote">
+                    {visibleRows.length}{" "}
+                    {visibleRows.length === 1 ? "prospect" : "prospects"} shown
+                    · {footnote}
+                  </p>
+                </>
+              ) : (
+                <div className="c3d-campaign-empty">
+                  <h2>
+                    {waiting
+                      ? "Looking for your first prospects…"
+                      : "No prospects match these filters."}
+                  </h2>
+                  <p>
+                    {waiting
+                      ? "The search is running. You can leave this view and return at any time."
+                      : "Try a different name, location or filter."}
+                  </p>
                   <button
                     className="c3d-btn c3d-btn--outline c3d-btn--sm"
-                    disabled={page + 1 >= pageCount}
-                    onClick={() =>
-                      setPage((value) => Math.min(pageCount - 1, value + 1))
-                    }
+                    onClick={clearFilters}
                     type="button"
                   >
-                    Next
+                    Clear filters
                   </button>
-                </nav>
-              ) : null}
-              <p className="c3d-footnote">
-                {visibleRows.length}{" "}
-                {visibleRows.length === 1 ? "prospect" : "prospects"} shown ·{" "}
-                {footnote}
-              </p>
+                </div>
+              )}
             </>
-          ) : (
-            <div className="c3d-campaign-empty">
-              <h2>
-                {waiting
-                  ? "Looking for your first prospects…"
-                  : "No prospects match these filters."}
-              </h2>
-              <p>
-                {waiting
-                  ? "The search is running. You can leave this view and return at any time."
-                  : "Try a different name, location or filter."}
-              </p>
-              <button
-                className="c3d-btn c3d-btn--outline c3d-btn--sm"
-                onClick={clearFilters}
-                type="button"
-              >
-                Clear filters
-              </button>
-            </div>
-          )}
+          ) : null}
         </div>
       </main>
       <CampaignDialog
@@ -861,6 +968,7 @@ export function CampaignScreen(context: CampaignContext) {
         typeId={relatedTypeId}
       />
       <DiscoveryCampaignDialog
+        allowMultipleCities={false}
         initialLocation={widenLocation}
         onOpenChange={setWidenOpen}
         onSubmit={startWidenSearch}
@@ -876,7 +984,7 @@ export function CampaignScreen(context: CampaignContext) {
         leadIds={selectedLeadIds}
         onOpenChange={setListDialogOpen}
         open={listDialogOpen}
-        sourceCampaignId={campaign.id}
+        sourceCampaignId={sourceCampaignId}
       />
       <OutreachBatchDialog
         leads={selectedBatchLeads}
@@ -887,5 +995,106 @@ export function CampaignScreen(context: CampaignContext) {
         open={batchDialogOpen}
       />
     </>
+  );
+}
+
+function MultiCityContentPanel({
+  children,
+  labelledBy,
+}: {
+  children: React.ReactNode;
+  labelledBy: string | null;
+}) {
+  if (!labelledBy) return <>{children}</>;
+  return (
+    <div
+      aria-labelledby={labelledBy}
+      id="multi-city-campaign-panel"
+      role="tabpanel"
+    >
+      {children}
+    </div>
+  );
+}
+
+function MultiCityAllSummary({
+  campaigns,
+  group,
+  onRetry,
+}: {
+  campaigns: readonly import("./discoveryProvider").DiscoveryCampaign[];
+  group: MultiCityCampaignGroup;
+  onRetry: (() => void) | null;
+}) {
+  const progress = groupProgress(group, campaigns);
+  const status = groupCampaignStatus(group, campaigns);
+  const percent = Math.min(
+    100,
+    progress.target ? (progress.count / progress.target) * 100 : 0,
+  );
+  const title = group.blockedReason
+    ? "The remaining cities need attention"
+    : progress.searching
+      ? `${progress.searching} of ${group.cities.length} cities searching`
+      : status === "complete"
+        ? "All city searches are complete"
+        : status === "failed"
+          ? "Some city searches need attention"
+          : "The city queue is paused";
+  return (
+    <section className="c3mc-all-summary" data-testid="multi-city-all-summary">
+      <div>
+        <h2>{title}</h2>
+        <p>
+          {progress.count} of {progress.target} prospects found in all
+        </p>
+      </div>
+      <div
+        aria-label="Multi-city prospects found"
+        aria-valuemax={progress.target}
+        aria-valuemin={0}
+        aria-valuenow={Math.min(progress.count, progress.target)}
+        className="c3mc-progress"
+        role="progressbar"
+      >
+        <span style={{ width: `${percent}%` }} />
+      </div>
+      {group.blockedReason ? (
+        <div>
+          <p>{group.blockedReason}</p>
+          {onRetry ? (
+            <button
+              className="c3d-btn c3d-btn--outline c3d-btn--sm"
+              onClick={onRetry}
+              type="button"
+            >
+              Try again
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MultiCityWaitingCity({
+  city,
+  group,
+}: {
+  city: string;
+  group: MultiCityCampaignGroup;
+}) {
+  return (
+    <section className="c3mc-waiting-city" data-testid="multi-city-waiting">
+      <div>
+        <h2>{shortPlaceName(city)} is waiting</h2>
+        <p>
+          {group.blockedReason
+            ? "This city has not started yet."
+            : "It starts after the current city finishes."}
+        </p>
+      </div>
+      {group.blockedReason ? <p>{group.blockedReason}</p> : null}
+    </section>
   );
 }

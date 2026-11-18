@@ -1657,7 +1657,7 @@ test("a post that was mid-send when the app closed is not repeated", async () =>
   assert.equal(again.log.posts.length, 0);
 });
 
-test("starting or selecting another campaign pauses the one that is running", async () => {
+test("starting another campaign pauses the active run, while selection only changes the view", async () => {
   const never = deferred();
   const { controller } = harness({
     search: async (request) => {
@@ -1693,11 +1693,17 @@ test("starting or selecting another campaign pauses the one that is running", as
   assert.equal(controller.getCurrent().id, "camp-1");
   assert.equal(
     controller.getCampaigns().find((entry) => entry.id === "camp-2").status,
-    "paused",
+    "running",
   );
   assert.deepEqual(
     controller.getCampaigns().map((entry) => entry.id),
     ["camp-2", "camp-1"],
+  );
+  await controller.select("camp-2");
+  await controller.pause();
+  assert.equal(
+    controller.getCampaigns().find((entry) => entry.id === "camp-2").status,
+    "paused",
   );
 });
 

@@ -40,6 +40,7 @@ export function CampaignRunPanel({
   onNewSearch,
   onOpenDetails,
   onOpenSettings,
+  showHeading = true,
 }: {
   campaign: DiscoveryCampaign;
   onChangeRun: (action: RunAction) => void;
@@ -48,6 +49,8 @@ export function CampaignRunPanel({
   onNewSearch: () => void;
   onOpenDetails: () => void;
   onOpenSettings: () => void;
+  /** A local multi-city group supplies its own shared heading. */
+  showHeading?: boolean;
 }) {
   const progress = Math.min(
     100,
@@ -55,34 +58,36 @@ export function CampaignRunPanel({
   );
   return (
     <>
-      <div className="c3d-head">
-        <div className="c3d-head-copy">
-          <h1>{campaign.name}</h1>
-          <p>
-            {campaign.verticalName} · {campaign.location}
-          </p>
-          {campaign.pickedTags?.length ? (
-            <fieldset
-              aria-label="Picked search tags"
-              className="c3d-picked-search-tags"
-            >
-              {campaign.pickedTags.map((tag) => (
-                <span className="is-picked" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </fieldset>
-          ) : null}
+      {showHeading ? (
+        <div className="c3d-head">
+          <div className="c3d-head-copy">
+            <h1>{campaign.name}</h1>
+            <p>
+              {campaign.verticalName} · {campaign.location}
+            </p>
+            {campaign.pickedTags?.length ? (
+              <fieldset
+                aria-label="Picked search tags"
+                className="c3d-picked-search-tags"
+              >
+                {campaign.pickedTags.map((tag) => (
+                  <span className="is-picked" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+              </fieldset>
+            ) : null}
+          </div>
+          <button
+            className="c3d-btn c3d-btn--outline c3d-btn--lg"
+            onClick={onDiscuss}
+            type="button"
+          >
+            <MessageGlyph />
+            Discuss in Sales
+          </button>
         </div>
-        <button
-          className="c3d-btn c3d-btn--outline c3d-btn--lg"
-          onClick={onDiscuss}
-          type="button"
-        >
-          <MessageGlyph />
-          Discuss in Sales
-        </button>
-      </div>
+      ) : null}
       <nav aria-label="Campaign views" className="c3d-tabs">
         <a aria-current="page" className="c3d-tab" href="#/campaign">
           Prospects <span className="c3d-tab-count">{campaign.count}</span>

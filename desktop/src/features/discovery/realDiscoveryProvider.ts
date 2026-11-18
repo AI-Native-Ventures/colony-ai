@@ -983,7 +983,6 @@ export function createDiscoveryController(
     async select(campaignId) {
       if (state.currentId === campaignId) return;
       if (!findCampaign(state, campaignId)) return;
-      if (active && active.campaignId !== campaignId) stopActive("paused");
       commit(setCurrent(state, campaignId));
       void flushPendingPosts();
     },

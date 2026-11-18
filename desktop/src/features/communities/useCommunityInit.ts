@@ -50,6 +50,7 @@ import { resetAvatarPresentations } from "@/features/profile/avatarPresentationS
 import { resetAvatarProfileSync } from "@/features/profile/avatarProfileSync";
 import { resetSidebarRelayConnectionCardState } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
 import { resetDiscoveryRuntime } from "@/features/discovery/discoveryRuntimeRegistry";
+import { resetMultiCityDiscoveryRuntime } from "@/features/discovery/multiCityDiscoveryRuntime";
 import { resetTenantCommunityCache } from "./tenantCommunity";
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
@@ -110,6 +111,7 @@ async function resetCommunityState({
   resetSidebarRelayConnectionCardState();
   resetMembershipDenialGate();
   resetWhatsAppUnknownMessageStateWarning();
+  resetMultiCityDiscoveryRuntime();
   resetDiscoveryRuntime();
   resetTenantCommunityCache();
   resetWorkAreaState();

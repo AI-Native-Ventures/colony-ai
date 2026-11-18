@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { ArrowRightGlyph } from "./DiscoveryIcons";
+import { MultiCityLocationPicker } from "./MultiCityLocationPicker";
 import { RunnerAvatar } from "./DiscoveryRunner";
 import { BUDGET_USD_PER_PROSPECT } from "./discoveryCampaignContinuation";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
@@ -57,6 +58,8 @@ export type CampaignFormInput = {
   name: string;
   location: string;
   locationSelection: DiscoveryLocation;
+  /** One selected place stays a normal campaign; two or more make a local group. */
+  locations: DiscoveryLocation[];
   target: number;
   criteria: string;
   qualification: CampaignQualificationSettings;
@@ -295,6 +298,7 @@ export function DiscoveryCampaignDialog({
   runner,
   simulatedCosts,
   initialLocation,
+  allowMultipleCities = true,
 }: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (input: CampaignFormInput) => Promise<void>;
@@ -305,11 +309,14 @@ export function DiscoveryCampaignDialog({
   /** The test-build stand-in keeps the design's example wording. */
   simulatedCosts: boolean;
   initialLocation?: DiscoveryLocation | null;
+  /** Widen search is intentionally one distinct campaign. */
+  allowMultipleCities?: boolean;
 }) {
   const [name, setName] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [locationSelection, setLocationSelection] =
     React.useState<DiscoveryLocation | null>(null);
+  const [locations, setLocations] = React.useState<DiscoveryLocation[]>([]);
   const [target, setTarget] = React.useState("100");
   const [criteria, setCriteria] = React.useState("");
   const [qualification, setQualification] =
@@ -321,14 +328,34 @@ export function DiscoveryCampaignDialog({
   const [failure, setFailure] = React.useState<ActionFailure | null>(null);
   const [detailsCopied, setDetailsCopied] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-  const providerBudget =
+  const selectedCityCount = Math.max(locations.length, 1);
+  const multiCity = allowMultipleCities && locations.length > 1;
+  const perCityProviderBudget =
     Math.max(0, Number(target) || 0) * BUDGET_USD_PER_PROSPECT;
+  const providerBudget = perCityProviderBudget * selectedCityCount;
+  const targetField = (
+    <div className="c3d-field c3mc-campaign-target">
+      <label htmlFor="w10-campaign-target">
+        {multiCity ? "Prospects per city" : "Prospect target"}
+      </label>
+      <input
+        id="w10-campaign-target"
+        max={500}
+        min={100}
+        onChange={(event) => setTarget(event.currentTarget.value)}
+        required
+        type="number"
+        value={target}
+      />
+    </div>
+  );
 
   React.useEffect(() => {
     if (!open || !pending) return;
     setName(`${pending.verticalName} prospects`);
     setLocation(initialLocation?.label ?? "");
     setLocationSelection(initialLocation ?? null);
+    setLocations(initialLocation ? [initialLocation] : []);
     setTarget("100");
     setCriteria("");
     setQualification(emptyCampaignQualificationSettings());
@@ -353,15 +380,22 @@ export function DiscoveryCampaignDialog({
     setFailure(null);
     setDetailsCopied(false);
     const requested = Number(target);
-    if (
-      !locationSelection ||
-      location.trim() !== locationSelection.label.trim()
-    ) {
-      setError("Pick a place from the list before starting this search.");
+    const selectedLocations = allowMultipleCities
+      ? locations
+      : locationSelection && location.trim() === locationSelection.label.trim()
+        ? [locationSelection]
+        : [];
+    const firstLocation = selectedLocations[0] ?? null;
+    if (!firstLocation) {
+      setError(
+        locations.length > 1
+          ? "Pick at least one place from the list before starting this search."
+          : "Pick a place from the list before starting this search.",
+      );
       return;
     }
     if (
-      !location.trim() ||
+      (!allowMultipleCities && !location.trim()) ||
       !Number.isInteger(requested) ||
       requested < 100 ||
       requested > 500 ||
@@ -379,8 +413,9 @@ export function DiscoveryCampaignDialog({
     try {
       await onSubmit({
         name: name.trim(),
-        location: location.trim(),
-        locationSelection,
+        location: firstLocation.label,
+        locationSelection: firstLocation,
+        locations: [...selectedLocations],
         target: requested,
         criteria,
         qualification,
@@ -426,26 +461,49 @@ export function DiscoveryCampaignDialog({
               value={name}
             />
           </div>
-          <div className="c3d-field-row">
-            <LocationCombobox
-              location={location}
-              onLocationChange={setLocation}
-              onSelect={setLocationSelection}
-              selected={locationSelection}
-            />
-            <div className="c3d-field">
-              <label htmlFor="w10-campaign-target">Prospect target</label>
-              <input
-                id="w10-campaign-target"
-                max={500}
-                min={100}
-                onChange={(event) => setTarget(event.currentTarget.value)}
-                required
-                type="number"
-                value={target}
+          {allowMultipleCities ? (
+            <>
+              <MultiCityLocationPicker
+                locations={locations}
+                onChange={setLocations}
               />
+              {multiCity ? (
+                <>
+                  <p className="c3mc-campaign-queue-hint">
+                    One campaign per city. Colony searches them one after
+                    another, so you can close this and come back.
+                  </p>
+                  <div className="c3mc-campaign-target-row">
+                    {targetField}
+                    <p
+                      className="c3mc-campaign-total"
+                      data-testid="multi-city-total"
+                    >
+                      <strong>
+                        {selectedCityCount}{" "}
+                        {selectedCityCount === 1 ? "campaign" : "campaigns"}
+                      </strong>
+                      {", up to "}
+                      {Math.max(0, Number(target) || 0) * selectedCityCount}
+                      {" prospects in all."}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="c3mc-single-city-target-row">{targetField}</div>
+              )}
+            </>
+          ) : (
+            <div className="c3d-field-row">
+              <LocationCombobox
+                location={location}
+                onLocationChange={setLocation}
+                onSelect={setLocationSelection}
+                selected={locationSelection}
+              />
+              {targetField}
             </div>
-          </div>
+          )}
           <fieldset
             aria-describedby="c3d-qualification-hint"
             className="c3d-qualification"
@@ -595,21 +653,27 @@ export function DiscoveryCampaignDialog({
             <span>
               <strong>Maximum search budget</strong>
               <small>
-                {simulatedCosts
-                  ? "Example pricing · Actual results and costs are simulated."
-                  : `${formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per new prospect. Businesses already in your Leads are not charged. Website check adds no cost. This is the maximum you approve.`}
+                {multiCity
+                  ? `${formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per new prospect, ${formatCustomerPrice(perCityProviderBudget)} per city. Businesses already in your Leads are not charged. This is the maximum you approve.`
+                  : simulatedCosts
+                    ? "Example pricing · Actual results and costs are simulated."
+                    : `${formatCustomerPrice(BUDGET_USD_PER_PROSPECT)} per new prospect. Businesses already in your Leads are not charged. Website check adds no cost. This is the maximum you approve.`}
               </small>
             </span>
-            <span className="c3d-budget-amount">
+            <span
+              className={`c3d-budget-amount${multiCity ? " c3mc-budget-amount" : ""}`}
+            >
               {formatCustomerPrice(providerBudget)}
+              {multiCity ? <small>{selectedCityCount} cities</small> : null}
             </span>
           </div>
           {runner ? (
             <div className="c3d-runner-line">
               <RunnerAvatar runner={runner} size={28} />
               <span>
-                {runner.name} runs the search in the background and reports back
-                in #Sales.
+                {multiCity
+                  ? `${runner.name} runs the ${selectedCityCount} searches one after another in the background and reports back in #Sales.`
+                  : `${runner.name} runs the search in the background and reports back in #Sales.`}
               </span>
             </div>
           ) : null}
@@ -619,7 +683,9 @@ export function DiscoveryCampaignDialog({
               onChange={(event) => setApproved(event.currentTarget.checked)}
               type="checkbox"
             />
-            I approve this campaign’s maximum budget.
+            {multiCity
+              ? `I approve the maximum budget for all ${selectedCityCount} campaigns.`
+              : "I approve this campaign’s maximum budget."}
           </label>
           {error ? (
             <div className="c3d-error" role="alert">
@@ -655,7 +721,10 @@ export function DiscoveryCampaignDialog({
               disabled={submitting || !pending}
               type="submit"
             >
-              Approve &amp; start <ArrowRightGlyph size={16} />
+              {multiCity
+                ? `Approve & start ${selectedCityCount}`
+                : "Approve & start"}{" "}
+              <ArrowRightGlyph size={16} />
             </button>
           </div>
         </form>
