@@ -70,14 +70,16 @@ async function installSearchFixture(
     const testWindow = window as DiscoveryWindow;
     testWindow.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async () => ({
       locations: [
+        // A town with no suburb list, so a short search ends where Maps
+        // ends (a big city goes on suburb by suburb).
         {
-          label: "Johannesburg, Gauteng, South Africa",
-          latitude: -26.2041,
-          longitude: 28.0473,
+          label: "Kempton Park, Gauteng, South Africa",
+          latitude: -26.0964,
+          longitude: 28.2336,
           countryCode: "ZA",
           region: "Gauteng",
           kind: "city",
-          boundingBox: [27.85, -26.35, 28.25, -26],
+          boundingBox: [28.17, -26.15, 28.3, -26.03],
         },
       ],
     });
@@ -89,7 +91,7 @@ async function installSearchFixture(
           name: `Website fixture ${String(first + index)}`,
           category: "Home goods store",
           address: `${String(first + index)} Main Road`,
-          city: "Johannesburg",
+          city: "Kempton Park",
           state: "Gauteng",
           country: "South Africa",
           phone: `+27 11 555 ${String(1000 + first + index)}`,
@@ -227,9 +229,9 @@ async function openCampaignForm(page: Page) {
   const dialog = page.getByTestId("discovery-campaign-dialog");
   await expect(dialog).toBeVisible();
   const location = dialog.getByRole("combobox", { name: "Location" });
-  await location.fill("Joh");
+  await location.fill("Kem");
   await dialog
-    .getByRole("option", { name: "Johannesburg, Gauteng, South Africa" })
+    .getByRole("option", { name: "Kempton Park, Gauteng, South Africa" })
     .click();
   await dialog
     .getByRole("checkbox", {

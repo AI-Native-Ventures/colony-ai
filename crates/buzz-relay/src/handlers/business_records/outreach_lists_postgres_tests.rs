@@ -11,7 +11,7 @@ use buzz_core::channel::MemberRole;
 use buzz_core::outreach_lists::{
     discovery_campaign_d_tag, outreach_list_d_tag, CampaignAudience, CampaignOp, CampaignStatus,
     DiscoveryCampaignAction, DiscoveryCampaignHead, ListOp, ListSource, ListSourceKind, ListStatus,
-    OutreachListAction, OutreachListHead, TemplateRef,
+    OutreachListAction, OutreachListHead, OutreachStatus, TemplateRef,
 };
 use nostr::Keys;
 
@@ -113,6 +113,7 @@ fn list_action(list_id: Uuid, op: ListOp) -> OutreachListAction {
         lead_ids: Vec::new(),
         source: None,
         default_template: None,
+        outreach_status: None,
     }
 }
 
@@ -287,6 +288,41 @@ async fn an_agent_creates_edits_and_reads_a_list_but_cannot_archive_it() {
     }
     let (_, head) = list_head(&fixture, list_id).await.expect("head");
     assert_eq!(head.status, ListStatus::Active);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn an_agent_sets_outreach_status_through_the_production_list_handler() {
+    let fixture = fixture().await;
+    let b = business(&fixture).await;
+    let list_id = Uuid::new_v4();
+    send_list(
+        &fixture,
+        &b.member,
+        b.channel_id,
+        &create_list_action(list_id, "Ready for outreach", &b.leads[..1]),
+    )
+    .await
+    .expect("create list");
+
+    let mut action = list_action(list_id, ListOp::SetOutreachStatus);
+    action.outreach_status = Some(OutreachStatus::InProgress);
+    let event = list_event(&fixture, &b.agent, b.channel_id, &action);
+    let event_id = event.id.to_hex();
+    let set_at = event.created_at.as_secs() as i64;
+    send(&fixture, &b.agent, event)
+        .await
+        .expect("agent sets outreach status");
+
+    let (_, head) = list_head(&fixture, list_id).await.expect("head");
+    let outreach = head.outreach.as_ref().expect("outreach progress");
+    assert_eq!(outreach.status, OutreachStatus::InProgress);
+    assert_eq!(outreach.set_by, b.agent.public_key().to_hex());
+    assert!(outreach.set_by_agent);
+    assert_eq!(outreach.set_at, set_at);
+    assert_eq!(head.updated_by, b.agent.public_key().to_hex());
+    assert_eq!(head.updated_at, set_at);
+    assert_eq!(head.source_action_event_id, event_id);
 }
 
 #[tokio::test]
