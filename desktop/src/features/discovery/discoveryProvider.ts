@@ -80,6 +80,12 @@ export type DiscoveryContinuation = {
    * searched so far have no more results. Nearest first.
    */
   nearbyAreas?: string[];
+  /**
+   * Set when continuing means searching the chosen city suburb by suburb: a
+   * campaign saved before suburbs were searched ran out on the whole city.
+   * These are inside the place the owner chose. Search order.
+   */
+  suburbs?: string[];
 };
 
 /**
@@ -149,6 +155,10 @@ export type DiscoveryCampaign = {
   areasSearched?: string[];
   /** Nearby areas not searched yet, nearest first. Searched only after a yes. */
   nearbyAreasLeft?: string[];
+  /** How many of the chosen city's suburbs this campaign searched. */
+  suburbsSearched?: number;
+  /** The chosen city's suburbs not searched yet, in search order. */
+  suburbsLeft?: string[];
   /** Device-local optional website-check settings. Legacy campaigns omit it. */
   qualification?: CampaignQualificationSettings;
 };

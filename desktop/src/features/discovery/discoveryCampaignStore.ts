@@ -15,7 +15,12 @@ import type {
   DiscoveryRunStatus,
   DiscoveryRunner,
 } from "./discoveryProvider";
-import { areasSearched, nearbyAreasLeft } from "./discoveryCampaignAreas";
+import {
+  areasSearched,
+  nearbyAreasLeft,
+  suburbsLeft,
+  suburbsSearched,
+} from "./discoveryCampaignAreas";
 import { parseDiscoveryLocation } from "./discoveryLocation";
 import {
   MAX_SEARCH_WORDS,
@@ -35,7 +40,11 @@ const MAX_TOP_FITS = 5;
 /** The server returns 1 to 50 places a page; a stored page is capped the same. */
 const MAX_PENDING_PLACES = 50;
 const STORE_VERSION = 4;
-const MAX_SEEN_PROVIDER_PLACE_IDS = 400;
+/**
+ * Provider ids a campaign remembers, to tell its own repeats apart. A city
+ * searched suburb by suburb sees far more than one search's 400 places.
+ */
+export const MAX_SEEN_PROVIDER_PLACE_IDS = 2_000;
 // Three tag streams for each of the chosen place and its six nearby areas.
 const MAX_COVERAGE_STREAMS = 21;
 const MAX_PAGE_LOGS = 25;
@@ -70,6 +79,12 @@ export type CampaignInternals = {
    * k-th nearby area, nearest first. See `discoveryCampaignAreas.ts`.
    */
   areaIndex: number;
+  /**
+   * While the chosen place is searched (`areaIndex` 0): 0 is the whole place,
+   * k is the k-th suburb of a big city. Campaigns saved before 18 Nov 2026
+   * lack it and read as 0. See `discoveryCityAreas.ts`.
+   */
+  suburbIndex: number;
   /**
    * The owner said yes to searching the nearby areas. Only that answer sets
    * it: a run never widens its area by itself.
@@ -425,6 +440,7 @@ export function parseCampaign(raw: unknown): StoredCampaign | null {
     coverage: parseCoverage(value.coverage),
     trustedCoverage: value.trustedCoverage === true,
     areaIndex: nonNegativeInt(value.areaIndex),
+    suburbIndex: nonNegativeInt(value.suburbIndex),
     nearbyApproved: value.nearbyApproved === true,
     searchWords: normalizeSearchWords(
       parseStringList(value.searchWords, MAX_SEARCH_WORDS),
@@ -595,6 +611,8 @@ export function toPublicCampaign(campaign: StoredCampaign): DiscoveryCampaign {
     pagesFetched: campaign.pagesFetched,
     areasSearched: areasSearched(campaign),
     nearbyAreasLeft: nearbyAreasLeft(campaign),
+    suburbsSearched: suburbsSearched(campaign),
+    suburbsLeft: suburbsLeft(campaign),
     coverage: campaign.coverage.map((cursor) => ({ ...cursor })),
     postedInSales: campaign.postedInSales === true,
     createdAt: campaign.createdAt,

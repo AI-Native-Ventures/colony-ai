@@ -17,14 +17,16 @@ const REAL_RUNNER = {
   referenceWorkspace: true,
   referenceWorkspaceDiscoveryStandIn: false,
 } as const;
-const JOHANNESBURG = {
-  label: "Johannesburg, Gauteng, South Africa",
-  latitude: -26.2041,
-  longitude: 28.0473,
+// A town with no suburb list: these tests are about paging and rescue, not
+// about a big city searched suburb by suburb (colony3-discovery-continue).
+const KEMPTON_PARK = {
+  label: "Kempton Park, Gauteng, South Africa",
+  latitude: -26.0964,
+  longitude: 28.2336,
   countryCode: "ZA",
   region: "Gauteng",
   kind: "city",
-  boundingBox: [27.85, -26.35, 28.25, -26.0],
+  boundingBox: [28.17, -26.15, 28.3, -26.03],
 };
 const EXISTING_LEAD_NAMES = [
   "The Olive House",
@@ -67,7 +69,7 @@ async function installDiscoveryFixture(page: Page, scenario: Scenario) {
         name,
         category: "Real estate agency",
         address: `1 Main Road, ${name}`,
-        city: "Johannesburg",
+        city: "Kempton Park",
         state: "Gauteng",
         country: "South Africa",
         phone: "+27 11 555 0100",
@@ -236,7 +238,7 @@ async function installDiscoveryFixture(page: Page, scenario: Scenario) {
     },
     {
       existingLeadNames: EXISTING_LEAD_NAMES,
-      location: JOHANNESBURG,
+      location: KEMPTON_PARK,
       owner: OWNER,
       scenarioName: scenario,
       storageKey: DISCOVERY_STORAGE_KEY,
@@ -303,8 +305,8 @@ async function startPartialOverlapCampaign(page: Page) {
   const dialog = page.getByTestId("discovery-campaign-dialog");
   await expect(dialog).toBeVisible();
   const location = dialog.getByRole("combobox", { name: "Location" });
-  await location.fill("Joh");
-  await dialog.getByRole("option", { name: JOHANNESBURG.label }).click();
+  await location.fill("Kem");
+  await dialog.getByRole("option", { name: KEMPTON_PARK.label }).click();
   await dialog.getByLabel("Prospect target").fill("100");
   await dialog
     .getByRole("checkbox", {

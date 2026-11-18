@@ -44,7 +44,7 @@ async function installDiscoveryFixture(page: Page) {
       name,
       category: "Home goods store",
       address: `1 Main Road, ${name}`,
-      city: "Johannesburg",
+      city: "Kempton Park",
       state: "Gauteng",
       country: "South Africa",
       phone: "+27 11 555 0100",
@@ -70,33 +70,35 @@ async function installDiscoveryFixture(page: Page) {
     w.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async ({ query }) => {
       w.__locationCalls?.push(query);
       return {
+        // A town with no suburb list, offered with two nearby places. A big
+        // city searched suburb by suburb has its own test below.
         locations: [
           {
-            label: "Johannesburg, Gauteng, South Africa",
-            latitude: -26.2041,
-            longitude: 28.0473,
+            label: "Kempton Park, Gauteng, South Africa",
+            latitude: -26.0964,
+            longitude: 28.2336,
             countryCode: "ZA",
             region: "Gauteng",
             kind: "city",
-            boundingBox: [27.85, -26.35, 28.25, -26.0],
+            boundingBox: [28.17, -26.15, 28.3, -26.03],
           },
           {
-            label: "Woodmead, Johannesburg, Gauteng, South Africa",
-            latitude: -26.055,
-            longitude: 28.081,
+            label: "Benoni, Gauteng, South Africa",
+            latitude: -26.1885,
+            longitude: 28.3208,
             countryCode: "ZA",
             region: "Gauteng",
             kind: "suburb",
-            boundingBox: [28.07, -26.06, 28.09, -26.04],
+            boundingBox: [28.28, -26.23, 28.36, -26.15],
           },
           {
-            label: "Sandton, Johannesburg, Gauteng, South Africa",
-            latitude: -26.1076,
-            longitude: 28.0567,
+            label: "Edenvale, Gauteng, South Africa",
+            latitude: -26.1406,
+            longitude: 28.152,
             countryCode: "ZA",
             region: "Gauteng",
             kind: "suburb",
-            boundingBox: [28.03, -26.13, 28.08, -26.08],
+            boundingBox: [28.13, -26.16, 28.17, -26.12],
           },
         ],
       };
@@ -180,14 +182,14 @@ async function openCampaignDialog(page: Page) {
   return dialog;
 }
 
-async function chooseJohannesburg(dialog: Locator) {
+async function chooseKemptonPark(dialog: Locator) {
   const input = dialog.getByRole("combobox", { name: "Location" });
-  await input.fill("Joh");
+  await input.fill("Kem");
   await expect(dialog.getByRole("option").first()).toBeVisible();
   await input.press("ArrowDown");
   await input.press("Enter");
   await expect(
-    dialog.getByText(/Selected Johannesburg, Gauteng, South Africa/),
+    dialog.getByText(/Selected Kempton Park, Gauteng, South Africa/),
   ).toBeVisible();
 }
 
@@ -245,7 +247,7 @@ test("results already in Leads are not charged, and Find more continues the same
 }) => {
   await openDiscovery(page);
   const firstDialog = await openCampaignDialog(page);
-  await chooseJohannesburg(firstDialog);
+  await chooseKemptonPark(firstDialog);
   await expect(firstDialog.getByText("Maximum search budget")).toBeVisible();
   await expect(firstDialog.getByText("US$3.00", { exact: true })).toBeVisible();
   await expect(
@@ -302,7 +304,7 @@ test("results already in Leads are not charged, and Find more continues the same
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", {
-      name: "Woodmead, Johannesburg, Gauteng, South Africa",
+      name: "Benoni, Gauteng, South Africa",
     }),
   ).toHaveCount(0);
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
@@ -320,20 +322,20 @@ test("results already in Leads are not charged, and Find more continues the same
     0,
   );
 
-  // Johannesburg ran out at 14. The search stops and asks before it goes
-  // anywhere else: nothing was asked of Sandton or Woodmead.
+  // Kempton Park ran out at 14. The search stops and asks before it goes
+  // anywhere else: nothing was asked of Edenvale or Benoni.
   await expect(page.getByText("Found 14 of 100", { exact: true })).toBeVisible({
     timeout: 20_000,
   });
   await expect(
     page.getByText(
-      "Johannesburg has no more. Find more in Sandton and Woodmead?",
+      "Kempton Park has no more. Find more in Edenvale and Benoni?",
       { exact: true },
     ),
   ).toBeVisible();
   expect(
     new Set((await searchCalls(page)).map((call) => call.location)),
-  ).toEqual(new Set(["Johannesburg, Gauteng, South Africa"]));
+  ).toEqual(new Set(["Kempton Park, Gauteng, South Africa"]));
   await expect(page.getByRole("link", { name: "Prospects 14" })).toBeVisible();
   // The five continued pages are asked for together, not one by one.
   expect((await searchCalls(page)).map((call) => call.skip)).toEqual([
@@ -353,13 +355,13 @@ test("the chosen place runs out: one clean question, and one yes continues throu
   page,
 }) => {
   await installDiscoveryFixture(page);
-  // Maps lists 27 here, 25 in Sandton and 10 in Woodmead: 62 of the 100 asked.
+  // Maps lists 27 here, 25 in Edenvale and 10 in Benoni: 62 of the 100 asked.
   await page.addInitScript(() => {
     const w = window as DiscoveryWindow;
     const listed: Record<string, number> = {
-      "Johannesburg, Gauteng, South Africa": 27,
-      "Sandton, Johannesburg, Gauteng, South Africa": 25,
-      "Woodmead, Johannesburg, Gauteng, South Africa": 10,
+      "Kempton Park, Gauteng, South Africa": 27,
+      "Edenvale, Gauteng, South Africa": 25,
+      "Benoni, Gauteng, South Africa": 10,
     };
     w.__BUZZ_E2E_DISCOVERY_SEARCH__ = async (request) => {
       w.__discoveryCalls?.push(request);
@@ -396,7 +398,7 @@ test("the chosen place runs out: one clean question, and one yes continues throu
   await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
   const dialog = await openCampaignDialog(page);
-  await chooseJohannesburg(dialog);
+  await chooseKemptonPark(dialog);
   await approve(dialog);
 
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
@@ -404,14 +406,14 @@ test("the chosen place runs out: one clean question, and one yes continues throu
     timeout: 20_000,
   });
   const question = page.getByText(
-    "Johannesburg has no more. Find more in Sandton and Woodmead?",
+    "Kempton Park has no more. Find more in Edenvale and Benoni?",
     { exact: true },
   );
   await expect(question).toBeVisible();
   // It asked. It did not go there by itself.
   expect(
     new Set((await searchCalls(page)).map((call) => call.location)),
-  ).toEqual(new Set(["Johannesburg, Gauteng, South Africa"]));
+  ).toEqual(new Set(["Kempton Park, Gauteng, South Africa"]));
   await expect(
     page.getByText("Search nearby areas", { exact: true }),
   ).toHaveCount(0);
@@ -427,25 +429,25 @@ test("the chosen place runs out: one clean question, and one yes continues throu
   await page.screenshot({ path: path.join(PROOF_DIR, "nearby-ask-390.png") });
   if (desktopSize) await page.setViewportSize(desktopSize);
 
-  // One yes: Sandton first (nearer), then Woodmead, in the same campaign.
+  // One yes: Edenvale first (nearer), then Benoni, in the same campaign.
   await page.getByRole("button", { name: /Find more/ }).click();
   await expect(page.getByText("Found 62 of 100", { exact: true })).toBeVisible({
     timeout: 20_000,
   });
   await expect(
     page.getByText(
-      "Johannesburg and its nearby areas have no more. Try another business type.",
+      "Kempton Park and its nearby areas have no more. Try another business type.",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /Find more/ })).toHaveCount(0);
-  await expect(page.getByText("Johannesburg + 2 nearby areas")).toBeVisible();
+  await expect(page.getByText("Kempton Park + 2 nearby areas")).toBeVisible();
   const areas: string[] = [];
   for (const call of await searchCalls(page)) {
     const area = String(call.location).split(",")[0] ?? "";
     if (areas.at(-1) !== area) areas.push(area);
   }
-  expect(areas).toEqual(["Johannesburg", "Sandton", "Woodmead"]);
+  expect(areas).toEqual(["Kempton Park", "Edenvale", "Benoni"]);
   const after = await campaignStorage(page);
   expect(after?.campaigns).toHaveLength(1);
   expect(after?.currentId).toBe(before?.currentId);
@@ -454,13 +456,142 @@ test("the chosen place runs out: one clean question, and one yes continues throu
   await page.screenshot({ path: path.join(PROOF_DIR, "nearby-done-1440.png") });
 });
 
+test("a whole city runs out: the search goes on suburb by suburb inside it, and asks only to go further", async ({
+  page,
+}) => {
+  await installDiscoveryFixture(page);
+  // Owner, 18 Nov 2026: whole-city searches stopped under 200. Maps ends one
+  // search at about 100 to 150 places; suburbs list businesses it missed.
+  await page.addInitScript(() => {
+    const w = window as DiscoveryWindow;
+    w.__BUZZ_E2E_DISCOVERY_LOCATIONS__ = async () => ({
+      locations: [
+        {
+          label: "Johannesburg, Gauteng, South Africa",
+          latitude: -26.2041,
+          longitude: 28.0473,
+          countryCode: "ZA",
+          region: "Gauteng",
+          kind: "city",
+          boundingBox: [27.85, -26.35, 28.25, -26.0],
+        },
+      ],
+    });
+    const listed: Record<string, number> = {
+      "Johannesburg, Gauteng, South Africa": 27,
+      "Sandton, Johannesburg, Gauteng, South Africa": 25,
+      "Randburg, Johannesburg, Gauteng, South Africa": 30,
+      "Soweto, Johannesburg, Gauteng, South Africa": 20,
+    };
+    w.__BUZZ_E2E_DISCOVERY_SEARCH__ = async (request) => {
+      w.__discoveryCalls?.push(request);
+      const area = String(request.location ?? "");
+      const short = area.split(",")[0] ?? area;
+      const total = listed[area] ?? 0;
+      const skip = Number(request.skip ?? 0);
+      const count = Math.max(0, Math.min(20, total - skip));
+      return {
+        provider: "outscraper",
+        places: Array.from({ length: count }, (_, index) => {
+          const n = skip + index + 1;
+          return {
+            placeId: `${short}-${String(n)}`,
+            name: `${short} Interiors ${String(n)}`,
+            category: "Home goods store",
+            address: `${String(n)} Main Road, ${short}`,
+            city: short,
+            state: "Gauteng",
+            country: "South Africa",
+            phone: "+27 11 555 0100",
+            website: `https://${short.toLowerCase()}-${String(n)}.example`,
+            rating: 4.5,
+            reviews: 20,
+          };
+        }),
+        estimatedCostUsd: count > 0 ? 0.06 : 0,
+        nextSkip: skip + 20 < total ? skip + 20 : null,
+      };
+    };
+  });
+  await answerFirstSearchWordOnly(page);
+  await installMockBridge(page, REAL_RUNNER);
+  await page.goto("/#/discovery", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("w10-discovery-page")).toBeVisible();
+  const dialog = await openCampaignDialog(page);
+  const input = dialog.getByRole("combobox", { name: "Location" });
+  await input.fill("Joh");
+  await expect(dialog.getByRole("option").first()).toBeVisible();
+  await input.press("ArrowDown");
+  await input.press("Enter");
+  await expect(
+    dialog.getByText(/Selected Johannesburg, Gauteng, South Africa/),
+  ).toBeVisible();
+  await approve(dialog);
+
+  // Johannesburg as a whole lists 27. The run went on to Sandton and
+  // Randburg by itself, until the 100 approved results were used.
+  await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
+  await expect(page.getByText("Found 72 of 100", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByText("Johannesburg + 2 suburbs")).toBeVisible();
+  await expect(
+    page.getByText("Find the other 28?", { exact: true }),
+  ).toBeVisible();
+  const firstAreas = new Set(
+    (await searchCalls(page)).map((call) => String(call.location)),
+  );
+  expect(firstAreas).toEqual(
+    new Set([
+      "Johannesburg, Gauteng, South Africa",
+      "Sandton, Johannesburg, Gauteng, South Africa",
+      "Randburg, Johannesburg, Gauteng, South Africa",
+    ]),
+  );
+  for (const call of await searchCalls(page)) {
+    expect(call.coordinates, "searched by name, not from one point").toBe(
+      undefined,
+    );
+  }
+  mkdirSync(PROOF_DIR, { recursive: true });
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(PROOF_DIR, "suburbs-ask-1440.png") });
+  const desktopSize = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(PROOF_DIR, "suburbs-ask-390.png") });
+  if (desktopSize) await page.setViewportSize(desktopSize);
+
+  // One yes: the rest of Randburg, then on through the suburbs to Soweto,
+  // where the 100th prospect is found.
+  await page.getByRole("button", { name: /Find more/ }).click();
+  await expect(page.getByRole("link", { name: "Prospects 100" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByText("Johannesburg + 7 suburbs")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Find more/ })).toHaveCount(0);
+  const stored = await campaignStorage(page);
+  expect(stored?.campaigns).toHaveLength(1);
+  const outside = (await searchCalls(page)).filter(
+    (call) => !String(call.location).includes("Johannesburg"),
+  );
+  expect(outside, "nothing outside the city was searched").toEqual([]);
+  await waitForAnimations(page);
+  await page.screenshot({
+    path: path.join(PROOF_DIR, "suburbs-done-1440.png"),
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await waitForAnimations(page);
+  await page.screenshot({ path: path.join(PROOF_DIR, "suburbs-done-390.png") });
+});
+
 test("location autocomplete refuses free text, then supports keyboard selection", async ({
   page,
 }) => {
   await openDiscovery(page);
   const dialog = await openCampaignDialog(page);
   const input = dialog.getByRole("combobox", { name: "Location" });
-  await input.fill("Johannesburg");
+  await input.fill("Kempton Park");
   await expect(dialog.getByRole("option").first()).toBeVisible();
   await dialog.getByRole("button", { name: /Approve & start/ }).click();
   await expect(dialog.getByRole("alert")).toHaveText(
@@ -471,7 +602,7 @@ test("location autocomplete refuses free text, then supports keyboard selection"
   await input.press("ArrowDown");
   await input.press("Enter");
   await expect(
-    dialog.getByText(/Selected Johannesburg, Gauteng, South Africa/),
+    dialog.getByText(/Selected Kempton Park, Gauteng, South Africa/),
   ).toBeVisible();
 });
 
