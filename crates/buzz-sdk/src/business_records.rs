@@ -27,7 +27,8 @@ use buzz_core::outreach_lists::{discovery_campaign_d_tag, outreach_list_d_tag};
 pub use buzz_core::outreach_lists::{
     CampaignAudience, CampaignOp, CampaignRunBy, CampaignStatus, DiscoveryCampaignAction,
     DiscoveryCampaignHead, ListMember, ListOp, ListSource, ListSourceKind, ListStatus,
-    OutreachListAction, OutreachListHead, RunnerKind, TemplateRef,
+    OutreachListAction, OutreachListHead, OutreachProgress, OutreachStatus, RunnerKind,
+    TemplateRef,
 };
 use buzz_core::qualify::qualify_observation_d_tag;
 pub use buzz_core::qualify::{
@@ -603,6 +604,7 @@ mod tests {
                 campaign_id: None,
             }),
             default_template: None,
+            outreach_status: None,
         };
         let event = build_outreach_list_action(community_id, channel_id, &list)
             .expect("builder")
