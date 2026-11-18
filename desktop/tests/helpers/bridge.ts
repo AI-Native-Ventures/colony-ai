@@ -216,6 +216,8 @@ type MockBridgeOptions = {
   referenceWorkspaceOutreachReady?: boolean;
   /** Seed the approved dense Leads selection board fixture. */
   referenceWorkspaceOutreachBoard?: boolean;
+  /** Seed durable outreach-status examples for list-status interaction tests. */
+  referenceWorkspaceOutreachStatusBoard?: boolean;
   /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
   referenceWorkspaceOutreachSidebar?: boolean;
   /** Limit global people search to explicitly seeded board identities. */

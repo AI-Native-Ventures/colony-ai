@@ -730,6 +730,8 @@ type E2eConfig = {
     referenceWorkspaceOutreachReady?: boolean;
     /** Seed the approved dense Leads selection board fixture. */
     referenceWorkspaceOutreachBoard?: boolean;
+    /** Seed durable outreach-status examples for list-status interaction tests. */
+    referenceWorkspaceOutreachStatusBoard?: boolean;
     /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
     referenceWorkspaceOutreachSidebar?: boolean;
     /** Limit global people search to explicitly seeded board identities. */
@@ -6198,6 +6200,8 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
       outreachBoard: config.mock?.referenceWorkspaceOutreachBoard === true,
+      outreachStatusBoard:
+        config.mock?.referenceWorkspaceOutreachStatusBoard === true,
       outreachMentionBoard:
         config.mock?.referenceWorkspaceOutreachMentionBoard === true,
       restaurantsBoard:
@@ -11072,6 +11076,7 @@ function applyReferenceOutreachListAction(
     source?: { kind?: string; campaignId?: string | null };
     leadIds?: string[];
     defaultTemplate?: { name?: string; language?: string };
+    outreachStatus?: string;
   }>(event);
   if (
     action?.schemaVersion !== 1 ||
@@ -11185,6 +11190,23 @@ function applyReferenceOutreachListAction(
     next.status = "archived";
   } else if (action.op === "unarchive") {
     next.status = "active";
+  } else if (action.op === "set_outreach_status") {
+    if (prior.status === "archived") {
+      return "this list is archived; restore it before changing it";
+    }
+    if (
+      action.outreachStatus !== "not_started" &&
+      action.outreachStatus !== "in_progress" &&
+      action.outreachStatus !== "done"
+    ) {
+      return "outreach list status is invalid";
+    }
+    next.outreach = {
+      status: action.outreachStatus,
+      setBy: event.pubkey,
+      setByAgent: false,
+      setAt: event.created_at,
+    };
   } else {
     return "outreach list action is invalid";
   }

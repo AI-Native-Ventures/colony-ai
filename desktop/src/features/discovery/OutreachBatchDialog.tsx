@@ -28,6 +28,7 @@ export function OutreachBatchDialog({
   listName,
   defaultTemplate,
   minimumFit,
+  onBatchPrepared,
   onMinimumFitChange,
   onOpenChange,
   open,
@@ -36,6 +37,8 @@ export function OutreachBatchDialog({
   listName: string;
   defaultTemplate?: { name: string; language: string } | null;
   minimumFit?: number | null;
+  /** Runs after the batch exists so list-derived state cannot block the batch. */
+  onBatchPrepared?: () => Promise<void>;
   onMinimumFitChange?: (minimumFit: number | null) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -55,6 +58,9 @@ export function OutreachBatchDialog({
   const wasOpen = React.useRef(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [preparedBatchId, setPreparedBatchId] = React.useState<string | null>(
+    null,
+  );
   const effectiveMinimumFit =
     minimumFit === undefined ? localMinimumFit : minimumFit;
   const changeMinimumFit = onMinimumFitChange ?? setLocalMinimumFit;
@@ -83,6 +89,7 @@ export function OutreachBatchDialog({
     userSelectedTemplate.current = false;
     setTemplate(null);
     setError("");
+    setPreparedBatchId(null);
     if (minimumFit === undefined) setLocalMinimumFit(null);
   }, [minimumFit, open]);
 
@@ -97,7 +104,7 @@ export function OutreachBatchDialog({
   }, [defaultTemplate, open, templates]);
 
   async function prepare() {
-    if (!template || !batchPlan || busy) return;
+    if (!template || !batchPlan || busy || preparedBatchId) return;
     if (!statusQuery.data?.connected) {
       setError("Connect WhatsApp before preparing a batch.");
       return;
@@ -116,16 +123,31 @@ export function OutreachBatchDialog({
         ...batchPlan.content,
         batchId,
       });
-      onOpenChange(false);
-      await navigate({
-        to: "/whatsapp/batches/$batchId",
-        params: { batchId },
-      });
+      try {
+        await onBatchPrepared?.();
+      } catch (markError) {
+        setPreparedBatchId(batchId);
+        setError(
+          markError instanceof Error && markError.message
+            ? markError.message
+            : "The batch is ready, but outreach status could not change. Update it from the list.",
+        );
+        return;
+      }
+      await openPreparedBatch(batchId);
     } catch (prepareError) {
       setError(errorMessage(prepareError));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function openPreparedBatch(batchId: string) {
+    onOpenChange(false);
+    await navigate({
+      to: "/whatsapp/batches/$batchId",
+      params: { batchId },
+    });
   }
 
   return (
@@ -236,19 +258,29 @@ export function OutreachBatchDialog({
           >
             Cancel
           </button>
-          <button
-            className="c3l-btn c3l-btn-primary c3l-btn-small"
-            disabled={
-              busy ||
-              !template ||
-              !statusQuery.data?.connected ||
-              Boolean(batchPlan && batchPlan.content.rows.length === 0)
-            }
-            onClick={() => void prepare()}
-            type="button"
-          >
-            {busy ? "Preparing…" : "Prepare for approval"}
-          </button>
+          {preparedBatchId ? (
+            <button
+              className="c3l-btn c3l-btn-primary c3l-btn-small"
+              onClick={() => void openPreparedBatch(preparedBatchId)}
+              type="button"
+            >
+              Open batch
+            </button>
+          ) : (
+            <button
+              className="c3l-btn c3l-btn-primary c3l-btn-small"
+              disabled={
+                busy ||
+                !template ||
+                !statusQuery.data?.connected ||
+                Boolean(batchPlan && batchPlan.content.rows.length === 0)
+              }
+              onClick={() => void prepare()}
+              type="button"
+            >
+              {busy ? "Preparing…" : "Prepare for approval"}
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

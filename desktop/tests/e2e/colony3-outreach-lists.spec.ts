@@ -18,6 +18,7 @@ import {
   referenceChannelLastMessageAt,
   referenceRestaurantProspectId,
 } from "../../src/testing/e2eReferenceWorkspace";
+import { KIND_OUTREACH_LIST_ACTION } from "../../src/features/discovery/businessRecordContract";
 import { cedarCafeLeadRecord } from "../../src/testing/cofounderCustomerFixtures";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
@@ -30,6 +31,9 @@ const OUT = process.env.OL_UI_PROOF_DIR ?? "test-results/outreach-lists-ui";
 const RELAY_SECRET = generateSecretKey();
 const RELAY_SELF = getPublicKey(RELAY_SECRET);
 const LIST_NAME = "Melville guesthouses, Nov";
+const STATUS_LIST_ID = "3f1a7000-0000-4000-9000-000000000001";
+const STATUS_SCOUT_LIST_ID = "3f1a7000-0000-4000-9000-000000000002";
+const STATUS_ARCHIVED_LIST_ID = "3f1a7000-0000-4000-9000-000000000004";
 const appPort = Number(process.env.COLONY_E2E_PORT ?? 4173);
 let scoutMessageSequence = 0;
 const test = base.extend({
@@ -144,6 +148,7 @@ type ReferenceOptions = {
   whatsappGuesthouses?: boolean;
   mockWhatsApp?: boolean;
   outreachBoard?: boolean;
+  outreachStatusBoard?: boolean;
   outreachMentionBoard?: boolean;
   searchProfilesOnly?: boolean;
   restaurantsBoard?: boolean;
@@ -465,6 +470,7 @@ async function openReference(
     referenceWorkspaceOutreachReady: true,
     referenceWorkspaceLeadCount: options.outreachBoard ? 108 : undefined,
     referenceWorkspaceOutreachBoard: options.outreachBoard,
+    referenceWorkspaceOutreachStatusBoard: options.outreachStatusBoard,
     referenceWorkspaceOutreachSidebar: true,
     cofounderSettings: {
       enabled: true,
@@ -588,9 +594,13 @@ async function openReference(
     const screenTestId =
       route === "/campaign"
         ? "w10-campaign-page"
-        : route.startsWith("/sales/lead/")
-          ? "w10-prospect-page"
-          : "w10-leads-page";
+        : route.startsWith("/lists/")
+          ? "outreach-list-detail"
+          : route === "/lists"
+            ? "outreach-lists-page"
+            : route.startsWith("/sales/lead/")
+              ? "w10-prospect-page"
+              : "w10-leads-page";
     await expect(page.getByTestId(screenTestId)).toBeVisible();
   }
   if (options.outreachMentionBoard && width !== 390) {
@@ -822,6 +832,249 @@ async function emitPendingBatchNotice(
 
 test.describe("Outreach lists", () => {
   test.describe.configure({ mode: "serial", timeout: 120_000 });
+
+  test("sets, filters, and explains durable outreach status", async ({
+    page,
+  }) => {
+    await openReference(page, "/lists", 1440, "light", {
+      outreachBoard: true,
+      outreachStatusBoard: true,
+    });
+    const lists = page.getByTestId("outreach-lists-page");
+    const table = lists.getByRole("table", { name: "Outreach lists" });
+    await expect(table.locator("thead th")).toHaveText([
+      "Name",
+      "Leads",
+      "Outreach",
+      "Source",
+      "Default template",
+      "Updated",
+    ]);
+    const [leadsBox, outreachBox, sourceBox] = await Promise.all(
+      ["Leads", "Outreach", "Source"].map((label) =>
+        table.getByRole("columnheader", { name: label }).boundingBox(),
+      ),
+    );
+    if (!leadsBox || !outreachBox || !sourceBox) {
+      throw new Error("The outreach-list table headers need bounds.");
+    }
+    expect(leadsBox.x).toBeLessThan(outreachBox.x);
+    expect(outreachBox.x).toBeLessThan(sourceBox.x);
+
+    const tableStatus = page.getByTestId(`outreach-status-${STATUS_LIST_ID}`);
+    await tableStatus.click();
+    const tableMenu = page.getByTestId(
+      `outreach-status-${STATUS_LIST_ID}-menu`,
+    );
+    await expect(tableMenu).toBeVisible();
+    await waitForAnimations(page);
+    const menuItems = tableMenu.getByRole("menuitemradio");
+    await expect(menuItems).toHaveCount(3);
+    await expect(menuItems.nth(0)).toContainText(
+      "Nobody has messaged this list yet.",
+    );
+    await expect(menuItems.nth(1)).toContainText(
+      "Outreach is running on this list.",
+    );
+    await expect(menuItems.nth(2)).toContainText(
+      "Everyone on the list has been contacted.",
+    );
+    const menuBox = await tableMenu.boundingBox();
+    if (!menuBox) throw new Error("The outreach-status menu needs bounds.");
+    expect(menuBox.width).toBeGreaterThanOrEqual(328);
+    expect(menuBox.width).toBeLessThanOrEqual(332);
+    await menuItems.nth(1).click();
+    await expect(tableStatus).toContainText("In progress");
+    await expect(
+      table
+        .locator("tbody tr")
+        .filter({ hasText: "Melville guesthouses, Nov" }),
+    ).toContainText("You, today");
+
+    const scoutRow = table
+      .locator("tbody tr")
+      .filter({ hasText: "Rosebank restaurants" });
+    await expect(scoutRow).toContainText("Scout");
+
+    await page.evaluate((listId) => {
+      window.location.hash = `/lists/${listId}`;
+    }, STATUS_LIST_ID);
+    const detail = page.getByTestId("outreach-list-detail");
+    const detailStatus = detail.getByTestId("outreach-status-detail");
+    await expect(detailStatus).toContainText("In progress");
+    const detailStatusBox = await detailStatus.boundingBox();
+    if (!detailStatusBox) {
+      throw new Error("The detail outreach-status control needs bounds.");
+    }
+    expect(detailStatusBox.height).toBeGreaterThanOrEqual(34);
+    expect(detailStatusBox.height).toBeLessThanOrEqual(38);
+
+    await detailStatus.focus();
+    await page.keyboard.press("Enter");
+    const detailMenu = page.getByTestId("outreach-status-detail-menu");
+    await expect(detailMenu).toBeVisible();
+    const detailMenuItems = detailMenu.getByRole("menuitemradio");
+    await expect(detailMenuItems.nth(0)).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(detailMenuItems.nth(1)).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(detailMenuItems.nth(2)).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(detailStatus).toContainText("Done");
+
+    await detailStatus.focus();
+    await page.keyboard.press("Enter");
+    await expect(detailMenu).toContainText(
+      "Set to Done by You today at 10:00.",
+    );
+    await page.keyboard.press("Escape");
+    await expect(detailStatus).toBeFocused();
+
+    await page.evaluate(() => {
+      window.location.hash = "/lists";
+    });
+    await expect(lists).toBeVisible();
+    await expect(lists.getByRole("button", { name: /^All / })).toContainText(
+      "All 3",
+    );
+    await expect(
+      lists.getByRole("button", { name: /^Not started / }),
+    ).toContainText("Not started 1");
+    await expect(
+      lists.getByRole("button", { name: /^In progress / }),
+    ).toContainText("In progress 1");
+    const doneFilter = lists.getByRole("button", { name: /^Done / });
+    await expect(doneFilter).toContainText("Done 1");
+    await doneFilter.click();
+    await expect(table.locator("tbody tr")).toHaveCount(1);
+    await expect(table).toContainText("Melville guesthouses, Nov");
+    await expect(table).not.toContainText("Rosebank restaurants");
+
+    const archived = lists.getByRole("checkbox", { name: "Show archived" });
+    await archived.check();
+    await expect(lists.getByRole("button", { name: /^All / })).toContainText(
+      "All 1",
+    );
+    await expect(
+      lists.getByRole("button", { name: /^Not started / }),
+    ).toContainText("Not started 1");
+    await expect(
+      lists.getByRole("button", { name: /^In progress / }),
+    ).toContainText("In progress 0");
+    await expect(doneFilter).toContainText("Done 0");
+    await lists.getByRole("button", { name: /^All / }).click();
+    const archivedRow = table
+      .locator("tbody tr")
+      .filter({ hasText: "Archived winter follow up" });
+    await expect(archivedRow).toBeVisible();
+    await expect(
+      archivedRow.getByTestId(`outreach-status-${STATUS_ARCHIVED_LIST_ID}`),
+    ).toContainText("Not started");
+    await expect(archivedRow.getByRole("button")).toHaveCount(0);
+    await archived.uncheck();
+    await expect(
+      lists.getByTestId(`outreach-status-${STATUS_SCOUT_LIST_ID}`),
+    ).toHaveText(/In progress/);
+  });
+
+  test("captures lists and list-detail outreach status proof", async ({
+    page,
+  }) => {
+    const proofStates = [
+      { width: 1440, height: 900, theme: "light" as const },
+      { width: 1440, height: 900, theme: "dark" as const },
+      { width: 1728, height: 1117, theme: "light" as const },
+      { width: 1728, height: 1117, theme: "dark" as const },
+    ];
+
+    for (const state of proofStates) {
+      await openReference(page, "/lists", state.width, state.theme, {
+        outreachBoard: true,
+        outreachStatusBoard: true,
+      });
+      await page.setViewportSize({
+        width: state.width,
+        height: state.height,
+      });
+      const suffix = `${state.theme}-${state.width}x${state.height}`;
+      const lists = page.getByTestId("outreach-lists-page");
+      const tableStatus = page.getByTestId(`outreach-status-${STATUS_LIST_ID}`);
+      await tableStatus.click();
+      await page
+        .getByTestId(`outreach-status-${STATUS_LIST_ID}-menu`)
+        .getByRole("menuitemradio", { name: /^Done/ })
+        .click();
+      await expect(tableStatus).toContainText("Done");
+      await capture(page, `LS-Lists-all-${suffix}`);
+
+      await lists.getByRole("button", { name: /^Done / }).click();
+      await expect(
+        lists
+          .getByRole("table", { name: "Outreach lists" })
+          .locator("tbody tr"),
+      ).toHaveCount(1);
+      await capture(page, `LS-Lists-done-${suffix}`);
+
+      await lists
+        .getByRole("link", { name: "Melville guesthouses, Nov" })
+        .click();
+      const detail = page.getByTestId("outreach-list-detail");
+      const detailStatus = detail.getByTestId("outreach-status-detail");
+      await expect(detailStatus).toContainText("Done");
+      await capture(page, `LS-List-detail-closed-${suffix}`);
+
+      await detailStatus.click();
+      await expect(
+        page.getByTestId("outreach-status-detail-menu"),
+      ).toBeVisible();
+      await capture(page, `LS-List-detail-menu-${suffix}`);
+    }
+  });
+
+  test("keeps a prepared batch recoverable when its automatic status write fails", async ({
+    page,
+  }) => {
+    await openReference(page, `/lists/${STATUS_LIST_ID}`, 1440, "light", {
+      mockWhatsApp: true,
+      outreachBoard: true,
+    });
+    const detail = page.getByTestId("outreach-list-detail");
+    await detail
+      .getByLabel("Default WhatsApp template")
+      .selectOption("hl_vb:en");
+    await detail
+      .getByRole("button", { name: "Prepare WhatsApp batch" })
+      .click();
+    const batch = page.getByTestId("outreach-batch-dialog");
+    await expect(batch).toBeVisible();
+    await page.evaluate((kind) => {
+      (
+        window as Window & {
+          __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
+            kind: number;
+            reason: string;
+          }>;
+        }
+      ).__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ = [
+        {
+          kind,
+          reason: "status recording is temporarily unavailable",
+        },
+      ];
+    }, KIND_OUTREACH_LIST_ACTION);
+    await batch.getByRole("button", { name: "Prepare for approval" }).click();
+    await expect(batch.getByRole("alert")).toContainText(
+      "The batch is ready, but outreach status could not change.",
+    );
+    await expect(batch.getByRole("alert")).toContainText(
+      "status recording is temporarily unavailable",
+    );
+    await expect(
+      batch.getByRole("button", { name: "Open batch" }),
+    ).toBeVisible();
+    await batch.getByRole("button", { name: "Open batch" }).click();
+    await expect(page).toHaveURL(/\/whatsapp\/batches\//);
+  });
 
   test("filters and selects leads and campaign prospects", async ({ page }) => {
     await page
@@ -1076,7 +1329,7 @@ test.describe("Outreach lists", () => {
       .getByRole("link", { name: LIST_NAME })
       .getAttribute("href");
     const listId = href?.split("/").at(-1);
-    expect(listId).toBeTruthy();
+    if (!listId) throw new Error("The created outreach list needs an id.");
     await capture(page, "OLListsIndex");
 
     await lists.getByRole("link", { name: LIST_NAME }).click();
@@ -1111,7 +1364,16 @@ test.describe("Outreach lists", () => {
       batch.getByRole("button", { name: "Prepare for approval" }),
     ).toBeEnabled();
     await capture(page, "OLListBatchApproval");
-    await page.keyboard.press("Escape");
+    await batch.getByRole("button", { name: "Prepare for approval" }).click();
+    await expect(page).toHaveURL(/\/whatsapp\/batches\//);
+    await page.evaluate((createdListId) => {
+      window.location.hash = `/lists/${createdListId}`;
+    }, listId);
+    await expect(
+      page
+        .getByTestId("outreach-list-detail")
+        .getByTestId("outreach-status-detail"),
+    ).toContainText("In progress");
 
     await page.evaluate(() => {
       window.location.hash = "/leads";
