@@ -85,7 +85,7 @@ pub enum BusinessCommand {
     MoneyAdjustment(MoneyAdjustment),
     /// Draft, review, or approval of an overdue follow-up intent.
     MoneyFollowUp(MoneyFollowUpAction),
-    /// Outreach list change (create, rename, add or remove leads, archive).
+    /// Outreach list change (create, rename, membership, outreach status or archive).
     OutreachListAction(Box<OutreachListAction>),
     /// Shared Discovery campaign change (create, progress, finish, rename, archive).
     DiscoveryCampaignAction(Box<DiscoveryCampaignAction>),
@@ -2618,6 +2618,7 @@ mod tests {
                 campaign_id: None,
             }),
             default_template: None,
+            outreach_status: None,
         };
         let content = serde_json::to_string(&list).expect("serialize list action");
         let parsed = parse_business_command(crate::kind::KIND_OUTREACH_LIST_ACTION, &content)

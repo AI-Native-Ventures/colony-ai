@@ -139,6 +139,15 @@ buzz leads stage --lead <uuid> --stage lost --reason "Budget"
 buzz leads qualify --lead <uuid> --qualification qualified
 buzz leads save --lead <uuid> [--unsave]
 
+# Outreach lists
+buzz lists list [--query <text>] [--archived] [--limit N]
+buzz lists get <list-id|buzz://list/<list-id>>
+buzz lists create --name "Melville guesthouses, Nov" [--lead <lead-id|link>]...
+buzz lists add <list-id|link> --lead <lead-id|link>...
+buzz lists remove <list-id|link> --lead <lead-id|link>...
+buzz lists rename <list-id|link> [--name <text>] [--note <text>]
+buzz lists status <list-id|link> <not-started|in-progress|done>
+
 # WhatsApp outreach (official Cloud API; the relay is the only sender)
 buzz whatsapp status
 buzz whatsapp templates [--refresh]
