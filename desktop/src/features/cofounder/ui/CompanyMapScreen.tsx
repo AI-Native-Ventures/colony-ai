@@ -18,6 +18,10 @@ import { useNeedsYouSummary } from "../needsYouSummary";
 import { useWhatsAppStatusQuery } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { operationsMapWorkflows } from "../companyMapOperations";
 import { usePlaybooksQuery } from "../playbookHooks";
+import {
+  companyMapScoutChannelId,
+  companyMapScoutPubkey,
+} from "../companyMapScout";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
 import type { CompanyMapWindowJob } from "../companyMapJobRoutes";
@@ -51,13 +55,10 @@ export function CompanyMapScreen({
     enabled: pubkeys.length > 0,
   });
   const profiles = profilesQuery.data?.profiles ?? {};
-  const scout = members.find((member) => {
-    const name =
-      profiles[member.pubkey.toLowerCase()]?.displayName?.trim() ||
-      member.managedAgent?.name?.trim() ||
-      member.fallbackName?.trim();
-    return name?.toLowerCase() === "scout";
-  });
+  const scoutPubkey = useMemo(
+    () => companyMapScoutPubkey(members, profiles),
+    [members, profiles],
+  );
   const companyName = activeCommunity?.name ?? "Company";
   const operationsWorkflows = useMemo(
     () =>
@@ -67,27 +68,10 @@ export function CompanyMapScreen({
       }),
     [playbooksQuery.data],
   );
-  const scoutChannelId = useMemo(() => {
-    if (!scout?.pubkey) return null;
-    const scoutPubkey = scout.pubkey.toLowerCase();
-    return (
-      channelsQuery.data
-        ?.filter(
-          (channel) =>
-            channel.isMember &&
-            channel.channelType === "stream" &&
-            channel.memberPubkeys.some(
-              (pubkey) => pubkey.toLowerCase() === scoutPubkey,
-            ),
-        )
-        .sort((first, second) => {
-          const firstIsGeneral = first.name.trim().toLowerCase() === "general";
-          const secondIsGeneral =
-            second.name.trim().toLowerCase() === "general";
-          return Number(secondIsGeneral) - Number(firstIsGeneral);
-        })[0]?.id ?? null
-    );
-  }, [channelsQuery.data, scout?.pubkey]);
+  const scoutChannelId = useMemo(
+    () => companyMapScoutChannelId(channelsQuery.data, scoutPubkey),
+    [channelsQuery.data, scoutPubkey],
+  );
   const clientChannelId = useMemo(() => {
     const scopedId = activeCommunity?.clientChannelId?.toLowerCase();
     if (!scopedId) return null;
@@ -115,14 +99,14 @@ export function CompanyMapScreen({
         slot?.state === "filled"
           ? slot.leadPubkey
           : slot?.state === "covered_by_scout"
-            ? (scout?.pubkey ?? null)
+            ? scoutPubkey
             : null;
       return (
         runnerPubkey !== null &&
         runningParentPubkeys.has(runnerPubkey.toLowerCase())
       );
     });
-  }, [scout?.pubkey, slots, workerRunsQuery.data]);
+  }, [scoutPubkey, slots, workerRunsQuery.data]);
 
   if (settingsQuery.isLoading || teamQuery.isLoading) {
     return (
@@ -184,7 +168,7 @@ export function CompanyMapScreen({
       ownerPubkey={identityQuery.data?.pubkey}
       profiles={profiles}
       relayUrl={activeCommunity?.relayUrl}
-      scoutPubkey={scout?.pubkey}
+      scoutPubkey={scoutPubkey}
       slots={slots}
       liveFunctionIds={liveFunctionIds}
       mapWindowDepth={mapWindowDepth}
