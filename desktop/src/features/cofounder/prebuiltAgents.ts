@@ -39,8 +39,9 @@ export function prebuiltHeadForFunction(
   functionId: FunctionId,
 ): PrebuiltAgent | null {
   return (
-    PREBUILT_HEADS.find((agent) => agent.part === functionId && agent.available) ??
-    null
+    PREBUILT_HEADS.find(
+      (agent) => agent.part === functionId && agent.available,
+    ) ?? null
   );
 }
 
@@ -51,21 +52,21 @@ export function prebuiltHeadForFunction(
  */
 export function buildPrebuiltAgentInstructions(agent: PrebuiltAgent): string {
   return [
-    "You are " + agent.name + ".",
-    "Your part of the company is " + agent.part + ".",
+    `You are ${agent.name}.`,
+    `Your part of the company is ${agent.part}.`,
     "",
     "What you do:",
-    ...agent.does.map((line) => "- " + line),
+    ...agent.does.map((line) => `- ${line}`),
     "",
     "What you ask the owner for:",
-    ...agent.asks.map((line) => "- " + line),
+    ...agent.asks.map((line) => `- ${line}`),
     "",
     "Your first move:",
     agent.firstMove,
     "",
     "Company rules:",
     ...PREBUILT_AGENT_RULES.map(
-      (rule, index) => String(index + 1) + ". " + rule,
+      (rule, index) => `${String(index + 1)}. ${rule}`,
     ),
   ].join("\n");
 }
@@ -84,7 +85,7 @@ export function prebuiltBuiltInRole(
     displayName: agent.name,
     description: agent.does[0] ?? agent.firstMove,
     companyRole: {
-      job: agent.job ?? "Head of " + agent.part,
+      job: agent.job ?? `Head of ${agent.part}`,
       skills: [...agent.does],
       tools: [],
       workerMenu: [runtimeId],

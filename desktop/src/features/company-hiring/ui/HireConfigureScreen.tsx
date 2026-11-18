@@ -627,7 +627,8 @@ export function HireConfigureScreen({
   );
   const previousDraft = readHireDraft(relayUrl, hireId);
   React.useEffect(() => {
-    if (!candidateCreateAction?.proposal || !candidateLocalConfiguration) return;
+    if (!candidateCreateAction?.proposal || !candidateLocalConfiguration)
+      return;
     writeHireDraft(relayUrl, {
       proposal: candidateCreateAction.proposal,
       localConfiguration: candidateLocalConfiguration,

@@ -32,10 +32,10 @@ test("each prebuilt agent stores every approved instruction", () => {
     assert.match(instructions, new RegExp(escaped(agent.name)));
     assert.match(instructions, new RegExp(agent.part));
     for (const line of [...agent.does, ...agent.asks, agent.firstMove]) {
-      assert.ok(instructions.includes(line), agent.id + ": " + line);
+      assert.ok(instructions.includes(line), `${agent.id}: ${line}`);
     }
     for (const rule of PREBUILT_AGENT_RULES) {
-      assert.ok(instructions.includes(rule), agent.id + ": " + rule);
+      assert.ok(instructions.includes(rule), `${agent.id}: ${rule}`);
     }
   }
 });

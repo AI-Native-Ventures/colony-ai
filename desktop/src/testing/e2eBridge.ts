@@ -10414,7 +10414,7 @@ function acceptMockHireAction(
       const existing = config.mock.companyFunctionHeads.find(
         (candidate) => candidate.function === functionId,
       );
-      if (!existing || existing.state !== "filled") {
+      if (existing?.state !== "filled") {
         const next: MockCompanyFunctionHead = existing ?? {
           function: functionId,
           state: "empty",

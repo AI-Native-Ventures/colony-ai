@@ -164,9 +164,12 @@ export function readPrebuiltHireProgress(
     !nonEmptyString(record.agentId) ||
     !nonEmptyString(record.introductionChannelId) ||
     !choice ||
-    (record.employeePubkey !== undefined && !nonEmptyString(record.employeePubkey)) ||
-    (record.directChannelId !== undefined && !nonEmptyString(record.directChannelId)) ||
-    (record.firstMoveEventId !== undefined && !nonEmptyString(record.firstMoveEventId))
+    (record.employeePubkey !== undefined &&
+      !nonEmptyString(record.employeePubkey)) ||
+    (record.directChannelId !== undefined &&
+      !nonEmptyString(record.directChannelId)) ||
+    (record.firstMoveEventId !== undefined &&
+      !nonEmptyString(record.firstMoveEventId))
   ) {
     return null;
   }
@@ -203,9 +206,12 @@ function readableProgress(value: PrebuiltHireProgress): boolean {
     nonEmptyString(value.agentId) &&
     nonEmptyString(value.introductionChannelId) &&
     parseChoice(value.choice) !== null &&
-    (value.employeePubkey === undefined || nonEmptyString(value.employeePubkey)) &&
-    (value.directChannelId === undefined || nonEmptyString(value.directChannelId)) &&
-    (value.firstMoveEventId === undefined || nonEmptyString(value.firstMoveEventId))
+    (value.employeePubkey === undefined ||
+      nonEmptyString(value.employeePubkey)) &&
+    (value.directChannelId === undefined ||
+      nonEmptyString(value.directChannelId)) &&
+    (value.firstMoveEventId === undefined ||
+      nonEmptyString(value.firstMoveEventId))
   );
 }
 
@@ -269,7 +275,10 @@ export function writePrebuiltHireCompletion(
   completion: PrebuiltHireCompletion,
 ) {
   if (!communityId || !readableCompletion(completion)) return false;
-  return writeJson(completionKey(communityId, completion.functionId), completion);
+  return writeJson(
+    completionKey(communityId, completion.functionId),
+    completion,
+  );
 }
 
 export function clearPrebuiltHireProgress(

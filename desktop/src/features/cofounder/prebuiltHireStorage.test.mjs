@@ -68,6 +68,9 @@ test("a completed map hire keeps its direct chat only inside that company", () =
     firstMove: "Hi Basheer. Ask for the books.",
   };
   assert.equal(writePrebuiltHireCompletion("company-a", completion), true);
-  assert.deepEqual(readPrebuiltHireCompletion("company-a", "finance"), completion);
+  assert.deepEqual(
+    readPrebuiltHireCompletion("company-a", "finance"),
+    completion,
+  );
   assert.equal(readPrebuiltHireCompletion("company-b", "finance"), null);
 });

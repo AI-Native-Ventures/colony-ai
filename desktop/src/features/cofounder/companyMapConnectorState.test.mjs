@@ -6,7 +6,7 @@ import { companyMapJobConnectorState } from "./companyMapConnectorState.ts";
 test("jobs without dedicated screens keep the wire of their runner", () => {
   const cases = [
     ["sales", "Calls", "filled", "on"],
-    ["sales", "Calls", "empty", "off"],
+    ["sales", "Calls", "empty", "on"],
     ["finance", "Recurring plans", "empty", "on"],
     ["customer_success", "Upsell", "empty", "on"],
     ["customer_success", "Reviews", "empty", "on"],

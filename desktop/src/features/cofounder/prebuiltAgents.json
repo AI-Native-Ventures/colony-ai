@@ -37,9 +37,7 @@
         "Puts landline-only leads in a separate pile for calls, and finds extra leads so the list stays full.",
         "Reports the reach rate for each business type."
       ],
-      "asks": [
-        "Nothing to start."
-      ],
+      "asks": ["Nothing to start."],
       "firstMove": "Say what you take over from the Head of Sales or Scout, then check the newest list for repeats and landlines and report what you found.",
       "available": true,
       "unavailableReason": ""
@@ -54,9 +52,7 @@
         "Reports which opener gets call requests.",
         "Sorts replies and hands you every real one."
       ],
-      "asks": [
-        "Your approval of each new opener, once."
-      ],
+      "asks": ["Your approval of each new opener, once."],
       "firstMove": "Read the openers used so far and their results. Draft one better opener for the best business type and ask the owner to approve it.",
       "available": true,
       "unavailableReason": ""
@@ -71,9 +67,7 @@
         "Up to three times: after 3 days, then 4 more, then 5 more, on the sending days set in Settings.",
         "Stops the moment a lead replies or says stop. Also warms a lead again after handover."
       ],
-      "asks": [
-        "Your approval of the wording of each follow-up, once."
-      ],
+      "asks": ["Your approval of the wording of each follow-up, once."],
       "firstMove": "Count the leads that were reached and stayed silent. Draft the three follow-up messages and ask the owner to approve their wording.",
       "available": true,
       "unavailableReason": ""
@@ -87,9 +81,7 @@
         "Phones leads who cannot be reached on WhatsApp or stayed silent after three follow-ups.",
         "Finds who wants a call back and books it in your calendar with a short brief."
       ],
-      "asks": [
-        "Your approval of the call script, once."
-      ],
+      "asks": ["Your approval of the call script, once."],
       "firstMove": "Draft the call script and ask the owner to approve it.",
       "available": false,
       "unavailableReason": "Colony cannot make phone calls yet."
@@ -103,9 +95,7 @@
         "After your call with a lead, drafts the quote from your notes and the price list.",
         "Tracks each quote: sent, accepted, gone quiet."
       ],
-      "asks": [
-        "Your approval of each quote before it goes out."
-      ],
+      "asks": ["Your approval of each quote before it goes out."],
       "firstMove": "Read the price list and the open leads. Tell the owner which leads are waiting for a quote.",
       "available": true,
       "unavailableReason": ""
@@ -120,9 +110,7 @@
         "Sends the agreement when a lead says yes, and records why a sale was won or lost.",
         "Marks a sale closed only when you have marked the deposit paid. Then Operations starts."
       ],
-      "asks": [
-        "Your approval of the nudge wording, once."
-      ],
+      "asks": ["Your approval of the nudge wording, once."],
       "firstMove": "List the quotes that are out and how long each has been quiet. Draft the nudge wording and ask the owner to approve it.",
       "available": true,
       "unavailableReason": ""
@@ -155,9 +143,7 @@
         "Drafts every reply to a client for your tap.",
         "Watches for clients who are drifting away."
       ],
-      "asks": [
-        "Your tap on each reply."
-      ],
+      "asks": ["Your tap on each reply."],
       "firstMove": "List the current clients and when each last heard from the company. Name the one that most needs a message and draft it.",
       "available": true,
       "unavailableReason": ""
@@ -190,9 +176,7 @@
         "Drafts answers to reviews for your tap.",
         "Flags unhappy clients to you instead of asking them."
       ],
-      "asks": [
-        "Your approval of the review request wording, once."
-      ],
+      "asks": ["Your approval of the review request wording, once."],
       "firstMove": "Find clients with a finished job, no complaint and no late payment. Draft the review request and ask the owner to approve its wording.",
       "available": true,
       "unavailableReason": ""
@@ -207,9 +191,7 @@
         "Picks a good moment and drafts the offer for your tap.",
         "A yes goes down the Sales path as a quote."
       ],
-      "asks": [
-        "Your tap on each offer."
-      ],
+      "asks": ["Your tap on each offer."],
       "firstMove": "Read the price list and what each client has. Name the best single chance to sell more and draft the offer.",
       "available": true,
       "unavailableReason": ""
@@ -224,9 +206,7 @@
         "Checks the client's plan and quote: covered changes go straight to Operations.",
         "Paid changes go down the Sales path, and only those reach you."
       ],
-      "asks": [
-        "Your approval of quotes for paid changes."
-      ],
+      "asks": ["Your approval of quotes for paid changes."],
       "firstMove": "List the change requests that are open and say for each whether the client's plan covers it.",
       "available": true,
       "unavailableReason": ""
@@ -277,9 +257,7 @@
         "Tracks every invoice: sent, due, overdue, paid.",
         "Keeps the list free of doubles and gaps."
       ],
-      "asks": [
-        "Your tap before each invoice goes out."
-      ],
+      "asks": ["Your tap before each invoice goes out."],
       "firstMove": "Read the open quotes and their payment terms. Tell the owner which invoices are due now.",
       "available": true,
       "unavailableReason": ""
@@ -294,9 +272,7 @@
         "Stops the moment you mark the invoice paid.",
         "Flags you when reminders fail. You decide whether work pauses."
       ],
-      "asks": [
-        "Your approval of the reminder wording, once."
-      ],
+      "asks": ["Your approval of the reminder wording, once."],
       "firstMove": "List overdue invoices with how many days late. Draft the reminder wording and ask the owner to approve it.",
       "available": true,
       "unavailableReason": ""
@@ -311,9 +287,7 @@
         "Sends the monthly invoice by itself after you approved it once.",
         "Watches for clients likely to leave and flags them early with a draft message."
       ],
-      "asks": [
-        "Your approval of each plan's monthly invoice, once."
-      ],
+      "asks": ["Your approval of each plan's monthly invoice, once."],
       "firstMove": "List the clients on a monthly plan with price and start date. Ask the owner to approve each plan's monthly invoice once.",
       "available": true,
       "unavailableReason": ""
@@ -328,9 +302,7 @@
         "Reads receipts and bank statements you forward, and sorts them.",
         "Shows profit per client, job and campaign, and flags a cost that creeps up."
       ],
-      "asks": [
-        "Receipts, or a bank statement, for costs Colony cannot see."
-      ],
+      "asks": ["Receipts, or a bank statement, for costs Colony cannot see."],
       "firstMove": "Report what Colony has spent this month on leads and messages. Ask the owner to forward receipts or a bank statement for the rest.",
       "available": true,
       "unavailableReason": ""
@@ -363,9 +335,7 @@
         "Drafts the first list from your website and past quotes.",
         "Suggests changes from results, with the reason. You decide."
       ],
-      "asks": [
-        "Your approval of the price list, and of every change to it."
-      ],
+      "asks": ["Your approval of the price list, and of every change to it."],
       "firstMove": "Draft the price list from the website and past quotes and ask the owner to correct and approve it.",
       "available": true,
       "unavailableReason": ""
@@ -380,9 +350,7 @@
         "Drafts a week at once. Each post gets its own yes, then it posts on schedule.",
         "Reports which post brought an enquiry."
       ],
-      "asks": [
-        "Your yes on each post."
-      ],
+      "asks": ["Your yes on each post."],
       "firstMove": "Draft next week's posts from the latest finished jobs and reviews and bring them to the owner together.",
       "available": true,
       "unavailableReason": ""
@@ -415,9 +383,7 @@
         "Supplies it to openers, quotes, the site and posts.",
         "Shows every finished job unless you say no."
       ],
-      "asks": [
-        "A no for any job you do not want shown."
-      ],
+      "asks": ["A no for any job you do not want shown."],
       "firstMove": "List the finished jobs that are not in the portfolio yet and draft the first one.",
       "available": true,
       "unavailableReason": ""
@@ -432,9 +398,7 @@
         "Learns from the edits you make to drafts.",
         "Proposes changes to the guide. It never changes without your approval."
       ],
-      "asks": [
-        "Your approval of each change to the voice guide."
-      ],
+      "asks": ["Your approval of each change to the voice guide."],
       "firstMove": "Read the voice guide and the last drafts the owner edited. Report the one pattern in those edits worth adding to the guide.",
       "available": true,
       "unavailableReason": ""

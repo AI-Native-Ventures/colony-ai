@@ -494,9 +494,7 @@ export function HireReviewScreen({
       );
     }
 
-    const channelIds = [
-      ...new Set(selectedLocalConfiguration.channelIds),
-    ];
+    const channelIds = [...new Set(selectedLocalConfiguration.channelIds)];
     for (const channelId of channelIds) {
       const attached = await attachManagedAgentToChannel(channelId, {
         agent,

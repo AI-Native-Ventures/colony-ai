@@ -51,12 +51,7 @@ export const FUNCTION_DETAILS: Record<
   },
   customer_success: {
     name: "Customer Success",
-    subFunctions: [
-      "Client chats",
-      "Change requests",
-      "Upsell",
-      "Reviews",
-    ],
+    subFunctions: ["Client chats", "Change requests", "Upsell", "Reviews"],
     suggestedHire: "Client Success Manager",
   },
   finance: {
