@@ -135,20 +135,34 @@ test.describe("co-founder mode desktop", () => {
     await page.getByTestId("cofounder-hire-head-finance").click();
     const dialog = page.getByTestId("prebuilt-head-hire-dialog");
     await expect(dialog).toContainText("Hire Head of Finance");
-    await expect(page.getByTestId("prebuilt-hire-finish")).toBeDisabled();
-    await expect(page.getByTestId("prebuilt-hire-finish")).toHaveText(
-      "Pick all three",
-    );
+    const finish = page.getByTestId("prebuilt-hire-finish");
+    await expect(finish).toBeDisabled();
+    await expect(finish).toHaveText("Hire Head of Finance");
+    await expect(dialog.getByText("Pick all three to hire.")).toBeVisible();
+    await expect(page.getByTestId("prebuilt-hire-channel")).toHaveCount(0);
 
-    await page.getByTestId("prebuilt-hire-harness").selectOption("goose");
+    await page.getByTestId("prebuilt-hire-harness").click();
+    await page.getByTestId("prebuilt-hire-harness-option-goose").click();
     const model = page.getByTestId("prebuilt-hire-model");
-    await expect(model.locator("option").nth(1)).toBeAttached();
-    await model.selectOption({ index: 1 });
-    await expect(page.getByTestId("prebuilt-hire-channel")).not.toHaveValue("");
-    await expect(page.getByTestId("prebuilt-hire-finish")).toBeEnabled();
-    const selectedModel = await model.inputValue();
+    await expect(model).toBeEnabled();
+    await model.click();
+    await page
+      .locator("[data-testid^='prebuilt-hire-model-option-']")
+      .first()
+      .click();
+    const effort = page.getByTestId("prebuilt-hire-effort");
+    if (await effort.isEnabled()) {
+      await effort.click();
+      await page
+        .locator("[data-testid^='prebuilt-hire-effort-option-']")
+        .first()
+        .click();
+    }
+    await expect(finish).toBeEnabled();
+    const selectedModel = (await model.getAttribute("data-value")) ?? "";
+    expect(selectedModel).not.toBe("");
 
-    await page.getByTestId("prebuilt-hire-finish").click();
+    await finish.click();
     await expect(dialog).toBeHidden();
     await expect(page.getByTestId("cofounder-map-finance")).toHaveAttribute(
       "data-state",
@@ -161,14 +175,17 @@ test.describe("co-founder mode desktop", () => {
       "Just hired",
     );
     await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
-      "Ask the owner for one invoice they are happy with",
+      "I run Finance from here. To start, send me one invoice you are happy with.",
+    );
+    await expect(page.getByTestId("cofounder-map-part-card")).not.toContainText(
+      "Ask the owner for one invoice they are happy with, to copy its layout and terms.",
     );
     await expect(
       page.getByTestId("cofounder-map-part-card").getByRole("link", {
         name: "Open direct chat",
       }),
     ).toBeVisible();
-    const firstMoveOverlapsHub = await page.evaluate(() => {
+    const firstMessageOverlapsHub = await page.evaluate(() => {
       const card = document.querySelector(
         "[data-testid='cofounder-map-part-card']",
       );
@@ -185,14 +202,16 @@ test.describe("co-founder mode desktop", () => {
         cardRect.top >= hubRect.bottom
       );
     });
-    expect(firstMoveOverlapsHub).toBe(false);
+    expect(firstMessageOverlapsHub).toBe(false);
 
     await selectMapPart(page, "brand", "Brand");
     await page.getByTestId("cofounder-hire-head-brand").click();
-    await expect(page.getByTestId("prebuilt-hire-harness")).toHaveValue(
+    await expect(page.getByTestId("prebuilt-hire-harness")).toHaveAttribute(
+      "data-value",
       "goose",
     );
-    await expect(page.getByTestId("prebuilt-hire-model")).toHaveValue(
+    await expect(page.getByTestId("prebuilt-hire-model")).toHaveAttribute(
+      "data-value",
       selectedModel,
     );
   });
@@ -216,7 +235,7 @@ test.describe("co-founder mode desktop", () => {
 
     await page
       .getByTestId("prebuilt-head-hire-dialog")
-      .getByRole("button", { name: "Close" })
+      .getByRole("button", { name: "Cancel" })
       .click();
     await expect(page.getByTestId("prebuilt-head-hire-dialog")).toBeHidden();
     await page.getByTestId("cofounder-map-sales").click();
