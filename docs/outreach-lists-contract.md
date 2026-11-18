@@ -48,7 +48,7 @@ inherited, not re-implemented.
 
 ## 3. Permissions
 
-| Caller (role in the business channel) | Create / rename / add / remove / set default template | Archive / unarchive |
+| Caller (role in the business channel) | Create / rename / add / remove / set default template / set outreach status | Archive / unarchive |
 |---|---|---|
 | owner, admin, member | yes | yes |
 | bot (agent with Sales access) | yes | no (only people archive) |
@@ -69,13 +69,14 @@ publishes for its own run); `archive` by people only.
 {
   "schemaVersion": 1,
   "listId": "uuid",
-  "op": "create | rename | add_members | remove_members | set_default_template | archive | unarchive",
+  "op": "create | rename | add_members | remove_members | set_default_template | set_outreach_status | archive | unarchive",
   "expectedHeadEventId": "64 hex, absent only for create",
   "name": "Melville guesthouses, Nov",
   "note": "optional text",
   "leadIds": ["uuid", "..."],
   "source": { "kind": "manual | campaign | agent", "campaignId": "uuid, only for campaign" },
-  "defaultTemplate": { "name": "meta_template_name", "language": "en" }
+  "defaultTemplate": { "name": "meta_template_name", "language": "en" },
+  "outreachStatus": "not_started | in_progress | done"
 }
 ```
 
@@ -88,6 +89,7 @@ Field use per op (fields not listed for an op must be absent, otherwise `invalid
 | `add_members` | `leadIds` (1 to 500) | Appends the ids not yet in the list, in order. Ids already present are ignored. |
 | `remove_members` | `leadIds` (1 to 500) | Drops the ids. Ids not present are ignored. |
 | `set_default_template` | optional `defaultTemplate` (absent clears) | Sets or clears the default template. |
+| `set_outreach_status` | `outreachStatus` | Records `not_started`, `in_progress` or `done`. This is the only payload it may carry, and people and agents may set it. Repeating a status refreshes who set it and when. |
 | `archive` / `unarchive` | nothing | Flips `status`. Archived lists accept only `unarchive`. |
 
 Rules:
@@ -104,6 +106,8 @@ Rules:
   head inside the same transaction (membership edits commute, so agents and people do not have
   to fence). A race with another writer still surfaces as `conflict`; the CLI re-reads and
   retries up to 3 times.
+- `set_outreach_status` requires `outreachStatus` and rejects `name`, `note`, `leadIds`,
+  `source` and `defaultTemplate`. Every other list op rejects `outreachStatus`.
 - The same event id replayed is accepted once (`duplicate: already processed`).
 
 ### 4.2 Head (kind 30684), content
@@ -115,6 +119,12 @@ Rules:
   "name": "Melville guesthouses, Nov",
   "note": "optional text or null",
   "status": "active | archived",
+  "outreach": {
+    "status": "not_started | in_progress | done",
+    "setBy": "pubkey hex",
+    "setByAgent": true,
+    "setAt": 1762000100
+  },
   "source": { "kind": "manual | campaign | agent", "campaignId": "uuid or null" },
   "defaultTemplate": { "name": "meta_template_name", "language": "en" },
   "members": [
@@ -132,6 +142,9 @@ Rules:
 `members` keeps add order. `defaultTemplate` and `note` are `null` when unset.
 `createdByAgent` and `addedByAgent` are decided by the relay from the caller's role (`bot`), not
 claimed by the caller, so the UI can say "Created by Scout" truthfully.
+`outreach` is omitted until somebody sets a status, and that absence means `not_started`. Once
+present, `setBy`, `setByAgent` and `setAt` are relay-derived provenance for the last status
+action. Omitting the unset field keeps existing heads byte-compatible for older readers.
 
 ### 4.3 Errors (relay `OK false` message prefixes)
 
@@ -229,6 +242,7 @@ colony lists create --name <text> [--lead <id|link>]... [--from-campaign <id|lin
 colony lists add <list> --lead <id|link>...
 colony lists remove <list> --lead <id|link>...
 colony lists rename <list> [--name <text>] [--note <text>]
+colony lists status <list> <not-started|in-progress|done>
 colony campaigns list [--query <text>] [--archived] [--limit N]
 colony campaigns get <id|link>
 colony whatsapp templates get <name|title|link>
@@ -240,7 +254,9 @@ colony whatsapp batch create --list <id|link> --template <name|title|link> ... (
 times when another writer changed the list at the same moment.
 
 `lists list` row: `{listId, reference, name, note, status, size, source, defaultTemplate,
-updatedAt}`.
+outreach, updatedAt}`. CLI reads always include `outreach`: an unset relay field becomes
+`{status: "not_started", setBy: null, setByAgent: null, setAt: null}`; a set status includes the
+relay-recorded setter and time.
 
 `lists get`:
 
@@ -248,6 +264,7 @@ updatedAt}`.
 {
   "listId": "uuid", "reference": "buzz://list/<id>", "name": "...", "note": null,
   "status": "active", "source": {"kind": "agent", "campaignId": null},
+  "outreach": {"status": "in_progress", "setBy": "pubkey hex", "setByAgent": true, "setAt": 1762000100},
   "defaultTemplate": {"name": "built_a_site", "language": "en"},
   "createdByAgent": true, "updatedAt": 1762000100, "size": 12,
   "members": [{
@@ -279,7 +296,10 @@ Members whose lead no longer exists or is archived, who have no phone number, or
 to have opted out are left out. The answer is the normal write answer plus
 `{list, rows, skipped: [{leadId, reference, name, reason}]}`, and the batch still waits for owner
 approval. If nobody can be messaged the command fails and says why. `--list` cannot be combined with
-`--lead` or `--stage`.
+`--lead` or `--stage`. When a managed agent creates an accepted batch from a list, the CLI marks
+an absent or `not_started` outreach state `in_progress`. It never downgrades `done`. If that
+follow-up write fails, the accepted batch result remains valid, stderr names the warning, and the
+JSON output includes `outreach_status_warning`.
 
 ## 8. Agent skill
 

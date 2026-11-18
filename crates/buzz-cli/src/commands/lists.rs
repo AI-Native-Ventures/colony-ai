@@ -12,7 +12,7 @@ use buzz_core::business_records::BUSINESS_RECORD_SCHEMA_VERSION;
 use buzz_core::kind::{KIND_DISCOVERY_CAMPAIGN_HEAD, KIND_OUTREACH_LIST_HEAD};
 use buzz_core::outreach_lists::{
     DiscoveryCampaignHead, ListOp, ListSource, ListSourceKind, ListStatus, OutreachListAction,
-    OutreachListHead, TemplateRef, MAX_LIST_MEMBERS,
+    OutreachListHead, OutreachStatus, TemplateRef, MAX_LIST_MEMBERS,
 };
 use buzz_sdk::business_records::build_outreach_list_action;
 use serde::de::DeserializeOwned;
@@ -75,6 +75,17 @@ pub async fn dispatch(cmd: crate::ListsCmd, client: &BuzzClient) -> Result<(), C
         ListsCmd::Rename { list, name, note } => {
             cmd_rename(client, &list, name.as_deref(), note.as_deref()).await
         }
+        ListsCmd::Status { list, status } => {
+            cmd_status(client, &list, outreach_status_from_arg(status)).await
+        }
+    }
+}
+
+fn outreach_status_from_arg(status: crate::OutreachStatusArg) -> OutreachStatus {
+    match status {
+        crate::OutreachStatusArg::NotStarted => OutreachStatus::NotStarted,
+        crate::OutreachStatusArg::InProgress => OutreachStatus::InProgress,
+        crate::OutreachStatusArg::Done => OutreachStatus::Done,
     }
 }
 
@@ -107,6 +118,69 @@ pub(crate) struct Stored<T> {
 pub(crate) type StoredList = Stored<OutreachListHead>;
 pub(crate) type StoredCampaign = Stored<DiscoveryCampaignHead>;
 
+/// A relay-signed head whose future top-level optional fields older CLI builds may ignore.
+/// The core types stay strict so the relay never accepts an unrecognized head shape.
+trait RelayOwnedHead: DeserializeOwned {
+    const KNOWN_FIELDS: &'static [&'static str];
+}
+
+impl RelayOwnedHead for OutreachListHead {
+    const KNOWN_FIELDS: &'static [&'static str] = &[
+        "schemaVersion",
+        "listId",
+        "name",
+        "note",
+        "status",
+        "outreach",
+        "source",
+        "defaultTemplate",
+        "members",
+        "createdBy",
+        "createdByAgent",
+        "createdAt",
+        "updatedBy",
+        "updatedAt",
+        "sourceActionEventId",
+    ];
+}
+
+impl RelayOwnedHead for DiscoveryCampaignHead {
+    const KNOWN_FIELDS: &'static [&'static str] = &[
+        "schemaVersion",
+        "campaignId",
+        "name",
+        "audience",
+        "industryName",
+        "verticalId",
+        "verticalName",
+        "pickedTags",
+        "query",
+        "area",
+        "target",
+        "found",
+        "skippedDuplicates",
+        "status",
+        "endNote",
+        "runBy",
+        "archived",
+        "createdBy",
+        "createdByAgent",
+        "createdAt",
+        "updatedAt",
+        "sourceActionEventId",
+    ];
+}
+
+/// Decode a relay-owned head while preserving the strict core validation used by the relay.
+/// A newer relay may append optional top-level fields without making all older CLI reads fail.
+fn parse_relay_owned_head<T: RelayOwnedHead>(content: &str) -> Result<T, serde_json::Error> {
+    let mut value: Value = serde_json::from_str(content)?;
+    if let Some(object) = value.as_object_mut() {
+        object.retain(|field, _| T::KNOWN_FIELDS.contains(&field.as_str()));
+    }
+    serde_json::from_value(value)
+}
+
 /// Split `business:<community>:<record_type>:<id>`.
 fn parse_coordinate(d_tag: &str, record_type: &str) -> Option<(Uuid, Uuid)> {
     let mut parts = d_tag.split(':');
@@ -125,7 +199,7 @@ fn parse_coordinate(d_tag: &str, record_type: &str) -> Option<(Uuid, Uuid)> {
 }
 
 /// Check that a head is relay-signed, well formed and consistent with its coordinate.
-fn parse_head_event<T: DeserializeOwned>(
+fn parse_head_event<T: RelayOwnedHead>(
     event: &Value,
     relay_self: &str,
     kind: u32,
@@ -168,7 +242,7 @@ fn parse_head_event<T: DeserializeOwned>(
     })?;
     let channel_id = Uuid::parse_str(h_tag)
         .map_err(|_| CliError::Other(format!("{record_type} head h-tag is not a channel UUID")))?;
-    let head: T = serde_json::from_str(&signed.content).map_err(|error| {
+    let head = parse_relay_owned_head::<T>(&signed.content).map_err(|error| {
         CliError::Other(format!("{record_type} head content is invalid: {error}"))
     })?;
     Ok(Stored {
@@ -197,7 +271,7 @@ async fn relay_self(client: &BuzzClient) -> Result<String, CliError> {
 }
 
 /// Every current head of one kind, newest first, one per record.
-async fn load_heads<T: DeserializeOwned>(
+async fn load_heads<T: RelayOwnedHead>(
     client: &BuzzClient,
     kind: u32,
     record_type: &str,
@@ -317,6 +391,19 @@ fn list_source_json(source: &ListSource) -> Value {
     })
 }
 
+/// Outreach status normalized for CLI reads. Relay heads omit this field until somebody sets it;
+/// the CLI makes the absent state explicit so agents can act without guessing.
+fn outreach_json(head: &OutreachListHead) -> Value {
+    let progress = head.outreach.as_ref();
+    let status = progress.map_or(OutreachStatus::NotStarted, |progress| progress.status);
+    json!({
+        "status": snake(&status),
+        "setBy": progress.map(|progress| progress.set_by.as_str()),
+        "setByAgent": progress.map(|progress| progress.set_by_agent),
+        "setAt": progress.map(|progress| progress.set_at),
+    })
+}
+
 /// One row of `lists list`.
 fn list_summary(list: &StoredList) -> Value {
     let head = &list.head;
@@ -329,6 +416,7 @@ fn list_summary(list: &StoredList) -> Value {
         "size": head.members.len(),
         "source": list_source_json(&head.source),
         "defaultTemplate": head.default_template.as_ref().map(|t| template_json(t, None)),
+        "outreach": outreach_json(head),
         "createdByAgent": head.created_by_agent,
         "updatedAt": head.updated_at,
     })
@@ -558,6 +646,7 @@ fn new_list_action(list_id: Uuid, op: ListOp) -> OutreachListAction {
         lead_ids: Vec::new(),
         source: None,
         default_template: None,
+        outreach_status: None,
     }
 }
 
@@ -696,6 +785,36 @@ async fn cmd_rename(
     Ok(())
 }
 
+async fn cmd_status(
+    client: &BuzzClient,
+    list: &str,
+    status: OutreachStatus,
+) -> Result<(), CliError> {
+    let list_id = parse_list_reference(list)?;
+    let lists = load_lists(client).await?;
+    let stored = find_list(&lists, list_id)?;
+    let response = publish_list_outreach_status(client, stored, status).await?;
+    println!("{}", write_output(&response, list_id));
+    Ok(())
+}
+
+/// Publish one fenced outreach-status transition. Unlike member edits, state changes do not
+/// commute: a caller must re-read rather than overwriting a status another actor just set.
+pub(crate) async fn publish_list_outreach_status(
+    client: &BuzzClient,
+    list: &StoredList,
+    status: OutreachStatus,
+) -> Result<String, CliError> {
+    let target = SaveTarget {
+        channel_id: list.channel_id,
+        community_id: list.community_id,
+    };
+    let mut action = new_list_action(list.record_id, ListOp::SetOutreachStatus);
+    action.expected_head_event_id = Some(list.event_id.clone());
+    action.outreach_status = Some(status);
+    publish_list_action(client, target, &action).await
+}
+
 /// The relay's refusal text, when its answer says `accepted: false`.
 fn rejection(response: &str) -> Option<String> {
     let answer: Value = serde_json::from_str(response).ok()?;
@@ -728,6 +847,11 @@ async fn publish_list_action(
             Ok(response) => match rejection(&response) {
                 None => return Ok(response),
                 Some(message) if message.contains(RACE_MARKER) && !last => continue,
+                Some(message) if message.starts_with("conflict:") => {
+                    return Err(CliError::Conflict(format!(
+                        "the list changed before the command committed: {message}"
+                    )))
+                }
                 Some(message) => {
                     return Err(CliError::Other(format!(
                         "the relay refused the list change: {message}"
@@ -735,6 +859,9 @@ async fn publish_list_action(
                 }
             },
             Err(CliError::Relay { body, .. }) if body.contains(RACE_MARKER) && !last => continue,
+            Err(CliError::Relay { body, .. }) if body.starts_with("conflict:") => {
+                return Err(CliError::Conflict(body))
+            }
             Err(error) => return Err(error),
         }
     }
@@ -870,6 +997,7 @@ mod tests {
         apply_campaign_action, apply_list_action, CampaignAudience, CampaignOp, CampaignStatus,
         DiscoveryCampaignAction, ListActor,
     };
+    use nostr::{EventBuilder, Keys, Kind, Tag};
 
     const COMMUNITY: u128 = 1;
     const CHANNEL: u128 = 2;
@@ -990,7 +1118,77 @@ mod tests {
             row["defaultTemplate"]["reference"],
             "buzz://template/built_a_site?lang=en"
         );
+        assert_eq!(
+            row["outreach"],
+            json!({
+                "status": "not_started",
+                "setBy": null,
+                "setByAgent": null,
+                "setAt": null,
+            })
+        );
         assert_eq!(row["createdByAgent"], true);
+    }
+
+    #[test]
+    fn list_reads_include_set_outreach_provenance() {
+        let mut list = stored_list(&[1]);
+        let mut action = new_list_action(list.record_id, ListOp::SetOutreachStatus);
+        action.outreach_status = Some(OutreachStatus::Done);
+        list.head = apply_list_action(
+            Some(&list.head),
+            &action,
+            &ListActor {
+                pubkey: ACTOR.into(),
+                is_agent: true,
+            },
+            1_800_000_200,
+            EVENT,
+        )
+        .expect("set outreach status");
+
+        let row = list_summary(&list);
+        assert_eq!(row["outreach"]["status"], "done");
+        assert_eq!(row["outreach"]["setBy"], ACTOR);
+        assert_eq!(row["outreach"]["setByAgent"], true);
+        assert_eq!(row["outreach"]["setAt"], 1_800_000_200);
+
+        let detail = list_detail(&list, &HashMap::new(), &HashMap::new(), None);
+        assert_eq!(detail["outreach"], row["outreach"]);
+    }
+
+    #[test]
+    fn list_head_reads_tolerate_a_future_relay_owned_top_level_field() {
+        let list = stored_list(&[1]);
+        let mut content = serde_json::to_value(&list.head).expect("serialize list head");
+        content["futureRelayField"] = json!({ "optional": true });
+        assert!(serde_json::from_value::<OutreachListHead>(content.clone()).is_err());
+
+        let keys = Keys::generate();
+        let d_tag = format!(
+            "business:{}:outreach_list:{}",
+            list.community_id, list.record_id
+        );
+        let h_tag = list.channel_id.to_string();
+        let event = EventBuilder::new(
+            Kind::Custom(KIND_OUTREACH_LIST_HEAD as u16),
+            content.to_string(),
+        )
+        .tags([
+            Tag::parse(["d", d_tag.as_str()]).expect("d tag"),
+            Tag::parse(["h", h_tag.as_str()]).expect("h tag"),
+        ])
+        .sign_with_keys(&keys)
+        .expect("sign relay head");
+
+        let parsed = parse_head_event::<OutreachListHead>(
+            &serde_json::to_value(event).expect("event JSON"),
+            &keys.public_key().to_hex(),
+            KIND_OUTREACH_LIST_HEAD,
+            "outreach_list",
+        )
+        .expect("older CLI reads future relay-owned field");
+        assert_eq!(parsed.head, list.head);
     }
 
     #[test]

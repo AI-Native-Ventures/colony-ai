@@ -14,6 +14,7 @@ import type { ProspectChanges } from "./businessRecordMutations";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import {
   findCampaign,
+  MAX_SEEN_PROVIDER_PLACE_IDS,
   readState,
   setCurrent,
   toPublicCampaign,
@@ -37,12 +38,11 @@ import {
 } from "./discoveryCampaignContinuation";
 import {
   enterNextArea,
+  enterNextSuburb,
   inSearchArea,
-  movesToNextArea,
 } from "./discoveryCampaignAreas";
+import { nextSearchFor } from "./discoveryCampaignSteps";
 import {
-  enterNextWord,
-  movesToNextWord,
   pageSearchWord,
   pageWordField,
   repeatPageReason,
@@ -548,17 +548,11 @@ export function createDiscoveryController(
       while (isLive(run)) {
         const campaign = findCampaign(state, run.campaignId);
         if (!campaign) return;
-        // The word ran out here before the target: the next plain word for
-        // the same business type, in the same area. Not a wider search.
-        if (movesToNextWord(campaign)) {
+        // The search ran out before the target: the next word, the next
+        // suburb of the chosen city, or (after a yes) the next nearby area.
+        if (nextSearchFor(campaign, coveredQuery)) {
           ahead.stop(campaign.id);
-          patch(run.campaignId, (it) => enterNextWord(it, coveredQuery));
-          continue;
-        }
-        // Only after the owner's yes: the next nearby area, same campaign.
-        if (movesToNextArea(campaign)) {
-          ahead.stop(campaign.id);
-          patch(run.campaignId, (it) => enterNextArea(it, coveredQuery));
+          patch(run.campaignId, (it) => nextSearchFor(it, coveredQuery) ?? it);
           continue;
         }
         if (campaign.count >= campaign.target || campaign.exhausted) {
@@ -574,7 +568,7 @@ export function createDiscoveryController(
         }
         // The owner approved the maximum up front. Do not ask for another
         // full page if its expected US$0.06 would exceed it. `MAX_PAGES` is
-        // the matching hard ceiling for a 500-prospect approved budget.
+        // a hard ceiling on searches, short suburb pages included.
         if (
           !campaign.pendingPage &&
           (campaign.pagesFetched >= MAX_PAGES ||
@@ -676,7 +670,7 @@ export function createDiscoveryController(
               ...existing.seenProviderPlaceIds,
               ...outcome.providerPlaceIds,
             ]),
-          ].slice(-QUERY_PLACE_CEILING);
+          ].slice(-MAX_SEEN_PROVIDER_PLACE_IDS);
           const stopReason = reachedTarget ? "target_reached" : pageReason;
           const pageLog: DiscoveryPageLog = {
             page: existing.pagesFetched + 1,
@@ -895,9 +889,11 @@ export function createDiscoveryController(
             tagCursors: [...fresh.tagCursors],
             coverage: fresh.coverage.map((entry) => ({ ...entry })),
           };
-    // Continuing a campaign whose area ran out is the owner's yes to nearby.
+    // Continuing a campaign whose area ran out is the owner's yes to nearby;
+    // an older campaign that ran out on the whole city goes on to its suburbs.
+    const suburbs = (freshContinuation.suburbs?.length ?? 0) > 0;
     const nearby = (freshContinuation.nearbyAreas?.length ?? 0) > 0;
-    if (nearby) ahead.stop(fresh.id);
+    if (nearby || suburbs) ahead.stop(fresh.id);
     patch(fresh.id, (campaign) => {
       const resumed: StoredCampaign = {
         ...campaign,
@@ -911,6 +907,7 @@ export function createDiscoveryController(
         tagCursors: cursorState.tagCursors,
         coverage: cursorState.coverage,
       };
+      if (suburbs) return enterNextSuburb(resumed, coveredQuery);
       return nearby
         ? enterNextArea({ ...resumed, nearbyApproved: true }, coveredQuery)
         : resumed;
@@ -1104,6 +1101,7 @@ export function createDiscoveryController(
         coverage: initialCoverage,
         trustedCoverage: true,
         areaIndex: 0,
+        suburbIndex: 0,
         nearbyApproved: false,
         searchWords,
         wordIndex: 0,
