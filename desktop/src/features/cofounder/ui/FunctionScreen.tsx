@@ -502,7 +502,7 @@ export function FunctionScreen({
             scorecardAndGoals={
               <div className="space-y-5">
                 {scorecard}
-                {slot.state === "empty" ? (
+                {slot.state !== "filled" ? (
                   <EmptySlotSuggestion
                     canHirePrebuiltHeads={canHirePrebuiltHeads}
                     functionId={functionId}
@@ -541,7 +541,7 @@ export function FunctionScreen({
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
           <div className="space-y-5">
             {scorecard}
-            {slot.state === "empty" ? (
+            {slot.state !== "filled" ? (
               <EmptySlotSuggestion
                 canHirePrebuiltHeads={canHirePrebuiltHeads}
                 functionId={functionId}
@@ -563,7 +563,7 @@ export function FunctionScreen({
               managerName={managerName}
               slot={slot}
             />
-            {slot.state === "empty" ? (
+            {slot.state !== "filled" ? (
               <section
                 aria-labelledby="function-filled-title"
                 className="team-card p-5 sm:p-6"

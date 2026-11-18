@@ -28,6 +28,7 @@ import type { CompanyMapBoardProps, ProfileLookup } from "./companyMapTypes";
 import {
   PrebuiltHeadPreview,
   PrebuiltHiredHeadPreview,
+  PrebuiltJustHiredContent,
 } from "./CompanyMapPartCard";
 
 function fullName(
@@ -398,6 +399,38 @@ function PhoneActionCard({
           ? `The assigned lead runs ${detail.name}.`
           : `Scout runs ${detail.name} for now.`;
 
+  if (recentHire && prebuiltHead) {
+    return (
+      <section
+        aria-label={`${detail.name} part details`}
+        className="company-map-card company-map-card--part"
+      >
+        <PrebuiltJustHiredContent
+          head={prebuiltHead}
+          lead={lead}
+          leadName={lead ? fullName(lead, profiles) : null}
+          recentHire={recentHire}
+        />
+        <div className="company-map-card-actions">
+          <Link
+            className="company-map-primary-action"
+            params={{ channelId: recentHire.directChannelId }}
+            to="/channels/$channelId"
+          >
+            Open direct chat
+          </Link>
+          <button
+            className="company-map-secondary-action"
+            onClick={onClose}
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
       aria-label={`${detail.name} part details`}
@@ -409,15 +442,18 @@ function PhoneActionCard({
         {FUNCTION_DESCRIPTIONS[activePart]} {leader}
         {count > 0 ? ` ${partCountSentence(count)}` : ""}
       </p>
-      {slot.state === "empty" ? (
+      {slot.state !== "filled" ? (
         <PrebuiltHeadPreview functionId={activePart} />
       ) : null}
       {slot.state === "filled" && prebuiltHead ? (
         <PrebuiltHiredHeadPreview
           head={prebuiltHead}
+          isPrebuilt={
+            lead?.managedAgent?.name === prebuiltHead.name ||
+            recentHire !== null
+          }
           lead={lead}
           leadName={lead ? fullName(lead, profiles) : null}
-          recentHire={recentHire}
         />
       ) : null}
       <div className="company-map-card-actions">
@@ -428,7 +464,7 @@ function PhoneActionCard({
         >
           Open {detail.name}
         </Link>
-        {slot.state === "empty" && prebuiltHead && canHirePrebuiltHeads ? (
+        {slot.state !== "filled" && prebuiltHead && canHirePrebuiltHeads ? (
           <button
             className="company-map-secondary-action"
             data-testid={`cofounder-hire-head-phone-${activePart}`}

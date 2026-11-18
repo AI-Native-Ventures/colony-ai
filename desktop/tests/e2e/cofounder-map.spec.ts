@@ -155,7 +155,7 @@ test.describe("co-founder mode desktop", () => {
       "filled",
     );
     await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
-      "Head of Finance is your Head of Finance.",
+      "Head of Finance",
     );
     await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
       "Just hired",
@@ -168,6 +168,24 @@ test.describe("co-founder mode desktop", () => {
         name: "Open direct chat",
       }),
     ).toBeVisible();
+    const firstMoveOverlapsHub = await page.evaluate(() => {
+      const card = document.querySelector(
+        "[data-testid='cofounder-map-part-card']",
+      );
+      const hub = document.querySelector(
+        "[data-testid='cofounder-map-company-hub']",
+      );
+      if (!card || !hub) return true;
+      const cardRect = card.getBoundingClientRect();
+      const hubRect = hub.getBoundingClientRect();
+      return !(
+        cardRect.right <= hubRect.left ||
+        cardRect.left >= hubRect.right ||
+        cardRect.bottom <= hubRect.top ||
+        cardRect.top >= hubRect.bottom
+      );
+    });
+    expect(firstMoveOverlapsHub).toBe(false);
 
     await selectMapPart(page, "brand", "Brand");
     await page.getByTestId("cofounder-hire-head-brand").click();
@@ -1200,6 +1218,19 @@ test.describe("co-founder mode desktop", () => {
       "Hire Head of Finance",
     );
     await expect(page.getByRole("link", { name: /Bookkeeper/ })).toHaveCount(0);
+  });
+
+  test("a Scout-covered part still offers its named head", async ({ page }) => {
+    await installMockBridge(page, fixture());
+    await page.goto("/#/company/map");
+
+    await selectMapPart(page, "operations", "Operations");
+    await expect(page.getByTestId("cofounder-hire-head-operations")).toHaveText(
+      "Hire Head of Operations",
+    );
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Scout runs Operations for now.",
+    );
   });
 
   test("a slot whose lead left the team is displayed as empty", async ({

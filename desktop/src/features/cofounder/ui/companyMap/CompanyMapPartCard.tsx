@@ -67,6 +67,47 @@ export function PrebuiltHeadPreview({
 
 export function PrebuiltHiredHeadPreview({
   head,
+  isPrebuilt,
+  lead,
+  leadName,
+}: {
+  head: NonNullable<ReturnType<typeof prebuiltHeadForFunction>>;
+  isPrebuilt: boolean;
+  lead: TeamMember | undefined;
+  leadName: string | null;
+}) {
+  const name = leadName ?? head.name;
+  const legacyTitle = lead?.position?.head.title ?? "Assigned lead";
+  return (
+    <div className="mt-2.5 flex items-center gap-3 rounded-[14px] bg-muted/50 p-3">
+      <EmployeeAvatar
+        className="size-10 rounded-full"
+        instance={lead?.managedAgent?.avatarUrl}
+        name={name}
+        personaId={lead?.managedAgent?.personaId}
+        profile={lead ? undefined : null}
+        pubkey={lead?.pubkey}
+        role={head.name}
+      />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-extrabold">{name}</p>
+          {isPrebuilt ? (
+            <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-2xs font-extrabold text-emerald-700 dark:text-emerald-300">
+              Works here
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {isPrebuilt ? head.does[0] : legacyTitle}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function PrebuiltJustHiredContent({
+  head,
   lead,
   leadName,
   recentHire,
@@ -74,52 +115,29 @@ export function PrebuiltHiredHeadPreview({
   head: NonNullable<ReturnType<typeof prebuiltHeadForFunction>>;
   lead: TeamMember | undefined;
   leadName: string | null;
-  recentHire: PrebuiltHireCompletion | null;
+  recentHire: PrebuiltHireCompletion;
 }) {
   const name = leadName ?? head.name;
-  const isPrebuilt =
-    lead?.managedAgent?.name === head.name ||
-    recentHire?.employeePubkey.toLowerCase() === lead?.pubkey.toLowerCase();
-  const legacyTitle = lead?.position?.head.title ?? "Assigned lead";
   return (
-    <div className="mt-4 rounded-xl border border-border bg-background/70 p-3">
-      <div className="flex items-center gap-3">
-        <EmployeeAvatar
-          className="size-10 rounded-full"
-          instance={lead?.managedAgent?.avatarUrl}
-          name={name}
-          personaId={lead?.managedAgent?.personaId}
-          profile={lead ? undefined : null}
-          pubkey={lead?.pubkey}
-          role={head.name}
-        />
-        <div className="min-w-0">
-          {isPrebuilt ? (
-            <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-2xs font-extrabold text-emerald-700 dark:text-emerald-300">
-              Works here
-            </span>
-          ) : null}
-          <p className="truncate text-sm font-bold">{name}</p>
-          <p className="line-clamp-2 text-xs text-muted-foreground">
-            {isPrebuilt ? head.does[0] : legacyTitle}
-          </p>
-        </div>
-      </div>
-      {recentHire ? (
-        <div className="mt-3 rounded-lg bg-muted/60 p-3">
-          <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
+    <div className="flex items-start gap-3">
+      <EmployeeAvatar
+        className="size-10 rounded-full"
+        instance={lead?.managedAgent?.avatarUrl}
+        name={name}
+        personaId={lead?.managedAgent?.personaId}
+        profile={lead ? undefined : null}
+        pubkey={lead?.pubkey}
+        role={head.name}
+      />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="m-0 text-sm font-extrabold">{name}</h2>
+          <span className="inline-flex rounded-full bg-emerald-500/10 px-2 py-0.5 text-2xs font-extrabold text-emerald-700 dark:text-emerald-300">
             Just hired
-          </p>
-          <p className="mt-1 text-sm">{recentHire.firstMove}</p>
-          <Link
-            className="mt-2 inline-flex text-sm font-bold text-primary underline"
-            params={{ channelId: recentHire.directChannelId }}
-            to="/channels/$channelId"
-          >
-            Open direct chat
-          </Link>
+          </span>
         </div>
-      ) : null}
+        <p className="mt-1 text-sm leading-5">{recentHire.firstMove}</p>
+      </div>
     </div>
   );
 }
@@ -215,16 +233,55 @@ export function CompanyMapPartCard({
       slot.leadPubkey.toLowerCase()
       ? (recentPrebuiltHires[activePart] ?? null)
       : null;
-  const isPrebuiltLead =
+  const isPrebuiltLead = Boolean(
     slot.state === "filled" &&
-    head &&
-    (lead?.managedAgent?.name === head.name || recentHire !== null);
+      head &&
+      (lead?.managedAgent?.name === head.name || recentHire !== null),
+  );
   const summaryLine =
     slot.state === "filled" && leadName
       ? isPrebuiltLead
         ? `${leadName} is your ${lead?.position?.head.title ?? head?.name}. ${leadName} does every job here that has no specialist of its own.`
         : `${leadName} runs ${detail.name}.`
       : `Scout runs ${detail.name} for now.`;
+
+  if (recentHire && head) {
+    return (
+      <section
+        aria-label={`${detail.name} part details`}
+        className="company-map-card company-map-card--part"
+        data-map-group={activePart}
+        data-testid="cofounder-map-part-card"
+        onBlur={(event) => onGroupBlur(event, activePart)}
+        onFocus={() => onGroupFocus(activePart)}
+        onMouseEnter={() => onGroupMouseEnter(activePart)}
+        onMouseLeave={onGroupMouseLeave}
+      >
+        <PrebuiltJustHiredContent
+          head={head}
+          lead={lead}
+          leadName={leadName}
+          recentHire={recentHire}
+        />
+        <div className="company-map-card-actions">
+          <Link
+            className="company-map-primary-action"
+            params={{ channelId: recentHire.directChannelId }}
+            to="/channels/$channelId"
+          >
+            Open direct chat
+          </Link>
+          <button
+            className="company-map-secondary-action"
+            onClick={onClose}
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -243,15 +300,15 @@ export function CompanyMapPartCard({
         {FUNCTION_DESCRIPTIONS[activePart]} {summaryLine}
         {count > 0 ? ` ${partCountSentence(count)}` : ""}
       </p>
-      {slot.state === "empty" ? (
+      {slot.state !== "filled" ? (
         <PrebuiltHeadPreview functionId={activePart} />
       ) : null}
       {slot.state === "filled" && head ? (
         <PrebuiltHiredHeadPreview
           head={head}
+          isPrebuilt={isPrebuiltLead}
           lead={lead}
           leadName={leadName}
-          recentHire={recentHire}
         />
       ) : null}
       <div className="company-map-card-actions">
@@ -262,7 +319,7 @@ export function CompanyMapPartCard({
         >
           Open {detail.name}
         </Link>
-        {slot.state === "empty" && head && canHirePrebuiltHeads ? (
+        {slot.state !== "filled" && head && canHirePrebuiltHeads ? (
           <button
             className="company-map-secondary-action"
             data-testid={`cofounder-hire-head-${activePart}`}
