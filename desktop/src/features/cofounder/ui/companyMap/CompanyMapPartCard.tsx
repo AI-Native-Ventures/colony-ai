@@ -43,7 +43,7 @@ export function PrebuiltHeadPreview({
   const head = prebuiltHeadForFunction(functionId);
   if (!head) return null;
   return (
-    <div className="mt-4 flex items-center gap-3 rounded-xl border border-dashed border-border bg-background/70 p-3">
+    <div className="mt-2.5 flex items-center gap-3 rounded-[14px] bg-muted/50 p-3">
       <EmployeeAvatar
         className="size-10 rounded-full border-2 border-dashed border-border p-0.5"
         instance={agentAntAvatarDataUrl(head.name)}
@@ -51,11 +51,13 @@ export function PrebuiltHeadPreview({
         role={`Head of ${FUNCTION_DETAILS[functionId].name}`}
       />
       <div className="min-w-0">
-        <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-extrabold text-primary">
-          Pre-built
-        </span>
-        <p className="truncate text-sm font-bold">{head.name}</p>
-        <p className="line-clamp-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-extrabold">{head.name}</p>
+          <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-extrabold text-primary">
+            Pre-built
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {head.does[0]}
         </p>
       </div>
