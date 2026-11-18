@@ -1585,6 +1585,8 @@ export function referenceSalesRecordEvents(
     longLeadNames?: boolean;
     whatsappGuesthouses?: boolean;
     outreachBoard?: boolean;
+    /** Seed durable outreach-status examples for list-status interaction tests. */
+    outreachStatusBoard?: boolean;
     outreachMentionBoard?: boolean;
     restaurantsBoard?: boolean;
     /** Add an eligible phone to Form & Field for outreach-list board flows. */
@@ -1934,7 +1936,24 @@ export function referenceSalesRecordEvents(
     });
   }
   if (options.outreachBoard || options.outreachMentionBoard) {
-    const listSeeds = options.outreachMentionBoard
+    type OutreachListSeed = {
+      id: string;
+      name: string;
+      count: number;
+      source: {
+        kind: "campaign" | "manual";
+        campaignId: string | null;
+      };
+      updatedAt: number;
+      status?: "active" | "archived";
+      outreach?: {
+        status: "in_progress";
+        setBy: string;
+        setByAgent: true;
+        setAt: number;
+      };
+    };
+    const listSeeds: OutreachListSeed[] = options.outreachMentionBoard
       ? [
           {
             id: "3f1a7000-0000-4000-9000-000000000001",
@@ -1954,7 +1973,7 @@ export function referenceSalesRecordEvents(
             updatedAt: now - 4 * 24 * 60 * 60,
           },
         ]
-      : ([
+      : [
           {
             id: "3f1a7000-0000-4000-9000-000000000001",
             name: "Melville guesthouses, Nov",
@@ -1982,7 +2001,28 @@ export function referenceSalesRecordEvents(
             source: { kind: "manual", campaignId: null },
             updatedAt: now - 21 * 24 * 60 * 60,
           },
-        ] as const);
+        ];
+    if (options.outreachStatusBoard) {
+      const scoutOwnedList = listSeeds.find(
+        (list) => list.name === "Rosebank restaurants",
+      );
+      if (scoutOwnedList) {
+        scoutOwnedList.outreach = {
+          status: "in_progress",
+          setBy: REFERENCE_AGENTS.scout.pubkey,
+          setByAgent: true,
+          setAt: now - 5 * 24 * 60 * 60,
+        };
+      }
+      listSeeds.push({
+        id: "3f1a7000-0000-4000-9000-000000000004",
+        name: "Archived winter follow up",
+        count: 3,
+        source: { kind: "manual", campaignId: null },
+        status: "archived",
+        updatedAt: now - 30 * 24 * 60 * 60,
+      });
+    }
     listSeeds.forEach((list, index) => {
       events.push(
         referenceW10Event(
@@ -1997,7 +2037,7 @@ export function referenceSalesRecordEvents(
             listId: list.id,
             name: list.name,
             note: null,
-            status: "active",
+            status: list.status ?? "active",
             source: list.source,
             defaultTemplate: null,
             members: Array.from(
@@ -2017,6 +2057,7 @@ export function referenceSalesRecordEvents(
             updatedBy: selfPubkey,
             updatedAt: list.updatedAt,
             sourceActionEventId: "4".repeat(64),
+            ...(list.outreach ? { outreach: list.outreach } : {}),
           },
         ),
       );

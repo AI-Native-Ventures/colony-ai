@@ -38,6 +38,31 @@ const REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS = [
   REFERENCE_PROSPECT_IDS["cedar-co"],
 ] as const;
 
+// Keep multi-city screenshots honest: each fixture city returns its own
+// reference businesses, so the aggregate table proves it combines cities.
+const REFERENCE_MULTI_CITY_PROSPECT_IDS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  "Johannesburg, Gauteng, South Africa": [
+    REFERENCE_PROSPECT_IDS["the-olive-house"],
+    REFERENCE_PROSPECT_IDS["sunday-edit"],
+    REFERENCE_PROSPECT_IDS["common-ground"],
+    REFERENCE_PROSPECT_IDS["little-kin"],
+  ],
+  "Cape Town, Western Cape, South Africa": [
+    REFERENCE_PROSPECT_IDS["form-field"],
+    REFERENCE_PROSPECT_IDS.stillroom,
+    REFERENCE_PROSPECT_IDS["clay-collective"],
+    REFERENCE_PROSPECT_IDS["studio-local"],
+    REFERENCE_PROSPECT_IDS["cedar-co"],
+  ],
+  "Durban, KwaZulu-Natal, South Africa": [
+    REFERENCE_PROSPECT_IDS["gather-house"],
+    REFERENCE_PROSPECT_IDS["north-note"],
+  ],
+  "Pretoria, Gauteng, South Africa": [REFERENCE_PROSPECT_IDS["woven-living"]],
+};
+
 const REFERENCE_CAMPAIGN: DiscoveryCampaign = {
   id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.independentBrands,
   name: "Independent brands needing social support",
@@ -107,6 +132,13 @@ const REFERENCE_RESTAURANT_CAMPAIGN: DiscoveryCampaign = {
 const PROGRESS_INTERVAL_MS = 800;
 const RESULTS_PER_UPDATE = 3;
 
+declare global {
+  interface Window {
+    /** Locations that should return the reference prospects in multi-city E2E. */
+    __BUZZ_E2E_MULTI_CITY_RESULT_LOCATIONS__?: string[];
+  }
+}
+
 function cloneCampaign(
   campaign: DiscoveryCampaign | null,
 ): DiscoveryCampaign | null {
@@ -115,12 +147,22 @@ function cloneCampaign(
     : null;
 }
 
+function referenceProspectIdsFor(
+  location: string | undefined,
+): readonly string[] {
+  return location
+    ? (REFERENCE_MULTI_CITY_PROSPECT_IDS[location] ??
+        REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS)
+    : REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS;
+}
+
 function createReferenceDiscoveryProvider(
   initialCampaign: DiscoveryCampaign,
 ): DiscoveryCampaignProvider {
   let current = cloneCampaign(initialCampaign);
   const campaigns = [cloneCampaign(initialCampaign) as DiscoveryCampaign];
   let sequence = 0;
+  let activeCampaignId: string | null = null;
   let progressTimer: number | null = null;
   const listeners = new Set<(campaign: DiscoveryCampaign | null) => void>();
 
@@ -130,11 +172,17 @@ function createReferenceDiscoveryProvider(
   }
 
   function update(campaign: DiscoveryCampaign) {
-    current = campaign;
     const index = campaigns.findIndex(({ id }) => id === campaign.id);
     if (index >= 0) campaigns[index] = campaign;
     else campaigns.unshift(campaign);
+    if (current?.id === campaign.id) current = cloneCampaign(campaign);
     publish();
+  }
+
+  function activeCampaign(): DiscoveryCampaign | null {
+    return activeCampaignId
+      ? (campaigns.find((campaign) => campaign.id === activeCampaignId) ?? null)
+      : null;
   }
 
   function stopProgress() {
@@ -147,36 +195,58 @@ function createReferenceDiscoveryProvider(
   function advanceProgress() {
     progressTimer = window.setTimeout(() => {
       progressTimer = null;
-      if (current?.status !== "running") return;
+      const running = activeCampaign();
+      if (running?.status !== "running") return;
       if (window.__BUZZ_E2E_W10_FAIL_NEXT_RUN__) {
         window.__BUZZ_E2E_W10_FAIL_NEXT_RUN__ = false;
-        update({ ...current, status: "failed" });
+        activeCampaignId = null;
+        update({ ...running, status: "failed" });
         return;
       }
       const count = Math.min(
-        current.target,
-        current.prospectIds.length,
-        current.count + RESULTS_PER_UPDATE,
+        running.target,
+        running.prospectIds.length,
+        running.count + RESULTS_PER_UPDATE,
       );
       const completionTarget = Math.min(
-        current.target,
-        current.prospectIds.length,
+        running.target,
+        running.prospectIds.length,
       );
       const status = count >= completionTarget ? "complete" : "running";
-      update({ ...current, count, status });
+      if (status === "complete") activeCampaignId = null;
+      update({ ...running, count, status });
       if (status === "running") advanceProgress();
     }, PROGRESS_INTERVAL_MS);
   }
 
-  function begin(input: DiscoveryCampaignInput, campaignId: string) {
+  function pauseActiveBefore(nextCampaignId: string): void {
+    const active = activeCampaign();
+    if (
+      !active ||
+      active.id === nextCampaignId ||
+      active.status !== "running"
+    ) {
+      return;
+    }
     stopProgress();
+    activeCampaignId = null;
+    update({ ...active, status: "paused" });
+  }
+
+  function begin(input: DiscoveryCampaignInput, campaignId: string) {
+    pauseActiveBefore(campaignId);
     const hasReferenceResults =
       input.audience === "businesses" &&
       input.verticalId === "home-furnishings-retailers" &&
-      input.locationSelection?.kind === "country" &&
-      input.locationSelection.countryCode?.toUpperCase() === "ZA";
+      ((input.locationSelection?.kind === "country" &&
+        input.locationSelection.countryCode?.toUpperCase() === "ZA") ||
+        Boolean(
+          window.__BUZZ_E2E_MULTI_CITY_RESULT_LOCATIONS__?.includes(
+            input.locationSelection?.label ?? "",
+          ),
+        ));
     const prospectIds = hasReferenceResults
-      ? [...REFERENCE_HOME_FURNISHINGS_PROSPECT_IDS]
+      ? [...referenceProspectIdsFor(input.locationSelection?.label)]
       : [];
     const campaign: DiscoveryCampaign = {
       ...input,
@@ -190,8 +260,12 @@ function createReferenceDiscoveryProvider(
       simulated: true,
       postedInSales: true,
     };
+    current = cloneCampaign(campaign);
     update(campaign);
-    if (campaign.status === "running") advanceProgress();
+    if (campaign.status === "running") {
+      activeCampaignId = campaign.id;
+      advanceProgress();
+    }
     return campaign;
   }
 
@@ -221,15 +295,13 @@ function createReferenceDiscoveryProvider(
       if (current?.status !== "complete" || current.count >= current.target) {
         return;
       }
+      pauseActiveBefore(current.id);
+      activeCampaignId = current.id;
       update({ ...current, status: "running" });
       advanceProgress();
     },
     async select(campaignId) {
       if (current?.id === campaignId) return;
-      if (current?.status === "running") {
-        stopProgress();
-        update({ ...current, status: "paused" });
-      }
       const selected = campaigns.find((campaign) => campaign.id === campaignId);
       if (!selected) return;
       current = cloneCampaign(selected);
@@ -240,30 +312,36 @@ function createReferenceDiscoveryProvider(
       return () => listeners.delete(listener);
     },
     async start(input) {
-      if (current?.status === "running") {
-        stopProgress();
-        update({ ...current, status: "paused" });
-      }
       sequence += 1;
       return begin(input, `fixture-campaign-${sequence}`);
     },
     async pause() {
       if (current?.status !== "running") return;
-      stopProgress();
+      if (activeCampaignId === current.id) {
+        stopProgress();
+        activeCampaignId = null;
+      }
       update({ ...current, status: "paused" });
     },
     async resume() {
       if (current?.status !== "paused") return;
+      pauseActiveBefore(current.id);
+      activeCampaignId = current.id;
       update({ ...current, status: "running" });
       advanceProgress();
     },
     async cancel() {
       if (!current || !["running", "paused"].includes(current.status)) return;
-      stopProgress();
+      if (activeCampaignId === current.id) {
+        stopProgress();
+        activeCampaignId = null;
+      }
       update({ ...current, status: "cancelled" });
     },
     async retry() {
       if (current?.status !== "failed") return;
+      pauseActiveBefore(current.id);
+      activeCampaignId = current.id;
       update({ ...current, status: "running" });
       advanceProgress();
     },

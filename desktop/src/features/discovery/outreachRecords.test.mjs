@@ -60,6 +60,68 @@ test("outreach list parser accepts a relay head scoped to the Sales channel", ()
   });
 });
 
+test("outreach list parser keeps valid heads when outreach is absent or malformed", () => {
+  const head = {
+    schemaVersion: 1,
+    listId: LIST_ID,
+    name: "A list",
+    note: null,
+    status: "active",
+    source: { kind: "manual", campaignId: null },
+    defaultTemplate: null,
+    members: [],
+    createdBy: "d".repeat(64),
+    createdByAgent: false,
+    createdAt: 1,
+    updatedBy: "d".repeat(64),
+    updatedAt: 1,
+    sourceActionEventId: "e".repeat(64),
+  };
+
+  const absent = parseOutreachListHead(event(head), COMMUNITY, CHANNEL);
+  assert.ok(absent);
+  assert.equal(absent.record.outreach, undefined);
+
+  const malformed = parseOutreachListHead(
+    event({
+      ...head,
+      outreach: { status: "done", setBy: "not-a-pubkey", setAt: "now" },
+    }),
+    COMMUNITY,
+    CHANNEL,
+  );
+  assert.ok(malformed);
+  assert.equal(malformed.record.outreach, undefined);
+});
+
+test("outreach list parser keeps a valid authored outreach status", () => {
+  const head = {
+    schemaVersion: 1,
+    listId: LIST_ID,
+    name: "A list",
+    note: null,
+    status: "active",
+    source: { kind: "manual", campaignId: null },
+    defaultTemplate: null,
+    members: [],
+    createdBy: "d".repeat(64),
+    createdByAgent: false,
+    createdAt: 1,
+    updatedBy: "d".repeat(64),
+    updatedAt: 1,
+    outreach: {
+      status: "in_progress",
+      setBy: "e".repeat(64),
+      setByAgent: true,
+      setAt: 2,
+    },
+    sourceActionEventId: "f".repeat(64),
+  };
+
+  const parsed = parseOutreachListHead(event(head), COMMUNITY, CHANNEL);
+  assert.deepEqual(parsed?.record.outreach, head.outreach);
+});
+
 test("outreach list parser rejects a head from another channel or d-tag", () => {
   const head = {
     schemaVersion: 1,
@@ -176,6 +238,21 @@ test("list mutations carry one operation and an optional exact head fence", () =
       schemaVersion: 1,
       listId: LIST_ID,
       op: "set_default_template",
+    },
+  );
+  assert.deepEqual(
+    buildOutreachListMutation({
+      listId: LIST_ID,
+      expectedHeadEventId: "f".repeat(64),
+      op: "set_outreach_status",
+      outreachStatus: "in_progress",
+    }),
+    {
+      schemaVersion: 1,
+      listId: LIST_ID,
+      op: "set_outreach_status",
+      expectedHeadEventId: "f".repeat(64),
+      outreachStatus: "in_progress",
     },
   );
   assert.throws(() =>

@@ -122,6 +122,16 @@ export type OutreachListMember = {
 
 export type OutreachListTemplate = { name: string; language: string };
 
+export type OutreachStatus = "not_started" | "in_progress" | "done";
+
+/** Who last set an outreach list's manual status and when. */
+export type OutreachStatusRecord = {
+  status: OutreachStatus;
+  setBy: string;
+  setByAgent: boolean;
+  setAt: number;
+};
+
 export type OutreachListHead = {
   schemaVersion: 1;
   listId: string;
@@ -136,6 +146,8 @@ export type OutreachListHead = {
   createdAt: number;
   updatedBy: string;
   updatedAt: number;
+  /** Missing on older heads and means no outreach has started yet. */
+  outreach?: OutreachStatusRecord;
   sourceActionEventId: string;
 };
 
