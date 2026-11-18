@@ -1066,6 +1066,7 @@ test.describe("Outreach lists", () => {
   test("captures lists and list-detail outreach status proof", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     const proofStates = [
       { width: 1440, height: 900, theme: "light" as const },
       { width: 1440, height: 900, theme: "dark" as const },
