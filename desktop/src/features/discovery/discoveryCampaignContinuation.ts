@@ -1,4 +1,4 @@
-import { nearbyAreasLeft } from "./discoveryCampaignAreas";
+import { nearbyAreasLeft, suburbsLeft } from "./discoveryCampaignAreas";
 import type { StoredCampaign } from "./discoveryCampaignStore";
 import type {
   DiscoveryContinuation,
@@ -11,8 +11,13 @@ import {
   QUERY_PLACE_CEILING,
 } from "./discoverySearch";
 
-/** Hard ceiling on search pages per campaign (25 x 20 = 500 places). */
-export const MAX_PAGES = 25;
+/**
+ * Hard ceiling on search pages per campaign. The approved amount is what
+ * limits spending; this only bounds the run. A big city searched suburb by
+ * suburb (see `discoveryCityAreas.ts`) asks many short pages: a suburb often
+ * lists fewer than 20 places for a word. Until 18 Nov 2026 it was 25 pages.
+ */
+export const MAX_PAGES = 150;
 /** A 20-place provider page is approximately US$0.06. */
 export const BUDGET_USD_PER_PROSPECT = 0.003;
 export const PAGE_BUDGET_USD = SEARCH_PAGE_SIZE * BUDGET_USD_PER_PROSPECT;
@@ -231,23 +236,30 @@ export function continuationFor(
         tagCursors: [...campaign.tagCursors],
         coverage: campaign.coverage,
       };
-  // The areas searched so far have no more results. Continuing then means the
-  // owner's yes to the nearby areas, each a fresh search of its own.
-  const nearbyAreas =
+  // The areas searched so far have no more results. A campaign saved before
+  // suburbs were searched goes on to its city's suburbs; otherwise continuing
+  // means the owner's yes to the nearby areas, each a fresh search of its own.
+  const ranOut =
     campaign.exhausted &&
     (campaign.endReason === "provider_end" ||
-      campaign.endReason === "provider_ceiling")
-      ? nearbyAreasLeft(campaign)
-      : [];
-  const pagesAtProviderCeiling = nearbyAreas.length
-    ? Math.max(
-        0,
-        Math.min(
-          MAX_PAGES - campaign.pagesFetched,
-          QUERY_PLACE_CEILING / SEARCH_PAGE_SIZE,
-        ),
-      )
-    : pagesAvailableForContinuation(campaign, cursors.tagCursors, cursors.skip);
+      campaign.endReason === "provider_ceiling");
+  const suburbs = ranOut ? suburbsLeft(campaign) : [];
+  const nearbyAreas =
+    ranOut && !suburbs.length ? nearbyAreasLeft(campaign) : [];
+  const pagesAtProviderCeiling =
+    nearbyAreas.length || suburbs.length
+      ? Math.max(
+          0,
+          Math.min(
+            MAX_PAGES - campaign.pagesFetched,
+            QUERY_PLACE_CEILING / SEARCH_PAGE_SIZE,
+          ),
+        )
+      : pagesAvailableForContinuation(
+          campaign,
+          cursors.tagCursors,
+          cursors.skip,
+        );
   const estimatedPages = Math.min(
     pagesAtProviderCeiling,
     Math.max(1, Math.ceil(remainingTarget / SEARCH_PAGE_SIZE)),
@@ -277,6 +289,9 @@ export function continuationFor(
     estimatedPages,
     estimatedCostUsd,
   };
+  if (suburbs.length && pagesAtProviderCeiling > 0) {
+    return { ...base, state: "ready", message: null, suburbs };
+  }
   if (nearbyAreas.length && pagesAtProviderCeiling > 0) {
     return { ...base, state: "ready", message: null, nearbyAreas };
   }

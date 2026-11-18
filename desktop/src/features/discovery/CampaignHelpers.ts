@@ -64,27 +64,47 @@ function areaRanOut(campaign: Pick<DiscoveryCampaign, "endReason">) {
  */
 export function canFindMore(campaign: DiscoveryCampaign): boolean {
   if (!stoppedShortOfRequest(campaign) || atPageLimit(campaign)) return false;
-  if (areaRanOut(campaign)) return (campaign.nearbyAreasLeft ?? []).length > 0;
+  if (areaRanOut(campaign)) {
+    return (
+      (campaign.suburbsLeft ?? []).length > 0 ||
+      (campaign.nearbyAreasLeft ?? []).length > 0
+    );
+  }
   return (
     campaign.endReason === "provider_repeat" ||
     campaign.endReason === "approved_budget"
   );
 }
 
+function counted(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 /** "Umhlanga and Pinetown", or "Umhlanga, Pinetown and 2 more nearby areas". */
-function areaList(labels: readonly string[]): string {
+function areaList(
+  labels: readonly string[],
+  kind: "nearby" | "suburb" = "nearby",
+): string {
   const names = labels.map(shortAreaName);
   if (names.length <= 2) return names.join(" and ");
   const more = names.length - 2;
-  return `${names[0]}, ${names[1]} and ${more} more nearby ${more === 1 ? "area" : "areas"}`;
+  const noun =
+    kind === "suburb"
+      ? counted(more, "more suburb", "more suburbs")
+      : counted(more, "more nearby area", "more nearby areas");
+  return `${names[0]}, ${names[1]} and ${noun}`;
 }
 
 /** Where the campaign has searched, short enough for the card's detail row. */
 export function searchedAreasLabel(campaign: DiscoveryCampaign): string {
   const searched = campaign.areasSearched ?? [];
-  if (searched.length <= 1) return campaign.location;
-  const nearby = searched.length - 1;
-  return `${shortAreaName(searched[0] ?? campaign.location)} + ${nearby} nearby ${nearby === 1 ? "area" : "areas"}`;
+  const suburbs = campaign.suburbsSearched ?? 0;
+  const nearby = Math.max(0, searched.length - 1 - suburbs);
+  if (!suburbs && !nearby) return campaign.location;
+  const parts = [shortAreaName(searched[0] ?? campaign.location)];
+  if (suburbs) parts.push(counted(suburbs, "suburb", "suburbs"));
+  if (nearby) parts.push(counted(nearby, "nearby area", "nearby areas"));
+  return parts.join(" + ");
 }
 
 /**
@@ -101,12 +121,25 @@ function stoppedShortLine(campaign: DiscoveryCampaign): string {
     return `This search reached its limit of ${MAX_PAGES} pages. Try another business type or area.`;
   }
   if (areaRanOut(campaign)) {
+    const city = shortAreaName(searched[0] ?? campaign.location);
+    const suburbsLeft = campaign.suburbsLeft ?? [];
+    if (suburbsLeft.length) {
+      return `${city} has no more in one search. Find more in ${areaList(suburbsLeft, "suburb")}?`;
+    }
+    const suburbs = campaign.suburbsSearched ?? 0;
+    const nearbySearched = searched.length - 1 - suburbs > 0;
     const left = campaign.nearbyAreasLeft ?? [];
     if (left.length) {
-      return `${here} has no more. Find more in ${areaList(left)}?`;
+      const ranOut = suburbs
+        ? `${city} and its suburbs have no more.`
+        : `${here} has no more.`;
+      return `${ranOut} Find more in ${areaList(left)}?`;
     }
-    return searched.length > 1
-      ? `${shortAreaName(searched[0] ?? campaign.location)} and its nearby areas have no more. Try another business type.`
+    if (nearbySearched) {
+      return `${city} and its nearby areas have no more. Try another business type.`;
+    }
+    return suburbs
+      ? `${city} and its suburbs have no more. Try another business type.`
       : `${here} has no more. Try another business type or area.`;
   }
   if (campaign.endReason === "provider_repeat") {

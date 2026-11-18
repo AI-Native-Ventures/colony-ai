@@ -5,6 +5,10 @@
 // Owner incident, 13 Nov 2026: "Real Estate Agents and Brokers" in Durban,
 // 200 asked. Maps listed 107 there, so the run ended at 68 new leads and the
 // only way on was a row of links that each started a separate campaign.
+//
+// Durban itself now searches its own suburbs before it asks (see
+// discoveryCitySuburbs.test.mjs, 18 Nov 2026). These tests keep the incident's
+// numbers in a town with no suburb list, so they test the nearby rules alone.
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -25,32 +29,32 @@ function suburb(label, latitude, longitude) {
   };
 }
 
-const DURBAN = "Durban, KwaZulu-Natal, South Africa";
-const UMHLANGA = "Umhlanga, KwaZulu-Natal, South Africa";
-const PINETOWN = "Pinetown, KwaZulu-Natal, South Africa";
-const BALLITO = "Ballito, KwaZulu-Natal, South Africa";
+const RICHARDS_BAY = "Richards Bay, KwaZulu-Natal, South Africa";
+const MEERENSEE = "Meerensee, KwaZulu-Natal, South Africa";
+const EMPANGENI = "Empangeni, KwaZulu-Natal, South Africa";
+const MTUNZINI = "Mtunzini, KwaZulu-Natal, South Africa";
 
 const INPUT = {
-  name: "Durban estate agents",
+  name: "Richards Bay estate agents",
   audience: "businesses",
   industryId: "real-estate",
   industryName: "Real Estate",
   verticalId: "real-estate-agents-and-brokers",
   verticalName: "Real Estate Agents and Brokers",
-  location: DURBAN,
+  location: RICHARDS_BAY,
   locationSelection: {
-    label: DURBAN,
-    latitude: -29.8587,
-    longitude: 31.0218,
+    label: RICHARDS_BAY,
+    latitude: -28.7807,
+    longitude: 32.0383,
     countryCode: "ZA",
     region: "KwaZulu-Natal",
     kind: "city",
     boundingBox: null,
     // The order the geocoder offered them in, which is not by distance.
     nearby: [
-      suburb(BALLITO, -29.539, 31.2144),
-      suburb(UMHLANGA, -29.7256, 31.0849),
-      suburb(PINETOWN, -29.8167, 30.85),
+      suburb(MTUNZINI, -28.95, 31.75),
+      suburb(MEERENSEE, -28.77, 32.083),
+      suburb(EMPANGENI, -28.762, 31.893),
     ],
   },
   target: 200,
@@ -59,10 +63,10 @@ const INPUT = {
 
 /** How many businesses Maps lists for the search in each area. */
 const LISTED = {
-  [DURBAN]: 107,
-  [UMHLANGA]: 30,
-  [PINETOWN]: 60,
-  [BALLITO]: 100,
+  [RICHARDS_BAY]: 107,
+  [MEERENSEE]: 30,
+  [EMPANGENI]: 60,
+  [MTUNZINI]: 100,
 };
 
 function place(area, n) {
@@ -188,20 +192,20 @@ test("the chosen place runs out: the search stops and asks, and searches no othe
   assert.equal(ended.count, 107);
   assert.deepEqual(
     areasAsked(log),
-    [DURBAN],
+    [RICHARDS_BAY],
     "no nearby area is searched without the owner's yes",
   );
-  assert.deepEqual(ended.areasSearched, [DURBAN]);
+  assert.deepEqual(ended.areasSearched, [RICHARDS_BAY]);
   assert.deepEqual(
     ended.nearbyAreasLeft,
-    [UMHLANGA, PINETOWN, BALLITO],
+    [MEERENSEE, EMPANGENI, MTUNZINI],
     "nearby areas are offered nearest first",
   );
   assert.equal(stored(storageMap).campaigns[0].nearbyApproved, false);
 
   const ask = controller.getContinuation();
   assert.equal(ask.state, "ready");
-  assert.deepEqual(ask.nearbyAreas, [UMHLANGA, PINETOWN, BALLITO]);
+  assert.deepEqual(ask.nearbyAreas, [MEERENSEE, EMPANGENI, MTUNZINI]);
   assert.equal(ask.remainingTarget, 93);
 
   // Opening the app again must not turn the question into a yes.
@@ -221,8 +225,8 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
   await controller.continueCampaign();
   await controller.whenIdle();
 
-  // The yes covers the pages the other 93 need: five. Two finish Umhlanga,
-  // three finish Pinetown, then the approved results are used.
+  // The yes covers the pages the other 93 need: five. Two finish Meerensee,
+  // three finish Empangeni, then the approved results are used.
   const paused = controller.getCurrent();
   assert.equal(paused.id, campaignId, "no second campaign is created");
   assert.equal(stored(storageMap).campaigns.length, 1);
@@ -231,15 +235,15 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
   assert.equal(paused.count, 107 + 30 + 60);
   assert.deepEqual(
     areasAsked(log),
-    [UMHLANGA, PINETOWN],
-    "Umhlanga ran out and Pinetown followed without a second question",
+    [MEERENSEE, EMPANGENI],
+    "Meerensee ran out and Empangeni followed without a second question",
   );
-  assert.equal(pagesAsked(log, UMHLANGA)[0], 0, "a new area starts at page 1");
-  assert.equal(pagesAsked(log, PINETOWN)[0], 0);
+  assert.equal(pagesAsked(log, MEERENSEE)[0], 0, "a new area starts at page 1");
+  assert.equal(pagesAsked(log, EMPANGENI)[0], 0);
   assert.deepEqual(
     paused.areasSearched,
-    [DURBAN, UMHLANGA, PINETOWN],
-    "Ballito is next, but no page was fetched there, so it is not listed",
+    [RICHARDS_BAY, MEERENSEE, EMPANGENI],
+    "Mtunzini is next, but no page was fetched there, so it is not listed",
   );
   // Pages that listed businesses. Each area also has one empty page for each
   // of the type's other search words, which these tests give no results.
@@ -248,14 +252,14 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
       .filter((entry) => entry.placesReturned > 0)
       .map((entry) => entry.area),
     [
-      ...Array(6).fill(DURBAN),
-      ...Array(2).fill(UMHLANGA),
-      ...Array(3).fill(PINETOWN),
+      ...Array(6).fill(RICHARDS_BAY),
+      ...Array(2).fill(MEERENSEE),
+      ...Array(3).fill(EMPANGENI),
     ],
   );
 
   // The approved results are used, so it asks again. That yes continues in
-  // Ballito until the 200 are found.
+  // Mtunzini until the 200 are found.
   log.searches.length = 0;
   await controller.continueCampaign();
   await controller.whenIdle();
@@ -264,16 +268,21 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
   assert.equal(done.status, "complete");
   assert.equal(done.endReason, "target_reached");
   assert.equal(done.count, 200);
-  // The approved results ran out before Pinetown's other search words were
-  // asked. They are asked first (Maps lists nothing for them here), then Ballito.
-  assert.deepEqual(areasAsked(log), [PINETOWN, BALLITO]);
+  // The approved results ran out before Empangeni's other search words were
+  // asked. They are asked first (Maps lists nothing for them here), then Mtunzini.
+  assert.deepEqual(areasAsked(log), [EMPANGENI, MTUNZINI]);
   assert.deepEqual(
-    pagesAsked(log, PINETOWN),
+    pagesAsked(log, EMPANGENI),
     [],
-    "no Pinetown page is bought twice",
+    "no Empangeni page is bought twice",
   );
-  assert.equal(pagesAsked(log, BALLITO)[0], 0);
-  assert.deepEqual(done.areasSearched, [DURBAN, UMHLANGA, PINETOWN, BALLITO]);
+  assert.equal(pagesAsked(log, MTUNZINI)[0], 0);
+  assert.deepEqual(done.areasSearched, [
+    RICHARDS_BAY,
+    MEERENSEE,
+    EMPANGENI,
+    MTUNZINI,
+  ]);
 
   const ids = log.publishes.map((changes) => changes.prospectId);
   assert.equal(new Set(ids).size, ids.length, "nothing is saved twice");
@@ -281,17 +290,17 @@ test("one yes continues in the same campaign through the nearby areas, nearest f
 });
 
 test("after a restart the campaign continues in the nearby area it had reached", async () => {
-  // Pinetown lists 100 here, so the approved pages run out in the middle of it.
-  const listed = { ...LISTED, [PINETOWN]: 100 };
+  // Empangeni lists 100 here, so the approved pages run out in the middle of it.
+  const listed = { ...LISTED, [EMPANGENI]: 100 };
   const first = harness({ listed });
   await first.controller.start(INPUT);
   await first.controller.whenIdle();
   await first.controller.continueCampaign();
   await first.controller.whenIdle();
   assert.deepEqual(first.controller.getCurrent().areasSearched, [
-    DURBAN,
-    UMHLANGA,
-    PINETOWN,
+    RICHARDS_BAY,
+    MEERENSEE,
+    EMPANGENI,
   ]);
   first.controller.dispose();
 
@@ -302,13 +311,17 @@ test("after a restart the campaign continues in the nearby area it had reached",
   });
   await second.controller.whenIdle();
   const reopened = second.controller.getCurrent();
-  assert.deepEqual(reopened.areasSearched, [DURBAN, UMHLANGA, PINETOWN]);
+  assert.deepEqual(reopened.areasSearched, [
+    RICHARDS_BAY,
+    MEERENSEE,
+    EMPANGENI,
+  ]);
   assert.equal(reopened.endReason, "approved_budget");
   assert.deepEqual(second.log.searches, [], "reopening searches nothing");
 
   await second.controller.continueCampaign();
   await second.controller.whenIdle();
-  assert.equal(second.log.searches[0].location, PINETOWN);
+  assert.equal(second.log.searches[0].location, EMPANGENI);
   assert.equal(second.log.searches[0].skip, 60);
   assert.equal(
     second.log.searches[0].coordinates,
@@ -316,14 +329,14 @@ test("after a restart the campaign continues in the nearby area it had reached",
     "the area is searched by its name as a whole, not from one point",
   );
   assert.ok(
-    second.log.searches.every((request) => request.location !== DURBAN),
-    "Durban is not searched again",
+    second.log.searches.every((request) => request.location !== RICHARDS_BAY),
+    "Richards Bay is not searched again",
   );
 });
 
 test("when every nearby area has run out too, the search says so and offers nothing more", async () => {
   // 107 + 30 + 20 + 10 is fewer than the 200 asked for.
-  const listed = { ...LISTED, [PINETOWN]: 20, [BALLITO]: 10 };
+  const listed = { ...LISTED, [EMPANGENI]: 20, [MTUNZINI]: 10 };
   const { controller, log } = harness({ listed });
   await controller.start(INPUT);
   await controller.whenIdle();
@@ -334,7 +347,7 @@ test("when every nearby area has run out too, the search says so and offers noth
   assert.equal(done.status, "complete");
   assert.equal(done.endReason, "provider_end");
   assert.equal(done.count, 167);
-  assert.deepEqual(areasAsked(log).slice(1), [UMHLANGA, PINETOWN, BALLITO]);
+  assert.deepEqual(areasAsked(log).slice(1), [MEERENSEE, EMPANGENI, MTUNZINI]);
   assert.deepEqual(done.nearbyAreasLeft, []);
   const ask = controller.getContinuation();
   assert.equal(ask.state, "unavailable");
@@ -355,17 +368,17 @@ test("a place with no nearby areas ends as before, with nothing to continue into
   assert.equal(done.endReason, "provider_end");
   assert.deepEqual(done.nearbyAreasLeft, []);
   assert.equal(controller.getContinuation().state, "unavailable");
-  assert.deepEqual(areasAsked(log), [DURBAN]);
+  assert.deepEqual(areasAsked(log), [RICHARDS_BAY]);
 });
 
 test("a nearby area an earlier search already finished is not bought again", async () => {
   const { controller, log } = harness();
-  // The owner searched Umhlanga by itself first, to its end.
+  // The owner searched Meerensee by itself first, to its end.
   await controller.start({
     ...INPUT,
-    name: "Umhlanga estate agents",
-    location: UMHLANGA,
-    locationSelection: suburb(UMHLANGA, -29.7256, 31.0849),
+    name: "Meerensee estate agents",
+    location: MEERENSEE,
+    locationSelection: suburb(MEERENSEE, -28.77, 32.083),
     target: 100,
   });
   await controller.whenIdle();
@@ -378,12 +391,12 @@ test("a nearby area an earlier search already finished is not bought again", asy
   await controller.whenIdle();
 
   assert.ok(
-    log.searches.every((request) => request.location !== UMHLANGA),
-    "Umhlanga was covered to its end, so the yes goes straight to Pinetown",
+    log.searches.every((request) => request.location !== MEERENSEE),
+    "Meerensee was covered to its end, so the yes goes straight to Empangeni",
   );
-  assert.equal(log.searches[0].location, PINETOWN);
+  assert.equal(log.searches[0].location, EMPANGENI);
   assert.ok(
-    !controller.getCurrent().areasSearched.includes(UMHLANGA),
+    !controller.getCurrent().areasSearched.includes(MEERENSEE),
     "an area this campaign fetched nothing from is not listed as searched",
   );
 });
