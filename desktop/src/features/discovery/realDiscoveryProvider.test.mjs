@@ -1523,9 +1523,11 @@ test("pausing keeps the pages already asked ahead, and Resume saves them without
   );
 });
 
-test("a run never goes past the page cap or approved budget", async () => {
+test("a run never goes past the approved budget", async () => {
   // Three tags never run out inside 25 pages. Each full page has one business
   // that is already in Leads, so the target of 500 is not reached either.
+  // The approved results (500 for 500) are used after 25 pages. The page cap
+  // is covered in discoveryCitySuburbs.test.mjs.
   const offsets = { steak: 0, sushi: 100_000, pizza: 200_000 };
   const existing = [];
   for (const offset of Object.values(offsets)) {
@@ -1547,16 +1549,16 @@ test("a run never goes past the page cap or approved budget", async () => {
   });
   await controller.whenIdle();
   assertPagedByTwenty(log.searches);
-  assert.equal(log.searches.length, MAX_PAGES);
+  assert.equal(log.searches.length, 25);
   const done = controller.getCurrent();
   assert.equal(done.status, "complete");
-  assert.equal(done.count, 19 * MAX_PAGES);
+  assert.equal(done.count, 19 * 25);
   assert.equal(done.endReason, "approved_budget");
   assert.equal(
     done.endNote,
-    "This search reached its limit of 25 pages. Search a nearby area or use another business type.",
+    "The results you approved were used after 25 pages. 25 were already in your Leads and are not charged. Keep searching for the other 25? Find more continues this search at no extra cost.",
   );
-  assert.equal(controller.getContinuation().state, "unavailable");
+  assert.equal(controller.getContinuation().state, "ready");
   assert.ok(log.posts[0].includes(done.endNote));
 });
 

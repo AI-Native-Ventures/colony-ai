@@ -41,6 +41,17 @@ export function searchWordsForType(
 type WordCampaign = Pick<StoredCampaign, "pickedTags"> &
   Partial<Pick<StoredCampaign, "searchWords" | "wordIndex">>;
 
+/**
+ * Whether the campaign is in the suburb search of its chosen city. There the
+ * suburb steps turn the words (each word through every suburb), not this
+ * module. See `nextSuburbStep` in `discoveryCampaignAreas.ts`.
+ */
+function inSuburbSearch(
+  campaign: Partial<Pick<StoredCampaign, "areaIndex" | "suburbIndex">>,
+): boolean {
+  return (campaign.areaIndex ?? 0) === 0 && (campaign.suburbIndex ?? 0) > 0;
+}
+
 function wordIndexOf(campaign: WordCampaign): number {
   const index = Math.floor(campaign.wordIndex ?? 0);
   if (!Number.isFinite(index) || index < 0) return 0;
@@ -87,6 +98,7 @@ const WORD_END_REASONS: ReadonlySet<string> = new Set([
  */
 export function movesToNextWord(campaign: StoredCampaign): boolean {
   return (
+    !inSuburbSearch(campaign) &&
     !campaign.pendingPage &&
     campaign.exhausted &&
     campaign.count < campaign.target &&
@@ -155,7 +167,8 @@ export function pageWordField(
  * fault `provider_repeat` stands for. A later word mostly finds businesses an
  * earlier word already found: its first page is often the same top
  * businesses with new ones behind them, so one such page ends nothing (null)
- * and two in a row are the end of that word.
+ * and two in a row are the end of that word. A suburb of the chosen city is
+ * the same: its top businesses are often ones the whole-city search found.
  */
 export function repeatPageReason(
   campaign: StoredCampaign,
@@ -165,7 +178,7 @@ export function repeatPageReason(
     tagIndex === null &&
     normalizeSearchWords(campaign.searchWords).length > 0 &&
     wordIndexOf(campaign) > 0;
-  if (!laterWord) return "provider_repeat";
+  if (!laterWord && !inSuburbSearch(campaign)) return "provider_repeat";
   const before = campaign.pageLog.at(-1);
   const repeatedTwice =
     before !== undefined &&
