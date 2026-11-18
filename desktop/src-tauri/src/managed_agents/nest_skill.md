@@ -194,6 +194,8 @@ colony leads get --lead <lead link or id>     # one lead in full
 
 **Make a list when it helps.** You may create a list yourself when it makes the work clearer, for example the 20 best fits from a campaign: `colony lists create --name "Melville guesthouses, best fits" --from-campaign <campaign link>` or `--lead <id>` once per lead. Add `--template <name>` to set its default message. Always say so in your reply and include the `reference` link the command printed, so the person can open it. Use `colony lists add|remove <list> --lead <id>` and `colony lists rename <list> --name "..."` to keep a list tidy. You cannot archive a list; only people do.
 
+**Track outreach on a list.** Use `colony lists status <list> <not-started|in-progress|done>` after starting outreach on a list, and set it to done when everyone on it was contacted.
+
 **Prepare WhatsApp messages for a list.** `colony whatsapp batch create --list <list link or id> --template <name or title> [--param "..."]`. It takes every member that has a phone number. Members with no number, who opted out, or whose lead is gone are skipped, and the command prints each one with the reason: pass that on in one line. The batch is only a draft: it waits for the owner or an admin to approve it, and nothing is sent before then. Say that the batch is waiting for approval. Read the template with `templates get` first so the parameters fit its slots, and never send, approve or retry a batch around the owner.
 
 ## Output Contracts

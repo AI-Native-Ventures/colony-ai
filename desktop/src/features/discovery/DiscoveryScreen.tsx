@@ -24,6 +24,7 @@ import {
   useDiscoveryCampaign,
   type DiscoveryCampaign,
 } from "./discoveryProvider";
+import { useMultiCityDiscovery } from "./useMultiCityDiscovery";
 import {
   countPeopleRoles,
   industryTaxonomy,
@@ -86,6 +87,7 @@ export function summarizeDescription(description: string | undefined): string {
 export function DiscoveryScreen() {
   const navigate = useNavigate();
   const { campaign, provider } = useDiscoveryCampaign();
+  const { coordinator } = useMultiCityDiscovery(provider);
   const currentRunner = useCurrentRunner();
   const [mode, setMode] = React.useState<"businesses" | "people">("businesses");
   const [query, setQuery] = React.useState("");
@@ -160,11 +162,31 @@ export function DiscoveryScreen() {
 
   async function startCampaign(input: CampaignFormInput) {
     if (!provider || !pendingCampaign) return;
-    await provider.start({
+    const { locations, ...campaignInput } = input;
+    const baseInput = {
       ...pendingCampaign,
-      ...input,
+      ...campaignInput,
       runBy: dialogRunner,
-    });
+    };
+    if (locations.length > 1) {
+      if (!coordinator) {
+        throw new Error(
+          "Discovery is not ready to start a multi-city campaign.",
+        );
+      }
+      const group = await coordinator.startGroup({
+        ...baseInput,
+        locations,
+      });
+      setCampaignDialogOpen(false);
+      await navigate({
+        to: group.cities.some((city) => Boolean(city.campaignId))
+          ? "/campaign"
+          : "/discovery/campaigns",
+      });
+      return;
+    }
+    await provider.start(baseInput);
     setCampaignDialogOpen(false);
     await navigate({ to: "/campaign" });
   }

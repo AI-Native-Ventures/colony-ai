@@ -19,10 +19,18 @@ import { RunnerAvatar } from "./DiscoveryRunner";
 import { newProspectsCostUsd } from "./discoveryCampaignContinuation";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import {
-  getDiscoveryCampaignProvider,
   useDiscoveryCampaign,
   type DiscoveryCampaign,
 } from "./discoveryProvider";
+import {
+  groupProgress,
+  groupSummaryCampaign,
+  shortPlaceName,
+  type MultiCityCampaignGroup,
+} from "./multiCityDiscovery";
+import { useMultiCityDiscovery } from "./useMultiCityDiscovery";
+
+import "./multi-city-discovery.css";
 
 import "./colony3-discovery.css";
 
@@ -112,6 +120,51 @@ function activeFilterCount(search: CampaignsSearch): number {
 
 function campaignCountLabel(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "campaign" : "campaigns"}`;
+}
+
+type CampaignDisplayRow = {
+  campaign: DiscoveryCampaign;
+  group: MultiCityCampaignGroup | null;
+};
+
+function buildCampaignDisplayRows(
+  campaigns: readonly DiscoveryCampaign[],
+  groups: readonly MultiCityCampaignGroup[],
+): {
+  filterCampaigns: DiscoveryCampaign[];
+  groupRowsByFilterId: Map<
+    string,
+    { campaign: DiscoveryCampaign; group: MultiCityCampaignGroup }
+  >;
+  rows: CampaignDisplayRow[];
+} {
+  const groupedCampaignIds = new Set(
+    groups.flatMap((group) =>
+      group.cities.flatMap((city) =>
+        city.campaignId ? [city.campaignId] : [],
+      ),
+    ),
+  );
+  const rows: CampaignDisplayRow[] = campaigns
+    .filter((campaign) => !groupedCampaignIds.has(campaign.id))
+    .map((campaign) => ({ campaign, group: null }));
+  const filterCampaigns = rows.map(({ campaign }) => campaign);
+  const groupRowsByFilterId = new Map<
+    string,
+    { campaign: DiscoveryCampaign; group: MultiCityCampaignGroup }
+  >();
+
+  for (const group of groups) {
+    const summary = groupSummaryCampaign(group, campaigns);
+    rows.push({ campaign: summary, group });
+    for (const city of group.cities) {
+      const filterId = `group-filter:${group.groupId}:${city.cityId}`;
+      filterCampaigns.push({ ...summary, id: filterId, location: city.label });
+      groupRowsByFilterId.set(filterId, { campaign: summary, group });
+    }
+  }
+
+  return { filterCampaigns, groupRowsByFilterId, rows };
 }
 
 function FilterFields({ catalog, onChange, search }: FilterFieldProps) {
@@ -284,21 +337,36 @@ function activeFilters(search: CampaignsSearch): ActiveFilter[] {
 
 function CampaignRow({
   campaign,
+  campaigns,
+  group,
+  onRetryGroup,
   onSelect,
 }: {
   campaign: DiscoveryCampaign;
-  onSelect: (campaignId: string) => void;
+  campaigns: readonly DiscoveryCampaign[];
+  group: MultiCityCampaignGroup | null;
+  onRetryGroup: (() => void) | null;
+  onSelect: () => void;
 }) {
   const runner = campaign.runBy ?? null;
-  const label = campaignStatusLabel(campaign);
+  const groupProgressState = group ? groupProgress(group, campaigns) : null;
+  const label = group
+    ? groupProgressState?.searching
+      ? `Searching ${groupProgressState.searching} of ${group.cities.length}`
+      : campaignStatusLabel(campaign)
+    : campaignStatusLabel(campaign);
   const maximum = Math.max(campaign.target, 1);
   const progress = Math.min(100, Math.round((campaign.count / maximum) * 100));
+  const canRetryGroup = Boolean(
+    group?.blockedReason &&
+      !group.cities.some((city) => Boolean(city.campaignId)),
+  );
 
   return (
     <tr
       className="c3d-campaigns-row"
       data-testid="discovery-campaign-row"
-      onClick={() => onSelect(campaign.id)}
+      onClick={onSelect}
     >
       <td
         className="c3d-campaigns-cell c3d-campaigns-campaign-name"
@@ -309,7 +377,7 @@ function CampaignRow({
           className="c3d-campaigns-campaign-open"
           onClick={(event) => {
             event.stopPropagation();
-            onSelect(campaign.id);
+            onSelect();
           }}
           type="button"
         >
@@ -330,7 +398,18 @@ function CampaignRow({
         className="c3d-campaigns-cell c3d-campaigns-location"
         data-label="Location"
       >
-        {campaign.location || "Location not set"}
+        {group ? (
+          <span className="c3mc-group-location">
+            <strong>{group.cities.length} cities</strong>
+            <span>
+              {group.cities
+                .map((city) => shortPlaceName(city.label))
+                .join(", ")}
+            </span>
+          </span>
+        ) : (
+          campaign.location || "Location not set"
+        )}
       </td>
       <td
         className="c3d-campaigns-cell c3d-campaigns-prospects"
@@ -354,12 +433,26 @@ function CampaignRow({
         className="c3d-campaigns-cell c3d-campaigns-status-cell"
         data-label="Status"
       >
-        <span
-          className={`c3d-campaigns-status ${statusTone(campaign)}`}
-          title={label}
-        >
-          {label}
-        </span>
+        {canRetryGroup && onRetryGroup ? (
+          <button
+            aria-label={`Try again for ${campaign.name}`}
+            className="c3d-btn c3d-btn--outline c3d-btn--sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRetryGroup();
+            }}
+            type="button"
+          >
+            Try again
+          </button>
+        ) : (
+          <span
+            className={`c3d-campaigns-status ${statusTone(campaign)}`}
+            title={label}
+          >
+            {label}
+          </span>
+        )}
       </td>
       <td
         className="c3d-campaigns-cell c3d-campaigns-runner"
@@ -392,35 +485,37 @@ export function CampaignsScreen({
   search,
 }: CampaignsScreenProps) {
   const navigate = useNavigate();
-  const { campaign, provider } = useDiscoveryCampaign();
-  const [campaigns, setCampaigns] = React.useState<DiscoveryCampaign[]>(
-    () => getDiscoveryCampaignProvider()?.getCampaigns() ?? [],
+  const { provider } = useDiscoveryCampaign();
+  const multiCity = useMultiCityDiscovery(provider);
+  const campaigns = multiCity.campaigns;
+  const display = React.useMemo(
+    () => buildCampaignDisplayRows(campaigns, multiCity.groups),
+    [campaigns, multiCity.groups],
   );
-
-  React.useEffect(() => {
-    setCampaigns(provider?.getCampaigns() ?? []);
-  }, [provider]);
-
-  React.useEffect(() => {
-    if (!campaign) return;
-    setCampaigns((previous) => {
-      const index = previous.findIndex((entry) => entry.id === campaign.id);
-      if (index < 0) return [campaign, ...previous];
-      if (previous[index] === campaign) return previous;
-      const next = [...previous];
-      next[index] = campaign;
-      return next;
-    });
-  }, [campaign]);
 
   const catalog = React.useMemo(
-    () => createCampaignCatalog(campaigns),
-    [campaigns],
+    () => createCampaignCatalog(display.filterCampaigns),
+    [display.filterCampaigns],
   );
-  const matched = React.useMemo(
+  const matchedCatalogEntries = React.useMemo(
     () => queryCampaignCatalog(catalog, search),
     [catalog, search],
   );
+  const matched = React.useMemo<CampaignDisplayRow[]>(() => {
+    const shownGroups = new Set<string>();
+    const rows: CampaignDisplayRow[] = [];
+    for (const entry of matchedCatalogEntries) {
+      const groupRow = display.groupRowsByFilterId.get(entry.campaign.id);
+      if (!groupRow) {
+        rows.push({ campaign: entry.campaign, group: null });
+        continue;
+      }
+      if (shownGroups.has(groupRow.group.groupId)) continue;
+      shownGroups.add(groupRow.group.groupId);
+      rows.push(groupRow);
+    }
+    return rows;
+  }, [display.groupRowsByFilterId, matchedCatalogEntries]);
   const pageCount = Math.max(
     1,
     Math.ceil(matched.length / CAMPAIGNS_PAGE_SIZE),
@@ -443,6 +538,13 @@ export function CampaignsScreen({
   function selectCampaign(campaignId: string) {
     if (!provider) return;
     void provider.select(campaignId).then(() => navigate({ to: "/campaign" }));
+  }
+
+  function selectGroup(group: MultiCityCampaignGroup) {
+    if (!multiCity.coordinator) return;
+    void multiCity.coordinator.openGroup(group.groupId).then((campaignId) => {
+      if (campaignId) void navigate({ to: "/campaign" });
+    });
   }
 
   return (
@@ -472,7 +574,8 @@ export function CampaignsScreen({
           <div>
             <h1>All campaigns</h1>
             <p>
-              {campaignCountLabel(campaigns.length)} across your Discovery work.
+              {campaignCountLabel(display.rows.length)} across your Discovery
+              work.
             </p>
           </div>
           <button
@@ -558,7 +661,7 @@ export function CampaignsScreen({
           ) : null}
         </div>
 
-        {campaigns.length === 0 ? (
+        {display.rows.length === 0 ? (
           <EmptyCampaigns
             actionLabel="Explore Discovery"
             onAction={() => void navigate({ to: "/discovery" })}
@@ -595,11 +698,23 @@ export function CampaignsScreen({
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map(({ campaign: entry }) => (
+                  {pageRows.map(({ campaign: entry, group }) => (
                     <CampaignRow
                       campaign={entry}
+                      campaigns={campaigns}
+                      group={group}
                       key={entry.id}
-                      onSelect={selectCampaign}
+                      onRetryGroup={
+                        group && multiCity.coordinator
+                          ? () =>
+                              void multiCity.coordinator?.retryGroup(
+                                group.groupId,
+                              )
+                          : null
+                      }
+                      onSelect={() =>
+                        group ? selectGroup(group) : selectCampaign(entry.id)
+                      }
                     />
                   ))}
                 </tbody>
