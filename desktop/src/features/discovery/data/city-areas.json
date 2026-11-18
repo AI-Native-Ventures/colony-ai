@@ -1,0 +1,1499 @@
+{
+  "version": 1,
+  "cities": [
+    {
+      "name": "Johannesburg",
+      "aliases": ["Joburg", "City of Johannesburg", "Jozi"],
+      "countryCode": "ZA",
+      "region": "Gauteng",
+      "latitude": -26.205,
+      "longitude": 28.049722,
+      "radiusKm": 45,
+      "areas": [
+        {
+          "name": "Sandton",
+          "latitude": -26.10455,
+          "longitude": 28.05451
+        },
+        {
+          "name": "Randburg",
+          "latitude": -26.09136,
+          "longitude": 28.00211
+        },
+        {
+          "name": "Rosebank",
+          "latitude": -26.14295,
+          "longitude": 28.03975
+        },
+        {
+          "name": "Fourways",
+          "latitude": -26.01846,
+          "longitude": 28.0056
+        },
+        {
+          "name": "Midrand",
+          "latitude": -25.99926,
+          "longitude": 28.12591
+        },
+        {
+          "name": "Roodepoort",
+          "latitude": -26.15666,
+          "longitude": 27.88556
+        },
+        {
+          "name": "Soweto",
+          "latitude": -26.22278,
+          "longitude": 27.89
+        },
+        {
+          "name": "Bryanston",
+          "latitude": -26.07188,
+          "longitude": 28.02477
+        },
+        {
+          "name": "Rivonia",
+          "latitude": -26.05333,
+          "longitude": 28.05944
+        },
+        {
+          "name": "Sunninghill",
+          "latitude": -26.03528,
+          "longitude": 28.07583
+        },
+        {
+          "name": "Morningside",
+          "latitude": -26.07806,
+          "longitude": 28.06444
+        },
+        {
+          "name": "Woodmead",
+          "latitude": -26.04333,
+          "longitude": 28.06444
+        },
+        {
+          "name": "Parktown",
+          "latitude": -26.18167,
+          "longitude": 28.02778
+        },
+        {
+          "name": "Braamfontein",
+          "latitude": -26.1923,
+          "longitude": 28.03614
+        },
+        {
+          "name": "Melville",
+          "latitude": -26.17516,
+          "longitude": 28.01086
+        },
+        {
+          "name": "Northcliff",
+          "latitude": -26.13111,
+          "longitude": 27.96222
+        },
+        {
+          "name": "Linden",
+          "latitude": -26.14505,
+          "longitude": 27.99801
+        },
+        {
+          "name": "Greenside",
+          "latitude": -26.15472,
+          "longitude": 28.01278
+        },
+        {
+          "name": "Parkhurst",
+          "latitude": -26.13972,
+          "longitude": 28.01889
+        },
+        {
+          "name": "Houghton Estate",
+          "latitude": -26.15819,
+          "longitude": 28.05898
+        },
+        {
+          "name": "Illovo",
+          "latitude": -26.12278,
+          "longitude": 28.05528
+        },
+        {
+          "name": "Ferndale",
+          "latitude": -26.08472,
+          "longitude": 27.98944
+        },
+        {
+          "name": "Blairgowrie",
+          "latitude": -26.11111,
+          "longitude": 28.0075
+        },
+        {
+          "name": "Craighall",
+          "latitude": -26.12639,
+          "longitude": 28.02333
+        },
+        {
+          "name": "Hyde Park",
+          "latitude": -26.12535,
+          "longitude": 28.03327
+        },
+        {
+          "name": "Northriding",
+          "latitude": -26.03529,
+          "longitude": 27.97067
+        },
+        {
+          "name": "Honeydew",
+          "latitude": -26.07884,
+          "longitude": 27.9253
+        },
+        {
+          "name": "Florida",
+          "latitude": -26.1829,
+          "longitude": 27.9759
+        },
+        {
+          "name": "Weltevreden Park",
+          "latitude": -26.12137,
+          "longitude": 27.93185
+        },
+        {
+          "name": "Ruimsig",
+          "latitude": -26.09092,
+          "longitude": 27.87193
+        },
+        {
+          "name": "Lonehill",
+          "latitude": -26.01428,
+          "longitude": 28.03005
+        },
+        {
+          "name": "Douglasdale",
+          "latitude": -26.03889,
+          "longitude": 27.995
+        },
+        {
+          "name": "Paulshof",
+          "latitude": -26.03056,
+          "longitude": 28.04917
+        },
+        {
+          "name": "Kyalami",
+          "latitude": -25.99702,
+          "longitude": 28.06783
+        },
+        {
+          "name": "Lenasia",
+          "latitude": -26.31948,
+          "longitude": 27.82464
+        },
+        {
+          "name": "Alexandra",
+          "latitude": -26.10444,
+          "longitude": 28.09889
+        },
+        {
+          "name": "Diepsloot",
+          "latitude": -25.93095,
+          "longitude": 28.01059
+        },
+        {
+          "name": "Booysens",
+          "latitude": -26.22917,
+          "longitude": 28.02472
+        },
+        {
+          "name": "Ormonde",
+          "latitude": -26.24694,
+          "longitude": 27.99417
+        },
+        {
+          "name": "Mondeor",
+          "latitude": -26.2744,
+          "longitude": 27.99502
+        },
+        {
+          "name": "Glenvista",
+          "latitude": -26.28278,
+          "longitude": 28.05472
+        },
+        {
+          "name": "Turffontein",
+          "latitude": -26.23826,
+          "longitude": 28.04625
+        },
+        {
+          "name": "Rosettenville",
+          "latitude": -26.24528,
+          "longitude": 28.05806
+        },
+        {
+          "name": "Kensington",
+          "latitude": -26.15519,
+          "longitude": 28.10803
+        },
+        {
+          "name": "Highlands North",
+          "latitude": -26.1425,
+          "longitude": 28.08111
+        },
+        {
+          "name": "Norwood",
+          "latitude": -26.15889,
+          "longitude": 28.0725
+        },
+        {
+          "name": "Orange Grove",
+          "latitude": -26.16194,
+          "longitude": 28.09
+        },
+        {
+          "name": "Yeoville",
+          "latitude": -26.18389,
+          "longitude": 28.06417
+        },
+        {
+          "name": "Crown Mines",
+          "latitude": -26.21614,
+          "longitude": 28.00974
+        }
+      ]
+    },
+    {
+      "name": "Pretoria",
+      "aliases": ["Tshwane", "City of Tshwane"],
+      "countryCode": "ZA",
+      "region": "Gauteng",
+      "latitude": -25.7459277,
+      "longitude": 28.1879101,
+      "radiusKm": 45,
+      "areas": [
+        {
+          "name": "Centurion",
+          "latitude": -25.85335,
+          "longitude": 28.18647
+        },
+        {
+          "name": "Hatfield",
+          "latitude": -25.74764,
+          "longitude": 28.23787
+        },
+        {
+          "name": "Brooklyn",
+          "latitude": -25.76556,
+          "longitude": 28.23972
+        },
+        {
+          "name": "Menlyn",
+          "latitude": -25.78417,
+          "longitude": 28.27556
+        },
+        {
+          "name": "Arcadia",
+          "latitude": -25.74563,
+          "longitude": 28.21022
+        },
+        {
+          "name": "Lynnwood",
+          "latitude": -25.76111,
+          "longitude": 28.26361
+        },
+        {
+          "name": "Garsfontein",
+          "latitude": -25.79444,
+          "longitude": 28.3
+        },
+        {
+          "name": "Faerie Glen",
+          "latitude": -25.78167,
+          "longitude": 28.30778
+        },
+        {
+          "name": "Moreleta Park",
+          "latitude": -25.77389,
+          "longitude": 28.29114
+        },
+        {
+          "name": "Waterkloof",
+          "latitude": -25.77917,
+          "longitude": 28.23833
+        },
+        {
+          "name": "Montana",
+          "latitude": -25.67691,
+          "longitude": 28.23531
+        },
+        {
+          "name": "Sinoville",
+          "latitude": -25.67556,
+          "longitude": 28.21972
+        },
+        {
+          "name": "Wonderboom",
+          "latitude": -25.7,
+          "longitude": 28.20861
+        },
+        {
+          "name": "Pretoria North",
+          "latitude": -25.67273,
+          "longitude": 28.17342
+        },
+        {
+          "name": "Akasia",
+          "latitude": -25.85025,
+          "longitude": 28.04043
+        },
+        {
+          "name": "Silverton",
+          "latitude": -25.72833,
+          "longitude": 28.30472
+        },
+        {
+          "name": "Pretoria West",
+          "latitude": -25.75258,
+          "longitude": 28.17308
+        },
+        {
+          "name": "Sunnyside",
+          "latitude": -25.7575,
+          "longitude": 28.21222
+        },
+        {
+          "name": "Rietondale",
+          "latitude": -25.72917,
+          "longitude": 28.22444
+        },
+        {
+          "name": "Queenswood",
+          "latitude": -25.73232,
+          "longitude": 28.24756
+        },
+        {
+          "name": "Lyttelton",
+          "latitude": -25.81722,
+          "longitude": 28.21194
+        },
+        {
+          "name": "Irene",
+          "latitude": -25.86839,
+          "longitude": 28.21796
+        },
+        {
+          "name": "Highveld",
+          "latitude": -25.87616,
+          "longitude": 28.19768
+        },
+        {
+          "name": "Eldoraigne",
+          "latitude": -25.84515,
+          "longitude": 28.15725
+        },
+        {
+          "name": "Wierdapark",
+          "latitude": -25.86028,
+          "longitude": 28.14667
+        },
+        {
+          "name": "Rooihuiskraal",
+          "latitude": -25.86089,
+          "longitude": 28.13608
+        },
+        {
+          "name": "Equestria",
+          "latitude": -25.7674,
+          "longitude": 28.32726
+        },
+        {
+          "name": "Die Wilgers",
+          "latitude": -25.76194,
+          "longitude": 28.31167
+        },
+        {
+          "name": "Silver Lakes",
+          "latitude": -25.76781,
+          "longitude": 28.37529
+        },
+        {
+          "name": "Mooikloof",
+          "latitude": -25.83724,
+          "longitude": 28.337
+        },
+        {
+          "name": "Annlin",
+          "latitude": -25.655,
+          "longitude": 28.19806
+        },
+        {
+          "name": "Gezina",
+          "latitude": -25.71778,
+          "longitude": 28.20972
+        },
+        {
+          "name": "Capital Park",
+          "latitude": -25.72417,
+          "longitude": 28.18778
+        },
+        {
+          "name": "Erasmuskloof",
+          "latitude": -25.81556,
+          "longitude": 28.2725
+        },
+        {
+          "name": "Elardus Park",
+          "latitude": -25.83352,
+          "longitude": 28.2595
+        },
+        {
+          "name": "Hennopspark",
+          "latitude": -25.84972,
+          "longitude": 28.17417
+        },
+        {
+          "name": "Laudium",
+          "latitude": -25.7891,
+          "longitude": 28.10321
+        },
+        {
+          "name": "Mamelodi",
+          "latitude": -25.70537,
+          "longitude": 28.32526
+        },
+        {
+          "name": "Atteridgeville",
+          "latitude": -25.77139,
+          "longitude": 28.07361
+        },
+        {
+          "name": "Soshanguve",
+          "latitude": -25.54049,
+          "longitude": 28.09452
+        },
+        {
+          "name": "Olievenhoutbosch",
+          "latitude": -25.86403,
+          "longitude": 28.21078
+        },
+        {
+          "name": "Ga-Rankuwa",
+          "latitude": -25.60417,
+          "longitude": 28.00528
+        },
+        {
+          "name": "Hammanskraal",
+          "latitude": -25.40833,
+          "longitude": 28.28722
+        }
+      ]
+    },
+    {
+      "name": "Cape Town",
+      "aliases": ["City of Cape Town", "Kaapstad"],
+      "countryCode": "ZA",
+      "region": "Western Cape",
+      "latitude": -33.9288301,
+      "longitude": 18.4172197,
+      "radiusKm": 55,
+      "areas": [
+        {
+          "name": "Bellville",
+          "latitude": -33.93184,
+          "longitude": 18.64215
+        },
+        {
+          "name": "Durbanville",
+          "latitude": -33.84028,
+          "longitude": 18.64944
+        },
+        {
+          "name": "Claremont",
+          "latitude": -33.98472,
+          "longitude": 18.4625
+        },
+        {
+          "name": "Sea Point",
+          "latitude": -33.91722,
+          "longitude": 18.39222
+        },
+        {
+          "name": "Green Point",
+          "latitude": -33.90426,
+          "longitude": 18.40597
+        },
+        {
+          "name": "Gardens",
+          "latitude": -33.93278,
+          "longitude": 18.40972
+        },
+        {
+          "name": "Woodstock",
+          "latitude": -33.93056,
+          "longitude": 18.44722
+        },
+        {
+          "name": "Observatory",
+          "latitude": -33.93694,
+          "longitude": 18.46833
+        },
+        {
+          "name": "Rondebosch",
+          "latitude": -33.96806,
+          "longitude": 18.48778
+        },
+        {
+          "name": "Newlands",
+          "latitude": -33.97428,
+          "longitude": 18.4573
+        },
+        {
+          "name": "Wynberg",
+          "latitude": -34.00362,
+          "longitude": 18.46725
+        },
+        {
+          "name": "Kenilworth",
+          "latitude": -33.99417,
+          "longitude": 18.46833
+        },
+        {
+          "name": "Constantia",
+          "latitude": -34.02833,
+          "longitude": 18.41556
+        },
+        {
+          "name": "Tokai",
+          "latitude": -34.06083,
+          "longitude": 18.44167
+        },
+        {
+          "name": "Bergvliet",
+          "latitude": -34.0448,
+          "longitude": 18.45283
+        },
+        {
+          "name": "Plumstead",
+          "latitude": -34.02,
+          "longitude": 18.47722
+        },
+        {
+          "name": "Retreat",
+          "latitude": -34.05417,
+          "longitude": 18.47639
+        },
+        {
+          "name": "Muizenberg",
+          "latitude": -34.09784,
+          "longitude": 18.48457
+        },
+        {
+          "name": "Fish Hoek",
+          "latitude": -34.13321,
+          "longitude": 18.42843
+        },
+        {
+          "name": "Noordhoek",
+          "latitude": -34.09952,
+          "longitude": 18.3786
+        },
+        {
+          "name": "Hout Bay",
+          "latitude": -34.04309,
+          "longitude": 18.35564
+        },
+        {
+          "name": "Camps Bay",
+          "latitude": -33.95477,
+          "longitude": 18.38185
+        },
+        {
+          "name": "Milnerton",
+          "latitude": -33.87107,
+          "longitude": 18.49757
+        },
+        {
+          "name": "Table View",
+          "latitude": -33.82361,
+          "longitude": 18.49028
+        },
+        {
+          "name": "Bloubergstrand",
+          "latitude": -33.79734,
+          "longitude": 18.46102
+        },
+        {
+          "name": "Parow",
+          "latitude": -33.9025,
+          "longitude": 18.58694
+        },
+        {
+          "name": "Goodwood",
+          "latitude": -33.90667,
+          "longitude": 18.54917
+        },
+        {
+          "name": "Brackenfell",
+          "latitude": -33.88064,
+          "longitude": 18.71338
+        },
+        {
+          "name": "Kuils River",
+          "latitude": -33.92694,
+          "longitude": 18.68556
+        },
+        {
+          "name": "Kraaifontein",
+          "latitude": -33.84778,
+          "longitude": 18.71611
+        },
+        {
+          "name": "Somerset West",
+          "latitude": -34.08222,
+          "longitude": 18.84893
+        },
+        {
+          "name": "Strand",
+          "latitude": -33.91897,
+          "longitude": 18.41957
+        },
+        {
+          "name": "Gordon's Bay",
+          "latitude": -34.16112,
+          "longitude": 18.86869
+        },
+        {
+          "name": "Pinelands",
+          "latitude": -33.93167,
+          "longitude": 18.51278
+        },
+        {
+          "name": "Montague Gardens",
+          "latitude": -33.85975,
+          "longitude": 18.52292
+        },
+        {
+          "name": "Century City",
+          "latitude": -33.88905,
+          "longitude": 18.51196
+        },
+        {
+          "name": "Epping",
+          "latitude": -33.93337,
+          "longitude": 18.53458
+        },
+        {
+          "name": "Athlone",
+          "latitude": -33.96667,
+          "longitude": 18.505
+        },
+        {
+          "name": "Lansdowne",
+          "latitude": -33.99634,
+          "longitude": 18.50689
+        },
+        {
+          "name": "Mitchells Plain",
+          "latitude": -34.05056,
+          "longitude": 18.61806
+        },
+        {
+          "name": "Khayelitsha",
+          "latitude": -34.04059,
+          "longitude": 18.66742
+        },
+        {
+          "name": "Gugulethu",
+          "latitude": -33.97021,
+          "longitude": 18.57173
+        },
+        {
+          "name": "Grassy Park",
+          "latitude": -34.04513,
+          "longitude": 18.50325
+        },
+        {
+          "name": "Philippi",
+          "latitude": -34.00531,
+          "longitude": 18.57038
+        },
+        {
+          "name": "Salt River",
+          "latitude": -33.9317,
+          "longitude": 18.46101
+        },
+        {
+          "name": "Melkbosstrand",
+          "latitude": -33.72222,
+          "longitude": 18.44583
+        },
+        {
+          "name": "Atlantis",
+          "latitude": -33.56722,
+          "longitude": 18.50028
+        }
+      ]
+    },
+    {
+      "name": "Durban",
+      "aliases": ["eThekwini", "Thekwini"],
+      "countryCode": "ZA",
+      "region": "KwaZulu-Natal",
+      "latitude": -29.8618145,
+      "longitude": 31.009909,
+      "radiusKm": 45,
+      "areas": [
+        {
+          "name": "Umhlanga",
+          "latitude": -29.76773,
+          "longitude": 31.04
+        },
+        {
+          "name": "Durban North",
+          "latitude": -29.78056,
+          "longitude": 31.03583
+        },
+        {
+          "name": "Berea",
+          "latitude": -29.85056,
+          "longitude": 31.00194
+        },
+        {
+          "name": "Morningside",
+          "latitude": -29.81836,
+          "longitude": 31.01808
+        },
+        {
+          "name": "Glenwood",
+          "latitude": -29.86515,
+          "longitude": 30.99386
+        },
+        {
+          "name": "Musgrave",
+          "latitude": -29.84889,
+          "longitude": 30.99611
+        },
+        {
+          "name": "Westville",
+          "latitude": -29.82444,
+          "longitude": 30.93861
+        },
+        {
+          "name": "Pinetown",
+          "latitude": -29.85613,
+          "longitude": 31.00884
+        },
+        {
+          "name": "Hillcrest",
+          "latitude": -29.78958,
+          "longitude": 30.74252
+        },
+        {
+          "name": "Kloof",
+          "latitude": -29.78583,
+          "longitude": 30.82528
+        },
+        {
+          "name": "Gillitts",
+          "latitude": -29.79667,
+          "longitude": 30.80111
+        },
+        {
+          "name": "New Germany",
+          "latitude": -29.80988,
+          "longitude": 30.89771
+        },
+        {
+          "name": "Queensburgh",
+          "latitude": -29.86389,
+          "longitude": 30.91472
+        },
+        {
+          "name": "Bellair",
+          "latitude": -29.89222,
+          "longitude": 30.95167
+        },
+        {
+          "name": "Montclair",
+          "latitude": -29.91972,
+          "longitude": 30.96528
+        },
+        {
+          "name": "Umbilo",
+          "latitude": -29.89056,
+          "longitude": 30.97778
+        },
+        {
+          "name": "Greyville",
+          "latitude": -29.84773,
+          "longitude": 31.0146
+        },
+        {
+          "name": "Overport",
+          "latitude": -29.83444,
+          "longitude": 31.00167
+        },
+        {
+          "name": "Sydenham",
+          "latitude": -29.82833,
+          "longitude": 30.99444
+        },
+        {
+          "name": "Mayville",
+          "latitude": -30.06042,
+          "longitude": 30.88053
+        },
+        {
+          "name": "Springfield",
+          "latitude": -29.82056,
+          "longitude": 30.995
+        },
+        {
+          "name": "La Lucia",
+          "latitude": -29.75842,
+          "longitude": 31.06249
+        },
+        {
+          "name": "Mount Edgecombe",
+          "latitude": -29.73538,
+          "longitude": 31.04126
+        },
+        {
+          "name": "Verulam",
+          "latitude": -29.64389,
+          "longitude": 31.04306
+        },
+        {
+          "name": "Tongaat",
+          "latitude": -29.57944,
+          "longitude": 31.10083
+        },
+        {
+          "name": "Phoenix",
+          "latitude": -29.70156,
+          "longitude": 31.00722
+        },
+        {
+          "name": "KwaMashu",
+          "latitude": -29.74139,
+          "longitude": 30.96222
+        },
+        {
+          "name": "Chatsworth",
+          "latitude": -29.91249,
+          "longitude": 30.88511
+        },
+        {
+          "name": "Umlazi",
+          "latitude": -29.9525,
+          "longitude": 30.90028
+        },
+        {
+          "name": "Amanzimtoti",
+          "latitude": -30.04972,
+          "longitude": 30.88861
+        },
+        {
+          "name": "Isipingo",
+          "latitude": -29.99417,
+          "longitude": 30.94611
+        },
+        {
+          "name": "Bluff",
+          "latitude": -29.934,
+          "longitude": 30.99416
+        },
+        {
+          "name": "Mobeni",
+          "latitude": -29.93333,
+          "longitude": 30.97361
+        },
+        {
+          "name": "Jacobs",
+          "latitude": -29.92639,
+          "longitude": 30.98667
+        },
+        {
+          "name": "Prospecton",
+          "latitude": -29.97909,
+          "longitude": 30.93609
+        },
+        {
+          "name": "Reservoir Hills",
+          "latitude": -29.80163,
+          "longitude": 30.96265
+        },
+        {
+          "name": "Malvern",
+          "latitude": -29.88134,
+          "longitude": 30.92254
+        },
+        {
+          "name": "Waterfall",
+          "latitude": -29.84443,
+          "longitude": 30.97908
+        },
+        {
+          "name": "Sea View",
+          "latitude": -29.9024,
+          "longitude": 30.97004
+        }
+      ]
+    },
+    {
+      "name": "Sandton",
+      "aliases": [],
+      "countryCode": "ZA",
+      "region": "Gauteng",
+      "latitude": -26.1045525,
+      "longitude": 28.0545147,
+      "radiusKm": 15,
+      "areas": [
+        {
+          "name": "Bryanston",
+          "latitude": -26.0643,
+          "longitude": 28.05309
+        },
+        {
+          "name": "Rivonia",
+          "latitude": -26.05333,
+          "longitude": 28.05944
+        },
+        {
+          "name": "Morningside",
+          "latitude": -26.07806,
+          "longitude": 28.06444
+        },
+        {
+          "name": "Sunninghill",
+          "latitude": -26.03528,
+          "longitude": 28.07583
+        },
+        {
+          "name": "Woodmead",
+          "latitude": -26.04333,
+          "longitude": 28.06444
+        },
+        {
+          "name": "Illovo",
+          "latitude": -26.12278,
+          "longitude": 28.05528
+        },
+        {
+          "name": "Hyde Park",
+          "latitude": -26.12535,
+          "longitude": 28.03327
+        },
+        {
+          "name": "Parkmore",
+          "latitude": -26.09528,
+          "longitude": 28.0375
+        },
+        {
+          "name": "Benmore Gardens",
+          "latitude": -26.09966,
+          "longitude": 28.04922
+        },
+        {
+          "name": "Sandown",
+          "latitude": -26.09194,
+          "longitude": 28.06583
+        },
+        {
+          "name": "Wendywood",
+          "latitude": -26.07944,
+          "longitude": 28.08361
+        },
+        {
+          "name": "Gallo Manor",
+          "latitude": -26.06417,
+          "longitude": 28.07806
+        },
+        {
+          "name": "Paulshof",
+          "latitude": -26.03056,
+          "longitude": 28.04917
+        },
+        {
+          "name": "Lonehill",
+          "latitude": -26.01428,
+          "longitude": 28.03005
+        },
+        {
+          "name": "Douglasdale",
+          "latitude": -26.03889,
+          "longitude": 27.995
+        },
+        {
+          "name": "Atholl",
+          "latitude": -26.11139,
+          "longitude": 28.06806
+        },
+        {
+          "name": "Inanda",
+          "latitude": -26.11861,
+          "longitude": 28.05917
+        },
+        {
+          "name": "Strathavon",
+          "latitude": -26.095,
+          "longitude": 28.07
+        },
+        {
+          "name": "Marlboro",
+          "latitude": -26.09194,
+          "longitude": 28.09361
+        },
+        {
+          "name": "Kelvin",
+          "latitude": -26.075,
+          "longitude": 28.09472
+        }
+      ]
+    },
+    {
+      "name": "Gqeberha",
+      "aliases": ["Port Elizabeth", "Nelson Mandela Bay"],
+      "countryCode": "ZA",
+      "region": "Eastern Cape",
+      "latitude": -33.9608369,
+      "longitude": 25.6022423,
+      "radiusKm": 40,
+      "areas": [
+        {
+          "name": "Summerstrand",
+          "latitude": -33.99,
+          "longitude": 25.66167
+        },
+        {
+          "name": "Newton Park",
+          "latitude": -33.94556,
+          "longitude": 25.565
+        },
+        {
+          "name": "Walmer",
+          "latitude": -33.97833,
+          "longitude": 25.5874
+        },
+        {
+          "name": "Humewood",
+          "latitude": -33.97778,
+          "longitude": 25.64139
+        },
+        {
+          "name": "Mill Park",
+          "latitude": -33.96347,
+          "longitude": 25.58899
+        },
+        {
+          "name": "Greenacres",
+          "latitude": -33.95381,
+          "longitude": 25.58629
+        },
+        {
+          "name": "Lorraine",
+          "latitude": -33.96806,
+          "longitude": 25.51444
+        },
+        {
+          "name": "Kabega Park",
+          "latitude": -33.94394,
+          "longitude": 25.4993
+        },
+        {
+          "name": "Westering",
+          "latitude": -33.93972,
+          "longitude": 25.52194
+        },
+        {
+          "name": "Sunridge Park",
+          "latitude": -33.95417,
+          "longitude": 25.53
+        },
+        {
+          "name": "Charlo",
+          "latitude": -33.98682,
+          "longitude": 25.54849
+        },
+        {
+          "name": "Mount Pleasant",
+          "latitude": -33.99861,
+          "longitude": 25.53694
+        },
+        {
+          "name": "Framesby",
+          "latitude": -33.95153,
+          "longitude": 25.51844
+        },
+        {
+          "name": "Cotswold",
+          "latitude": -33.94375,
+          "longitude": 25.54872
+        },
+        {
+          "name": "North End",
+          "latitude": -33.94221,
+          "longitude": 25.60532
+        },
+        {
+          "name": "Korsten",
+          "latitude": -33.93,
+          "longitude": 25.56846
+        },
+        {
+          "name": "Gelvandale",
+          "latitude": -33.9162,
+          "longitude": 25.55608
+        },
+        {
+          "name": "New Brighton",
+          "latitude": -33.89145,
+          "longitude": 25.59524
+        },
+        {
+          "name": "Motherwell",
+          "latitude": -33.80081,
+          "longitude": 25.59072
+        },
+        {
+          "name": "KwaZakhele",
+          "latitude": -33.87458,
+          "longitude": 25.5984
+        },
+        {
+          "name": "Despatch",
+          "latitude": -33.79835,
+          "longitude": 25.46875
+        },
+        {
+          "name": "Kariega",
+          "latitude": -33.95567,
+          "longitude": 25.48259
+        },
+        {
+          "name": "Bluewater Bay",
+          "latitude": -33.85455,
+          "longitude": 25.62599
+        },
+        {
+          "name": "Fairview",
+          "latitude": -33.97021,
+          "longitude": 25.5538
+        },
+        {
+          "name": "Parsons Hill",
+          "latitude": -33.94667,
+          "longitude": 25.58993
+        }
+      ]
+    },
+    {
+      "name": "Bloemfontein",
+      "aliases": ["Mangaung"],
+      "countryCode": "ZA",
+      "region": "Free State",
+      "latitude": -29.1182537,
+      "longitude": 26.2299128,
+      "radiusKm": 30,
+      "areas": [
+        {
+          "name": "Westdene",
+          "latitude": -29.105,
+          "longitude": 26.21
+        },
+        {
+          "name": "Willows",
+          "latitude": -29.12056,
+          "longitude": 26.20583
+        },
+        {
+          "name": "Brandwag",
+          "latitude": -29.10222,
+          "longitude": 26.19194
+        },
+        {
+          "name": "Universitas",
+          "latitude": -29.12111,
+          "longitude": 26.185
+        },
+        {
+          "name": "Langenhoven Park",
+          "latitude": -29.10012,
+          "longitude": 26.15958
+        },
+        {
+          "name": "Bayswater",
+          "latitude": -29.08194,
+          "longitude": 26.24
+        },
+        {
+          "name": "Fichardt Park",
+          "latitude": -29.14034,
+          "longitude": 26.1892
+        },
+        {
+          "name": "Heuwelsig",
+          "latitude": -29.08222,
+          "longitude": 26.19944
+        },
+        {
+          "name": "Dan Pienaar",
+          "latitude": -29.08639,
+          "longitude": 26.21556
+        },
+        {
+          "name": "Hilton",
+          "latitude": -29.10194,
+          "longitude": 26.24306
+        },
+        {
+          "name": "Pellissier",
+          "latitude": -29.15639,
+          "longitude": 26.17083
+        },
+        {
+          "name": "Fauna",
+          "latitude": -29.16778,
+          "longitude": 26.18806
+        },
+        {
+          "name": "Wilgehof",
+          "latitude": -29.13083,
+          "longitude": 26.19833
+        },
+        {
+          "name": "Bainsvlei",
+          "latitude": -29.21484,
+          "longitude": 26.14321
+        },
+        {
+          "name": "Hamilton",
+          "latitude": -29.16639,
+          "longitude": 26.22698
+        },
+        {
+          "name": "Oranjesig",
+          "latitude": -29.13158,
+          "longitude": 26.21532
+        },
+        {
+          "name": "Arboretum",
+          "latitude": -29.10353,
+          "longitude": 26.21929
+        },
+        {
+          "name": "Noordhoek",
+          "latitude": -29.08764,
+          "longitude": 26.25087
+        },
+        {
+          "name": "Batho",
+          "latitude": -29.13694,
+          "longitude": 26.22972
+        },
+        {
+          "name": "Heidedal",
+          "latitude": -29.1325,
+          "longitude": 26.24694
+        }
+      ]
+    },
+    {
+      "name": "East London",
+      "aliases": ["Buffalo City", "eMonti"],
+      "countryCode": "ZA",
+      "region": "Eastern Cape",
+      "latitude": -33.015285,
+      "longitude": 27.911637,
+      "radiusKm": 35,
+      "areas": [
+        {
+          "name": "Vincent",
+          "latitude": -32.98312,
+          "longitude": 27.89859
+        },
+        {
+          "name": "Berea",
+          "latitude": -32.98824,
+          "longitude": 27.91254
+        },
+        {
+          "name": "Nahoon",
+          "latitude": -32.98556,
+          "longitude": 27.94667
+        },
+        {
+          "name": "Beacon Bay",
+          "latitude": -32.96794,
+          "longitude": 27.93966
+        },
+        {
+          "name": "Gonubie",
+          "latitude": -32.93714,
+          "longitude": 28.00961
+        },
+        {
+          "name": "Quigney",
+          "latitude": -33.01637,
+          "longitude": 27.91289
+        },
+        {
+          "name": "Southernwood",
+          "latitude": -33.00265,
+          "longitude": 27.90192
+        },
+        {
+          "name": "Selborne",
+          "latitude": -32.99437,
+          "longitude": 27.89972
+        },
+        {
+          "name": "Cambridge",
+          "latitude": -32.98342,
+          "longitude": 27.88324
+        },
+        {
+          "name": "Amalinda",
+          "latitude": -32.99266,
+          "longitude": 27.86559
+        },
+        {
+          "name": "Abbotsford",
+          "latitude": -32.95975,
+          "longitude": 27.91502
+        },
+        {
+          "name": "Baysville",
+          "latitude": -32.99539,
+          "longitude": 27.91199
+        },
+        {
+          "name": "Bonnie Doon",
+          "latitude": -32.97833,
+          "longitude": 27.92795
+        },
+        {
+          "name": "Stirling",
+          "latitude": -32.99349,
+          "longitude": 27.92395
+        },
+        {
+          "name": "Greenfields",
+          "latitude": -33.03306,
+          "longitude": 27.86028
+        },
+        {
+          "name": "Arcadia",
+          "latitude": -33.00833,
+          "longitude": 27.905
+        },
+        {
+          "name": "West Bank",
+          "latitude": -33.03389,
+          "longitude": 27.9075
+        },
+        {
+          "name": "Mdantsane",
+          "latitude": -32.9323,
+          "longitude": 27.74261
+        }
+      ]
+    },
+    {
+      "name": "Pietermaritzburg",
+      "aliases": ["Msunduzi", "Maritzburg"],
+      "countryCode": "ZA",
+      "region": "KwaZulu-Natal",
+      "latitude": -29.6006068,
+      "longitude": 30.3794118,
+      "radiusKm": 25,
+      "areas": [
+        {
+          "name": "Scottsville",
+          "latitude": -29.61663,
+          "longitude": 30.39337
+        },
+        {
+          "name": "Hayfields",
+          "latitude": -29.62889,
+          "longitude": 30.42
+        },
+        {
+          "name": "Clarendon",
+          "latitude": -29.59861,
+          "longitude": 30.35722
+        },
+        {
+          "name": "Wembley",
+          "latitude": -29.59167,
+          "longitude": 30.34833
+        },
+        {
+          "name": "Montrose",
+          "latitude": -29.57611,
+          "longitude": 30.34694
+        },
+        {
+          "name": "Chase Valley",
+          "latitude": -29.5575,
+          "longitude": 30.35972
+        },
+        {
+          "name": "Athlone",
+          "latitude": -29.57944,
+          "longitude": 30.35583
+        },
+        {
+          "name": "Prestbury",
+          "latitude": -29.61583,
+          "longitude": 30.33417
+        },
+        {
+          "name": "Northdale",
+          "latitude": -29.57656,
+          "longitude": 30.40382
+        },
+        {
+          "name": "Raisethorpe",
+          "latitude": -29.55889,
+          "longitude": 30.41611
+        },
+        {
+          "name": "Pelham",
+          "latitude": -29.63306,
+          "longitude": 30.38806
+        },
+        {
+          "name": "Lincoln Meade",
+          "latitude": -29.61806,
+          "longitude": 30.43389
+        },
+        {
+          "name": "Mkondeni",
+          "latitude": -29.65111,
+          "longitude": 30.41917
+        },
+        {
+          "name": "Edendale",
+          "latitude": -29.64874,
+          "longitude": 30.33806
+        },
+        {
+          "name": "Imbali",
+          "latitude": -29.65889,
+          "longitude": 30.34722
+        },
+        {
+          "name": "Blackridge",
+          "latitude": -29.60944,
+          "longitude": 30.31861
+        },
+        {
+          "name": "Bisley",
+          "latitude": -29.63972,
+          "longitude": 30.3928
+        },
+        {
+          "name": "Oak Park",
+          "latitude": -29.56278,
+          "longitude": 30.33806
+        }
+      ]
+    }
+  ]
+}

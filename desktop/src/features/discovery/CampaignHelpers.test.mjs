@@ -7,6 +7,7 @@ import {
   runTitle,
   searchedAreasLabel,
 } from "./CampaignHelpers.ts";
+import { MAX_PAGES } from "./discoveryCampaignContinuation.ts";
 
 const DURBAN = "Durban, KwaZulu-Natal, South Africa";
 const UMHLANGA = "Umhlanga, KwaZulu-Natal, South Africa";
@@ -129,14 +130,14 @@ test("the approved results are used: leads already owned are free, and the card 
 
 test("the page limit ends a search whatever else is left", () => {
   const capped = campaign({
-    pagesFetched: 25,
+    pagesFetched: MAX_PAGES,
     endReason: "provider_end",
     nearbyAreasLeft: [UMHLANGA],
   });
 
   assert.equal(
     runDescription(capped),
-    "This search reached its limit of 25 pages. Try another business type or area.",
+    `This search reached its limit of ${MAX_PAGES} pages. Try another business type or area.`,
   );
   assert.equal(canFindMore(capped), false);
 });
@@ -183,4 +184,55 @@ test("every other run state keeps its own title", () => {
     assert.equal(runTitle(campaign({ status })), title, status);
     assert.equal(canFindMore(campaign({ status })), false, status);
   }
+});
+
+test("a city searched suburb by suburb: the card counts the suburbs apart from nearby areas", () => {
+  const suburbs = ["Sandton", "Randburg", "Soweto"].map(
+    (name) => `${name}, Johannesburg, Gauteng, South Africa`,
+  );
+  const jhb = "Johannesburg, Gauteng, South Africa";
+  const base = { location: jhb, endReason: "provider_end" };
+  assert.equal(
+    searchedAreasLabel(
+      campaign({
+        ...base,
+        areasSearched: [jhb, ...suburbs],
+        suburbsSearched: 3,
+      }),
+    ),
+    "Johannesburg + 3 suburbs",
+  );
+  assert.equal(
+    searchedAreasLabel(
+      campaign({
+        ...base,
+        areasSearched: [jhb, suburbs[0], "Kempton Park, Gauteng, South Africa"],
+        suburbsSearched: 1,
+      }),
+    ),
+    "Johannesburg + 1 suburb + 1 nearby area",
+  );
+  const done = campaign({
+    ...base,
+    areasSearched: [jhb, ...suburbs],
+    suburbsSearched: 3,
+    suburbsLeft: [],
+    nearbyAreasLeft: [],
+  });
+  assert.equal(
+    runDescription(done),
+    "Johannesburg and its suburbs have no more. Try another business type.",
+  );
+  assert.equal(canFindMore(done), false);
+  const old = campaign({
+    ...base,
+    areasSearched: [jhb],
+    suburbsSearched: 0,
+    suburbsLeft: suburbs,
+  });
+  assert.equal(
+    runDescription(old),
+    "Johannesburg has no more in one search. Find more in Sandton, Randburg and 1 more suburb?",
+  );
+  assert.equal(canFindMore(old), true);
 });

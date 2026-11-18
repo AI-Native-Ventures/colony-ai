@@ -85,6 +85,8 @@ test("a saved list round-trips", () => {
     // searching the way it began.
     searchWords: [],
     wordIndex: 0,
+    // Saved before suburbs were searched: it is on the whole place.
+    suburbIndex: 0,
     qualification: {
       enabled: false,
       selectedSignals: [],

@@ -22,26 +22,26 @@ function suburb(label, latitude, longitude) {
   };
 }
 
-const DURBAN = {
-  label: "Durban, KwaZulu-Natal, South Africa",
-  latitude: -29.8587,
-  longitude: 31.0218,
+const RICHARDS_BAY = {
+  label: "Richards Bay, KwaZulu-Natal, South Africa",
+  latitude: -28.7807,
+  longitude: 32.0383,
   countryCode: "ZA",
   region: "KwaZulu-Natal",
   kind: "city",
   boundingBox: null,
   // Listed in the order the geocoder offered them, not by distance.
   nearby: [
-    suburb("Ballito, KwaZulu-Natal, South Africa", -29.539, 31.2144),
-    suburb("Umhlanga, KwaZulu-Natal, South Africa", -29.7256, 31.0849),
-    suburb("Pinetown, KwaZulu-Natal, South Africa", -29.8167, 30.85),
+    suburb("Mtunzini, KwaZulu-Natal, South Africa", -28.95, 31.75),
+    suburb("Meerensee, KwaZulu-Natal, South Africa", -28.77, 32.083),
+    suburb("Empangeni, KwaZulu-Natal, South Africa", -28.762, 31.893),
   ],
 };
 
 function campaign(areaIndex, pageLog = []) {
   return {
-    location: DURBAN.label,
-    locationSelection: DURBAN,
+    location: RICHARDS_BAY.label,
+    locationSelection: RICHARDS_BAY,
     areaIndex,
     pageLog,
   };
@@ -50,22 +50,22 @@ function campaign(areaIndex, pageLog = []) {
 test("nearby areas are taken nearest first, whatever order they were offered in", () => {
   assert.deepEqual(
     nearbyAreas(campaign(0)).map((place) => shortAreaName(place.label)),
-    ["Umhlanga", "Pinetown", "Ballito"],
+    ["Meerensee", "Empangeni", "Mtunzini"],
   );
 });
 
 test("a campaign searches the chosen place until it is moved to a nearby area", () => {
   const chosen = campaign(0);
   assert.equal(inSearchArea(chosen), chosen);
-  assert.deepEqual(areasSearched(chosen), [DURBAN.label]);
+  assert.deepEqual(areasSearched(chosen), [RICHARDS_BAY.label]);
   assert.equal(
     nextNearbyArea(chosen)?.label,
-    "Umhlanga, KwaZulu-Natal, South Africa",
+    "Meerensee, KwaZulu-Natal, South Africa",
   );
 
   const second = inSearchArea(campaign(2));
-  assert.equal(second.location, "Pinetown, KwaZulu-Natal, South Africa");
-  assert.equal(second.locationSelection.latitude, -29.8167);
+  assert.equal(second.location, "Empangeni, KwaZulu-Natal, South Africa");
+  assert.equal(second.locationSelection.latitude, -28.762);
   assert.equal(
     second.locationSelection.nearby,
     undefined,
@@ -77,16 +77,16 @@ test("a campaign searches the chosen place until it is moved to a nearby area", 
     areasSearched(
       campaign(2, [
         { page: 1 },
-        { page: 2, area: DURBAN.label },
-        { page: 3, area: "Umhlanga, KwaZulu-Natal, South Africa" },
-        { page: 4, area: "Umhlanga, KwaZulu-Natal, South Africa" },
+        { page: 2, area: RICHARDS_BAY.label },
+        { page: 3, area: "Meerensee, KwaZulu-Natal, South Africa" },
+        { page: 4, area: "Meerensee, KwaZulu-Natal, South Africa" },
       ]),
     ),
-    [DURBAN.label, "Umhlanga, KwaZulu-Natal, South Africa"],
-    "Pinetown was reached but no page was fetched there yet",
+    [RICHARDS_BAY.label, "Meerensee, KwaZulu-Natal, South Africa"],
+    "Empangeni was reached but no page was fetched there yet",
   );
   assert.deepEqual(nearbyAreasLeft(campaign(2)), [
-    "Ballito, KwaZulu-Natal, South Africa",
+    "Mtunzini, KwaZulu-Natal, South Africa",
   ]);
 });
 
@@ -96,14 +96,18 @@ test("the list of areas ends: nothing is offered after the last one", () => {
   // A saved index past the list is read as the last area, never as a crash.
   assert.equal(
     inSearchArea(campaign(9)).location,
-    "Ballito, KwaZulu-Natal, South Africa",
+    "Mtunzini, KwaZulu-Natal, South Africa",
   );
 });
 
 test("a place with no nearby list has only itself", () => {
   const alone = {
     location: "South Africa",
-    locationSelection: { ...DURBAN, label: "South Africa", nearby: undefined },
+    locationSelection: {
+      ...RICHARDS_BAY,
+      label: "South Africa",
+      nearby: undefined,
+    },
     pageLog: [],
   };
   assert.equal(inSearchArea(alone), alone);
