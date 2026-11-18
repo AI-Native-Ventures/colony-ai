@@ -14,10 +14,28 @@ export type PrebuiltHireProgress = {
   introductionChannelId: string;
   choice: PrebuiltHireChoice;
   employeePubkey?: string;
+  directChannelId?: string;
+  firstMoveEventId?: string;
+};
+
+/**
+ * The short-lived map state that lets the owner reopen the direct chat after
+ * a successful first move. It is deliberately scoped to one community and
+ * one part, just like an unfinished hire recovery record.
+ */
+export type PrebuiltHireCompletion = {
+  hireId: string;
+  functionId: FunctionId;
+  agentId: string;
+  employeePubkey: string;
+  directChannelId: string;
+  firstMoveEventId: string;
+  firstMove: string;
 };
 
 const CHOICE_KEY_PREFIX = "company-map-prebuilt-choice:v1:";
 const PROGRESS_KEY_PREFIX = "company-map-prebuilt-progress:v1:";
+const COMPLETION_KEY_PREFIX = "company-map-prebuilt-completion:v1:";
 const FUNCTION_IDS = new Set<FunctionId>([
   "sales",
   "operations",
@@ -40,6 +58,10 @@ function choiceKey(communityId: string) {
 
 function progressKey(communityId: string, functionId: FunctionId) {
   return `${PROGRESS_KEY_PREFIX}${communityId}:${functionId}`;
+}
+
+function completionKey(communityId: string, functionId: FunctionId) {
+  return `${COMPLETION_KEY_PREFIX}${communityId}:${functionId}`;
 }
 
 function nonEmptyString(value: unknown): value is string {
@@ -132,7 +154,9 @@ export function readPrebuiltHireProgress(
         key !== "agentId" &&
         key !== "introductionChannelId" &&
         key !== "choice" &&
-        key !== "employeePubkey",
+        key !== "employeePubkey" &&
+        key !== "directChannelId" &&
+        key !== "firstMoveEventId",
     ) ||
     !nonEmptyString(record.hireId) ||
     record.functionId !== functionId ||
@@ -140,7 +164,9 @@ export function readPrebuiltHireProgress(
     !nonEmptyString(record.agentId) ||
     !nonEmptyString(record.introductionChannelId) ||
     !choice ||
-    (record.employeePubkey !== undefined && !nonEmptyString(record.employeePubkey))
+    (record.employeePubkey !== undefined && !nonEmptyString(record.employeePubkey)) ||
+    (record.directChannelId !== undefined && !nonEmptyString(record.directChannelId)) ||
+    (record.firstMoveEventId !== undefined && !nonEmptyString(record.firstMoveEventId))
   ) {
     return null;
   }
@@ -152,6 +178,12 @@ export function readPrebuiltHireProgress(
     choice,
     ...(typeof record.employeePubkey === "string"
       ? { employeePubkey: record.employeePubkey.trim() }
+      : {}),
+    ...(typeof record.directChannelId === "string"
+      ? { directChannelId: record.directChannelId.trim() }
+      : {}),
+    ...(typeof record.firstMoveEventId === "string"
+      ? { firstMoveEventId: record.firstMoveEventId.trim() }
       : {}),
   };
 }
@@ -171,8 +203,73 @@ function readableProgress(value: PrebuiltHireProgress): boolean {
     nonEmptyString(value.agentId) &&
     nonEmptyString(value.introductionChannelId) &&
     parseChoice(value.choice) !== null &&
-    (value.employeePubkey === undefined || nonEmptyString(value.employeePubkey))
+    (value.employeePubkey === undefined || nonEmptyString(value.employeePubkey)) &&
+    (value.directChannelId === undefined || nonEmptyString(value.directChannelId)) &&
+    (value.firstMoveEventId === undefined || nonEmptyString(value.firstMoveEventId))
   );
+}
+
+function readableCompletion(value: PrebuiltHireCompletion): boolean {
+  return (
+    nonEmptyString(value.hireId) &&
+    FUNCTION_IDS.has(value.functionId) &&
+    nonEmptyString(value.agentId) &&
+    nonEmptyString(value.employeePubkey) &&
+    nonEmptyString(value.directChannelId) &&
+    nonEmptyString(value.firstMoveEventId) &&
+    nonEmptyString(value.firstMove)
+  );
+}
+
+export function readPrebuiltHireCompletion(
+  communityId: string | null | undefined,
+  functionId: FunctionId,
+): PrebuiltHireCompletion | null {
+  if (!communityId) return null;
+  const raw = readJson(completionKey(communityId, functionId));
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  if (
+    Object.keys(record).some(
+      (key) =>
+        key !== "hireId" &&
+        key !== "functionId" &&
+        key !== "agentId" &&
+        key !== "employeePubkey" &&
+        key !== "directChannelId" &&
+        key !== "firstMoveEventId" &&
+        key !== "firstMove",
+    ) ||
+    record.functionId !== functionId ||
+    !FUNCTION_IDS.has(record.functionId as FunctionId) ||
+    !nonEmptyString(record.hireId) ||
+    !nonEmptyString(record.agentId) ||
+    !nonEmptyString(record.employeePubkey) ||
+    !nonEmptyString(record.directChannelId) ||
+    !nonEmptyString(record.firstMoveEventId) ||
+    !nonEmptyString(record.firstMove)
+  ) {
+    return null;
+  }
+  return {
+    hireId: record.hireId.trim(),
+    functionId,
+    agentId: record.agentId.trim(),
+    employeePubkey: record.employeePubkey.trim(),
+    directChannelId: record.directChannelId.trim(),
+    firstMoveEventId: record.firstMoveEventId.trim(),
+    firstMove: record.firstMove.trim(),
+  };
+}
+
+export function writePrebuiltHireCompletion(
+  communityId: string | null | undefined,
+  completion: PrebuiltHireCompletion,
+) {
+  if (!communityId || !readableCompletion(completion)) return false;
+  return writeJson(completionKey(communityId, completion.functionId), completion);
 }
 
 export function clearPrebuiltHireProgress(

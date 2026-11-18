@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge } from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { test } from "./cofounder-map-test";
 import {
   AYA_PUBKEY,
@@ -119,7 +119,16 @@ test.describe("co-founder mode desktop", () => {
   test("an owner hires the prebuilt Finance head from the map", async ({
     page,
   }) => {
-    await installMockBridge(page, fixture({ includeScout: true }));
+    await installMockBridge(
+      page,
+      {
+        ...fixture({ includeScout: true, identity: TEST_IDENTITIES.tyler }),
+        visualChannels: [
+          { id: "22222222-2222-4222-8222-222222222222", name: "general" },
+        ],
+      },
+      { identity: TEST_IDENTITIES.tyler },
+    );
     await page.goto("/#/company/map");
     await selectMapPart(page, "finance", "Finance");
 

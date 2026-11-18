@@ -83,6 +83,7 @@ export function fixture({
   enabled = true,
   includeAya = true,
   includeScout = false,
+  identity,
   numbers = numbersFixture(),
   functionHeads = [
     functionHead("sales", "filled", AYA_PUBKEY),
@@ -94,11 +95,13 @@ export function fixture({
   enabled?: boolean;
   includeAya?: boolean;
   includeScout?: boolean;
+  identity?: (typeof TEST_IDENTITIES)[keyof typeof TEST_IDENTITIES];
   numbers?: MockNumbers;
   functionHeads?: MockCompanyFunctionHead[];
   workerRuns?: MockWorkerRun[];
 } = {}) {
   const relaySecret = generateSecretKey();
+  const ownerPubkey = identity?.pubkey ?? OWNER_PUBKEY;
   return {
     relaySelf: getPublicKey(relaySecret),
     companyHireRelayPrivateKeyHex: bytesToHex(relaySecret),
@@ -106,7 +109,7 @@ export function fixture({
     relayRole: role,
     relayRequiresMembership: true,
     relayMembers: [
-      { pubkey: OWNER_PUBKEY, role },
+      { pubkey: ownerPubkey, role },
       ...(includeAya ? [{ pubkey: AYA_PUBKEY, role: "member" as const }] : []),
       ...(includeScout
         ? [{ pubkey: SCOUT_PUBKEY, role: "member" as const }]
@@ -121,7 +124,7 @@ export function fixture({
     companyFunctionHeads: functionHeads,
     companyWorkerRuns: workerRuns,
     searchProfiles: [
-      { pubkey: OWNER_PUBKEY, displayName: "Lerato Molefe", isAgent: false },
+      { pubkey: ownerPubkey, displayName: "Lerato Molefe", isAgent: false },
       ...(includeAya
         ? [{ pubkey: AYA_PUBKEY, displayName: "Aya", isAgent: true }]
         : []),
@@ -134,7 +137,7 @@ export function fixture({
         ? [
             {
               pubkey: AYA_PUBKEY,
-              ownerPubkey: OWNER_PUBKEY,
+              ownerPubkey,
               name: "Aya",
               agentType: "agent",
               status: "online" as const,
@@ -145,7 +148,7 @@ export function fixture({
         ? [
             {
               pubkey: SCOUT_PUBKEY,
-              ownerPubkey: OWNER_PUBKEY,
+              ownerPubkey,
               name: "Scout",
               agentType: "agent",
               status: "online" as const,

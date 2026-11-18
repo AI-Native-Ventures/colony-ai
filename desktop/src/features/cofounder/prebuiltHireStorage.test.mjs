@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   clearPrebuiltHireProgress,
   readPrebuiltHireChoice,
+  readPrebuiltHireCompletion,
   readPrebuiltHireProgress,
   writePrebuiltHireChoice,
+  writePrebuiltHireCompletion,
   writePrebuiltHireProgress,
 } from "./prebuiltHireStorage.ts";
 
@@ -52,4 +54,20 @@ test("unfinished hires preserve a retry record until the head finishes", () => {
   assert.deepEqual(readPrebuiltHireProgress("company-a", "finance"), progress);
   clearPrebuiltHireProgress("company-a", "finance");
   assert.equal(readPrebuiltHireProgress("company-a", "finance"), null);
+});
+
+test("a completed map hire keeps its direct chat only inside that company", () => {
+  installStorage();
+  const completion = {
+    hireId: "hire-1",
+    functionId: "finance",
+    agentId: "prebuilt-head-finance",
+    employeePubkey: "employee-1",
+    directChannelId: "direct-1",
+    firstMoveEventId: "message-1",
+    firstMove: "Hi Basheer. Ask for the books.",
+  };
+  assert.equal(writePrebuiltHireCompletion("company-a", completion), true);
+  assert.deepEqual(readPrebuiltHireCompletion("company-a", "finance"), completion);
+  assert.equal(readPrebuiltHireCompletion("company-b", "finance"), null);
 });

@@ -13,7 +13,11 @@ import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import { simpleModelLabel, simpleProviderLabel } from "@/features/agents/ui/simpleAgentAi";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
-import { useChannelsQuery, channelsQueryKey } from "@/features/channels/hooks";
+import {
+  useChannelsQuery,
+  channelsQueryKey,
+  useOpenDmMutation,
+} from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
@@ -73,11 +77,13 @@ import {
   clearPrebuiltHireProgress,
   readPrebuiltHireChoice,
   readPrebuiltHireProgress,
+  writePrebuiltHireCompletion,
   writePrebuiltHireChoice,
   writePrebuiltHireProgress,
 } from "../prebuiltHireStorage";
 import type {
   PrebuiltHireChoice,
+  PrebuiltHireCompletion,
   PrebuiltHireProgress,
 } from "../prebuiltHireStorage";
 
@@ -150,7 +156,7 @@ export function PrebuiltHeadHireDialog({
   defaultChannelId?: string | null;
   functionId: FunctionId | null;
   managerPubkey?: string | null;
-  onCompleted: () => void;
+  onCompleted: (completion: PrebuiltHireCompletion | null) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   ownerName: string;
@@ -167,6 +173,7 @@ export function PrebuiltHeadHireDialog({
   const managedAgentsQuery = useManagedAgentsQuery({ enabled: open });
   const createManagedAgent = useCreateManagedAgentMutation();
   const channelsQuery = useChannelsQuery({ enabled: open });
+  const openDm = useOpenDmMutation();
   const accessQuery = useCompanyAccessQuery(communityId);
   const publishAccessAction = usePublishAccessAction();
   const hireAction = useCompanyHireActionMutation();
@@ -385,7 +392,7 @@ export function PrebuiltHeadHireDialog({
     try {
       const selectedChoice = storedChoice(choice);
       const hireId = progress?.hireId ?? globalThis.crypto.randomUUID();
-      const flow: PrebuiltHireProgress = {
+      let flow: PrebuiltHireProgress = {
         hireId,
         functionId,
         agentId: agent.id,
@@ -500,9 +507,9 @@ export function PrebuiltHeadHireDialog({
           });
           managedAgent = created.agent;
           employeePubkey = created.agent.pubkey;
-          const nextFlow = { ...flow, employeePubkey };
-          writePrebuiltHireProgress(communityId, nextFlow);
-          setProgress(nextFlow);
+          flow = { ...flow, employeePubkey };
+          writePrebuiltHireProgress(communityId, flow);
+          setProgress(flow);
           writeHireDraft(relayUrl, {
             proposal,
             localConfiguration,
@@ -530,28 +537,44 @@ export function PrebuiltHeadHireDialog({
               employeePubkey?.toLowerCase(),
           );
         }
-        const attached = await attachManagedAgentToChannel(channelId, {
+        await attachManagedAgentToChannel(channelId, {
           agent: managedAgent,
           role: "bot",
           ensureRunning: true,
         });
+        const directChat = await openDm.mutateAsync({
+          pubkeys: [employeePubkey],
+          expectedRelayUrl: relayUrl,
+          expectedSignerPubkey: identityQuery.data.pubkey,
+        });
+        flow = { ...flow, directChannelId: directChat.id };
+        writePrebuiltHireProgress(communityId, flow);
+        setProgress(flow);
+        await attachManagedAgentToChannel(directChat.id, {
+          agent: managedAgent,
+          role: "bot",
+          ensureRunning: false,
+        });
         const firstMove = await sendManagedAgentChannelMessage({
           agentPubkey: employeePubkey,
-          channelId,
+          channelId: directChat.id,
           content: prebuiltFirstMoveText(agent, ownerName),
           marker: prebuiltHireMarker(hireId),
           markerScope: "agent",
         });
+        flow = { ...flow, firstMoveEventId: firstMove.eventId };
+        writePrebuiltHireProgress(communityId, flow);
+        setProgress(flow);
         current = await fetchCurrentCompanyHireHead(hireId);
         if (!current) throw new Error("The relay could not find the saved hire. Retry it.");
         if (current.head.status !== "hired") {
-          await publishAndConfirm(
+          current = await publishAndConfirm(
             {
               schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
               hireId,
               action: "complete",
               expectedHeadEventId: current.event.id,
-              employeePubkey: attached.agent.pubkey,
+              employeePubkey,
               introductionEventId: firstMove.eventId,
             },
             (record) =>
@@ -562,6 +585,21 @@ export function PrebuiltHeadHireDialog({
           );
         }
       }
+      const completedEventId =
+        flow.firstMoveEventId ?? current?.head.introductionEventId ?? undefined;
+      const completion =
+        flow.employeePubkey && flow.directChannelId && completedEventId
+          ? {
+              hireId: flow.hireId,
+              functionId: flow.functionId,
+              agentId: flow.agentId,
+              employeePubkey: flow.employeePubkey,
+              directChannelId: flow.directChannelId,
+              firstMoveEventId: completedEventId,
+              firstMove: prebuiltFirstMoveText(agent, ownerName),
+            }
+          : null;
+      if (completion) writePrebuiltHireCompletion(communityId, completion);
       clearPrebuiltHireProgress(communityId, functionId);
       removeHireDraft(relayUrl, hireId);
       await Promise.all([
@@ -572,7 +610,7 @@ export function PrebuiltHeadHireDialog({
         queryClient.invalidateQueries({ queryKey: companyAccessQueryKey(communityId, relayUrl) }),
         queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
       ]);
-      onCompleted();
+      onCompleted(completion);
     } catch (error) {
       setFailure(errorText(error));
     } finally {
@@ -642,13 +680,32 @@ export function PrebuiltHeadHireDialog({
           />
           <div>
             <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              Prebuilt head
+              Pre-built agent
             </p>
             <DialogTitle>Hire {agent.name}</DialogTitle>
             <DialogDescription id="prebuilt-hire-description">
               {agent.does.join(" ")}
             </DialogDescription>
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <section className="rounded-xl border border-border bg-muted/20 p-3">
+            <h2 className="text-sm font-bold">What it does</h2>
+            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
+              {agent.does.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+          <section className="rounded-xl border border-border bg-muted/20 p-3">
+            <h2 className="text-sm font-bold">What it asks of you</h2>
+            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
+              {agent.asks.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
         </div>
 
         {runtimes.map((runtime) => (
