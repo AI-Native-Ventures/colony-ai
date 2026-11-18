@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
@@ -7,6 +7,7 @@ import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import {
   useCofounderSettingsQuery,
   useFunctionSlotsQuery,
@@ -24,6 +25,7 @@ import {
 } from "../companyMapScout";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
+import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
 import type { CompanyMapWindowJob } from "../companyMapJobRoutes";
 
 export function CompanyMapScreen({
@@ -43,6 +45,7 @@ export function CompanyMapScreen({
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
   const profileQuery = useProfileQuery(Boolean(activeCommunity));
   const identityQuery = useIdentityQuery();
+  const membershipQuery = useMyRelayMembershipQuery();
   const needsYouSummary = useNeedsYouSummary();
   const workerRunsQuery = useWorkerRunsQuery(null, { all: true });
   const enabled = settingsQuery.data?.settings.enabled === true;
@@ -60,6 +63,9 @@ export function CompanyMapScreen({
     [members, profiles],
   );
   const companyName = activeCommunity?.name ?? "Company";
+  const [hireFunctionId, setHireFunctionId] = useState<
+    (typeof FUNCTION_ORDER)[number] | null
+  >(null);
   const operationsWorkflows = useMemo(
     () =>
       operationsMapWorkflows({
@@ -158,28 +164,46 @@ export function CompanyMapScreen({
     );
   }
 
+  const ownerName = profileQuery.data?.displayName?.trim() || "Owner";
+  const canHirePrebuiltHeads = membershipQuery.data?.role === "owner";
+
   return (
-    <CompanyMapBoard
-      companyId={activeCommunity?.id}
-      companyName={companyName}
-      members={members}
-      ownerAvatarUrl={profileQuery.data?.avatarUrl}
-      ownerName={profileQuery.data?.displayName?.trim() || "Owner"}
-      ownerPubkey={identityQuery.data?.pubkey}
-      profiles={profiles}
-      relayUrl={activeCommunity?.relayUrl}
-      scoutPubkey={scoutPubkey}
-      slots={slots}
-      liveFunctionIds={liveFunctionIds}
-      mapWindowDepth={mapWindowDepth}
-      mapWindowJob={mapWindowJob}
-      onMapWindowClose={onMapWindowClose}
-      onMapWindowFit={onMapWindowFit}
-      clientChannelId={clientChannelId}
-      operationsWorkflows={operationsWorkflows}
-      scoutChannelId={scoutChannelId}
-      summary={needsYouSummary.data}
-      whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
-    />
+    <>
+      <CompanyMapBoard
+        companyId={activeCommunity?.id}
+        companyName={companyName}
+        members={members}
+        ownerAvatarUrl={profileQuery.data?.avatarUrl}
+        ownerName={ownerName}
+        ownerPubkey={identityQuery.data?.pubkey}
+        profiles={profiles}
+        relayUrl={activeCommunity?.relayUrl}
+        scoutPubkey={scoutPubkey}
+        canHirePrebuiltHeads={canHirePrebuiltHeads}
+        onHireHead={setHireFunctionId}
+        slots={slots}
+        liveFunctionIds={liveFunctionIds}
+        mapWindowDepth={mapWindowDepth}
+        mapWindowJob={mapWindowJob}
+        onMapWindowClose={onMapWindowClose}
+        onMapWindowFit={onMapWindowFit}
+        clientChannelId={clientChannelId}
+        operationsWorkflows={operationsWorkflows}
+        scoutChannelId={scoutChannelId}
+        summary={needsYouSummary.data}
+        whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
+      />
+      <PrebuiltHeadHireDialog
+        defaultChannelId={scoutChannelId}
+        functionId={hireFunctionId}
+        managerPubkey={scoutPubkey}
+        onCompleted={() => setHireFunctionId(null)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setHireFunctionId(null);
+        }}
+        open={hireFunctionId !== null}
+        ownerName={ownerName}
+      />
+    </>
   );
 }

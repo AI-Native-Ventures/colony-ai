@@ -10235,10 +10235,35 @@ function acceptMockHireAction(
     return;
   }
 
+  const hasStrictProposal = (proposal: unknown) => {
+    const proposalKeys = new Set([
+      "hireId",
+      "rolePack",
+      "displayName",
+      "title",
+      "managerPubkey",
+      "introductionChannelId",
+      "runtimeId",
+      "providerId",
+      "modelId",
+      "weeklyAllowance",
+    ]);
+    return (
+      proposal !== null &&
+      typeof proposal === "object" &&
+      !Array.isArray(proposal) &&
+      !Object.keys(proposal).some((key) => !proposalKeys.has(key))
+    );
+  };
+
   let head: Record<string, unknown>;
   if (action.action === "create") {
     if (!action.proposal || typeof action.proposal !== "object") {
       reject("invalid: create needs a hire proposal");
+      return;
+    }
+    if (!hasStrictProposal(action.proposal)) {
+      reject("invalid: hire proposal has an unknown field");
       return;
     }
     head = {
@@ -10263,6 +10288,10 @@ function acceptMockHireAction(
     if (action.action === "update") {
       if (status !== "proposed" || !action.proposal) {
         reject("conflict: only a proposed hire can be updated");
+        return;
+      }
+      if (!hasStrictProposal(action.proposal)) {
+        reject("invalid: hire proposal has an unknown field");
         return;
       }
       head.proposal = action.proposal;
@@ -10363,6 +10392,41 @@ function acceptMockHireAction(
     }
   }
   mockCompanyHireHeads.push(nextHead);
+  if (
+    action.action === "complete" &&
+    typeof action.employeePubkey === "string" &&
+    config?.mock?.companyAccessRecords
+  ) {
+    const slot = config.mock.companyAccessRecords.find(
+      (record) => record.dTag === `company:slot-hire:${hireId}`,
+    );
+    const functionId = slot?.content.function;
+    if (
+      functionId === "sales" ||
+      functionId === "operations" ||
+      functionId === "customer_success" ||
+      functionId === "finance" ||
+      functionId === "brand"
+    ) {
+      if (!config.mock.companyFunctionHeads) {
+        config.mock.companyFunctionHeads = [];
+      }
+      const existing = config.mock.companyFunctionHeads.find(
+        (candidate) => candidate.function === functionId,
+      );
+      if (!existing || existing.state !== "filled") {
+        const next: MockCompanyFunctionHead = existing ?? {
+          function: functionId,
+          state: "empty",
+        };
+        next.state = "filled";
+        next.leadPubkey = action.employeePubkey;
+        next.updatedByPubkey = event.pubkey;
+        next.updatedAt = Math.floor(Date.now() / 1_000);
+        if (!existing) config.mock.companyFunctionHeads.push(next);
+      }
+    }
+  }
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 

@@ -101,6 +101,7 @@ export function fixture({
   const relaySecret = generateSecretKey();
   return {
     relaySelf: getPublicKey(relaySecret),
+    companyHireRelayPrivateKeyHex: bytesToHex(relaySecret),
     companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
     relayRole: role,
     relayRequiresMembership: true,

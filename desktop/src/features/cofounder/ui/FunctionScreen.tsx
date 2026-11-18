@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useRouteBack } from "@/app/navigation/RouteOriginContext";
@@ -7,11 +7,12 @@ import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
 
 import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
+import { companyMapJobDoer } from "../companyMapAssignments";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
 import { numbersActions } from "../numbersActions";
@@ -20,6 +21,8 @@ import { FunctionGoals } from "./FunctionGoals";
 import { FunctionScorecard } from "./FunctionScorecard";
 import { WorkerList } from "./WorkerList";
 import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
+import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
+import { prebuiltHeadForFunction } from "../prebuiltAgents";
 
 type ProfileLookup = Record<
   string,
@@ -208,10 +211,9 @@ function SubFunctionsCard({
       </h2>
       <ul className="mt-3 divide-y divide-border">
         {FUNCTION_DETAILS[functionId].subFunctions.map((name) => {
-          const scoutCoversFinanceItem =
-            functionId === "finance" && ["Quotes", "Deposits"].includes(name);
+          const doer = companyMapJobDoer(slot);
           const status =
-            slot.state === "covered_by_scout" || scoutCoversFinanceItem
+            doer.kind === "scout"
               ? "Scout covers"
               : slot.state === "filled"
                 ? `Led by ${leadName ?? "the assigned lead"}`
@@ -231,9 +233,18 @@ function SubFunctionsCard({
   );
 }
 
-function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
+function EmptySlotSuggestion({
+  canHirePrebuiltHeads,
+  functionId,
+  onHireHead,
+}: {
+  canHirePrebuiltHeads: boolean;
+  functionId: FunctionId;
+  onHireHead: (functionId: FunctionId) => void;
+}) {
   const detail = FUNCTION_DETAILS[functionId];
-  if (functionId === "operations") return null;
+  const head = prebuiltHeadForFunction(functionId);
+  if (!head) return null;
   return (
     <section
       aria-labelledby="function-suggestion-title"
@@ -252,7 +263,7 @@ function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
             className="text-base font-extrabold"
             id="function-suggestion-title"
           >
-            Hire a {detail.suggestedHire}
+            Hire {head.name}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             This lead owns {detail.name} and runs its workers.
@@ -260,13 +271,16 @@ function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
-        <Link
-          className="team-hire-button"
-          data-testid="cofounder-fill-slot"
-          to="/hire/roles"
-        >
-          Fill this slot
-        </Link>
+        {canHirePrebuiltHeads ? (
+          <button
+            className="team-hire-button"
+            data-testid="cofounder-fill-slot"
+            onClick={() => onHireHead(functionId)}
+            type="button"
+          >
+            Hire {head.name}
+          </button>
+        ) : null}
         <Link
           className="inline-flex h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           to="/company/map"
@@ -293,12 +307,16 @@ export function FunctionScreen({
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const membership = useMyRelayMembershipQuery();
+  const ownerProfile = useProfileQuery(Boolean(activeCommunity));
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
   const enabled = settingsQuery.data?.settings.enabled === true;
   const numbers = useFunctionNumbers(functionId, enabled);
   const numbersAction = useNumbersAction();
   const refreshRequested = useRef(false);
+  const [hireFunctionId, setHireFunctionId] = useState<FunctionId | null>(
+    null,
+  );
   const refreshScorecard = useCallback(
     (expectedHeadEventId?: string) =>
       numbersAction.mutate(
@@ -323,6 +341,7 @@ export function FunctionScreen({
   ]);
   const canApprove =
     membership.data?.role === "owner" || membership.data?.role === "admin";
+  const canHirePrebuiltHeads = membership.data?.role === "owner";
   const slot = slots.find(
     (candidate) => candidate.functionId === functionId,
   ) ?? {
@@ -405,6 +424,19 @@ export function FunctionScreen({
       key={functionId}
     />
   );
+  const ownerName = ownerProfile.data?.displayName?.trim() || "Owner";
+  const hireDialog = (
+    <PrebuiltHeadHireDialog
+      functionId={hireFunctionId}
+      managerPubkey={scout?.pubkey}
+      onCompleted={() => setHireFunctionId(null)}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setHireFunctionId(null);
+      }}
+      open={hireFunctionId !== null}
+      ownerName={ownerName}
+    />
+  );
 
   if (settingsQuery.isPending) {
     return (
@@ -462,26 +494,37 @@ export function FunctionScreen({
 
   if (functionId === "operations") {
     return (
-      <div
-        className="flex min-h-0 flex-1 flex-col"
-        data-testid="cofounder-function-screen"
-      >
-        <OperationsPlaybookScreen
-          scorecardAndGoals={
-            <div className="space-y-5">
-              {scorecard}
-              {goals}
-            </div>
-          }
-          selectedPlaybookId={selectedOperationsPlaybookId}
-        />
-      </div>
+      <>
+        <div
+          className="flex min-h-0 flex-1 flex-col"
+          data-testid="cofounder-function-screen"
+        >
+          <OperationsPlaybookScreen
+            scorecardAndGoals={
+              <div className="space-y-5">
+                {scorecard}
+                {slot.state === "empty" ? (
+                  <EmptySlotSuggestion
+                    canHirePrebuiltHeads={canHirePrebuiltHeads}
+                    functionId={functionId}
+                    onHireHead={setHireFunctionId}
+                  />
+                ) : null}
+                {goals}
+              </div>
+            }
+            selectedPlaybookId={selectedOperationsPlaybookId}
+          />
+        </div>
+        {hireDialog}
+      </>
     );
   }
 
   return (
-    <TeamPage testId="cofounder-function-screen" title={detail.name}>
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <>
+      <TeamPage testId="cofounder-function-screen" title={detail.name}>
+        <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="team-head-copy">
           <TeamPageTitle>{detail.name}</TeamPageTitle>
           <p className="team-subtitle">{FUNCTION_DESCRIPTIONS[functionId]}</p>
@@ -494,13 +537,17 @@ export function FunctionScreen({
         >
           {routeBack.backLabel}
         </button>
-      </header>
+        </header>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
         <div className="space-y-5">
           {scorecard}
           {slot.state === "empty" ? (
-            <EmptySlotSuggestion functionId={functionId} />
+            <EmptySlotSuggestion
+              canHirePrebuiltHeads={canHirePrebuiltHeads}
+              functionId={functionId}
+              onHireHead={setHireFunctionId}
+            />
           ) : null}
           <WorkerList
             parentName={parentName}
@@ -541,7 +588,9 @@ export function FunctionScreen({
             slot={slot}
           />
         </div>
-      </div>
-    </TeamPage>
+        </div>
+      </TeamPage>
+      {hireDialog}
+    </>
   );
 }

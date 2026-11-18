@@ -40,7 +40,13 @@ import {
   HireTitle,
 } from "./HirePresentation";
 import { HireHandoffScreen } from "./HireHandoffScreen";
-import { readHireDraft, removeHireDraft, writeHireDraft } from "../hireDraft";
+import {
+  defaultHireLocalConfiguration,
+  readHireDraft,
+  removeHireDraft,
+  writeHireDraft,
+} from "../hireDraft";
+import type { HireLocalConfiguration } from "../hireDraft";
 import { hireIntroductionText } from "../hireIntroduction";
 import {
   useCompanyHireActionMutation,
@@ -142,6 +148,9 @@ export function HireReviewScreen({
   const proposal = hasAskSource
     ? (draft?.proposal ?? hireQuery.data?.head.proposal ?? null)
     : (draft?.proposal ?? hireQuery.data?.head.proposal ?? null);
+  const localConfiguration = proposal
+    ? (draft?.localConfiguration ?? defaultHireLocalConfiguration(proposal))
+    : null;
   const persona = personasQuery.data?.find(
     (candidate) => candidate.id === proposal?.rolePack.personaId,
   );
@@ -377,6 +386,7 @@ export function HireReviewScreen({
   const runApprovedHire = async (
     initial: CompanyHireHeadRecord,
     selectedProposal: HireProposal,
+    selectedLocalConfiguration: HireLocalConfiguration,
   ) => {
     if (
       !identityPubkey ||
@@ -428,9 +438,9 @@ export function HireReviewScreen({
         mcpCommand: runtime.mcpCommand ?? "",
         model: selectedProposal.modelId,
         provider: selectedProposal.providerId,
-        effortLevel: selectedProposal.effortLevel,
+        effortLevel: selectedLocalConfiguration.effortLevel,
         avatarUrl: draft?.avatarUrl,
-        respondTo: selectedProposal.respondTo ?? "owner-only",
+        respondTo: selectedLocalConfiguration.respondTo,
         spawnAfterCreate: false,
         startOnAppLaunch: false,
         backend: { type: "local" },
@@ -439,6 +449,7 @@ export function HireReviewScreen({
       employeePubkey = created.agent.pubkey;
       writeHireDraft(relayUrl, {
         proposal: selectedProposal,
+        localConfiguration: selectedLocalConfiguration,
         ...(draft?.avatarUrl ? { avatarUrl: draft.avatarUrl } : {}),
         employeePubkey,
         ...(draft?.baseHeadEventId
@@ -484,9 +495,7 @@ export function HireReviewScreen({
     }
 
     const channelIds = [
-      ...new Set(
-        selectedProposal.channelIds ?? [selectedProposal.introductionChannelId],
-      ),
+      ...new Set(selectedLocalConfiguration.channelIds),
     ];
     for (const channelId of channelIds) {
       const attached = await attachManagedAgentToChannel(channelId, {
@@ -725,7 +734,10 @@ export function HireReviewScreen({
       if (current?.head.status !== "approved") {
         throw new Error("founder sign-off requires the community owner");
       }
-      await runApprovedHire(current, proposal);
+      if (!localConfiguration) {
+        throw new Error("Hire setup is missing. Review the details and retry.");
+      }
+      await runApprovedHire(current, proposal, localConfiguration);
     } catch {
       setFailure(true);
     } finally {
@@ -810,9 +822,9 @@ export function HireReviewScreen({
     return null;
 
   const channelName = homeChannel?.name ?? "";
-  const selectedChannels = (
-    proposal.channelIds ?? [proposal.introductionChannelId]
-  )
+  const reviewedLocalConfiguration =
+    localConfiguration ?? defaultHireLocalConfiguration(proposal);
+  const selectedChannels = reviewedLocalConfiguration.channelIds
     .map((channelId) =>
       channelsQuery.data?.find((channel) => channel.id === channelId),
     )
@@ -876,7 +888,7 @@ export function HireReviewScreen({
             </dd>
             <dt>Instructions</dt>
             <dd>
-              {proposal.respondTo === "anyone"
+              {reviewedLocalConfiguration.respondTo === "anyone"
                 ? "Anyone in this space"
                 : "You and admins"}
             </dd>
@@ -884,10 +896,10 @@ export function HireReviewScreen({
             <dd>{simpleModelLabel(proposal.modelId, proposal.providerId)}</dd>
             <dt>Harness</dt>
             <dd>{workerRuntime?.label ?? proposal.runtimeId}</dd>
-            {proposal.effortLevel ? (
+            {reviewedLocalConfiguration.effortLevel ? (
               <>
                 <dt>Effort</dt>
-                <dd>{proposal.effortLevel}</dd>
+                <dd>{reviewedLocalConfiguration.effortLevel}</dd>
               </>
             ) : null}
             {workerProviderLabel ? (

@@ -8,7 +8,6 @@ test("jobs without dedicated screens keep the wire of their runner", () => {
     ["sales", "Calls", "filled", "on"],
     ["sales", "Calls", "empty", "off"],
     ["finance", "Recurring plans", "empty", "on"],
-    ["customer_success", "Renewals", "empty", "on"],
     ["customer_success", "Upsell", "empty", "on"],
     ["customer_success", "Reviews", "empty", "on"],
     ["brand", "Website", "empty", "on"],

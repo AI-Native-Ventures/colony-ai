@@ -54,7 +54,6 @@ export const FUNCTION_DETAILS: Record<
     subFunctions: [
       "Client chats",
       "Change requests",
-      "Renewals",
       "Upsell",
       "Reviews",
     ],
@@ -63,7 +62,6 @@ export const FUNCTION_DETAILS: Record<
   finance: {
     name: "Finance",
     subFunctions: [
-      "Quotes",
       "Invoices",
       "Deposits",
       "Recurring plans",
@@ -94,7 +92,7 @@ export const FUNCTION_DESCRIPTIONS: Record<FunctionId, string> = {
     "Deliver the work your company promises, from the first brief through launch.",
   customer_success:
     "Keep clients close, resolve changes and find the next useful step together.",
-  finance: "Quotes, invoices, deposits, recurring plans and costs.",
+  finance: "Invoices, deposits, recurring plans and costs.",
   brand:
     "Keep your company's offer, voice and work clear wherever people find you.",
 };

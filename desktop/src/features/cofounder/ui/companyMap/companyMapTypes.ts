@@ -29,6 +29,9 @@ export type CompanyMapBoardProps = {
   ownerPubkey?: string;
   ownerAvatarUrl?: string | null;
   scoutPubkey?: string | null;
+  /** Prebuilt heads are an owner-only map action. */
+  canHirePrebuiltHeads?: boolean;
+  onHireHead?: (functionId: FunctionId) => void;
   summary: CompanyMapSummary | undefined;
   whatsAppChannelId?: string | null;
   /** Data-backed Operations workflows. Phone keeps the established static map. */

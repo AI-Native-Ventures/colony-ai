@@ -53,7 +53,6 @@ const WINDOW_JOBS: readonly WindowJob[] = [
   { functionId: "sales", jobName: "Follow-ups" },
   { functionId: "sales", jobName: "Quotes" },
   { functionId: "sales", jobName: "Closing" },
-  { functionId: "finance", jobName: "Quotes" },
   { functionId: "finance", jobName: "Invoices" },
   { functionId: "finance", jobName: "Deposits" },
   { functionId: "finance", jobName: "Chasing payments" },

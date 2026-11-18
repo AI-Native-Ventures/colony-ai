@@ -9,7 +9,7 @@ import type {
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
 import {
-  companyMapJobIsScoutLed,
+  companyMapJobDoer,
   companyMapScoutCoverageSentence,
 } from "@/features/cofounder/companyMapAssignments";
 import {
@@ -24,8 +24,10 @@ import {
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
+import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
 
 import type { CompanyMapBoardProps, ProfileLookup } from "./companyMapTypes";
+import { PrebuiltHeadPreview } from "./CompanyMapPartCard";
 
 function fullName(
   member: CompanyMapBoardProps["members"][number],
@@ -144,14 +146,12 @@ function PersonAvatar({
 }
 
 function LeadAvatar({
-  functionId,
   jobName,
   slot,
   members,
   profiles,
   size,
 }: {
-  functionId: FunctionId;
   jobName?: string;
   slot: FunctionSlotView;
   members: CompanyMapBoardProps["members"];
@@ -159,15 +159,17 @@ function LeadAvatar({
   size: "part" | "job";
 }) {
   const className = `company-map-phone-${size}-avatar`;
-  if (
-    slot.state === "covered_by_scout" ||
-    (jobName !== undefined &&
-      companyMapJobIsScoutLed(functionId, jobName, slot.state))
-  ) {
+  const jobDoer = jobName === undefined ? null : companyMapJobDoer(slot);
+  if (slot.state === "covered_by_scout" || jobDoer?.kind === "scout") {
     return <PersonAvatar className={className} profiles={profiles} scout />;
   }
   const member =
-    slot.state === "filled" && slot.leadPubkey
+    jobDoer?.kind === "head" || jobDoer?.kind === "specialist"
+      ? members.find(
+          (candidate) =>
+            candidate.pubkey.toLowerCase() === jobDoer.pubkey.toLowerCase(),
+        )
+      : slot.state === "filled" && slot.leadPubkey
       ? members.find(
           (candidate) =>
             candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
@@ -312,20 +314,24 @@ function PartStatus({
 
 function PhoneActionCard({
   activePart,
+  canHirePrebuiltHeads,
   ownerName,
   slots,
   summary,
   members,
   profiles,
   onClose,
+  onHireHead,
 }: {
   activePart: FunctionId | null;
+  canHirePrebuiltHeads: boolean;
   ownerName: string;
   slots: FunctionSlotView[];
   summary: CompanyMapBoardProps["summary"];
   members: CompanyMapBoardProps["members"];
   profiles: ProfileLookup;
   onClose: () => void;
+  onHireHead: (functionId: FunctionId) => void;
 }) {
   const firstName = ownerName.trim().split(/\s+/)[0] || "there";
   if (!activePart) {
@@ -372,6 +378,7 @@ function PhoneActionCard({
         )
       : undefined;
   const count = countForPart(summary, activePart);
+  const prebuiltHead = prebuiltHeadForFunction(activePart);
   const leader =
     slot.state === "covered_by_scout"
       ? `Scout runs ${detail.name} until you hire someone.`
@@ -394,6 +401,7 @@ function PhoneActionCard({
         {FUNCTION_DESCRIPTIONS[activePart]} {leader}
         {count > 0 ? ` ${partCountSentence(count)}` : ""}
       </p>
+      {slot.state === "empty" ? <PrebuiltHeadPreview functionId={activePart} /> : null}
       <div className="company-map-card-actions">
         <Link
           className="company-map-primary-action"
@@ -402,10 +410,15 @@ function PhoneActionCard({
         >
           Open {detail.name}
         </Link>
-        {slot.state === "empty" && activePart !== "operations" ? (
-          <Link className="company-map-secondary-action" to="/hire/roles">
-            Hire a {detail.suggestedHire}
-          </Link>
+        {slot.state === "empty" && prebuiltHead && canHirePrebuiltHeads ? (
+          <button
+            className="company-map-secondary-action"
+            data-testid={`cofounder-hire-head-phone-${activePart}`}
+            onClick={() => onHireHead(activePart)}
+            type="button"
+          >
+            Hire {prebuiltHead.name}
+          </button>
         ) : null}
         <button
           className="company-map-secondary-action"
@@ -431,6 +444,8 @@ export function CompanyMapPhone({
   slots,
   summary,
   whatsAppChannelId,
+  canHirePrebuiltHeads = false,
+  onHireHead = () => undefined,
 }: CompanyMapBoardProps) {
   const [activePart, setActivePart] = useState<FunctionId | null>(null);
   return (
@@ -489,7 +504,6 @@ export function CompanyMapPhone({
               >
                 <span className="company-map-phone-part-disc">
                   <LeadAvatar
-                    functionId={functionId}
                     members={members}
                     profiles={profiles}
                     size="part"
@@ -537,7 +551,6 @@ export function CompanyMapPhone({
                         <span className="company-map-phone-job">
                           <span className="company-map-phone-job-disc">
                             <LeadAvatar
-                              functionId={functionId}
                               jobName={jobName}
                               members={members}
                               profiles={profiles}
@@ -586,8 +599,10 @@ export function CompanyMapPhone({
       </div>
       <PhoneActionCard
         activePart={activePart}
+        canHirePrebuiltHeads={canHirePrebuiltHeads}
         members={members}
         onClose={() => setActivePart(null)}
+        onHireHead={onHireHead}
         ownerName={ownerName}
         profiles={profiles}
         slots={slots}

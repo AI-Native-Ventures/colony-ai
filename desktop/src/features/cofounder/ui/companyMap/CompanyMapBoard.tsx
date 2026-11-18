@@ -9,13 +9,9 @@ import type {
   FunctionId,
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
-import {
-  companyMapJobIsScoutLed,
-  companyMapScoutCoverageSentence,
-} from "@/features/cofounder/companyMapAssignments";
+import { companyMapJobDoer } from "@/features/cofounder/companyMapAssignments";
 import {
   FUNCTION_DETAILS,
-  FUNCTION_DESCRIPTIONS,
   FUNCTION_ORDER,
 } from "@/features/cofounder/functions";
 import {
@@ -44,6 +40,7 @@ import {
 } from "@/features/cofounder/companyMapOperationsLayout";
 import type { CompanyMapOperationsWorkflow } from "@/features/cofounder/companyMapOperations";
 import { CompanyMapPhone } from "./CompanyMapPhone";
+import { CompanyMapPartCard } from "./CompanyMapPartCard";
 import { CompanyMapHoverBridge } from "./CompanyMapHoverBridge";
 import {
   AddWorkflowNode,
@@ -85,34 +82,10 @@ function partInLayout(
   );
 }
 
-function greetingPeriod(date = new Date()): string {
-  const hour = date.getHours();
-  if (hour >= 5 && hour < 12) return "Morning";
-  if (hour >= 12 && hour < 17) return "Afternoon";
-  return "Evening";
-}
-
 function countLabel(count: number): string {
   return count === 1
     ? "1 thing needs your yes"
     : `${count} things need your yes`;
-}
-
-function partCountSentence(count: number): string {
-  return count === 1
-    ? "1 thing here needs you."
-    : `${count} things here need you.`;
-}
-
-function jobLead(
-  functionId: FunctionId,
-  jobName: string,
-  slot: FunctionSlotView,
-): { kind: "scout" } | { kind: "member"; member: TeamMember } | null {
-  if (companyMapJobIsScoutLed(functionId, jobName, slot.state)) {
-    return { kind: "scout" };
-  }
-  return null;
 }
 
 function DoerForPart({
@@ -158,63 +131,33 @@ function DoerForPart({
 }
 
 function JobDoer({
-  functionId,
-  jobName,
   slot,
   members,
   profiles,
 }: {
-  functionId: FunctionId;
-  jobName: string;
   slot: FunctionSlotView;
   members: TeamMember[];
   profiles: ProfileLookup;
 }) {
-  const assigned = jobLead(functionId, jobName, slot);
-  if (assigned?.kind === "scout") {
+  const assigned = companyMapJobDoer(slot);
+  if (assigned.kind === "scout") {
     return <MapDoer className="company-map-job-avatar" scout />;
   }
-  if (slot.state === "filled" && slot.leadPubkey) {
-    const member = members.find(
-      (candidate) =>
-        candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
+  const member = members.find(
+    (candidate) => candidate.pubkey.toLowerCase() === assigned.pubkey.toLowerCase(),
+  );
+  if (member) {
+    const name = fullName(member, profiles);
+    return (
+      <MapDoer
+        avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
+        className="company-map-job-avatar"
+        member={member}
+        name={name}
+      />
     );
-    if (member) {
-      const name = fullName(member, profiles);
-      return (
-        <MapDoer
-          avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
-          className="company-map-job-avatar"
-          member={member}
-          name={name}
-        />
-      );
-    }
   }
-  return (
-    <span aria-hidden="true" className="company-map-job-plus">
-      <Plus size={20} strokeWidth={2.2} />
-    </span>
-  );
-}
-
-function FunctionLink({
-  functionId,
-  children,
-}: {
-  functionId: FunctionId;
-  children: ReactNode;
-}) {
-  return (
-    <Link
-      className="company-map-primary-action"
-      data-testid={`cofounder-map-open-${functionId}`}
-      params={{ function: functionId }}
-      to="/company/function/$function"
-    >
-      {children}
-    </Link>
-  );
+  return <MapDoer className="company-map-job-avatar" scout />;
 }
 
 function JobLink({
@@ -541,127 +484,6 @@ function CompanyHub({
   );
 }
 
-function ActionCard({
-  activePart,
-  ownerName,
-  slots,
-  summary,
-  profiles,
-  members,
-  onClose,
-  onGroupFocus,
-  onGroupBlur,
-  onGroupMouseEnter,
-  onGroupMouseLeave,
-}: {
-  activePart: FunctionId | null;
-  ownerName: string;
-  slots: FunctionSlotView[];
-  summary: MapSummary | undefined;
-  profiles: ProfileLookup;
-  members: TeamMember[];
-  onClose: () => void;
-  onGroupFocus: (functionId: FunctionId) => void;
-  onGroupBlur: (event: FocusEvent<HTMLElement>, functionId: FunctionId) => void;
-  onGroupMouseEnter: (functionId: FunctionId) => void;
-  onGroupMouseLeave: () => void;
-}) {
-  const name = ownerName.trim().split(/\s+/)[0] || "there";
-  if (!activePart) {
-    return (
-      <section
-        aria-label="Your day"
-        className="company-map-card"
-        data-testid="cofounder-map-home-card"
-      >
-        <div className="company-map-card-intro">
-          <MapDoer className="company-map-card-avatar" scout />
-          <p>
-            {summary ? (
-              summary.total > 0 ? (
-                <>
-                  {greetingPeriod()}, {name}. {countLabel(summary.total)}.
-                </>
-              ) : (
-                <>
-                  {greetingPeriod()}, {name}. Nothing needs you right now.
-                </>
-              )
-            ) : (
-              <span
-                aria-live="polite"
-                data-testid="cofounder-map-summary-loading"
-              >
-                Loading what needs your yes.
-              </span>
-            )}
-          </p>
-        </div>
-        {summary && summary.total > 0 ? (
-          <Link className="company-map-primary-action" to="/today/needs-you">
-            See them
-          </Link>
-        ) : null}
-      </section>
-    );
-  }
-
-  const detail = FUNCTION_DETAILS[activePart];
-  const slot = slotForFunction(activePart, slots);
-  const count = countForPart(summary, activePart);
-  const lead =
-    slot.state === "filled" && slot.leadPubkey
-      ? members.find(
-          (member) =>
-            member.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
-        )
-      : undefined;
-  const leadName = lead ? fullName(lead, profiles) : null;
-  const summaryLine =
-    slot.state === "covered_by_scout"
-      ? `Scout runs ${detail.name} until you hire someone.`
-      : leadName
-        ? `${leadName} runs ${detail.name}.`
-        : activePart === "operations"
-          ? "Nobody runs Operations yet."
-          : `Nobody runs ${detail.name} yet. ${companyMapScoutCoverageSentence(activePart, slot.state)}`;
-
-  return (
-    <section
-      aria-label={`${detail.name} part details`}
-      className="company-map-card company-map-card--part"
-      data-map-group={activePart}
-      data-testid="cofounder-map-part-card"
-      onBlur={(event) => onGroupBlur(event, activePart)}
-      onFocus={() => onGroupFocus(activePart)}
-      onMouseEnter={() => onGroupMouseEnter(activePart)}
-      onMouseLeave={onGroupMouseLeave}
-    >
-      <p className="company-map-card-eyebrow">Part of your company</p>
-      <h2>{detail.name}</h2>
-      <p className="company-map-card-copy">
-        {FUNCTION_DESCRIPTIONS[activePart]} {summaryLine}
-        {count > 0 ? ` ${partCountSentence(count)}` : ""}
-      </p>
-      <div className="company-map-card-actions">
-        <FunctionLink functionId={activePart}>Open {detail.name}</FunctionLink>
-        {slot.state === "empty" && activePart !== "operations" ? (
-          <Link className="company-map-secondary-action" to="/hire/roles">
-            Hire a {detail.suggestedHire}
-          </Link>
-        ) : null}
-        <button
-          className="company-map-secondary-action"
-          onClick={onClose}
-          type="button"
-        >
-          Close
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function JobNode({
   functionId,
   name,
@@ -714,8 +536,6 @@ function JobNode({
           data-testid={`cofounder-map-job-disc-${functionId}-${name.toLowerCase().replaceAll(" ", "-")}`}
         >
           <JobDoer
-            functionId={functionId}
-            jobName={name}
             members={members}
             profiles={profiles}
             slot={slot}
@@ -826,6 +646,8 @@ function CompanyMapDesktop({
   ownerPubkey,
   ownerAvatarUrl,
   scoutPubkey,
+  canHirePrebuiltHeads = false,
+  onHireHead = () => undefined,
   members,
   profiles,
   slots,
@@ -1101,14 +923,16 @@ function CompanyMapDesktop({
               relayUrl={relayUrl}
               scoutPubkey={scoutPubkey}
             />
-            <ActionCard
+            <CompanyMapPartCard
               activePart={activePart}
+              canHirePrebuiltHeads={canHirePrebuiltHeads}
               members={members}
               onClose={clearOpenPart}
               onGroupBlur={blurPart}
               onGroupFocus={focusPart}
               onGroupMouseEnter={enterPart}
               onGroupMouseLeave={closeHoverSoon}
+              onHireHead={onHireHead}
               ownerName={ownerName}
               profiles={profiles}
               slots={slots}

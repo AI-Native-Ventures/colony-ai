@@ -35,7 +35,12 @@ import {
   parseCompanyHireAction,
 } from "../companyHireModels";
 import type { CompanyHireHeadRecord } from "../companyHireModels";
-import { readHireDraft, writeHireDraft } from "../hireDraft";
+import {
+  defaultHireLocalConfiguration,
+  readHireDraft,
+  writeHireDraft,
+} from "../hireDraft";
+import type { HireLocalConfiguration } from "../hireDraft";
 import {
   HIRE_CONFIGURE_TIMEOUT_MS,
   hireConfigureStatus,
@@ -83,19 +88,22 @@ type ModelChoice = {
   label: string;
 };
 
-function formFromProposal(proposal: HireProposal): HireFormValues {
+function formFromProposal(
+  proposal: HireProposal,
+  localConfiguration = defaultHireLocalConfiguration(proposal),
+): HireFormValues {
   return {
     displayName: proposal.displayName,
     title: proposal.title,
     managerPubkey: proposal.managerPubkey ?? "",
     introductionChannelId: proposal.introductionChannelId,
-    channelIds: proposal.channelIds ?? [proposal.introductionChannelId],
-    respondTo: proposal.respondTo === "anyone" ? "anyone" : "owner-only",
+    channelIds: localConfiguration.channelIds,
+    respondTo: localConfiguration.respondTo,
     weeklyAllowance: proposal.weeklyAllowance ?? "",
     runtimeId: proposal.runtimeId,
     providerId: proposal.providerId ?? "",
     modelId: proposal.modelId ?? "",
-    effortLevel: proposal.effortLevel ?? "",
+    effortLevel: localConfiguration.effortLevel ?? "",
   };
 }
 
@@ -118,17 +126,22 @@ function buildHireProposal(
     title: values.title.trim(),
     ...(values.managerPubkey ? { managerPubkey: values.managerPubkey } : {}),
     introductionChannelId: values.introductionChannelId,
-    ...(values.channelIds.length > 0
-      ? { channelIds: [...values.channelIds] }
-      : {}),
-    respondTo: values.respondTo,
     runtimeId: values.runtimeId,
     ...(values.providerId ? { providerId: values.providerId } : {}),
     ...(values.modelId ? { modelId: values.modelId } : {}),
-    ...(values.effortLevel ? { effortLevel: values.effortLevel } : {}),
     ...(values.weeklyAllowance.trim()
       ? { weeklyAllowance: values.weeklyAllowance.trim() }
       : {}),
+  };
+}
+
+function localConfigurationFromForm(
+  values: HireFormValues,
+): HireLocalConfiguration {
+  return {
+    channelIds: [...values.channelIds],
+    respondTo: values.respondTo,
+    ...(values.effortLevel ? { effortLevel: values.effortLevel } : {}),
   };
 }
 
@@ -313,7 +326,9 @@ export function HireConfigureScreen({
   >({});
   const [form, setForm] = React.useState<HireFormValues | null>(() => {
     const stored = readHireDraft(relayUrl, hireId);
-    return stored ? formFromProposal(stored.proposal) : null;
+    return stored
+      ? formFromProposal(stored.proposal, stored.localConfiguration)
+      : null;
   });
   const [avatarUrl, setAvatarUrl] = React.useState(
     () => readHireDraft(relayUrl, hireId)?.avatarUrl ?? "",
@@ -339,7 +354,7 @@ export function HireConfigureScreen({
     if (initialized.current) return;
     const stored = readHireDraft(relayUrl, hireId);
     if (stored) {
-      setForm(formFromProposal(stored.proposal));
+      setForm(formFromProposal(stored.proposal, stored.localConfiguration));
       if (stored.avatarUrl) setAvatarUrl(stored.avatarUrl);
       initialized.current = true;
       return;
@@ -594,6 +609,10 @@ export function HireConfigureScreen({
     () => (form && rolePack ? buildHireProposal(hireId, rolePack, form) : null),
     [form, hireId, rolePack],
   );
+  const candidateLocalConfiguration = React.useMemo(
+    () => (form ? localConfigurationFromForm(form) : null),
+    [form],
+  );
   const candidateCreateAction = React.useMemo(
     () =>
       candidateProposal
@@ -608,9 +627,10 @@ export function HireConfigureScreen({
   );
   const previousDraft = readHireDraft(relayUrl, hireId);
   React.useEffect(() => {
-    if (!candidateCreateAction?.proposal) return;
+    if (!candidateCreateAction?.proposal || !candidateLocalConfiguration) return;
     writeHireDraft(relayUrl, {
       proposal: candidateCreateAction.proposal,
+      localConfiguration: candidateLocalConfiguration,
       ...(avatarUrl ? { avatarUrl } : {}),
       ...(previousDraft?.employeePubkey
         ? { employeePubkey: previousDraft.employeePubkey }
@@ -625,6 +645,7 @@ export function HireConfigureScreen({
   }, [
     avatarUrl,
     candidateCreateAction,
+    candidateLocalConfiguration,
     headQuery.data?.event.id,
     previousDraft?.baseHeadEventId,
     previousDraft?.employeePubkey,
@@ -668,6 +689,7 @@ export function HireConfigureScreen({
       return;
     const saved = writeHireDraft(relayUrl, {
       proposal,
+      localConfiguration: localConfigurationFromForm(form),
       ...(avatarUrl ? { avatarUrl } : {}),
       ...(storedDraft?.employeePubkey
         ? { employeePubkey: storedDraft.employeePubkey }

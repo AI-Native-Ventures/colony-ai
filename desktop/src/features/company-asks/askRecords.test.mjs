@@ -289,11 +289,8 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
     title: "Researcher",
     managerPubkey: "f".repeat(64),
     introductionChannelId: CHANNEL_ID,
-    channelIds: [CHANNEL_ID, "123e4567-e89b-12d3-a456-426614174013"],
-    respondTo: "anyone",
     runtimeId: "runtime-discovered",
     providerId: "provider-current",
-    effortLevel: "medium",
   };
   const makeHireContent = () =>
     headContent({
@@ -314,12 +311,6 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
     RELAY_PUBKEY,
   );
   assert.equal(decoded?.head.ask.hireProposal?.managerPubkey, "f".repeat(64));
-  assert.deepEqual(
-    decoded?.head.ask.hireProposal?.channelIds,
-    proposal.channelIds,
-  );
-  assert.equal(decoded?.head.ask.hireProposal?.respondTo, "anyone");
-  assert.equal(decoded?.head.ask.hireProposal?.effortLevel, "medium");
 
   delete proposal.providerId;
   const providerless = decodeRelayAskHead(
@@ -327,6 +318,17 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
     RELAY_PUBKEY,
   );
   assert.equal(providerless?.head.ask.hireProposal?.providerId, undefined);
+
+  proposal.effortLevel = "medium";
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: makeHireContent() }),
+        RELAY_PUBKEY,
+      ),
+    /malformed hire proposal/i,
+  );
+  delete proposal.effortLevel;
 
   proposal.managerPubkey = "not-a-pubkey";
   assert.throws(

@@ -116,6 +116,41 @@ test.describe("co-founder mode desktop", () => {
     await expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
+  test("an owner hires the prebuilt Finance head from the map", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture({ includeScout: true }));
+    await page.goto("/#/company/map");
+    await selectMapPart(page, "finance", "Finance");
+
+    await page.getByTestId("cofounder-hire-head-finance").click();
+    const dialog = page.getByTestId("prebuilt-head-hire-dialog");
+    await expect(dialog).toContainText("Hire Head of Finance");
+    await expect(page.getByTestId("prebuilt-hire-finish")).toBeDisabled();
+    await expect(page.getByTestId("prebuilt-hire-finish")).toHaveText(
+      "Pick all three",
+    );
+
+    await page.getByTestId("prebuilt-hire-harness").selectOption("goose");
+    const model = page.getByTestId("prebuilt-hire-model");
+    await expect(model.locator("option").nth(1)).toBeAttached();
+    await model.selectOption({ index: 1 });
+    await expect(page.getByTestId("prebuilt-hire-channel")).not.toHaveValue(
+      "",
+    );
+    await expect(page.getByTestId("prebuilt-hire-finish")).toBeEnabled();
+
+    await page.getByTestId("prebuilt-hire-finish").click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByTestId("cofounder-map-finance")).toHaveAttribute(
+      "data-state",
+      "filled",
+    );
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Head of Finance runs Finance.",
+    );
+  });
+
   test("the company map shows five ordered parts around the company hub", async ({
     page,
   }) => {
@@ -367,7 +402,7 @@ test.describe("co-founder mode desktop", () => {
     );
 
     await selectMapPart(page, "customer_success", "Customer Success");
-    for (const job of ["Renewals", "Upsell", "Reviews"]) {
+    for (const job of ["Upsell", "Reviews"]) {
       expectConnectorKind(
         await measuredConnector(page, `customer_success:${job}`),
         "on",
