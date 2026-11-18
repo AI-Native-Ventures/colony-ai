@@ -26,13 +26,22 @@ import {
 import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import { buildOutreachListLink } from "@/shared/lib/entityLink";
 import { useChannelsQuery } from "@/features/channels/hooks";
-import { useProfileQuery } from "@/features/profile/hooks";
+import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { BusinessLogoMark } from "./BusinessLogoMark";
 import { OutreachBatchDialog } from "./OutreachBatchDialog";
 import { errorMessage } from "./BusinessCommon";
 import { publishOutreachListAction } from "./businessRecordMutations";
 import type { LeadContext } from "./leadShared";
 import { buildOutreachListMutation } from "./outreachRecords";
+import { OutreachStatusControl } from "./OutreachStatusControl";
+import {
+  countOutreachStatusFilters,
+  filterByOutreachStatus,
+  outreachStatusOption,
+  shouldAutoMarkOutreachInProgress,
+  type OutreachStatusFilter,
+} from "./outreachStatus";
+import type { OutreachStatus } from "./businessRecordContract";
 import type { OutreachBatchLead } from "./outreachBatch";
 import { calculateOutreachFitScore } from "./outreachFitScore";
 import { canEdit } from "./leadShared";
@@ -154,6 +163,8 @@ export function OutreachListScreen({
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("");
   const [showArchived, setShowArchived] = React.useState(false);
+  const [outreachFilter, setOutreachFilter] =
+    React.useState<OutreachStatusFilter>("all");
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState("");
   const canWrite = canEdit(context.role);
@@ -168,10 +179,11 @@ export function OutreachListScreen({
     </button>
   );
   React.useEffect(() => {
-    if (
-      message !== "Default template updated." &&
-      message !== "Default template cleared."
-    ) {
+    const shouldClear =
+      message === "Default template updated." ||
+      message === "Default template cleared." ||
+      /^Outreach marked (Not started|In progress|Done)\.$/u.test(message);
+    if (!shouldClear) {
       return;
     }
     const timeout = window.setTimeout(() => setMessage(""), 2400);
@@ -184,13 +196,34 @@ export function OutreachListScreen({
     ]),
   );
   const allLists = context.records.outreachLists;
+  const outreachStatusPubkeys = React.useMemo(
+    () => [
+      ...new Set(
+        allLists.flatMap(({ record }) =>
+          record.outreach ? [record.outreach.setBy] : [],
+        ),
+      ),
+    ],
+    [allLists],
+  );
+  const outreachProfilesQuery = useUsersBatchQuery(outreachStatusPubkeys, {
+    enabled: outreachStatusPubkeys.length > 0,
+  });
   const current = listId
     ? (allLists.find(({ record }) => record.listId === listId) ?? null)
     : null;
-  const visibleLists = allLists
-    .filter(({ record }) =>
-      showArchived ? record.status === "archived" : record.status === "active",
-    )
+  const archiveScopedLists = allLists.filter(({ record }) =>
+    showArchived ? record.status === "archived" : record.status === "active",
+  );
+  const outreachCounts = countOutreachStatusFilters(
+    archiveScopedLists,
+    ({ record }) => record.outreach,
+  );
+  const visibleLists = filterByOutreachStatus(
+    archiveScopedLists,
+    outreachFilter,
+    ({ record }) => record.outreach,
+  )
     .filter(({ record }) =>
       `${record.name} ${record.note ?? ""}`
         .toLocaleLowerCase()
@@ -348,6 +381,62 @@ export function OutreachListScreen({
     }
   }
 
+  async function updateOutreachStatus(input: {
+    listId: string;
+    eventId: string;
+    status: OutreachStatus;
+  }) {
+    if (busy || !canWrite) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await publishOutreachListAction({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        action: buildOutreachListMutation({
+          listId: input.listId,
+          expectedHeadEventId: input.eventId,
+          op: "set_outreach_status",
+          outreachStatus: input.status,
+        }),
+      });
+      await context.refresh();
+      setMessage(
+        `Outreach marked ${outreachStatusOption(input.status).label}.`,
+      );
+    } catch (updateError) {
+      setMessage(errorMessage(updateError));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function autoMarkOutreachInProgressAfterBatch() {
+    if (
+      !current ||
+      !shouldAutoMarkOutreachInProgress(current.record.outreach)
+    ) {
+      return;
+    }
+    try {
+      await publishOutreachListAction({
+        channelId: context.channelId,
+        communityId: context.communityId,
+        action: buildOutreachListMutation({
+          listId: current.record.listId,
+          expectedHeadEventId: current.eventId,
+          op: "set_outreach_status",
+          outreachStatus: "in_progress",
+        }),
+      });
+      await context.refresh();
+    } catch (updateError) {
+      throw new Error(
+        `The batch is ready, but outreach status could not change. ${errorMessage(updateError)}`,
+      );
+    }
+  }
+
   async function saveName(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!current) return;
@@ -449,6 +538,41 @@ export function OutreachListScreen({
           ) : null}
           {common}
           <div className="c3l-list-toolbar">
+            <div className="c3l-list-filter-row">
+              <fieldset className="c3l-list-filter-options">
+                <legend className="sr-only">Filter lists by outreach</legend>
+                {(
+                  [
+                    ["all", "All"],
+                    ["not_started", "Not started"],
+                    ["in_progress", "In progress"],
+                    ["done", "Done"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    aria-pressed={outreachFilter === value}
+                    className={
+                      outreachFilter === value ? "is-selected" : undefined
+                    }
+                    key={value}
+                    onClick={() => setOutreachFilter(value)}
+                    type="button"
+                  >
+                    {label} <span>{outreachCounts[value]}</span>
+                  </button>
+                ))}
+              </fieldset>
+              <label className="c3l-archived-toggle">
+                <input
+                  checked={showArchived}
+                  onChange={(event) =>
+                    setShowArchived(event.currentTarget.checked)
+                  }
+                  type="checkbox"
+                />
+                Show archived
+              </label>
+            </div>
             <label className="c3l-search">
               <input
                 aria-label="Search outreach lists"
@@ -458,17 +582,12 @@ export function OutreachListScreen({
                 value={query}
               />
             </label>
-            <label className="c3l-archived-toggle">
-              <input
-                checked={showArchived}
-                onChange={(event) =>
-                  setShowArchived(event.currentTarget.checked)
-                }
-                type="checkbox"
-              />
-              Show archived
-            </label>
           </div>
+          {message ? (
+            <p className="c3l-outreach-note" role="status">
+              {message}
+            </p>
+          ) : null}
           {visibleLists.length > 0 ? (
             <div className="c3l-card c3l-list-table-wrap">
               <table aria-label="Outreach lists" className="c3l-list-table">
@@ -476,13 +595,14 @@ export function OutreachListScreen({
                   <tr>
                     <th>Name</th>
                     <th>Leads</th>
+                    <th>Outreach</th>
                     <th>Source</th>
                     <th>Default template</th>
                     <th>Updated</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleLists.map(({ record }) => (
+                  {visibleLists.map(({ eventId, record }) => (
                     <tr key={record.listId}>
                       <td>
                         <a
@@ -494,6 +614,25 @@ export function OutreachListScreen({
                         {record.note ? <small>{record.note}</small> : null}
                       </td>
                       <td>{record.members.length}</td>
+                      <td className="c3l-list-outreach-cell">
+                        <OutreachStatusControl
+                          currentPubkey={context.currentPubkey}
+                          disabled={busy}
+                          onStatusChange={
+                            canWrite && record.status === "active"
+                              ? async (status) =>
+                                  updateOutreachStatus({
+                                    listId: record.listId,
+                                    eventId,
+                                    status,
+                                  })
+                              : undefined
+                          }
+                          outreach={record.outreach}
+                          profiles={outreachProfilesQuery.data?.profiles}
+                          testId={`outreach-status-${record.listId}`}
+                        />
+                      </td>
                       <td>{sourceLabel(record.source, campaignNames)}</td>
                       <td>{record.defaultTemplate?.name ?? "Not set"}</td>
                       <td>
@@ -521,6 +660,10 @@ export function OutreachListScreen({
               </button>
             </section>
           )}
+          <p className="c3l-list-outreach-explainer">
+            Outreach turns to In progress by itself when the first WhatsApp
+            batch goes out from a list. You, Scout or any agent can change it.
+          </p>
         </div>
       </main>
     );
@@ -734,6 +877,27 @@ export function OutreachListScreen({
               Outreach list · {current.record.members.length} leads
             </span>
             <div className="c3l-list-provenance">
+              <div className="c3l-list-outreach-field">
+                <span>Outreach</span>
+                <OutreachStatusControl
+                  currentPubkey={context.currentPubkey}
+                  disabled={busy}
+                  onStatusChange={
+                    canWrite && current.record.status === "active"
+                      ? async (status) =>
+                          updateOutreachStatus({
+                            listId: current.record.listId,
+                            eventId: current.eventId,
+                            status,
+                          })
+                      : undefined
+                  }
+                  outreach={current.record.outreach}
+                  profiles={outreachProfilesQuery.data?.profiles}
+                  size="detail"
+                  testId="outreach-status-detail"
+                />
+              </div>
               <span className="c3l-list-source">
                 <Compass aria-hidden="true" size={13} />
                 {sourceLabel(current.record.source, campaignNames)}
@@ -981,6 +1145,7 @@ export function OutreachListScreen({
         leads={memberLeads}
         listName={current.record.name}
         minimumFit={minimumFit}
+        onBatchPrepared={autoMarkOutreachInProgressAfterBatch}
         onMinimumFitChange={setMinimumFit}
         onOpenChange={setBatchOpen}
         open={batchOpen && current.record.status === "active"}

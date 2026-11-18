@@ -6,6 +6,8 @@ import {
   type DiscoveryCampaignHead,
   type OutreachListHead,
   type OutreachListSource,
+  type OutreachStatus,
+  type OutreachStatusRecord,
   type OutreachListTemplate,
 } from "./businessRecordContract";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
@@ -69,6 +71,13 @@ export type OutreachListMutation =
       listId: string;
       op: "archive" | "unarchive";
       expectedHeadEventId?: string;
+    }
+  | {
+      schemaVersion: 1;
+      listId: string;
+      op: "set_outreach_status";
+      expectedHeadEventId?: string;
+      outreachStatus: OutreachStatus;
     };
 
 export type DiscoveryCampaignAction =
@@ -197,6 +206,19 @@ function validListMember(value: unknown): boolean {
   );
 }
 
+function validOutreachStatus(value: unknown): value is OutreachStatusRecord {
+  return (
+    objectValue(value) &&
+    (value.status === "not_started" ||
+      value.status === "in_progress" ||
+      value.status === "done") &&
+    stringValue(value.setBy) &&
+    HEX64_PATTERN.test(value.setBy) &&
+    typeof value.setByAgent === "boolean" &&
+    integerValue(value.setAt)
+  );
+}
+
 function readTag(event: RelayEvent, name: string): string | null {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? null;
 }
@@ -268,10 +290,16 @@ export function parseOutreachListHead(
   ) {
     return null;
   }
+  const { outreach: rawOutreach, ...head } = content;
   return {
     eventId: event.id,
     dTag,
-    record: content as unknown as OutreachListHead,
+    // A relay upgrade must never hide an otherwise valid list merely because
+    // its optional status extension is malformed.
+    record: {
+      ...head,
+      ...(validOutreachStatus(rawOutreach) ? { outreach: rawOutreach } : {}),
+    } as OutreachListHead,
   };
 }
 
@@ -423,11 +451,13 @@ export function buildOutreachListMutation(input: {
     | "remove_members"
     | "set_default_template"
     | "archive"
-    | "unarchive";
+    | "unarchive"
+    | "set_outreach_status";
   name?: string;
   note?: string;
   leadIds?: string[];
   defaultTemplate?: OutreachListTemplate;
+  outreachStatus?: OutreachStatus;
 }): OutreachListMutation {
   if (!UUID_PATTERN.test(input.listId)) {
     throw new Error("A list id must be a UUID.");
@@ -488,6 +518,20 @@ export function buildOutreachListMutation(input: {
       ...(input.defaultTemplate
         ? { defaultTemplate: input.defaultTemplate }
         : {}),
+    };
+  }
+  if (input.op === "set_outreach_status") {
+    if (
+      input.outreachStatus !== "not_started" &&
+      input.outreachStatus !== "in_progress" &&
+      input.outreachStatus !== "done"
+    ) {
+      throw new Error("Choose a valid outreach status.");
+    }
+    return {
+      ...base,
+      op: "set_outreach_status",
+      outreachStatus: input.outreachStatus,
     };
   }
   return { ...base, op: input.op };

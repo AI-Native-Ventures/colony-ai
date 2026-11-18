@@ -484,6 +484,7 @@ export default defineConfig({
         "**/parity-ancestor-island.spec.ts",
         "**/colony3-sales-setup.spec.ts",
         "**/colony3-scout-dupes.spec.ts",
+        "**/colony3-outreach-lists.spec.ts",
         "**/cofounder-map.spec.ts",
         "**/fullmap-slice1.spec.ts",
         "**/fullmap-slice2.spec.ts",
