@@ -5,7 +5,6 @@ import { useRouteBack } from "@/app/navigation/RouteOriginContext";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
-import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
@@ -25,6 +24,7 @@ import { WorkerList } from "./WorkerList";
 import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
 import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
 import { prebuiltHeadForFunction } from "../prebuiltAgents";
+import { prebuiltAgentAvatarDataUrl } from "../prebuiltAgentAvatar";
 import { companyMapScoutChannelId } from "../companyMapScout";
 
 type ProfileLookup = Record<
@@ -47,21 +47,23 @@ function MemberAvatar({
   member,
   name,
   profile,
+  fallbackInstance,
   className,
 }: {
   member: TeamMember;
   name: string;
   profile: string | null;
+  fallbackInstance?: string | null;
   className: string;
 }) {
   return member.kind === "employee" ? (
     <EmployeeAvatar
       className={className}
-      instance={member.managedAgent?.avatarUrl}
+      instance={member.managedAgent?.avatarUrl ?? fallbackInstance}
       name={name}
       pubkey={member.pubkey}
       personaId={member.managedAgent?.personaId}
-      profile={profile}
+      profile={fallbackInstance ? null : profile}
     />
   ) : (
     <ProfileAvatar
@@ -89,6 +91,7 @@ function LeadCard({
   managerName: string | null;
 }) {
   const detail = FUNCTION_DETAILS[functionId];
+  const prebuiltHead = prebuiltHeadForFunction(functionId);
   if (slot.state === "covered_by_scout") {
     return (
       <section
@@ -130,6 +133,11 @@ function LeadCard({
         <div className="mt-3 flex items-center gap-4">
           <MemberAvatar
             className="size-14 rounded-full"
+            fallbackInstance={
+              prebuiltHead && leadName === prebuiltHead.name
+                ? prebuiltAgentAvatarDataUrl(prebuiltHead)
+                : null
+            }
             member={lead}
             name={leadName}
             profile={leadAvatarUrl}
@@ -165,8 +173,8 @@ function LeadCard({
       <div className="mt-3 flex items-center gap-4">
         <EmployeeAvatar
           className="size-14 rounded-full border-2 border-dashed border-border p-0.5"
-          instance={agentAntAvatarDataUrl(
-            prebuiltHeadForFunction(functionId)?.name ?? "Scout",
+          instance={prebuiltAgentAvatarDataUrl(
+            prebuiltHeadForFunction(functionId) ?? { name: "Scout" },
           )}
           name={prebuiltHeadForFunction(functionId)?.name ?? "Scout"}
           role={`Head of ${detail.name}`}
@@ -248,7 +256,7 @@ function EmptySlotSuggestion({
       <div className="mt-4 flex items-center gap-3">
         <EmployeeAvatar
           className="size-11 rounded-full border-2 border-dashed border-border p-0.5"
-          instance={agentAntAvatarDataUrl(head.name)}
+          instance={prebuiltAgentAvatarDataUrl(head)}
           name={head.name}
           role={head.name}
         />

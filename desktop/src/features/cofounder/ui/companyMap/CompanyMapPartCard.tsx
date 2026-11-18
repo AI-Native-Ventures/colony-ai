@@ -1,7 +1,6 @@
 import type { FocusEvent } from "react";
 import { Link } from "@tanstack/react-router";
 
-import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import type {
@@ -13,6 +12,7 @@ import {
   FUNCTION_DESCRIPTIONS,
 } from "@/features/cofounder/functions";
 import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
+import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
 import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
 
 import {
@@ -46,7 +46,7 @@ export function PrebuiltHeadPreview({
     <div className="mt-2.5 flex items-center gap-3 rounded-[14px] bg-muted/50 p-3">
       <EmployeeAvatar
         className="size-10 rounded-full border-2 border-dashed border-border p-0.5"
-        instance={agentAntAvatarDataUrl(head.name)}
+        instance={prebuiltAgentAvatarDataUrl(head)}
         name={head.name}
         role={`Head of ${FUNCTION_DETAILS[functionId].name}`}
       />
@@ -82,10 +82,15 @@ export function PrebuiltHiredHeadPreview({
     <div className="mt-2.5 flex items-center gap-3 rounded-[14px] bg-muted/50 p-3">
       <EmployeeAvatar
         className="size-10 rounded-full"
-        instance={lead?.managedAgent?.avatarUrl}
+        instance={
+          isPrebuilt
+            ? (lead?.managedAgent?.avatarUrl ??
+              prebuiltAgentAvatarDataUrl(head))
+            : lead?.managedAgent?.avatarUrl
+        }
         name={name}
         personaId={lead?.managedAgent?.personaId}
-        profile={lead ? undefined : null}
+        profile={isPrebuilt ? null : lead ? undefined : null}
         pubkey={lead?.pubkey}
         role={head.name}
       />
@@ -122,10 +127,12 @@ export function PrebuiltJustHiredContent({
     <div className="flex items-start gap-3">
       <EmployeeAvatar
         className="size-10 rounded-full"
-        instance={lead?.managedAgent?.avatarUrl}
+        instance={
+          lead?.managedAgent?.avatarUrl ?? prebuiltAgentAvatarDataUrl(head)
+        }
         name={name}
         personaId={lead?.managedAgent?.personaId}
-        profile={lead ? undefined : null}
+        profile={null}
         pubkey={lead?.pubkey}
         role={head.name}
       />
@@ -136,7 +143,7 @@ export function PrebuiltJustHiredContent({
             Just hired
           </span>
         </div>
-        <p className="mt-1 text-sm leading-5">{recentHire.firstMove}</p>
+        <p className="mt-1 text-sm leading-5">{recentHire.firstMessage}</p>
       </div>
     </div>
   );
@@ -238,6 +245,9 @@ export function CompanyMapPartCard({
       head &&
       (lead?.managedAgent?.name === head.name || recentHire !== null),
   );
+  const canHireHead = Boolean(
+    slot.state !== "filled" && head && canHirePrebuiltHeads,
+  );
   const summaryLine =
     slot.state === "filled" && leadName
       ? isPrebuiltLead
@@ -312,16 +322,9 @@ export function CompanyMapPartCard({
         />
       ) : null}
       <div className="company-map-card-actions">
-        <Link
-          className="company-map-primary-action"
-          params={{ function: activePart }}
-          to="/company/function/$function"
-        >
-          Open {detail.name}
-        </Link>
-        {slot.state !== "filled" && head && canHirePrebuiltHeads ? (
+        {canHireHead && head ? (
           <button
-            className="company-map-secondary-action"
+            className="company-map-primary-action"
             data-testid={`cofounder-hire-head-${activePart}`}
             onClick={() => onHireHead(activePart)}
             type="button"
@@ -329,6 +332,17 @@ export function CompanyMapPartCard({
             Hire {head.name}
           </button>
         ) : null}
+        <Link
+          className={
+            canHireHead
+              ? "company-map-secondary-action"
+              : "company-map-primary-action"
+          }
+          params={{ function: activePart }}
+          to="/company/function/$function"
+        >
+          Open {detail.name}
+        </Link>
         <button
           className="company-map-secondary-action"
           onClick={onClose}

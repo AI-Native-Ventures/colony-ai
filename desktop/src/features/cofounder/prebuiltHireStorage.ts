@@ -15,12 +15,12 @@ export type PrebuiltHireProgress = {
   choice: PrebuiltHireChoice;
   employeePubkey?: string;
   directChannelId?: string;
-  firstMoveEventId?: string;
+  firstMessageEventId?: string;
 };
 
 /**
  * The short-lived map state that lets the owner reopen the direct chat after
- * a successful first move. It is deliberately scoped to one community and
+ * a successful first message. It is deliberately scoped to one community and
  * one part, just like an unfinished hire recovery record.
  */
 export type PrebuiltHireCompletion = {
@@ -29,8 +29,8 @@ export type PrebuiltHireCompletion = {
   agentId: string;
   employeePubkey: string;
   directChannelId: string;
-  firstMoveEventId: string;
-  firstMove: string;
+  firstMessageEventId: string;
+  firstMessage: string;
 };
 
 const CHOICE_KEY_PREFIX = "company-map-prebuilt-choice:v1:";
@@ -156,6 +156,7 @@ export function readPrebuiltHireProgress(
         key !== "choice" &&
         key !== "employeePubkey" &&
         key !== "directChannelId" &&
+        key !== "firstMessageEventId" &&
         key !== "firstMoveEventId",
     ) ||
     !nonEmptyString(record.hireId) ||
@@ -168,8 +169,12 @@ export function readPrebuiltHireProgress(
       !nonEmptyString(record.employeePubkey)) ||
     (record.directChannelId !== undefined &&
       !nonEmptyString(record.directChannelId)) ||
+    (record.firstMessageEventId !== undefined &&
+      !nonEmptyString(record.firstMessageEventId)) ||
     (record.firstMoveEventId !== undefined &&
-      !nonEmptyString(record.firstMoveEventId))
+      !nonEmptyString(record.firstMoveEventId)) ||
+    (record.firstMessageEventId !== undefined &&
+      record.firstMoveEventId !== undefined)
   ) {
     return null;
   }
@@ -185,9 +190,11 @@ export function readPrebuiltHireProgress(
     ...(typeof record.directChannelId === "string"
       ? { directChannelId: record.directChannelId.trim() }
       : {}),
-    ...(typeof record.firstMoveEventId === "string"
-      ? { firstMoveEventId: record.firstMoveEventId.trim() }
-      : {}),
+    ...(typeof record.firstMessageEventId === "string"
+      ? { firstMessageEventId: record.firstMessageEventId.trim() }
+      : typeof record.firstMoveEventId === "string"
+        ? { firstMessageEventId: record.firstMoveEventId.trim() }
+        : {}),
   };
 }
 
@@ -210,8 +217,8 @@ function readableProgress(value: PrebuiltHireProgress): boolean {
       nonEmptyString(value.employeePubkey)) &&
     (value.directChannelId === undefined ||
       nonEmptyString(value.directChannelId)) &&
-    (value.firstMoveEventId === undefined ||
-      nonEmptyString(value.firstMoveEventId))
+    (value.firstMessageEventId === undefined ||
+      nonEmptyString(value.firstMessageEventId))
   );
 }
 
@@ -222,8 +229,8 @@ function readableCompletion(value: PrebuiltHireCompletion): boolean {
     nonEmptyString(value.agentId) &&
     nonEmptyString(value.employeePubkey) &&
     nonEmptyString(value.directChannelId) &&
-    nonEmptyString(value.firstMoveEventId) &&
-    nonEmptyString(value.firstMove)
+    nonEmptyString(value.firstMessageEventId) &&
+    nonEmptyString(value.firstMessage)
   );
 }
 
@@ -245,8 +252,8 @@ export function readPrebuiltHireCompletion(
         key !== "agentId" &&
         key !== "employeePubkey" &&
         key !== "directChannelId" &&
-        key !== "firstMoveEventId" &&
-        key !== "firstMove",
+        key !== "firstMessageEventId" &&
+        key !== "firstMessage",
     ) ||
     record.functionId !== functionId ||
     !FUNCTION_IDS.has(record.functionId as FunctionId) ||
@@ -254,8 +261,8 @@ export function readPrebuiltHireCompletion(
     !nonEmptyString(record.agentId) ||
     !nonEmptyString(record.employeePubkey) ||
     !nonEmptyString(record.directChannelId) ||
-    !nonEmptyString(record.firstMoveEventId) ||
-    !nonEmptyString(record.firstMove)
+    !nonEmptyString(record.firstMessageEventId) ||
+    !nonEmptyString(record.firstMessage)
   ) {
     return null;
   }
@@ -265,8 +272,8 @@ export function readPrebuiltHireCompletion(
     agentId: record.agentId.trim(),
     employeePubkey: record.employeePubkey.trim(),
     directChannelId: record.directChannelId.trim(),
-    firstMoveEventId: record.firstMoveEventId.trim(),
-    firstMove: record.firstMove.trim(),
+    firstMessageEventId: record.firstMessageEventId.trim(),
+    firstMessage: record.firstMessage.trim(),
   };
 }
 

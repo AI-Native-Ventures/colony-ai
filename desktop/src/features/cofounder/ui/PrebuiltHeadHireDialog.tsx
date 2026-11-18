@@ -9,12 +9,12 @@ import {
   useManagedAgentsQuery,
   usePersonasQuery,
 } from "@/features/agents/hooks";
-import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
-import {
-  simpleModelLabel,
-  simpleProviderLabel,
-} from "@/features/agents/ui/simpleAgentAi";
+import { simpleModelLabel } from "@/features/agents/ui/simpleAgentAi";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
+import {
+  AgentDropdownSelect,
+  type AgentDropdownOption,
+} from "@/features/agents/ui/agentConfigControls";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
 import {
   useChannelsQuery,
@@ -51,10 +51,7 @@ import {
   useCompanyHireActionMutation,
   useCompanyHireHeadQuery,
 } from "@/features/company-hiring/hireRelay";
-import {
-  COMPANY_HIRE_SCHEMA_VERSION,
-  parseCompanyHireAction,
-} from "@/features/company-hiring/companyHireModels";
+import { parseCompanyHireAction } from "@/features/company-hiring/companyHireModels";
 import type {
   CompanyHireAction,
   CompanyHireHeadRecord,
@@ -72,10 +69,17 @@ import {
   prebuiltHeadForFunction,
 } from "../prebuiltAgents";
 import {
+  buildPrebuiltHireApproveAction,
+  buildPrebuiltHireAttachEmployeeAction,
+  buildPrebuiltHireCompleteAction,
+  buildPrebuiltHireCreateAction,
+  buildPrebuiltHireDenyAction,
   buildPrebuiltHireProposal,
-  prebuiltFirstMoveText,
-  prebuiltHireMarker,
+  buildPrebuiltSlotHireSetAction,
+  prebuiltFirstMessageText,
+  prebuiltHireFirstMessageMarker,
 } from "../prebuiltHireModels";
+import { prebuiltAgentAvatarDataUrl } from "../prebuiltAgentAvatar";
 import {
   clearPrebuiltHireProgress,
   readPrebuiltHireChoice,
@@ -131,6 +135,13 @@ function storedChoice(draft: ChoiceDraft): PrebuiltHireChoice {
   };
 }
 
+function prebuiltChoiceFieldClassName(selected: boolean) {
+  return [
+    "h-[2.875rem] rounded-xl border-2 px-3 text-sm font-medium",
+    selected ? "border-input" : "border-primary focus-visible:ring-primary/35",
+  ].join(" ");
+}
+
 function sameProposal(
   record: CompanyHireHeadRecord | null,
   hireId: string,
@@ -182,6 +193,7 @@ export function PrebuiltHeadHireDialog({
   const hireAction = useCompanyHireActionMutation();
   const [choice, setChoice] = React.useState<ChoiceDraft>(EMPTY_CHOICE);
   const [channelId, setChannelId] = React.useState("");
+  const [hasSavedChoice, setHasSavedChoice] = React.useState(false);
   const [progress, setProgress] = React.useState<PrebuiltHireProgress | null>(
     null,
   );
@@ -269,32 +281,51 @@ export function PrebuiltHeadHireDialog({
     choice.modelId,
   );
   const requiresEffort = effortOptions.length > 0;
-  const providerLabel = simpleProviderLabel({
-    runtimeId: choice.runtimeId,
-    provider: choice.providerId,
-    envVars: inheritedEnvVars,
-  });
   const isOwner = membershipQuery.data?.role === "owner";
   const selectionReady = Boolean(
     selectedRuntime &&
       selectedModel &&
       (!requiresEffort || effortOptions.includes(choice.effortLevel)) &&
-      channelId,
+      validChannels.some((channel) => channel.id === channelId),
+  );
+  const runtimeOptions = React.useMemo<AgentDropdownOption[]>(
+    () =>
+      runtimes.map((runtime) => ({
+        label: runtime.label,
+        value: runtime.id,
+      })),
+    [runtimes],
+  );
+  const selectedModelOptions = React.useMemo<AgentDropdownOption[]>(
+    () =>
+      modelChoices
+        .filter(
+          (model) =>
+            model.runtimeId === choice.runtimeId &&
+            model.providerId === choice.providerId,
+        )
+        .map((model) => ({ label: model.label, value: model.modelId })),
+    [choice.providerId, choice.runtimeId, modelChoices],
+  );
+  const effortChoiceOptions = React.useMemo<AgentDropdownOption[]>(
+    () => effortOptions.map((effort) => ({ label: effort, value: effort })),
+    [effortOptions],
   );
 
   React.useEffect(() => {
     if (!open || !communityId || !functionId) return;
     const savedProgress = readPrebuiltHireProgress(communityId, functionId);
-    const savedChoice =
-      savedProgress?.choice ?? readPrebuiltHireChoice(communityId) ?? null;
+    const savedChoice = readPrebuiltHireChoice(communityId) ?? null;
+    const preferredChoice = savedProgress?.choice ?? savedChoice;
     setProgress(savedProgress);
+    setHasSavedChoice(savedChoice !== null);
     setChoice(
-      savedChoice
+      preferredChoice
         ? {
-            runtimeId: savedChoice.runtimeId,
-            providerId: savedChoice.providerId,
-            modelId: savedChoice.modelId,
-            effortLevel: savedChoice.effortLevel ?? "",
+            runtimeId: preferredChoice.runtimeId,
+            providerId: preferredChoice.providerId,
+            modelId: preferredChoice.modelId,
+            effortLevel: preferredChoice.effortLevel ?? "",
           }
         : EMPTY_CHOICE,
     );
@@ -305,12 +336,16 @@ export function PrebuiltHeadHireDialog({
   }, [communityId, defaultChannelId, functionId, open]);
 
   React.useEffect(() => {
-    if (!open || channelId || validChannels.length === 0) return;
-    const preferred = validChannels.find(
-      (channel) => channel.id === defaultChannelId,
+    if (!open) return;
+    const preferredIds = [progress?.introductionChannelId, defaultChannelId];
+    const selected = preferredIds.find((id) =>
+      validChannels.some((channel) => channel.id === id),
     );
-    setChannelId(preferred?.id ?? validChannels[0]?.id ?? "");
-  }, [channelId, defaultChannelId, open, validChannels]);
+    const nextChannelId = selected ?? validChannels[0]?.id ?? "";
+    setChannelId((current) =>
+      current === nextChannelId ? current : nextChannelId,
+    );
+  }, [defaultChannelId, open, progress?.introductionChannelId, validChannels]);
 
   React.useEffect(() => {
     if (!selectedRuntime || !selectedModel || !requiresEffort) return;
@@ -335,7 +370,7 @@ export function PrebuiltHeadHireDialog({
 
   const publishAndConfirm = React.useCallback(
     async (
-      input: unknown,
+      input: CompanyHireAction,
       matches: (record: CompanyHireHeadRecord | null) => boolean,
     ) => {
       const action = parseCompanyHireAction(input);
@@ -368,12 +403,12 @@ export function PrebuiltHeadHireDialog({
         throw new Error("This saved hire belongs to a different company part.");
       }
       try {
-        await publishAccessAction.mutateAsync({
-          op: "slot_hire_set",
-          hireId,
-          functionId: selectedFunctionId,
-          expectedHeadEventId: null,
-        });
+        await publishAccessAction.mutateAsync(
+          buildPrebuiltSlotHireSetAction({
+            hireId,
+            functionId: selectedFunctionId,
+          }),
+        );
       } catch (error) {
         const recovered = (await accessQuery.refetch()).data?.slotHires.find(
           (entry) => entry.hireId.toLowerCase() === hireId.toLowerCase(),
@@ -458,12 +493,7 @@ export function PrebuiltHeadHireDialog({
       let current = await fetchCurrentCompanyHireHead(hireId);
       if (!current) {
         current = await publishAndConfirm(
-          {
-            schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
-            hireId,
-            action: "create",
-            proposal,
-          },
+          buildPrebuiltHireCreateAction(proposal),
           (record) => sameProposal(record, hireId, functionId),
         );
       }
@@ -483,12 +513,10 @@ export function PrebuiltHeadHireDialog({
       ) {
         await ensureSlotIntent(hireId, functionId);
         current = await publishAndConfirm(
-          {
-            schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
+          buildPrebuiltHireApproveAction({
             hireId,
-            action: "approve",
             expectedHeadEventId: current.event.id,
-          },
+          }),
           (record) =>
             record?.head.status === "approved" ||
             record?.head.status === "hired",
@@ -531,7 +559,7 @@ export function PrebuiltHeadHireDialog({
             model: selectedChoice.modelId,
             provider: selectedChoice.providerId || undefined,
             effortLevel: selectedChoice.effortLevel,
-            avatarUrl: agentAntAvatarDataUrl(agent.name),
+            avatarUrl: prebuiltAgentAvatarDataUrl(agent),
             respondTo: "owner-only",
             spawnAfterCreate: false,
             startOnAppLaunch: false,
@@ -561,13 +589,11 @@ export function PrebuiltHeadHireDialog({
         }
         if (!current.head.employeePubkey) {
           current = await publishAndConfirm(
-            {
-              schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
+            buildPrebuiltHireAttachEmployeeAction({
               hireId,
-              action: "attach_employee",
               expectedHeadEventId: current.event.id,
               employeePubkey,
-            },
+            }),
             (record) =>
               record?.head.employeePubkey?.toLowerCase() ===
               employeePubkey?.toLowerCase(),
@@ -586,14 +612,14 @@ export function PrebuiltHeadHireDialog({
         flow = { ...flow, directChannelId: directChat.id };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
-        const firstMove = await sendManagedAgentChannelMessage({
+        const firstMessage = await sendManagedAgentChannelMessage({
           agentPubkey: employeePubkey,
           channelId: directChat.id,
-          content: prebuiltFirstMoveText(agent, ownerName),
-          marker: prebuiltHireMarker(hireId),
+          content: prebuiltFirstMessageText(agent, ownerName),
+          marker: prebuiltHireFirstMessageMarker(hireId),
           markerScope: "agent",
         });
-        flow = { ...flow, firstMoveEventId: firstMove.eventId };
+        flow = { ...flow, firstMessageEventId: firstMessage.eventId };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
         current = await fetchCurrentCompanyHireHead(hireId);
@@ -601,24 +627,24 @@ export function PrebuiltHeadHireDialog({
           throw new Error("The relay could not find the saved hire. Retry it.");
         if (current.head.status !== "hired") {
           current = await publishAndConfirm(
-            {
-              schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
+            buildPrebuiltHireCompleteAction({
               hireId,
-              action: "complete",
               expectedHeadEventId: current.event.id,
               employeePubkey,
-              introductionEventId: firstMove.eventId,
-            },
+              introductionEventId: firstMessage.eventId,
+            }),
             (record) =>
               record?.head.status === "hired" &&
               record.head.employeePubkey?.toLowerCase() ===
                 employeePubkey?.toLowerCase() &&
-              record.head.introductionEventId === firstMove.eventId,
+              record.head.introductionEventId === firstMessage.eventId,
           );
         }
       }
       const completedEventId =
-        flow.firstMoveEventId ?? current?.head.introductionEventId ?? undefined;
+        flow.firstMessageEventId ??
+        current?.head.introductionEventId ??
+        undefined;
       const completion =
         flow.employeePubkey && flow.directChannelId && completedEventId
           ? {
@@ -627,8 +653,8 @@ export function PrebuiltHeadHireDialog({
               agentId: flow.agentId,
               employeePubkey: flow.employeePubkey,
               directChannelId: flow.directChannelId,
-              firstMoveEventId: completedEventId,
-              firstMove: prebuiltFirstMoveText(agent, ownerName),
+              firstMessageEventId: completedEventId,
+              firstMessage: prebuiltFirstMessageText(agent, ownerName),
             }
           : null;
       if (completion) writePrebuiltHireCompletion(communityId, completion);
@@ -675,13 +701,11 @@ export function PrebuiltHeadHireDialog({
         );
       }
       await publishAndConfirm(
-        {
-          schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
+        buildPrebuiltHireDenyAction({
           hireId: progress.hireId,
-          action: "deny",
           expectedHeadEventId: current.event.id,
           reason: "Cancelled from the company map",
-        },
+        }),
         (record) => record?.head.status === "denied",
       );
       clearPrebuiltHireProgress(communityId, progress.functionId);
@@ -706,45 +730,55 @@ export function PrebuiltHeadHireDialog({
     <Dialog onOpenChange={close} open={open}>
       <DialogContent
         aria-describedby="prebuilt-hire-description"
-        className="max-w-2xl"
+        className="max-w-[37.5rem]"
         data-testid="prebuilt-head-hire-dialog"
       >
-        <div className="flex items-start gap-4 pr-8">
+        <div className="pr-8">
+          <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
+            Hire for {FUNCTION_DETAILS[functionId].name}
+          </p>
+          <DialogTitle className="mt-1">{agent.name}</DialogTitle>
+          <DialogDescription id="prebuilt-hire-description">
+            Scout hands {FUNCTION_DETAILS[functionId].name} over the moment you
+            hire.
+          </DialogDescription>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
           <EmployeeAvatar
-            className="size-14 rounded-full"
-            instance={agentAntAvatarDataUrl(agent.name)}
+            className="size-11 rounded-full"
+            instance={prebuiltAgentAvatarDataUrl(agent)}
             name={agent.name}
             role={`Head of ${FUNCTION_DETAILS[functionId].name}`}
           />
           <div>
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              Pre-built agent
-            </p>
-            <DialogTitle>Hire {agent.name}</DialogTitle>
-            <DialogDescription id="prebuilt-hire-description">
-              {agent.does.join(" ")}
-            </DialogDescription>
+            <p className="text-sm font-extrabold">{agent.name}</p>
+            <p className="text-xs text-muted-foreground">Pre-built agent.</p>
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <section className="rounded-xl border border-border bg-muted/20 p-3">
-            <h2 className="text-sm font-bold">What it does</h2>
+        <section className="rounded-xl border border-border bg-muted/30 p-4">
+          <div>
+            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
+              What it does
+            </p>
             <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
               {agent.does.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-          </section>
-          <section className="rounded-xl border border-border bg-muted/20 p-3">
-            <h2 className="text-sm font-bold">What it asks of you</h2>
+          </div>
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
+              What it asks of you
+            </p>
             <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
               {agent.asks.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-          </section>
-        </div>
+          </div>
+        </section>
 
         {runtimes.map((runtime) => (
           <WorkerModelProbe
@@ -760,14 +794,20 @@ export function PrebuiltHeadHireDialog({
         ))}
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <label className="grid gap-1 text-sm font-bold">
+          <label
+            className="grid gap-1.5 text-sm font-bold"
+            htmlFor="prebuilt-hire-harness"
+          >
             Harness
-            <select
-              data-testid="prebuilt-hire-harness"
+            <AgentDropdownSelect
+              className={prebuiltChoiceFieldClassName(
+                Boolean(choice.runtimeId),
+              )}
               disabled={submitting || runtimes.length === 0}
-              onChange={(event) => {
+              id="prebuilt-hire-harness"
+              onValueChange={(runtimeId) => {
                 const runtime = runtimes.find(
-                  (candidate) => candidate.id === event.target.value,
+                  (candidate) => candidate.id === runtimeId,
                 );
                 setChoice({
                   ...EMPTY_CHOICE,
@@ -777,83 +817,68 @@ export function PrebuiltHeadHireDialog({
                     : "",
                 });
               }}
+              options={runtimeOptions}
+              placeholder="Choose a harness"
+              placeholderValue=""
+              testId="prebuilt-hire-harness"
               value={choice.runtimeId}
-            >
-              <option value="">Choose a harness</option>
-              {runtimes.map((runtime) => (
-                <option key={runtime.id} value={runtime.id}>
-                  {runtime.label}
-                </option>
-              ))}
-            </select>
+            />
           </label>
-          <label className="grid gap-1 text-sm font-bold">
+          <label
+            className="grid gap-1.5 text-sm font-bold"
+            htmlFor="prebuilt-hire-model"
+          >
             Model
-            <select
-              data-testid="prebuilt-hire-model"
+            <AgentDropdownSelect
+              className={prebuiltChoiceFieldClassName(Boolean(choice.modelId))}
               disabled={submitting || !selectedRuntime}
-              onChange={(event) => {
-                const model = modelChoices.find(
-                  (candidate) =>
-                    candidate.runtimeId === choice.runtimeId &&
-                    candidate.providerId === choice.providerId &&
-                    candidate.modelId === event.target.value,
-                );
+              id="prebuilt-hire-model"
+              onValueChange={(modelId) =>
                 setChoice((current) => ({
                   ...current,
-                  modelId: model?.modelId ?? "",
+                  modelId,
                   effortLevel: "",
-                }));
-              }}
-              value={choice.modelId}
-            >
-              <option value="">Choose a model</option>
-              {modelChoices
-                .filter(
-                  (model) =>
-                    model.runtimeId === choice.runtimeId &&
-                    model.providerId === choice.providerId,
-                )
-                .map((model) => (
-                  <option key={model.modelId} value={model.modelId}>
-                    {model.label}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            Effort
-            <select
-              data-testid="prebuilt-hire-effort"
-              disabled={submitting || !selectedModel || !requiresEffort}
-              onChange={(event) =>
-                setChoice((current) => ({
-                  ...current,
-                  effortLevel: event.target.value,
                 }))
               }
+              options={selectedModelOptions}
+              placeholder="Choose a model"
+              placeholderValue=""
+              testId="prebuilt-hire-model"
+              value={choice.modelId}
+            />
+          </label>
+          <label
+            className="grid gap-1.5 text-sm font-bold"
+            htmlFor="prebuilt-hire-effort"
+          >
+            Effort
+            <AgentDropdownSelect
+              className={prebuiltChoiceFieldClassName(
+                Boolean(choice.effortLevel),
+              )}
+              disabled={submitting || !selectedModel || !requiresEffort}
+              id="prebuilt-hire-effort"
+              onValueChange={(effortLevel) =>
+                setChoice((current) => ({ ...current, effortLevel }))
+              }
+              options={effortChoiceOptions}
+              placeholder={
+                requiresEffort ? "Choose effort" : "Set by this harness"
+              }
+              placeholderValue=""
+              testId="prebuilt-hire-effort"
               value={choice.effortLevel}
-            >
-              <option value="">Choose effort</option>
-              {effortOptions.map((effort) => (
-                <option key={effort} value={effort}>
-                  {effort}
-                </option>
-              ))}
-            </select>
+            />
           </label>
         </div>
-        {selectedRuntime && selectedModel && !requiresEffort ? (
-          <p className="text-sm text-muted-foreground">
-            This harness chooses effort itself. There is no effort setting to
-            pick here.
-          </p>
-        ) : null}
-        {providerLabel ? (
-          <p className="text-sm text-muted-foreground">
-            Provider: {providerLabel}
-          </p>
-        ) : null}
+        <p
+          className="text-sm text-muted-foreground"
+          data-testid="prebuilt-hire-choice-helper"
+        >
+          {hasSavedChoice
+            ? "Same as your last hire. Change any of them."
+            : "This is your first hire, so pick all three. Next time Colony shows what you picked here."}
+        </p>
         {runtimesQuery.isPending ? (
           <p className="text-sm text-muted-foreground" role="status">
             Checking which AI is ready on this Mac.
@@ -878,36 +903,11 @@ export function PrebuiltHeadHireDialog({
           </p>
         ) : null}
 
-        <label className="grid gap-1 text-sm font-bold">
-          Home chat
-          <select
-            data-testid="prebuilt-hire-channel"
-            disabled={submitting || validChannels.length === 0}
-            onChange={(event) => setChannelId(event.target.value)}
-            value={channelId}
-          >
-            <option value="">Choose a chat</option>
-            {validChannels.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                # {channel.name}
-              </option>
-            ))}
-          </select>
-        </label>
         {validChannels.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Join a chat before hiring this head.
+            There is no company chat to start this hire in. Join one first.
           </p>
         ) : null}
-
-        <section className="rounded-xl border border-border bg-muted/30 p-4">
-          <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-            First move
-          </p>
-          <p className="mt-1 text-sm">
-            {prebuiltFirstMoveText(agent, ownerName)}
-          </p>
-        </section>
 
         {failure ? (
           <div
@@ -933,28 +933,33 @@ export function PrebuiltHeadHireDialog({
           </p>
         ) : null}
 
-        <div className="flex flex-wrap justify-end gap-3">
-          <button
-            className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50"
-            disabled={submitting}
-            onClick={() => onOpenChange(false)}
-            type="button"
-          >
-            Not yet
-          </button>
-          <button
-            className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-            data-testid="prebuilt-hire-finish"
-            disabled={!selectionReady || !isOwner || submitting}
-            onClick={() => void finishHire()}
-            type="button"
-          >
-            {submitting
-              ? "Finishing hire"
-              : selectionReady
-                ? "Finish hire"
-                : "Pick all three"}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {!selectionReady ? (
+            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+              Pick all three to hire.
+            </p>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50"
+              disabled={submitting}
+              onClick={() => onOpenChange(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="prebuilt-hire-finish"
+              disabled={!selectionReady || !isOwner || submitting}
+              onClick={() => void finishHire()}
+              type="button"
+            >
+              {submitting ? `Hiring ${agent.name}` : `Hire ${agent.name}`}
+            </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

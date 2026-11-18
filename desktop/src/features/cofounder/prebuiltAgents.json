@@ -24,6 +24,7 @@
         "A business type, if you want to choose it yourself."
       ],
       "firstMove": "Ask for the weekly budget for leads and WhatsApp messages. Offer to suggest the first campaign from past results: more of what got call requests, plus one new business type.",
+      "firstMessage": "I run Sales from here. To start I need one number: how much may I spend each week on leads and WhatsApp messages? Tell me a business type too if you have one in mind, or I will suggest the first campaign from your results.",
       "available": true,
       "unavailableReason": ""
     },
@@ -39,6 +40,7 @@
       ],
       "asks": ["Nothing to start."],
       "firstMove": "Say what you take over from the Head of Sales or Scout, then check the newest list for repeats and landlines and report what you found.",
+      "firstMessage": "I look after your lead lists from now on. Shall I start with your newest list? Say yes and I will check it for repeats and landline numbers and tell you what I find.",
       "available": true,
       "unavailableReason": ""
     },
@@ -54,6 +56,7 @@
       ],
       "asks": ["Your approval of each new opener, once."],
       "firstMove": "Read the openers used so far and their results. Draft one better opener for the best business type and ask the owner to approve it.",
+      "firstMessage": "I write and test your first messages from now on. Shall I draft a new opener for your best business type? Say yes and I will bring it to you to approve.",
       "available": true,
       "unavailableReason": ""
     },
@@ -69,6 +72,7 @@
       ],
       "asks": ["Your approval of the wording of each follow-up, once."],
       "firstMove": "Count the leads that were reached and stayed silent. Draft the three follow-up messages and ask the owner to approve their wording.",
+      "firstMessage": "I chase the leads who read your message and stayed silent. Shall I draft the three follow-up messages for you to approve? Say yes and I will start.",
       "available": true,
       "unavailableReason": ""
     },
@@ -83,6 +87,7 @@
       ],
       "asks": ["Your approval of the call script, once."],
       "firstMove": "Draft the call script and ask the owner to approve it.",
+      "firstMessage": "I phone the leads you cannot reach on WhatsApp. Shall I draft the call script for you to approve?",
       "available": false,
       "unavailableReason": "Colony cannot make phone calls yet."
     },
@@ -97,6 +102,7 @@
       ],
       "asks": ["Your approval of each quote before it goes out."],
       "firstMove": "Read the price list and the open leads. Tell the owner which leads are waiting for a quote.",
+      "firstMessage": "I draft your quotes from now on. After your next call with a lead, tell me what you agreed and I will write the quote for you to approve.",
       "available": true,
       "unavailableReason": ""
     },
@@ -112,6 +118,7 @@
       ],
       "asks": ["Your approval of the nudge wording, once."],
       "firstMove": "List the quotes that are out and how long each has been quiet. Draft the nudge wording and ask the owner to approve it.",
+      "firstMessage": "I follow up on quotes that are out. Shall I list the ones that have gone quiet and draft a nudge for you to approve?",
       "available": true,
       "unavailableReason": ""
     },
@@ -130,6 +137,7 @@
         "Your OK before anything goes to a client."
       ],
       "firstMove": "Show the owner the stages drafted for their kind of business and ask if they look right.",
+      "firstMessage": "I run Operations from here. Tell me in a sentence or two what you deliver to a client, start to finish, and I will write down the steps for you to check.",
       "available": true,
       "unavailableReason": ""
     },
@@ -145,6 +153,7 @@
       ],
       "asks": ["Your tap on each reply."],
       "firstMove": "List the current clients and when each last heard from the company. Name the one that most needs a message and draft it.",
+      "firstMessage": "I look after your clients once their work is delivered. Who is your most recent client? I will draft a check-in message for you to send.",
       "available": true,
       "unavailableReason": ""
     },
@@ -163,6 +172,7 @@
         "Your tap on each reply."
       ],
       "firstMove": "Draft the holding line (for example: Got your message, reply coming today) and ask the owner to approve it.",
+      "firstMessage": "I read every client message as it comes in and draft the reply for you. First I need a holding line to send while you are busy. Is this one right: Got your message, reply coming today?",
       "available": true,
       "unavailableReason": ""
     },
@@ -178,6 +188,7 @@
       ],
       "asks": ["Your approval of the review request wording, once."],
       "firstMove": "Find clients with a finished job, no complaint and no late payment. Draft the review request and ask the owner to approve its wording.",
+      "firstMessage": "I ask happy clients for reviews. Shall I draft the request for you to approve? Say yes and I will also list who I would ask first.",
       "available": true,
       "unavailableReason": ""
     },
@@ -193,6 +204,7 @@
       ],
       "asks": ["Your tap on each offer."],
       "firstMove": "Read the price list and what each client has. Name the best single chance to sell more and draft the offer.",
+      "firstMessage": "I look for what your clients could still buy from you. Shall I go through your clients and bring you the best single chance, with a draft offer?",
       "available": true,
       "unavailableReason": ""
     },
@@ -208,6 +220,7 @@
       ],
       "asks": ["Your approval of quotes for paid changes."],
       "firstMove": "List the change requests that are open and say for each whether the client's plan covers it.",
+      "firstMessage": "I catch every change a client asks for. Shall I list the open ones and say which are covered by their plan?",
       "available": true,
       "unavailableReason": ""
     },
@@ -226,6 +239,7 @@
         "You mark each payment as paid. No agent can."
       ],
       "firstMove": "Ask the owner for one invoice they are happy with, to copy its layout and terms.",
+      "firstMessage": "I run Finance from here. To start, send me one invoice you are happy with. I will copy its layout and terms.",
       "available": true,
       "unavailableReason": ""
     },
@@ -244,6 +258,7 @@
         "You mark the deposit as paid."
       ],
       "firstMove": "List accepted quotes that have no deposit request yet and draft the first one.",
+      "firstMessage": "I ask for deposits from now on. Shall I list accepted quotes that have no deposit request yet and draft the first one for you to send?",
       "available": true,
       "unavailableReason": ""
     },
@@ -259,6 +274,7 @@
       ],
       "asks": ["Your tap before each invoice goes out."],
       "firstMove": "Read the open quotes and their payment terms. Tell the owner which invoices are due now.",
+      "firstMessage": "I draft your invoices from now on. Shall I go through your open quotes and tell you which invoices are due now?",
       "available": true,
       "unavailableReason": ""
     },
@@ -274,6 +290,7 @@
       ],
       "asks": ["Your approval of the reminder wording, once."],
       "firstMove": "List overdue invoices with how many days late. Draft the reminder wording and ask the owner to approve it.",
+      "firstMessage": "I remind late payers. Shall I list who is late and draft the reminder wording for you to approve?",
       "available": true,
       "unavailableReason": ""
     },
@@ -289,6 +306,7 @@
       ],
       "asks": ["Your approval of each plan's monthly invoice, once."],
       "firstMove": "List the clients on a monthly plan with price and start date. Ask the owner to approve each plan's monthly invoice once.",
+      "firstMessage": "I look after your monthly plans. Which clients pay you every month, and how much? I will set up each plan and draft its invoice for you to approve once.",
       "available": true,
       "unavailableReason": ""
     },
@@ -304,6 +322,7 @@
       ],
       "asks": ["Receipts, or a bank statement, for costs Colony cannot see."],
       "firstMove": "Report what Colony has spent this month on leads and messages. Ask the owner to forward receipts or a bank statement for the rest.",
+      "firstMessage": "I keep track of what the company spends. Forward me your receipts, or upload a bank statement, and I will sort them. I already log what Colony spends on leads and messages.",
       "available": true,
       "unavailableReason": ""
     },
@@ -322,6 +341,7 @@
         "Your tap before anything goes public."
       ],
       "firstMove": "Read the company's website, past chats and quotes. Draft a short voice guide and ask the owner to approve it.",
+      "firstMessage": "I look after how your company looks and sounds. Send me a link to your website, or two messages you wrote to clients, and I will write a short voice guide for you to approve.",
       "available": true,
       "unavailableReason": ""
     },
@@ -337,6 +357,7 @@
       ],
       "asks": ["Your approval of the price list, and of every change to it."],
       "firstMove": "Draft the price list from the website and past quotes and ask the owner to correct and approve it.",
+      "firstMessage": "I keep your price list. Shall I draft it from your website and past quotes for you to correct?",
       "available": true,
       "unavailableReason": ""
     },
@@ -352,6 +373,7 @@
       ],
       "asks": ["Your yes on each post."],
       "firstMove": "Draft next week's posts from the latest finished jobs and reviews and bring them to the owner together.",
+      "firstMessage": "I make your posts. Shall I draft next week's posts from your latest finished jobs and reviews?",
       "available": true,
       "unavailableReason": ""
     },
@@ -370,6 +392,7 @@
         "Your tap before a change goes live."
       ],
       "firstMove": "Compare the site with the price list and the latest finished jobs. Name the most useful change and show before and after.",
+      "firstMessage": "I keep your website current. Send me the link and a way to log in, and I will show you the first change before anything goes live.",
       "available": true,
       "unavailableReason": ""
     },
@@ -385,6 +408,7 @@
       ],
       "asks": ["A no for any job you do not want shown."],
       "firstMove": "List the finished jobs that are not in the portfolio yet and draft the first one.",
+      "firstMessage": "I turn finished jobs into proof you can show. Which finished job are you most proud of? I will write it up first.",
       "available": true,
       "unavailableReason": ""
     },
@@ -400,6 +424,7 @@
       ],
       "asks": ["Your approval of each change to the voice guide."],
       "firstMove": "Read the voice guide and the last drafts the owner edited. Report the one pattern in those edits worth adding to the guide.",
+      "firstMessage": "I check every draft against your voice guide before it reaches you. Shall I read the drafts you edited lately and tell you the one pattern worth adding to the guide?",
       "available": true,
       "unavailableReason": ""
     }

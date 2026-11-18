@@ -21,6 +21,7 @@ function installStorage() {
       setItem: (key, value) => values.set(key, value),
     },
   });
+  return values;
 }
 
 test("prebuilt choices are local to one company and survive a later read", () => {
@@ -64,8 +65,8 @@ test("a completed map hire keeps its direct chat only inside that company", () =
     agentId: "prebuilt-head-finance",
     employeePubkey: "employee-1",
     directChannelId: "direct-1",
-    firstMoveEventId: "message-1",
-    firstMove: "Hi Basheer. Ask for the books.",
+    firstMessageEventId: "message-1",
+    firstMessage: "Hi Basheer. Send me one invoice you are happy with.",
   };
   assert.equal(writePrebuiltHireCompletion("company-a", completion), true);
   assert.deepEqual(
@@ -73,4 +74,21 @@ test("a completed map hire keeps its direct chat only inside that company", () =
     completion,
   );
   assert.equal(readPrebuiltHireCompletion("company-b", "finance"), null);
+});
+
+test("a legacy completion cannot reveal prompt-only first move text", () => {
+  const values = installStorage();
+  values.set(
+    "company-map-prebuilt-completion:v1:company-a:finance",
+    JSON.stringify({
+      hireId: "hire-1",
+      functionId: "finance",
+      agentId: "prebuilt-head-finance",
+      employeePubkey: "employee-1",
+      directChannelId: "direct-1",
+      firstMoveEventId: "message-1",
+      firstMove: "Ask the owner for one invoice they are happy with.",
+    }),
+  );
+  assert.equal(readPrebuiltHireCompletion("company-a", "finance"), null);
 });

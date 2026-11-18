@@ -23,6 +23,8 @@ import {
   type CompanyMapPoint,
   mapPercent,
 } from "@/features/cofounder/companyMapLayout";
+import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
+import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
 import {
   companyMapJobKey,
   companyMapWhatsAppSearch,
@@ -114,10 +116,16 @@ function DoerForPart({
     return <MapDoer className={className} scout />;
   }
   if (member) {
+    const prebuiltHead = prebuiltHeadForFunction(slot.functionId);
     return (
       <MapDoer
         avatarUrl={avatarUrl}
         className={className}
+        fallbackInstance={
+          prebuiltHead && name === prebuiltHead.name
+            ? prebuiltAgentAvatarDataUrl(prebuiltHead)
+            : null
+        }
         member={member}
         name={name}
       />
@@ -149,10 +157,16 @@ function JobDoer({
   );
   if (member) {
     const name = fullName(member, profiles);
+    const prebuiltHead = prebuiltHeadForFunction(slot.functionId);
     return (
       <MapDoer
         avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
         className="company-map-job-avatar"
+        fallbackInstance={
+          prebuiltHead && name === prebuiltHead.name
+            ? prebuiltAgentAvatarDataUrl(prebuiltHead)
+            : null
+        }
         member={member}
         name={name}
       />

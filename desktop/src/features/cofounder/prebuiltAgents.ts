@@ -13,6 +13,7 @@ export type PrebuiltAgent = {
   does: string[];
   asks: string[];
   firstMove: string;
+  firstMessage: string;
   available: boolean;
   unavailableReason: string;
 };

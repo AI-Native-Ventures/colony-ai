@@ -3,15 +3,15 @@ import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { TEST_IDENTITIES } from "../helpers/bridge";
 import { test } from "./cofounder-map-test";
 import {
   AYA_PUBKEY,
   fixture,
   functionHead,
-  seedCofounderTheme,
   selectMapPart,
 } from "./cofounder-map-fixtures";
+import { prepareMapShell } from "./mapShellTestSupport";
 
 const PREBUILT_HIRE_CAPTURE_ENABLED =
   process.env.COLONY_PREBUILT_HIRE_CAPTURE === "1";
@@ -27,6 +27,29 @@ const PREBUILT_HIRE_CHANNEL = {
 
 type PrebuiltHireTheme = "light" | "dark";
 type PrebuiltHireViewport = { width: number; height: number };
+type CommandLogEntry = { command: string; payload: unknown };
+
+async function readCommandLog(page: Page): Promise<CommandLogEntry[]> {
+  return page.evaluate(() => {
+    return (
+      (
+        window as Window & {
+          __BUZZ_E2E_COMMAND_LOG__?: CommandLogEntry[];
+        }
+      ).__BUZZ_E2E_COMMAND_LOG__ ?? []
+    );
+  });
+}
+
+function commandPayload<T>(
+  entries: readonly CommandLogEntry[],
+  command: string,
+): T | null {
+  const entry = [...entries]
+    .reverse()
+    .find((candidate) => candidate.command === command);
+  return (entry?.payload as T | undefined) ?? null;
+}
 
 function prebuiltHireScreenshotPath(
   screenshotDir: string,
@@ -149,12 +172,16 @@ async function preparePrebuiltHireCapture(
       }
     }
   });
-  await seedCofounderTheme(page, theme);
-  await installMockBridge(page, mock, { identity: TEST_IDENTITIES.tyler });
-  await page.emulateMedia({ colorScheme: theme });
-  await page.setViewportSize(viewport);
-  await page.goto("/#/company/map");
-  await expect(page.getByTestId("cofounder-map-stage")).toBeVisible();
+  await prepareMapShell(page, {
+    cofounderEnabled: true,
+    featureEnabled: true,
+    height: viewport.height,
+    identity: TEST_IDENTITIES.tyler,
+    mock,
+    theme,
+    width: viewport.width,
+  });
+  await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() => document.documentElement.classList.contains("dark")),
@@ -163,16 +190,51 @@ async function preparePrebuiltHireCapture(
 }
 
 async function choosePrebuiltRuntimeAndModel(page: Page) {
-  await page.getByTestId("prebuilt-hire-harness").selectOption("goose");
+  await page.getByTestId("prebuilt-hire-harness").click();
+  await page.getByTestId("prebuilt-hire-harness-option-goose").click();
   const model = page.getByTestId("prebuilt-hire-model");
-  await expect(model.locator("option").nth(1)).toBeAttached();
-  await model.selectOption({ index: 1 });
+  await expect(model).toBeEnabled();
+  await model.click();
+  await page
+    .locator("[data-testid^='prebuilt-hire-model-option-']")
+    .first()
+    .click();
   const effort = page.getByTestId("prebuilt-hire-effort");
   if (await effort.isEnabled()) {
-    await expect(effort.locator("option").nth(1)).toBeAttached();
-    await effort.selectOption({ index: 1 });
+    await effort.click();
+    await page
+      .locator("[data-testid^='prebuilt-hire-effort-option-']")
+      .first()
+      .click();
   }
   await expect(page.getByTestId("prebuilt-hire-finish")).toBeEnabled();
+}
+
+async function hireFinanceFromDesktopMap(page: Page) {
+  await selectMapPart(page, "finance", "Finance");
+  const card = page.getByTestId("cofounder-map-part-card");
+  await page.getByTestId("cofounder-hire-head-finance").click();
+  const dialog = page.getByTestId("prebuilt-head-hire-dialog");
+  await expect(dialog).toBeVisible();
+  await choosePrebuiltRuntimeAndModel(page);
+  await page.getByTestId("prebuilt-hire-finish").click();
+  await expect(dialog).toBeHidden();
+  await expect(card).toContainText("Just hired");
+  return card;
+}
+
+async function preparePrebuiltHireSidebar(
+  page: Page,
+  viewport: PrebuiltHireViewport,
+) {
+  await preparePrebuiltHireCapture(page, "light", viewport);
+  await page.goto("/#/company/map");
+  await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+  if (viewport.width < 768) {
+    await expect(page.getByTestId("cofounder-map-phone")).toBeVisible();
+    return;
+  }
+  await expect(page.getByTestId("cofounder-map-stage")).toBeVisible();
 }
 
 test.describe("prebuilt head visual proof", () => {
@@ -213,6 +275,17 @@ test.describe("prebuilt head visual proof", () => {
         await page.getByTestId("cofounder-hire-head-finance").click();
         const dialog = page.getByTestId("prebuilt-head-hire-dialog");
         await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText("Hire for Finance");
+        await expect(dialog).toContainText("Head of Finance");
+        await expect(dialog).toContainText(
+          "Scout hands Finance over the moment you hire.",
+        );
+        await expect(dialog).toContainText("Pre-built agent.");
+        await expect(dialog).not.toContainText(
+          "Ask the owner for one invoice they are happy with, to copy its layout and terms.",
+        );
+        await expect(page.getByTestId("prebuilt-hire-channel")).toHaveCount(0);
+        await expect(page.getByTestId("prebuilt-hire-finish")).toBeDisabled();
         const firstHireScreenshot = await capturePrebuiltHireBoard(
           page,
           PREBUILT_HIRE_SCREENSHOT_DIR,
@@ -227,6 +300,9 @@ test.describe("prebuilt head visual proof", () => {
         await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
           "Just hired",
         );
+        await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+          "Hi Lerato. I run Finance from here. To start, send me one invoice you are happy with. I will copy its layout and terms.",
+        );
         const firstMoveScreenshot = await capturePrebuiltHireBoard(
           page,
           PREBUILT_HIRE_SCREENSHOT_DIR,
@@ -238,6 +314,9 @@ test.describe("prebuilt head visual proof", () => {
         await selectMapPart(page, "brand", "Brand");
         await page.getByTestId("cofounder-hire-head-brand").click();
         await expect(dialog).toBeVisible();
+        await expect(
+          dialog.getByTestId("prebuilt-hire-choice-helper"),
+        ).toHaveText("Same as your last hire. Change any of them.");
         await capturePrebuiltHireBoard(
           page,
           PREBUILT_HIRE_SCREENSHOT_DIR,
@@ -271,7 +350,7 @@ test.describe("prebuilt head visual proof", () => {
           await page.setViewportSize(viewport);
         }
 
-        await dialog.getByRole("button", { name: "Not yet" }).click();
+        await dialog.getByRole("button", { name: "Cancel" }).click();
         await expect(dialog).toBeHidden();
         await selectMapPart(page, "operations", "Operations");
         await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
@@ -372,4 +451,150 @@ test.describe("prebuilt head visual proof", () => {
       });
     }
   }
+});
+
+test.describe("prebuilt head hiring journeys", () => {
+  test("the map home hire delivers the visible greeting and keeps the agent reachable", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireCapture(page, "light", {
+      width: 1440,
+      height: 900,
+    });
+    await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+    await selectMapPart(page, "finance", "Finance");
+    const card = page.getByTestId("cofounder-map-part-card");
+    await expect(card.locator(".company-map-card-actions > *")).toHaveText([
+      "Hire Head of Finance",
+      "Open Finance",
+      "Close",
+    ]);
+    await page.getByTestId("cofounder-hire-head-finance").click();
+    const dialog = page.getByTestId("prebuilt-head-hire-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).not.toContainText(
+      "Ask the owner for one invoice they are happy with, to copy its layout and terms.",
+    );
+    await choosePrebuiltRuntimeAndModel(page);
+    await page.getByTestId("prebuilt-hire-finish").click();
+    await expect(dialog).toBeHidden();
+    await expect(card).toContainText("Just hired");
+    await expect(card).toContainText(
+      "Hi Lerato. I run Finance from here. To start, send me one invoice you are happy with. I will copy its layout and terms.",
+    );
+    await expect(card).not.toContainText(
+      "Ask the owner for one invoice they are happy with, to copy its layout and terms.",
+    );
+    await expect(card.getByAltText("Head of Finance avatar")).toHaveAttribute(
+      "src",
+      /data:image/,
+    );
+
+    await expect
+      .poll(async () =>
+        (await readCommandLog(page)).some(
+          (entry) => entry.command === "start_managed_agent",
+        ),
+      )
+      .toBe(true);
+    const commandsAfterHire = await readCommandLog(page);
+    const startPayload = commandPayload<{ pubkey?: string }>(
+      commandsAfterHire,
+      "start_managed_agent",
+    );
+    expect(startPayload?.pubkey).toMatch(/^[0-9a-f]{64}$/);
+
+    await card.getByRole("link", { name: "Open direct chat" }).click();
+    await expect(page.getByTestId("message-input")).toBeVisible();
+    const ownerMessage = "Please confirm you have this invoice request.";
+    await page.getByTestId("message-input").fill(ownerMessage);
+    await page.getByTestId("send-message").click();
+    await expect(page.getByTestId("message-timeline")).toContainText(
+      ownerMessage,
+    );
+    const ownerSend = await page.evaluate((content) => {
+      const frames =
+        (
+          window as Window & {
+            __BUZZ_E2E_RELAY_FRAMES__?: Array<{ frame: unknown[] }>;
+          }
+        ).__BUZZ_E2E_RELAY_FRAMES__ ?? [];
+      return frames
+        .map(({ frame }) =>
+          frame[0] === "EVENT"
+            ? (frame[1] as {
+                content?: string;
+                tags?: string[][];
+              })
+            : null,
+        )
+        .findLast((event) => event?.content === content);
+    }, ownerMessage);
+    expect(ownerSend).toMatchObject({ content: ownerMessage });
+    expect(
+      ownerSend?.tags?.some(
+        (tag) => tag[0] === "p" && tag[1] === startPayload?.pubkey,
+      ),
+    ).toBe(true);
+
+    const agentReply = "I have it. I will copy the layout and terms first.";
+    await page.evaluate(
+      async ({ agentPubkey, channelId, content }) => {
+        await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+          "send_managed_agent_channel_message",
+          {
+            agentPubkey,
+            channelId,
+            content,
+            marker: "prebuilt-finance-owner-reply",
+            markerScope: "agent",
+          },
+        );
+      },
+      {
+        agentPubkey: startPayload?.pubkey ?? "",
+        channelId: ownerSend?.tags?.find((tag) => tag[0] === "h")?.[1] ?? "",
+        content: agentReply,
+      },
+    );
+    await expect(page.getByTestId("message-timeline")).toContainText(
+      agentReply,
+    );
+    const directChatAvatar = page
+      .getByAltText(/Head of Finance.*avatar/u)
+      .first();
+    await expect(directChatAvatar).toHaveAttribute("src", /data:image/);
+    expect(
+      decodeURIComponent((await directChatAvatar.getAttribute("src")) ?? ""),
+    ).toContain("#D9A83F");
+  });
+
+  test("the sidebar map keeps the same Finance hire journey", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireSidebar(page, { width: 1440, height: 900 });
+    const card = await hireFinanceFromDesktopMap(page);
+    await expect(card).toContainText("Just hired");
+  });
+
+  test("the phone map keeps Hire first and completes the Finance journey", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireSidebar(page, { width: 390, height: 844 });
+    await expect(page.getByTestId("cofounder-map-phone")).toBeVisible();
+    await page.getByTestId("cofounder-map-phone-finance").click();
+    const card = page
+      .getByTestId("cofounder-map-phone")
+      .locator(".company-map-card--part");
+    await expect(card).toBeVisible();
+    await expect(card.locator(".company-map-card-actions > *")).toHaveText([
+      "Hire Head of Finance",
+      "Open Finance",
+      "Close",
+    ]);
+    await page.getByTestId("cofounder-hire-head-phone-finance").click();
+    await choosePrebuiltRuntimeAndModel(page);
+    await page.getByTestId("prebuilt-hire-finish").click();
+    await expect(card).toContainText("Just hired");
+  });
 });
