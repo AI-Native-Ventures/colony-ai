@@ -672,18 +672,10 @@ async function jumpTimelineToLatest(page: Page) {
     if (!(await jumpToLatest.isVisible())) break;
     await jumpToLatest.click();
     await expect.poll(isTimelineAtBottom, { timeout: 3_000 }).toBe(true);
-    await page.waitForTimeout(120);
-    if (await jumpToLatest.isVisible()) {
-      const bounds = await timeline.boundingBox();
-      if (bounds) {
-        await page.mouse.move(
-          bounds.x + bounds.width / 2,
-          bounds.y + bounds.height / 2,
-        );
-        await page.mouse.wheel(0, -160);
-        await page.mouse.wheel(0, 4_000);
-      }
-    }
+    // Wheel input cancels the virtualizer's deliberate bottom-settle intent.
+    // Retry the real affordance instead, so the assertion observes the same
+    // interaction an owner uses to release buffered output.
+    await page.waitForTimeout(200);
   }
   await expect(jumpToLatest).toBeHidden();
 }
@@ -1247,10 +1239,11 @@ test.describe("Outreach lists", () => {
     await composer.pressSequentially(" with ");
     await openReferencePicker(page, "Built a site for you");
     await expect(search).toHaveValue("Built a site for you");
-    await picker
+    const templateChoice = picker
       .getByRole("region", { name: "Templates" })
-      .getByRole("button", { name: /Built a site for you/ })
-      .click({ force: true });
+      .getByRole("button", { name: /Built a site for you/ });
+    await expect(templateChoice).toBeVisible();
+    await templateChoice.click();
     await expect(
       composer.locator(
         '[data-composer-buzz-link][data-buzz-link-kind="template"]',
