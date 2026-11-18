@@ -86,7 +86,7 @@ export function prebuiltBuiltInRole(
     displayName: agent.name,
     description: agent.does[0] ?? agent.firstMove,
     companyRole: {
-      job: agent.job ?? `Head of ${agent.part}`,
+      job: agent.job ?? agent.name,
       skills: [...agent.does],
       tools: [],
       workerMenu: [runtimeId],

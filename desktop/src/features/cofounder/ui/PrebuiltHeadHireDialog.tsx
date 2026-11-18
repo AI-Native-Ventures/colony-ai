@@ -135,10 +135,19 @@ function storedChoice(draft: ChoiceDraft): PrebuiltHireChoice {
   };
 }
 
-function prebuiltChoiceFieldClassName(selected: boolean) {
+function prebuiltChoiceFieldClassName({
+  required,
+  value,
+}: {
+  required: boolean;
+  value: string;
+}) {
+  const needsChoice = required && !value;
   return [
-    "h-[2.875rem] rounded-xl border-2 px-3 text-sm font-medium",
-    selected ? "border-input" : "border-primary focus-visible:ring-primary/35",
+    "h-[2.875rem] min-w-0 max-w-full rounded-xl border-2 px-3 text-sm font-medium",
+    needsChoice
+      ? "border-primary focus-visible:ring-primary/35"
+      : "border-input",
   ].join(" ");
 }
 
@@ -281,6 +290,8 @@ export function PrebuiltHeadHireDialog({
     choice.modelId,
   );
   const requiresEffort = effortOptions.length > 0;
+  const modelRequired = Boolean(selectedRuntime);
+  const effortRequired = Boolean(selectedModel && requiresEffort);
   const isOwner = membershipQuery.data?.role === "owner";
   const selectionReady = Boolean(
     selectedRuntime &&
@@ -795,14 +806,15 @@ export function PrebuiltHeadHireDialog({
 
         <div className="grid gap-4 sm:grid-cols-3">
           <label
-            className="grid gap-1.5 text-sm font-bold"
+            className="grid min-w-0 gap-1.5 text-sm font-bold"
             htmlFor="prebuilt-hire-harness"
           >
             Harness
             <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName(
-                Boolean(choice.runtimeId),
-              )}
+              className={prebuiltChoiceFieldClassName({
+                required: runtimes.length > 0,
+                value: choice.runtimeId,
+              })}
               disabled={submitting || runtimes.length === 0}
               id="prebuilt-hire-harness"
               onValueChange={(runtimeId) => {
@@ -825,12 +837,15 @@ export function PrebuiltHeadHireDialog({
             />
           </label>
           <label
-            className="grid gap-1.5 text-sm font-bold"
+            className="grid min-w-0 gap-1.5 text-sm font-bold"
             htmlFor="prebuilt-hire-model"
           >
             Model
             <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName(Boolean(choice.modelId))}
+              className={prebuiltChoiceFieldClassName({
+                required: modelRequired,
+                value: choice.modelId,
+              })}
               disabled={submitting || !selectedRuntime}
               id="prebuilt-hire-model"
               onValueChange={(modelId) =>
@@ -843,19 +858,27 @@ export function PrebuiltHeadHireDialog({
               options={selectedModelOptions}
               placeholder="Choose a model"
               placeholderValue=""
+              selectedLabel={
+                selectedModel ? (
+                  <span className="block truncate" title={selectedModel.label}>
+                    {selectedModel.label}
+                  </span>
+                ) : undefined
+              }
               testId="prebuilt-hire-model"
               value={choice.modelId}
             />
           </label>
           <label
-            className="grid gap-1.5 text-sm font-bold"
+            className="grid min-w-0 gap-1.5 text-sm font-bold"
             htmlFor="prebuilt-hire-effort"
           >
             Effort
             <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName(
-                Boolean(choice.effortLevel),
-              )}
+              className={prebuiltChoiceFieldClassName({
+                required: effortRequired,
+                value: choice.effortLevel,
+              })}
               disabled={submitting || !selectedModel || !requiresEffort}
               id="prebuilt-hire-effort"
               onValueChange={(effortLevel) =>

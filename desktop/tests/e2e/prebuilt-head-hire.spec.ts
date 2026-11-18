@@ -24,6 +24,7 @@ const PREBUILT_HIRE_CHANNEL = {
   id: "22222222-2222-4222-8222-222222222222",
   name: "general",
 };
+const LONG_GOOSE_MODEL = "goose-claude-4-6-opus";
 
 type PrebuiltHireTheme = "light" | "dark";
 type PrebuiltHireViewport = { width: number; height: number };
@@ -454,6 +455,64 @@ test.describe("prebuilt head visual proof", () => {
 });
 
 test.describe("prebuilt head hiring journeys", () => {
+  test("a long model label stays in its field and leaves optional effort neutral", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireCapture(page, "light", {
+      width: 1440,
+      height: 900,
+    });
+    await selectMapPart(page, "finance", "Finance");
+    await page.getByTestId("cofounder-hire-head-finance").click();
+    await choosePrebuiltRuntimeAndModel(page);
+
+    const harness = page.getByTestId("prebuilt-hire-harness");
+    const model = page.getByTestId("prebuilt-hire-model");
+    const effort = page.getByTestId("prebuilt-hire-effort");
+    const selectedModelLabel = model.locator(":scope > span > span");
+
+    await expect(model).toHaveAttribute("data-value", LONG_GOOSE_MODEL);
+    await expect(selectedModelLabel).toHaveText(LONG_GOOSE_MODEL);
+    await expect(selectedModelLabel).toHaveAttribute("title", LONG_GOOSE_MODEL);
+    expect(
+      await selectedModelLabel.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          clientWidth: element.clientWidth,
+          overflow: style.overflow,
+          scrollWidth: element.scrollWidth,
+          textOverflow: style.textOverflow,
+          whiteSpace: style.whiteSpace,
+        };
+      }),
+    ).toMatchObject({
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    });
+    expect(
+      await selectedModelLabel.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    ).toBe(true);
+
+    await expect(effort).toBeDisabled();
+    await expect(effort).toContainText("Set by this harness");
+    await expect(effort).toHaveClass(/border-input/);
+    await expect(effort).not.toHaveClass(/border-primary/);
+
+    const [harnessBox, modelBox, effortBox] = await Promise.all([
+      harness.boundingBox(),
+      model.boundingBox(),
+      effort.boundingBox(),
+    ]);
+    if (!harnessBox || !modelBox || !effortBox) {
+      throw new Error("The prebuilt hire choice fields must be visible.");
+    }
+    expect(harnessBox.x + harnessBox.width).toBeLessThanOrEqual(modelBox.x);
+    expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(effortBox.x);
+  });
+
   test("the map home hire delivers the visible greeting and keeps the agent reachable", async ({
     page,
   }) => {

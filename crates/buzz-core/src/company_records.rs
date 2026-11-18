@@ -2745,6 +2745,7 @@ mod tests {
             .proposal
             .as_ref()
             .expect("the create fixture must carry its proposal");
+        assert_eq!(proposal.role_pack.job, "Head of Finance");
         assert!(validate_hire_proposal(proposal).is_ok());
         assert!(validate_hire_action(&fixture.create).is_ok());
         assert!(crate::company_access::validate_access_action(&fixture.slot_hire_set).is_ok());

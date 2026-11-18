@@ -4,7 +4,10 @@ import test from "node:test";
 
 import { parseCompanyHireAction } from "@/features/company-hiring/companyHireModels";
 import { buildAccessActionEvent } from "./accessRecords.ts";
-import { prebuiltHeadForFunction } from "./prebuiltAgents.ts";
+import {
+  prebuiltBuiltInRole,
+  prebuiltHeadForFunction,
+} from "./prebuiltAgents.ts";
 import {
   buildPrebuiltHireApproveAction,
   buildPrebuiltHireAttachEmployeeAction,
@@ -62,6 +65,36 @@ test("a prebuilt head creates the strict relay proposal shape", () => {
     })?.proposal?.displayName,
     agent.name,
   );
+  assert.equal(proposal.rolePack.job, "Head of Finance");
+});
+
+test("prebuilt head role-pack jobs keep their approved display names", () => {
+  for (const [functionId, expectedJob] of [
+    ["finance", "Head of Finance"],
+    ["customer_success", "Head of Customer Success"],
+  ]) {
+    const agent = prebuiltHeadForFunction(functionId);
+    assert.ok(agent);
+    assert.equal(
+      prebuiltBuiltInRole(agent, "codex").companyRole.job,
+      expectedJob,
+    );
+    assert.equal(
+      buildPrebuiltHireProposal({
+        agent,
+        choice: {
+          runtimeId: "codex",
+          providerId: "openai",
+          modelId: "gpt-6",
+        },
+        hireId: "00000000-0000-4000-8000-000000000011",
+        introductionChannelId: "00000000-0000-4000-8000-000000000012",
+        managerPubkey: "b".repeat(64),
+        personaId: `persona-${functionId}-head`,
+      }).rolePack.job,
+      expectedJob,
+    );
+  }
 });
 
 test("the owner-visible first message is tagged durably and names the owner", () => {
@@ -94,6 +127,7 @@ test("the prebuilt Finance hire sends the shared relay contract", () => {
     personaId: wireFixture.create.proposal.rolePack.personaId,
   });
 
+  assert.equal(proposal.rolePack.job, "Head of Finance");
   assert.deepEqual(buildPrebuiltHireCreateAction(proposal), wireFixture.create);
   const slotHireSet = buildAccessActionEvent(
     buildPrebuiltSlotHireSetAction({
