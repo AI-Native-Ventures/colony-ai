@@ -431,11 +431,11 @@ test.describe("co-founder mode desktop", () => {
       size: { width: 1400, height: 790 },
       hub: { x: 700, y: 395, width: 120, height: 120 },
       parts: {
-        sales: { x: 980, y: 212, width: 88, height: 88 },
-        operations: { x: 420, y: 127, width: 88, height: 88 },
+        sales: { x: 980, y: 239, width: 88, height: 88 },
+        operations: { x: 420, y: 151, width: 88, height: 88 },
         customer_success: { x: 420, y: 387, width: 88, height: 88 },
         finance: { x: 980, y: 562, width: 88, height: 88 },
-        brand: { x: 420, y: 647, width: 88, height: 88 },
+        brand: { x: 420, y: 623, width: 88, height: 88 },
       },
       zoom: {
         x: 628,
@@ -527,7 +527,7 @@ test.describe("co-founder mode desktop", () => {
     await selectMapPart(page, "finance", "Finance");
     expectConnectorKind(
       await measuredConnector(page, "finance:Invoices"),
-      "off",
+      "on",
     );
     expectConnectorKind(
       await measuredConnector(page, "finance:Recurring plans"),
@@ -787,7 +787,9 @@ test.describe("co-founder mode desktop", () => {
           '[data-testid="cofounder-map-job-sales-lead-finding"] .company-map-job-disc',
         ),
         highlight: bounds(".company-map-highlight"),
-        openAction: bounds('[data-testid="cofounder-map-open-sales"]'),
+        openAction: bounds(
+          '[data-testid="cofounder-map-part-card"] .company-map-primary-action',
+        ),
         closeAction: bounds('[data-testid="cofounder-map-part-card"] button'),
       };
     });
@@ -801,20 +803,20 @@ test.describe("co-founder mode desktop", () => {
     });
     expect(measured.salesCircle).toMatchObject({
       x: 936,
-      y: 168,
+      y: 195,
       width: 88,
       height: 88,
     });
     expect(measured.firstJob).toMatchObject({
       x: 1156,
-      y: 53,
+      y: 80,
       width: 232,
       height: 48,
     });
     expect(measured.firstJobCircle).toMatchObject({ width: 48, height: 48 });
     expect(measured.highlight).toMatchObject({
       x: 930,
-      y: 162,
+      y: 189,
       width: 100,
       height: 100,
     });

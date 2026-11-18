@@ -562,12 +562,12 @@ test.describe("full map canvas slice 3b", () => {
 
     expect(await workflowGeometry(page)).toEqual({
       stage: { height: 790, width: 1400 },
-      delivery: { x: 220, y: 79 },
+      delivery: { x: 220, y: 103 },
       brief: null,
       build: null,
       addStep: null,
-      proposal: { x: 220, y: 127 },
-      addWorkflow: { x: 220, y: 175 },
+      proposal: { x: 220, y: 151 },
+      addWorkflow: { x: 220, y: 199 },
     });
 
     await revealDeliverySteps(page);
@@ -590,24 +590,24 @@ test.describe("full map canvas slice 3b", () => {
 
     expect(await workflowGeometry(page)).toEqual({
       stage: { height: 790, width: 1400 },
-      delivery: { x: 220, y: 23 },
-      brief: { x: 220, y: 68 },
-      build: { x: 220, y: 128 },
-      addStep: { x: 220, y: 278 },
-      proposal: { x: 220, y: 323 },
-      addWorkflow: { x: 220, y: 371 },
+      delivery: { x: 220, y: 40 },
+      brief: { x: 220, y: 85 },
+      build: { x: 220, y: 145 },
+      addStep: { x: 220, y: 295 },
+      proposal: { x: 220, y: 340 },
+      addWorkflow: { x: 220, y: 388 },
     });
 
     await page.setViewportSize({ width: 2000, height: 1228 });
     await waitForAnimations(page);
     expect(await workflowGeometry(page)).toEqual({
       stage: { height: 790, width: 1400 },
-      delivery: { x: 220, y: 23 },
-      brief: { x: 220, y: 68 },
-      build: { x: 220, y: 128 },
-      addStep: { x: 220, y: 278 },
-      proposal: { x: 220, y: 323 },
-      addWorkflow: { x: 220, y: 371 },
+      delivery: { x: 220, y: 40 },
+      brief: { x: 220, y: 85 },
+      build: { x: 220, y: 145 },
+      addStep: { x: 220, y: 295 },
+      proposal: { x: 220, y: 340 },
+      addWorkflow: { x: 220, y: 388 },
     });
   });
 
