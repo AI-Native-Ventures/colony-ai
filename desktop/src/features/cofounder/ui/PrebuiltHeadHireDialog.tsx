@@ -10,7 +10,10 @@ import {
   usePersonasQuery,
 } from "@/features/agents/hooks";
 import { agentAntAvatarDataUrl } from "@/features/agents/ui/agentAntAvatar";
-import { simpleModelLabel, simpleProviderLabel } from "@/features/agents/ui/simpleAgentAi";
+import {
+  simpleModelLabel,
+  simpleProviderLabel,
+} from "@/features/agents/ui/simpleAgentAi";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
 import {
@@ -179,8 +182,9 @@ export function PrebuiltHeadHireDialog({
   const hireAction = useCompanyHireActionMutation();
   const [choice, setChoice] = React.useState<ChoiceDraft>(EMPTY_CHOICE);
   const [channelId, setChannelId] = React.useState("");
-  const [progress, setProgress] =
-    React.useState<PrebuiltHireProgress | null>(null);
+  const [progress, setProgress] = React.useState<PrebuiltHireProgress | null>(
+    null,
+  );
   const [failure, setFailure] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -189,8 +193,7 @@ export function PrebuiltHeadHireDialog({
   const agentDefaults = useAgentDialogDefaults({
     open,
   });
-  const inheritedProvider =
-    agentDefaults.inheritedDefaults.provider.value;
+  const inheritedProvider = agentDefaults.inheritedDefaults.provider.value;
   const inheritedEnvVars = agentDefaults.inheritedEnvVars;
   const runtimes = runtimesQuery.data ?? [];
   const validChannels = (channelsQuery.data ?? []).filter(
@@ -209,14 +212,17 @@ export function PrebuiltHeadHireDialog({
       options: readonly { id: string; label: string }[] | null,
     ) => {
       const key = choiceKey(runtimeId, providerId);
-      const next = (options ?? []).filter((option) => option.id.trim().length > 0);
+      const next = (options ?? []).filter(
+        (option) => option.id.trim().length > 0,
+      );
       setModelOptions((current) => {
         const previous = current[key] ?? [];
         if (
           previous.length === next.length &&
           previous.every(
             (value, index) =>
-              value.id === next[index]?.id && value.label === next[index]?.label,
+              value.id === next[index]?.id &&
+              value.label === next[index]?.label,
           )
         ) {
           return current;
@@ -292,7 +298,9 @@ export function PrebuiltHeadHireDialog({
           }
         : EMPTY_CHOICE,
     );
-    setChannelId(savedProgress?.introductionChannelId ?? defaultChannelId ?? "");
+    setChannelId(
+      savedProgress?.introductionChannelId ?? defaultChannelId ?? "",
+    );
     setFailure(null);
   }, [communityId, defaultChannelId, functionId, open]);
 
@@ -312,9 +320,18 @@ export function PrebuiltHeadHireDialog({
         ? effortDefault
         : effortOptions[0]) ?? "";
     setChoice((current) =>
-      current.effortLevel === next ? current : { ...current, effortLevel: next },
+      current.effortLevel === next
+        ? current
+        : { ...current, effortLevel: next },
     );
-  }, [choice.effortLevel, effortDefault, effortOptions, requiresEffort, selectedModel, selectedRuntime]);
+  }, [
+    choice.effortLevel,
+    effortDefault,
+    effortOptions,
+    requiresEffort,
+    selectedModel,
+    selectedRuntime,
+  ]);
 
   const publishAndConfirm = React.useCallback(
     async (
@@ -322,7 +339,8 @@ export function PrebuiltHeadHireDialog({
       matches: (record: CompanyHireHeadRecord | null) => boolean,
     ) => {
       const action = parseCompanyHireAction(input);
-      if (!action) throw new Error("The prebuilt hire does not match the relay schema.");
+      if (!action)
+        throw new Error("The prebuilt hire does not match the relay schema.");
       try {
         await hireAction.mutateAsync(action as CompanyHireAction);
       } catch (error) {
@@ -367,7 +385,9 @@ export function PrebuiltHeadHireDialog({
         (entry) => entry.hireId.toLowerCase() === hireId.toLowerCase(),
       );
       if (confirmed?.functionId !== selectedFunctionId) {
-        throw new Error("The relay did not reserve this company part. Try again.");
+        throw new Error(
+          "The relay did not reserve this company part. Try again.",
+        );
       }
     },
     [accessQuery, publishAccessAction],
@@ -406,11 +426,15 @@ export function PrebuiltHeadHireDialog({
       writePrebuiltHireProgress(communityId, flow);
       setProgress(flow);
 
-      const personaId = await materializePrebuiltAgent(agent, selectedChoice.runtimeId, {
-        scope: communityId,
-        listPersonas: async () => (await personasQuery.refetch()).data ?? [],
-        createPersona: createPersona.mutateAsync,
-      });
+      const personaId = await materializePrebuiltAgent(
+        agent,
+        selectedChoice.runtimeId,
+        {
+          scope: communityId,
+          listPersonas: async () => (await personasQuery.refetch()).data ?? [],
+          createPersona: createPersona.mutateAsync,
+        },
+      );
       const proposal = buildPrebuiltHireProposal({
         agent,
         choice: selectedChoice,
@@ -444,10 +468,14 @@ export function PrebuiltHeadHireDialog({
         );
       }
       if (!sameProposal(current, hireId, functionId)) {
-        throw new Error("A different hire already uses this saved recovery record.");
+        throw new Error(
+          "A different hire already uses this saved recovery record.",
+        );
       }
       if (current.head.status === "denied") {
-        throw new Error("This hire was cancelled. Start a new hire from the company map.");
+        throw new Error(
+          "This hire was cancelled. Start a new hire from the company map.",
+        );
       }
       if (
         current.head.status === "proposed" ||
@@ -462,7 +490,8 @@ export function PrebuiltHeadHireDialog({
             expectedHeadEventId: current.event.id,
           },
           (record) =>
-            record?.head.status === "approved" || record?.head.status === "hired",
+            record?.head.status === "approved" ||
+            record?.head.status === "hired",
         );
       }
       if (current.head.status === "approved") {
@@ -477,7 +506,8 @@ export function PrebuiltHeadHireDialog({
           if (!managedAgent) {
             managedAgent = (await managedAgentsQuery.refetch()).data?.find(
               (candidate) =>
-                candidate.pubkey.toLowerCase() === employeePubkey?.toLowerCase(),
+                candidate.pubkey.toLowerCase() ===
+                employeePubkey?.toLowerCase(),
             );
           }
         }
@@ -486,7 +516,9 @@ export function PrebuiltHeadHireDialog({
             (candidate) => candidate.id === selectedChoice.runtimeId,
           );
           if (!runtime?.command) {
-            throw new Error("That harness is no longer ready. Pick another AI and retry.");
+            throw new Error(
+              "That harness is no longer ready. Pick another AI and retry.",
+            );
           }
           const created = await createManagedAgent.mutateAsync({
             name: agent.name,
@@ -517,11 +549,15 @@ export function PrebuiltHeadHireDialog({
           });
         }
         if (!managedAgent || !employeePubkey) {
-          throw new Error("The employee record could not be recovered. Retry this hire.");
+          throw new Error(
+            "The employee record could not be recovered. Retry this hire.",
+          );
         }
         current = await fetchCurrentCompanyHireHead(hireId);
-        if (!current || current.head.status !== "approved") {
-          throw new Error("The hire changed before the employee could join. Retry it.");
+        if (current?.head.status !== "approved") {
+          throw new Error(
+            "The hire changed before the employee could join. Retry it.",
+          );
         }
         if (!current.head.employeePubkey) {
           current = await publishAndConfirm(
@@ -550,11 +586,6 @@ export function PrebuiltHeadHireDialog({
         flow = { ...flow, directChannelId: directChat.id };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
-        await attachManagedAgentToChannel(directChat.id, {
-          agent: managedAgent,
-          role: "bot",
-          ensureRunning: false,
-        });
         const firstMove = await sendManagedAgentChannelMessage({
           agentPubkey: employeePubkey,
           channelId: directChat.id,
@@ -566,7 +597,8 @@ export function PrebuiltHeadHireDialog({
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
         current = await fetchCurrentCompanyHireHead(hireId);
-        if (!current) throw new Error("The relay could not find the saved hire. Retry it.");
+        if (!current)
+          throw new Error("The relay could not find the saved hire. Retry it.");
         if (current.head.status !== "hired") {
           current = await publishAndConfirm(
             {
@@ -606,8 +638,12 @@ export function PrebuiltHeadHireDialog({
         queryClient.invalidateQueries({
           queryKey: companyFunctionHeadsQueryKey(communityId, relayUrl),
         }),
-        queryClient.invalidateQueries({ queryKey: companyTeamQueryKey(relayUrl) }),
-        queryClient.invalidateQueries({ queryKey: companyAccessQueryKey(communityId, relayUrl) }),
+        queryClient.invalidateQueries({
+          queryKey: companyTeamQueryKey(relayUrl),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: companyAccessQueryKey(communityId, relayUrl),
+        }),
         queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
       ]);
       onCompleted(completion);
@@ -634,7 +670,9 @@ export function PrebuiltHeadHireDialog({
         return;
       }
       if (current.head.status !== "proposed") {
-        throw new Error("This hire is already approved. Finish it instead of cancelling it.");
+        throw new Error(
+          "This hire is already approved. Finish it instead of cancelling it.",
+        );
       }
       await publishAndConfirm(
         {
@@ -711,7 +749,10 @@ export function PrebuiltHeadHireDialog({
         {runtimes.map((runtime) => (
           <WorkerModelProbe
             envVars={inheritedEnvVars}
-            key={choiceKey(runtime.id, providerForRuntime(runtime, inheritedProvider))}
+            key={choiceKey(
+              runtime.id,
+              providerForRuntime(runtime, inheritedProvider),
+            )}
             onOptions={receiveModelOptions}
             providerId={providerForRuntime(runtime, inheritedProvider)}
             runtime={runtime}
@@ -804,11 +845,14 @@ export function PrebuiltHeadHireDialog({
         </div>
         {selectedRuntime && selectedModel && !requiresEffort ? (
           <p className="text-sm text-muted-foreground">
-            This harness chooses effort itself. There is no effort setting to pick here.
+            This harness chooses effort itself. There is no effort setting to
+            pick here.
           </p>
         ) : null}
         {providerLabel ? (
-          <p className="text-sm text-muted-foreground">Provider: {providerLabel}</p>
+          <p className="text-sm text-muted-foreground">
+            Provider: {providerLabel}
+          </p>
         ) : null}
         {runtimesQuery.isPending ? (
           <p className="text-sm text-muted-foreground" role="status">
@@ -817,13 +861,20 @@ export function PrebuiltHeadHireDialog({
         ) : null}
         {!runtimesQuery.isPending && runtimes.length === 0 ? (
           <p className="text-sm text-muted-foreground" role="status">
-            No AI is ready on this Mac. <Link className="underline" to="/settings">Open Settings</Link> to connect a harness.
+            No AI is ready on this Mac.{" "}
+            <Link className="underline" to="/settings">
+              Open Settings
+            </Link>{" "}
+            to connect a harness.
           </p>
         ) : null}
         {selectedRuntime &&
-        !modelChoices.some((model) => model.runtimeId === selectedRuntime.id) ? (
+        !modelChoices.some(
+          (model) => model.runtimeId === selectedRuntime.id,
+        ) ? (
           <p className="text-sm text-muted-foreground" role="status">
-            This harness has not reported a model yet. Check its sign-in and model settings, then choose again.
+            This harness has not reported a model yet. Check its sign-in and
+            model settings, then choose again.
           </p>
         ) : null}
 
@@ -853,11 +904,16 @@ export function PrebuiltHeadHireDialog({
           <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
             First move
           </p>
-          <p className="mt-1 text-sm">{prebuiltFirstMoveText(agent, ownerName)}</p>
+          <p className="mt-1 text-sm">
+            {prebuiltFirstMoveText(agent, ownerName)}
+          </p>
         </section>
 
         {failure ? (
-          <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+          <div
+            className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm"
+            role="alert"
+          >
             <p>{failure}</p>
             {progress && headQuery.data?.head.status === "proposed" ? (
               <button

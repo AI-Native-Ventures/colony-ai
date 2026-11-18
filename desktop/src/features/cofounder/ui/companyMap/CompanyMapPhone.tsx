@@ -8,10 +8,7 @@ import type {
   FunctionId,
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
-import {
-  companyMapJobDoer,
-  companyMapScoutCoverageSentence,
-} from "@/features/cofounder/companyMapAssignments";
+import { companyMapJobDoer } from "@/features/cofounder/companyMapAssignments";
 import {
   FUNCTION_DESCRIPTIONS,
   FUNCTION_DETAILS,
@@ -25,9 +22,13 @@ import {
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
 import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
+import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
 
 import type { CompanyMapBoardProps, ProfileLookup } from "./companyMapTypes";
-import { PrebuiltHeadPreview } from "./CompanyMapPartCard";
+import {
+  PrebuiltHeadPreview,
+  PrebuiltHiredHeadPreview,
+} from "./CompanyMapPartCard";
 
 function fullName(
   member: CompanyMapBoardProps["members"][number],
@@ -170,11 +171,11 @@ function LeadAvatar({
             candidate.pubkey.toLowerCase() === jobDoer.pubkey.toLowerCase(),
         )
       : slot.state === "filled" && slot.leadPubkey
-      ? members.find(
-          (candidate) =>
-            candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
-        )
-      : undefined;
+        ? members.find(
+            (candidate) =>
+              candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
+          )
+        : undefined;
   if (!member)
     return (
       <span
@@ -320,6 +321,7 @@ function PhoneActionCard({
   summary,
   members,
   profiles,
+  recentPrebuiltHires,
   onClose,
   onHireHead,
 }: {
@@ -330,6 +332,7 @@ function PhoneActionCard({
   summary: CompanyMapBoardProps["summary"];
   members: CompanyMapBoardProps["members"];
   profiles: ProfileLookup;
+  recentPrebuiltHires?: Partial<Record<FunctionId, PrebuiltHireCompletion>>;
   onClose: () => void;
   onHireHead: (functionId: FunctionId) => void;
 }) {
@@ -379,16 +382,21 @@ function PhoneActionCard({
       : undefined;
   const count = countForPart(summary, activePart);
   const prebuiltHead = prebuiltHeadForFunction(activePart);
+  const recentHire =
+    slot.state === "filled" &&
+    slot.leadPubkey &&
+    recentPrebuiltHires?.[activePart]?.employeePubkey.toLowerCase() ===
+      slot.leadPubkey.toLowerCase()
+      ? (recentPrebuiltHires[activePart] ?? null)
+      : null;
   const leader =
     slot.state === "covered_by_scout"
-      ? `Scout runs ${detail.name} until you hire someone.`
+      ? `Scout runs ${detail.name} for now.`
       : lead
         ? `${fullName(lead, profiles)} runs ${detail.name}.`
         : slot.state === "filled"
           ? `The assigned lead runs ${detail.name}.`
-          : activePart === "operations"
-            ? "Nobody runs Operations yet."
-            : `Nobody runs ${detail.name} yet. ${companyMapScoutCoverageSentence(activePart, slot.state)}`;
+          : `Scout runs ${detail.name} for now.`;
 
   return (
     <section
@@ -401,7 +409,17 @@ function PhoneActionCard({
         {FUNCTION_DESCRIPTIONS[activePart]} {leader}
         {count > 0 ? ` ${partCountSentence(count)}` : ""}
       </p>
-      {slot.state === "empty" ? <PrebuiltHeadPreview functionId={activePart} /> : null}
+      {slot.state === "empty" ? (
+        <PrebuiltHeadPreview functionId={activePart} />
+      ) : null}
+      {slot.state === "filled" && prebuiltHead ? (
+        <PrebuiltHiredHeadPreview
+          head={prebuiltHead}
+          lead={lead}
+          leadName={lead ? fullName(lead, profiles) : null}
+          recentHire={recentHire}
+        />
+      ) : null}
       <div className="company-map-card-actions">
         <Link
           className="company-map-primary-action"
@@ -446,6 +464,7 @@ export function CompanyMapPhone({
   whatsAppChannelId,
   canHirePrebuiltHeads = false,
   onHireHead = () => undefined,
+  recentPrebuiltHires,
 }: CompanyMapBoardProps) {
   const [activePart, setActivePart] = useState<FunctionId | null>(null);
   return (
@@ -605,6 +624,7 @@ export function CompanyMapPhone({
         onHireHead={onHireHead}
         ownerName={ownerName}
         profiles={profiles}
+        recentPrebuiltHires={recentPrebuiltHires}
         slots={slots}
         summary={summary}
       />

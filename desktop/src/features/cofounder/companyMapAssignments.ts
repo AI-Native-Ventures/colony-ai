@@ -50,5 +50,5 @@ export function companyMapScoutCoverageSentence(
   ) {
     return "Scout does its jobs for now.";
   }
-  return FUNCTION_DETAILS[functionId].suggestedHire + " does its jobs.";
+  return `${FUNCTION_DETAILS[functionId].name} lead does its jobs.`;
 }

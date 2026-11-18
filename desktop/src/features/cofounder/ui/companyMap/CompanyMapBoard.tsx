@@ -144,7 +144,8 @@ function JobDoer({
     return <MapDoer className="company-map-job-avatar" scout />;
   }
   const member = members.find(
-    (candidate) => candidate.pubkey.toLowerCase() === assigned.pubkey.toLowerCase(),
+    (candidate) =>
+      candidate.pubkey.toLowerCase() === assigned.pubkey.toLowerCase(),
   );
   if (member) {
     const name = fullName(member, profiles);
@@ -535,11 +536,7 @@ function JobNode({
           className="company-map-job-disc"
           data-testid={`cofounder-map-job-disc-${functionId}-${name.toLowerCase().replaceAll(" ", "-")}`}
         >
-          <JobDoer
-            members={members}
-            profiles={profiles}
-            slot={slot}
-          />
+          <JobDoer members={members} profiles={profiles} slot={slot} />
           <NeedsBadge
             count={count}
             testId={`cofounder-map-job-needs-${functionId}-${name.toLowerCase().replaceAll(" ", "-")}`}
@@ -648,6 +645,7 @@ function CompanyMapDesktop({
   scoutPubkey,
   canHirePrebuiltHeads = false,
   onHireHead = () => undefined,
+  recentPrebuiltHires,
   members,
   profiles,
   slots,
@@ -935,6 +933,7 @@ function CompanyMapDesktop({
               onHireHead={onHireHead}
               ownerName={ownerName}
               profiles={profiles}
+              recentPrebuiltHires={recentPrebuiltHires}
               slots={slots}
               summary={summary}
             />

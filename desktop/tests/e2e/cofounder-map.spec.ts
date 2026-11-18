@@ -144,10 +144,9 @@ test.describe("co-founder mode desktop", () => {
     const model = page.getByTestId("prebuilt-hire-model");
     await expect(model.locator("option").nth(1)).toBeAttached();
     await model.selectOption({ index: 1 });
-    await expect(page.getByTestId("prebuilt-hire-channel")).not.toHaveValue(
-      "",
-    );
+    await expect(page.getByTestId("prebuilt-hire-channel")).not.toHaveValue("");
     await expect(page.getByTestId("prebuilt-hire-finish")).toBeEnabled();
+    const selectedModel = await model.inputValue();
 
     await page.getByTestId("prebuilt-hire-finish").click();
     await expect(dialog).toBeHidden();
@@ -156,8 +155,115 @@ test.describe("co-founder mode desktop", () => {
       "filled",
     );
     await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
-      "Head of Finance runs Finance.",
+      "Head of Finance is your Head of Finance.",
     );
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Just hired",
+    );
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Ask the owner for one invoice they are happy with",
+    );
+    await expect(
+      page.getByTestId("cofounder-map-part-card").getByRole("link", {
+        name: "Open direct chat",
+      }),
+    ).toBeVisible();
+
+    await selectMapPart(page, "brand", "Brand");
+    await page.getByTestId("cofounder-hire-head-brand").click();
+    await expect(page.getByTestId("prebuilt-hire-harness")).toHaveValue(
+      "goose",
+    );
+    await expect(page.getByTestId("prebuilt-hire-model")).toHaveValue(
+      selectedModel,
+    );
+  });
+
+  test("map hire actions are owner-only and work with keyboard or pointer", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await page.goto("/#/company/map");
+
+    const finance = page.getByTestId("cofounder-map-finance");
+    await finance.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Finance",
+    );
+    const hire = page.getByTestId("cofounder-hire-head-finance");
+    await hire.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("prebuilt-head-hire-dialog")).toBeVisible();
+
+    await page
+      .getByTestId("prebuilt-head-hire-dialog")
+      .getByRole("button", { name: "Close" })
+      .click();
+    await expect(page.getByTestId("prebuilt-head-hire-dialog")).toBeHidden();
+    await page.getByTestId("cofounder-map-sales").click();
+    await expect(page.getByTestId("cofounder-hire-head-sales")).toHaveCount(0);
+  });
+
+  test("members cannot see a head hire action", async ({ page }) => {
+    await installMockBridge(page, fixture({ role: "member" }));
+    await page.goto("/#/company/map");
+    await selectMapPart(page, "finance", "Finance");
+    await expect(page.getByTestId("cofounder-hire-head-finance")).toHaveCount(
+      0,
+    );
+  });
+
+  test("Team and Agents start a new hire on the map even when map mode is off", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture({ enabled: false }));
+    await page.goto("/#/team");
+    await page.getByTestId("team-hire-button").click();
+    await expect(page).toHaveURL(/#\/company\/map$/);
+    await expect(
+      page.getByTestId("cofounder-map-mode-off-notice"),
+    ).toBeVisible();
+    await selectMapPart(page, "finance", "Finance");
+    await expect(page.getByTestId("cofounder-hire-head-finance")).toBeVisible();
+
+    await page.goto("/#/agents");
+    await page.getByTestId("agent-hire-button").click();
+    await expect(page).toHaveURL(/#\/company\/map$/);
+  });
+
+  test("the map card does not cover the company hub at desktop board sizes", async ({
+    page,
+  }) => {
+    await installMockBridge(page, fixture());
+    await page.goto("/#/company/map");
+
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1728, height: 1117 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await selectMapPart(page, "finance", "Finance");
+      const overlap = await page.evaluate(() => {
+        const card = document.querySelector(
+          "[data-testid='cofounder-map-part-card']",
+        );
+        const hub = document.querySelector(
+          "[data-testid='cofounder-map-company-hub']",
+        );
+        if (!card || !hub) return true;
+        const cardRect = card.getBoundingClientRect();
+        const hubRect = hub.getBoundingClientRect();
+        return !(
+          cardRect.right <= hubRect.left ||
+          hubRect.right <= cardRect.left ||
+          cardRect.bottom <= hubRect.top ||
+          hubRect.bottom <= cardRect.top
+        );
+      });
+      expect(overlap).toBe(false);
+      await page.keyboard.press("Escape");
+    }
   });
 
   test("the company map shows five ordered parts around the company hub", async ({
@@ -572,8 +678,8 @@ test.describe("co-founder mode desktop", () => {
     const cases = [
       ["sales", "Sales", 6],
       ["operations", "Operations", 5],
-      ["customer_success", "Customer Success", 5],
-      ["finance", "Finance", 6],
+      ["customer_success", "Customer Success", 4],
+      ["finance", "Finance", 5],
       ["brand", "Brand", 5],
     ] as const;
     for (const [functionId, name, jobCount] of cases) {
@@ -590,7 +696,7 @@ test.describe("co-founder mode desktop", () => {
       ).toHaveAttribute("aria-expanded", "true");
       if (functionId === "operations") {
         await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
-          "Scout runs Operations until you hire someone.",
+          "Scout runs Operations for now.",
         );
         await expect(
           page.getByTestId("cofounder-map-part-card"),
@@ -1083,18 +1189,17 @@ test.describe("co-founder mode desktop", () => {
     await expect(page.getByTestId("cofounder-goals")).toHaveCount(0);
   });
 
-  test("Finance shows the Bookkeeper suggestion and hire route", async ({
+  test("Finance sends a new hire to the named prebuilt head", async ({
     page,
   }) => {
     await installMockBridge(page, fixture());
     await page.goto("/#/company/map");
 
     await selectMapPart(page, "finance", "Finance");
-    await expect(
-      page.getByRole("link", { name: "Hire a Bookkeeper" }),
-    ).toHaveAttribute("href", /hire\/roles/);
-    await page.getByRole("link", { name: "Hire a Bookkeeper" }).click();
-    await expect(page).toHaveURL(/#\/hire\/roles$/);
+    await expect(page.getByTestId("cofounder-hire-head-finance")).toHaveText(
+      "Hire Head of Finance",
+    );
+    await expect(page.getByRole("link", { name: /Bookkeeper/ })).toHaveCount(0);
   });
 
   test("a slot whose lead left the team is displayed as empty", async ({
