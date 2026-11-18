@@ -163,6 +163,8 @@ pub enum ListOp {
     RemoveMembers,
     /// Set or clear the default WhatsApp template.
     SetDefaultTemplate,
+    /// Record whether outreach for this list has started, is in progress or is done.
+    SetOutreachStatus,
     /// Archive the list (people only).
     Archive,
     /// Bring an archived list back (people only).
@@ -182,6 +184,7 @@ impl ListOp {
             ListOp::AddMembers => "add_members",
             ListOp::RemoveMembers => "remove_members",
             ListOp::SetDefaultTemplate => "set_default_template",
+            ListOp::SetOutreachStatus => "set_outreach_status",
             ListOp::Archive => "archive",
             ListOp::Unarchive => "unarchive",
         }
@@ -230,6 +233,18 @@ pub enum ListStatus {
     Archived,
 }
 
+/// The current outreach state for a list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutreachStatus {
+    /// Nobody has started outreach for the list yet.
+    NotStarted,
+    /// Outreach is underway for the list.
+    InProgress,
+    /// Outreach work for the list is complete.
+    Done,
+}
+
 /// Member or agent request to change an outreach list (kind 47075).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -253,6 +268,9 @@ pub struct OutreachListAction {
     pub source: Option<ListSource>,
     /// Default template (`create`, `set_default_template`).
     pub default_template: Option<TemplateRef>,
+    /// Outreach state (`set_outreach_status`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outreach_status: Option<OutreachStatus>,
 }
 
 /// One lead in a list.
@@ -269,6 +287,20 @@ pub struct ListMember {
     pub added_at: i64,
 }
 
+/// The actor and time that last set a list's outreach state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct OutreachProgress {
+    /// The selected outreach state.
+    pub status: OutreachStatus,
+    /// Lowercase 64-character pubkey of the actor who set the state.
+    pub set_by: String,
+    /// Whether the actor was an agent, decided by the relay from its role.
+    pub set_by_agent: bool,
+    /// Unix seconds when the relay applied the state.
+    pub set_at: i64,
+}
+
 /// Relay-authored outreach list head (kind 30684).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -283,6 +315,9 @@ pub struct OutreachListHead {
     pub note: Option<String>,
     /// Active or archived.
     pub status: ListStatus,
+    /// Outreach state and provenance, absent until somebody sets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outreach: Option<OutreachProgress>,
     /// Where the list came from.
     pub source: ListSource,
     /// Default WhatsApp template, if any.
@@ -336,6 +371,7 @@ pub fn validate_list_action(action: &OutreachListAction) -> Result<(), OutreachE
     let has_leads = !action.lead_ids.is_empty();
     let has_source = action.source.is_some();
     let has_template = action.default_template.is_some();
+    let has_outreach_status = action.outreach_status.is_some();
 
     match action.op {
         ListOp::Create => {
@@ -343,6 +379,7 @@ pub fn validate_list_action(action: &OutreachListAction) -> Result<(), OutreachE
             if action.expected_head_event_id.is_some() {
                 return invalid("create cannot name an expected head");
             }
+            reject_fields(op, &[("outreachStatus", has_outreach_status)])?;
         }
         ListOp::Rename => {
             if !has_name && !has_note {
@@ -354,6 +391,7 @@ pub fn validate_list_action(action: &OutreachListAction) -> Result<(), OutreachE
                     ("leadIds", has_leads),
                     ("source", has_source),
                     ("defaultTemplate", has_template),
+                    ("outreachStatus", has_outreach_status),
                 ],
             )?;
         }
@@ -366,6 +404,7 @@ pub fn validate_list_action(action: &OutreachListAction) -> Result<(), OutreachE
                     ("note", has_note),
                     ("source", has_source),
                     ("defaultTemplate", has_template),
+                    ("outreachStatus", has_outreach_status),
                 ],
             )?;
         }
@@ -376,8 +415,22 @@ pub fn validate_list_action(action: &OutreachListAction) -> Result<(), OutreachE
                 ("note", has_note),
                 ("leadIds", has_leads),
                 ("source", has_source),
+                ("outreachStatus", has_outreach_status),
             ],
         )?,
+        ListOp::SetOutreachStatus => {
+            require_fields(op, &[("outreachStatus", has_outreach_status)])?;
+            reject_fields(
+                op,
+                &[
+                    ("name", has_name),
+                    ("note", has_note),
+                    ("leadIds", has_leads),
+                    ("source", has_source),
+                    ("defaultTemplate", has_template),
+                ],
+            )?;
+        }
         ListOp::Archive | ListOp::Unarchive => reject_fields(
             op,
             &[
@@ -386,6 +439,7 @@ pub fn validate_list_action(action: &OutreachListAction) -> Result<(), OutreachE
                 ("leadIds", has_leads),
                 ("source", has_source),
                 ("defaultTemplate", has_template),
+                ("outreachStatus", has_outreach_status),
             ],
         )?,
     }
@@ -510,6 +564,17 @@ pub fn apply_list_action(
                 None => None,
             };
         }
+        (ListStatus::Active, ListOp::SetOutreachStatus) => {
+            let Some(status) = action.outreach_status else {
+                return invalid("set_outreach_status needs outreachStatus");
+            };
+            head.outreach = Some(OutreachProgress {
+                status,
+                set_by: actor.pubkey.clone(),
+                set_by_agent: actor.is_agent,
+                set_at: now,
+            });
+        }
         (ListStatus::Active, ListOp::Create) => return conflict("this list already exists"),
     }
     head.updated_by = actor.pubkey.clone();
@@ -566,6 +631,7 @@ fn create_list(
         name,
         note,
         status: ListStatus::Active,
+        outreach: None,
         source,
         default_template,
         members,
@@ -588,6 +654,12 @@ pub fn validate_list_head(head: &OutreachListHead) -> Result<(), OutreachError> 
     let distinct: BTreeSet<Uuid> = head.members.iter().map(|m| m.lead_id).collect();
     if distinct.len() != head.members.len() {
         return invalid("a lead appears twice in the list");
+    }
+    if let Some(outreach) = head.outreach.as_ref() {
+        check_event_id("outreach.setBy", &outreach.set_by)?;
+        if outreach.set_at < 0 {
+            return invalid("outreach.setAt must be Unix seconds");
+        }
     }
     Ok(())
 }
@@ -1135,6 +1207,7 @@ mod tests {
             lead_ids: Vec::new(),
             source: None,
             default_template: None,
+            outreach_status: None,
         }
     }
 
@@ -1253,6 +1326,9 @@ mod tests {
         let mut remove = action(ListOp::RemoveMembers);
         remove.lead_ids = vec![lead(1)];
         assert!(list_leads_to_verify(Some(&head), &remove).is_empty());
+        let mut status = action(ListOp::SetOutreachStatus);
+        status.outreach_status = Some(OutreachStatus::InProgress);
+        assert!(list_leads_to_verify(Some(&head), &status).is_empty());
         assert_eq!(
             list_leads_to_verify(None, &create_action(&[5, 5, 6])),
             vec![lead(5), lead(6)]
@@ -1288,6 +1364,91 @@ mod tests {
         let clear = action(ListOp::SetDefaultTemplate);
         let next = apply_list_action(Some(&next), &clear, &person(), 300, EVENT).unwrap();
         assert_eq!(next.default_template, None);
+    }
+
+    #[test]
+    fn outreach_status_records_the_actor_and_refreshes_same_status() {
+        let head = created(&[1], &person());
+        let mut set = action(ListOp::SetOutreachStatus);
+        set.outreach_status = Some(OutreachStatus::InProgress);
+        let next = apply_list_action(Some(&head), &set, &agent(), 200, EVENT).expect("set status");
+        let progress = next.outreach.as_ref().expect("outreach progress");
+        assert_eq!(progress.status, OutreachStatus::InProgress);
+        assert_eq!(progress.set_by, AGENT);
+        assert!(progress.set_by_agent);
+        assert_eq!(progress.set_at, 200);
+        assert_eq!(next.updated_by, AGENT);
+        assert_eq!(next.updated_at, 200);
+        assert_eq!(next.source_action_event_id, EVENT);
+        assert!(validate_list_head(&next).is_ok());
+
+        let refreshed = apply_list_action(Some(&next), &set, &person(), 300, EVENT)
+            .expect("same status refreshes provenance");
+        let progress = refreshed
+            .outreach
+            .as_ref()
+            .expect("refreshed outreach progress");
+        assert_eq!(progress.status, OutreachStatus::InProgress);
+        assert_eq!(progress.set_by, PERSON);
+        assert!(!progress.set_by_agent);
+        assert_eq!(progress.set_at, 300);
+    }
+
+    #[test]
+    fn outreach_status_requires_its_only_payload_and_is_rejected_elsewhere() {
+        let missing = action(ListOp::SetOutreachStatus);
+        assert!(validate_list_action(&missing).is_err());
+
+        let mut valid = action(ListOp::SetOutreachStatus);
+        valid.outreach_status = Some(OutreachStatus::Done);
+        assert!(validate_list_action(&valid).is_ok());
+
+        let mut with_name = valid.clone();
+        with_name.name = Some("not allowed".into());
+        assert!(validate_list_action(&with_name).is_err());
+        let mut with_note = valid.clone();
+        with_note.note = Some("not allowed".into());
+        assert!(validate_list_action(&with_note).is_err());
+        let mut with_leads = valid.clone();
+        with_leads.lead_ids = vec![lead(1)];
+        assert!(validate_list_action(&with_leads).is_err());
+        let mut with_source = valid.clone();
+        with_source.source = Some(ListSource {
+            kind: ListSourceKind::Manual,
+            campaign_id: None,
+        });
+        assert!(validate_list_action(&with_source).is_err());
+        let mut with_template = valid.clone();
+        with_template.default_template = Some(TemplateRef {
+            name: "built_a_site".into(),
+            language: "en".into(),
+        });
+        assert!(validate_list_action(&with_template).is_err());
+
+        let mut create = create_action(&[]);
+        create.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&create).is_err());
+        let mut rename = action(ListOp::Rename);
+        rename.name = Some("Renamed".into());
+        rename.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&rename).is_err());
+        let mut add = action(ListOp::AddMembers);
+        add.lead_ids = vec![lead(1)];
+        add.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&add).is_err());
+        let mut remove = action(ListOp::RemoveMembers);
+        remove.lead_ids = vec![lead(1)];
+        remove.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&remove).is_err());
+        let mut template = action(ListOp::SetDefaultTemplate);
+        template.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&template).is_err());
+        let mut archive = action(ListOp::Archive);
+        archive.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&archive).is_err());
+        let mut unarchive = action(ListOp::Unarchive);
+        unarchive.outreach_status = Some(OutreachStatus::NotStarted);
+        assert!(validate_list_action(&unarchive).is_err());
     }
 
     #[test]
@@ -1329,6 +1490,11 @@ mod tests {
         let mut add = action(ListOp::AddMembers);
         add.lead_ids = vec![lead(2)];
         let error = apply_list_action(Some(&archived), &add, &person(), 300, EVENT).unwrap_err();
+        assert!(matches!(error, OutreachError::Conflict(_)));
+
+        let mut set = action(ListOp::SetOutreachStatus);
+        set.outreach_status = Some(OutreachStatus::Done);
+        let error = apply_list_action(Some(&archived), &set, &agent(), 300, EVENT).unwrap_err();
         assert!(matches!(error, OutreachError::Conflict(_)));
         let error = apply_list_action(
             Some(&archived),
@@ -1395,11 +1561,20 @@ mod tests {
         let parsed: OutreachListAction = serde_json::from_str(json).expect("parse");
         assert_eq!(parsed.op, ListOp::AddMembers);
         assert_eq!(parsed.lead_ids, vec![lead(1)]);
+        assert_eq!(parsed.outreach_status, None);
         let with_extra = json.replace("\"note\":null,", "\"note\":null,\"extra\":1,");
         assert!(serde_json::from_str::<OutreachListAction>(&with_extra).is_err());
         let minimal =
             r#"{"schemaVersion":1,"listId":"00000000-0000-0000-0000-000000000384","op":"archive"}"#;
         assert!(serde_json::from_str::<OutreachListAction>(minimal).is_ok());
+
+        let mut set = action(ListOp::SetOutreachStatus);
+        set.outreach_status = Some(OutreachStatus::InProgress);
+        let value = serde_json::to_value(&set).expect("serialize status action");
+        assert_eq!(value["op"], "set_outreach_status");
+        assert_eq!(value["outreachStatus"], "in_progress");
+        let back: OutreachListAction = serde_json::from_value(value).expect("parse status action");
+        assert_eq!(back, set);
     }
 
     #[test]
@@ -1410,9 +1585,41 @@ mod tests {
         assert_eq!(value["source"]["kind"], "manual");
         assert!(value["source"]["campaignId"].is_null());
         assert!(value["defaultTemplate"].is_null());
+        assert!(value.get("outreach").is_none());
         assert_eq!(value["members"][0]["addedByAgent"], false);
         let back: OutreachListHead = serde_json::from_value(value).unwrap();
         assert_eq!(back, head);
+
+        let mut set = action(ListOp::SetOutreachStatus);
+        set.outreach_status = Some(OutreachStatus::Done);
+        let head = apply_list_action(Some(&head), &set, &agent(), 200, EVENT).expect("set status");
+        let value = serde_json::to_value(&head).expect("serialize headed status");
+        assert_eq!(value["outreach"]["status"], "done");
+        assert_eq!(value["outreach"]["setBy"], AGENT);
+        assert_eq!(value["outreach"]["setByAgent"], true);
+        assert_eq!(value["outreach"]["setAt"], 200);
+    }
+
+    #[test]
+    fn list_head_validates_outreach_provenance() {
+        let mut head = created(&[1], &person());
+        head.outreach = Some(OutreachProgress {
+            status: OutreachStatus::Done,
+            set_by: PERSON.into(),
+            set_by_agent: false,
+            set_at: 100,
+        });
+        assert!(validate_list_head(&head).is_ok());
+
+        head.outreach.as_mut().expect("outreach").set_by = "not-a-pubkey".into();
+        assert!(validate_list_head(&head).is_err());
+        head.outreach.as_mut().expect("outreach").set_by = PERSON.into();
+        head.outreach.as_mut().expect("outreach").set_at = -1;
+        assert!(validate_list_head(&head).is_err());
+
+        let mut value = serde_json::to_value(&head).expect("serialize malformed head");
+        value["outreach"]["extra"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<OutreachListHead>(value).is_err());
     }
 
     #[test]

@@ -286,7 +286,7 @@ enum Cmd {
     /// Outreach lists: named groups of leads you or the owner can point at in chat
     #[command(
         subcommand,
-        long_about = "Outreach lists are named groups of leads (for example \"Melville guesthouses, Nov\"). A message that mentions a list holds a colony://list/<id> link: open it with `colony lists get <link>`, then act on its members. A list holds lead ids only, so changing a lead's record changes it everywhere. Anyone with Sales access, agents included, may create a list when it helps (say so in your reply and give the link), add or remove leads and rename it; only people archive. A list never sends anything: a WhatsApp batch for a list still waits for the owner (`colony whatsapp batch create --list <link> --template <name>`)."
+        long_about = "Outreach lists are named groups of leads (for example \"Melville guesthouses, Nov\"). A message that mentions a list holds a colony://list/<id> link: open it with `colony lists get <link>`, then act on its members. A list holds lead ids only, so changing a lead's record changes it everywhere. Anyone with Sales access, agents included, may create a list when it helps (say so in your reply and give the link), add or remove leads, rename it and set outreach status; only people archive. Use `colony lists status <link> <not-started|in-progress|done>` to record progress. A list never sends anything: a WhatsApp batch for a list still waits for the owner (`colony whatsapp batch create --list <link> --template <name>`)."
     )]
     Lists(ListsCmd),
     /// Discovery campaigns: the searches that found leads, shared with everyone
@@ -1716,6 +1716,16 @@ pub enum PayCmd {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutreachStatusArg {
+    #[value(name = "not-started")]
+    NotStarted,
+    #[value(name = "in-progress")]
+    InProgress,
+    #[value(name = "done")]
+    Done,
+}
+
 #[derive(Subcommand)]
 pub enum ListsCmd {
     /// List outreach lists, newest change first
@@ -1782,6 +1792,13 @@ pub enum ListsCmd {
         /// New note
         #[arg(long)]
         note: Option<String>,
+    },
+    /// Mark outreach for a list as not started, in progress or done
+    Status {
+        /// List UUID or link
+        list: String,
+        /// New outreach status
+        status: OutreachStatusArg,
     },
 }
 
@@ -5001,6 +5018,24 @@ mod tests {
     }
 
     #[test]
+    fn lists_status_parses_each_documented_outreach_state() {
+        let list = "123e4567-e89b-12d3-a456-426614174000";
+        for (input, expected) in [
+            ("not-started", OutreachStatusArg::NotStarted),
+            ("in-progress", OutreachStatusArg::InProgress),
+            ("done", OutreachStatusArg::Done),
+        ] {
+            let cli = Cli::try_parse_from(["buzz", "lists", "status", list, input])
+                .expect("documented list status parses");
+            assert!(matches!(
+                cli.command,
+                Cmd::Lists(ListsCmd::Status { status, .. }) if status == expected
+            ));
+        }
+        assert!(Cli::try_parse_from(["buzz", "lists", "status", list, "started"]).is_err());
+    }
+
+    #[test]
     fn credits_checkout_accepts_a_stable_idempotency_key() {
         let cli = parse_args([
             "buzz",
@@ -5353,7 +5388,7 @@ mod tests {
         );
         assert_eq!(
             names(&cmd, "lists"),
-            vec!["add", "create", "get", "list", "remove", "rename"]
+            vec!["add", "create", "get", "list", "remove", "rename", "status"]
         );
         assert_eq!(names(&cmd, "campaigns"), vec!["get", "list"]);
         assert_eq!(
@@ -5452,7 +5487,7 @@ mod tests {
             ("goals", 9),
             ("issues", 6),
             ("leads", 6),
-            ("lists", 6),
+            ("lists", 7),
             ("media", 1),
             ("messages", 8),
             ("money", 4),

@@ -20,6 +20,7 @@ use buzz_core::kind::{
     KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST, KIND_WHATSAPP_SETTINGS,
     KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
+use buzz_core::outreach_lists::{OutreachProgress, OutreachStatus};
 use buzz_core::whatsapp_stage::WhatsappStage;
 use nostr::{EventBuilder, Kind};
 use serde::Deserialize;
@@ -28,7 +29,9 @@ use uuid::Uuid;
 
 use crate::client::{normalize_write_response, BuzzClient};
 use crate::commands::leads::load_leads;
-use crate::commands::lists::{find_list, load_lists, load_whatsapp_by_lead, WhatsappInfo};
+use crate::commands::lists::{
+    find_list, load_lists, load_whatsapp_by_lead, publish_list_outreach_status, WhatsappInfo,
+};
 use crate::error::CliError;
 use crate::links::{
     list_link, parse_lead_reference, parse_list_reference, parse_template_reference, template_link,
@@ -301,9 +304,33 @@ async fn dispatch_batch(cmd: crate::WhatsappBatchCmd, client: &BuzzClient) -> Re
                 batch_id.as_deref(),
             )?;
             let response = publish_raw(client, KIND_WHATSAPP_BATCH, content).await?;
+            let outreach_status_warning = if client.is_agent()
+                && batch_was_accepted(&response)
+                && should_mark_list_outreach_in_progress(stored.head.outreach.as_ref())
+            {
+                match publish_list_outreach_status(client, stored, OutreachStatus::InProgress).await
+                {
+                    Ok(_) => None,
+                    Err(error) => {
+                        let warning = format!(
+                            "the batch was accepted but the list outreach status was not marked in progress: {error}"
+                        );
+                        eprintln!("warning: {warning}");
+                        Some(warning)
+                    }
+                }
+            } else {
+                None
+            };
             println!(
                 "{}",
-                list_batch_output(&response, list_id, &plan.skipped, plan.rows.len())
+                list_batch_output(
+                    &response,
+                    list_id,
+                    &plan.skipped,
+                    plan.rows.len(),
+                    outreach_status_warning.as_deref(),
+                )
             );
             Ok(())
         }
@@ -1052,12 +1079,30 @@ fn skipped_summary(skipped: &[SkippedMember]) -> String {
     }
 }
 
+/// A managed agent's accepted list batch begins outreach only when the list has not begun.
+/// `done` is deliberately not changed, and a fenced write protects that decision from a race.
+fn should_mark_list_outreach_in_progress(outreach: Option<&OutreachProgress>) -> bool {
+    matches!(
+        outreach.map(|progress| progress.status),
+        None | Some(OutreachStatus::NotStarted)
+    )
+}
+
+/// A batch is successful only when the relay's normal write response says it accepted the event.
+fn batch_was_accepted(response: &str) -> bool {
+    serde_json::from_str::<Value>(response)
+        .ok()
+        .and_then(|answer| answer.get("accepted").and_then(Value::as_bool))
+        == Some(true)
+}
+
 /// The normal write answer plus the list, the number of rows and the members left out.
 fn list_batch_output(
     response: &str,
     list_id: Uuid,
     skipped: &[SkippedMember],
     rows: usize,
+    outreach_status_warning: Option<&str>,
 ) -> String {
     let normalized = normalize_write_response(response);
     let mut output = match serde_json::from_str::<Value>(&normalized) {
@@ -1082,6 +1127,9 @@ fn list_batch_output(
                 .collect(),
         ),
     );
+    if let Some(warning) = outreach_status_warning {
+        output.insert("outreach_status_warning".into(), json!(warning));
+    }
     Value::Object(output).to_string()
 }
 
@@ -1487,6 +1535,7 @@ mod tests {
                 campaign_id: None,
             }),
             default_template: None,
+            outreach_status: None,
         };
         apply_list_action(
             None,
@@ -1572,6 +1621,7 @@ mod tests {
             Uuid::from_u128(900),
             &plan.skipped,
             plan.rows.len(),
+            None,
         ))
         .unwrap();
         assert_eq!(out["accepted"], true);
@@ -1582,6 +1632,42 @@ mod tests {
             out["skipped"][0]["reference"],
             crate::links::lead_link(Uuid::from_u128(2))
         );
+    }
+
+    #[test]
+    fn lists_batch_auto_marks_only_absent_or_not_started_outreach() {
+        let progress = |status| OutreachProgress {
+            status,
+            set_by: "aa".repeat(32),
+            set_by_agent: true,
+            set_at: 1_800_000_000,
+        };
+        assert!(should_mark_list_outreach_in_progress(None));
+        assert!(should_mark_list_outreach_in_progress(Some(&progress(
+            OutreachStatus::NotStarted
+        ))));
+        assert!(!should_mark_list_outreach_in_progress(Some(&progress(
+            OutreachStatus::InProgress
+        ))));
+        assert!(!should_mark_list_outreach_in_progress(Some(&progress(
+            OutreachStatus::Done
+        ))));
+        assert!(batch_was_accepted(
+            r#"{"event_id":"ab","accepted":true,"message":""}"#
+        ));
+        assert!(!batch_was_accepted(
+            r#"{"event_id":"ab","accepted":false,"message":"refused"}"#
+        ));
+
+        let output: Value = serde_json::from_str(&list_batch_output(
+            r#"{"event_id":"ab","accepted":true,"message":""}"#,
+            Uuid::from_u128(900),
+            &[],
+            1,
+            Some("status write conflicted"),
+        ))
+        .expect("JSON output");
+        assert_eq!(output["outreach_status_warning"], "status write conflicted");
     }
 
     #[test]
