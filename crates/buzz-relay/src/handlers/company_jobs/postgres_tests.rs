@@ -247,6 +247,15 @@ async fn assign_function_lead(fixture: &Fixture, lead: &Keys) {
     fixture
         .state
         .db
+        .ensure_user(
+            fixture.tenant.community(),
+            &lead.public_key().to_bytes(),
+        )
+        .await
+        .expect("ensure function lead user");
+    fixture
+        .state
+        .db
         .add_relay_member(
             fixture.tenant.community(),
             &lead.public_key().to_hex(),
