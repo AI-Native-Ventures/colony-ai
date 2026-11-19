@@ -515,7 +515,7 @@ pub(super) async fn clear_slots_led_by_in_tx(
                             state,
                             function,
                             manager,
-                            &source_action_event_id,
+                            source_action_event_id,
                         )
                         .await?;
                     reparented_positions.extend(positions);
