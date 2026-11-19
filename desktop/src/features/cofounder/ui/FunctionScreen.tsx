@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useRouteBack } from "@/app/navigation/RouteOriginContext";
@@ -7,11 +7,13 @@ import type { TeamMember } from "@/features/company-team/teamModels";
 import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useChannelsQuery } from "@/features/channels/hooks";
 
 import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
+import { companyMapJobDoer } from "../companyMapAssignments";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
 import { numbersActions } from "../numbersActions";
@@ -20,6 +22,10 @@ import { FunctionGoals } from "./FunctionGoals";
 import { FunctionScorecard } from "./FunctionScorecard";
 import { WorkerList } from "./WorkerList";
 import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
+import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
+import { prebuiltHeadForFunction } from "../prebuiltAgents";
+import { prebuiltAgentAvatarDataUrl } from "../prebuiltAgentAvatar";
+import { companyMapScoutChannelId } from "../companyMapScout";
 
 type ProfileLookup = Record<
   string,
@@ -41,21 +47,23 @@ function MemberAvatar({
   member,
   name,
   profile,
+  fallbackInstance,
   className,
 }: {
   member: TeamMember;
   name: string;
   profile: string | null;
+  fallbackInstance?: string | null;
   className: string;
 }) {
   return member.kind === "employee" ? (
     <EmployeeAvatar
       className={className}
-      instance={member.managedAgent?.avatarUrl}
+      instance={member.managedAgent?.avatarUrl ?? fallbackInstance}
       name={name}
       pubkey={member.pubkey}
       personaId={member.managedAgent?.personaId}
-      profile={profile}
+      profile={fallbackInstance ? null : profile}
     />
   ) : (
     <ProfileAvatar
@@ -83,6 +91,7 @@ function LeadCard({
   managerName: string | null;
 }) {
   const detail = FUNCTION_DETAILS[functionId];
+  const prebuiltHead = prebuiltHeadForFunction(functionId);
   if (slot.state === "covered_by_scout") {
     return (
       <section
@@ -124,6 +133,11 @@ function LeadCard({
         <div className="mt-3 flex items-center gap-4">
           <MemberAvatar
             className="size-14 rounded-full"
+            fallbackInstance={
+              prebuiltHead && leadName === prebuiltHead.name
+                ? prebuiltAgentAvatarDataUrl(prebuiltHead)
+                : null
+            }
             member={lead}
             name={leadName}
             profile={leadAvatarUrl}
@@ -157,31 +171,24 @@ function LeadCard({
         Lead
       </p>
       <div className="mt-3 flex items-center gap-4">
-        <span
-          aria-hidden="true"
-          className="grid size-14 shrink-0 place-items-center rounded-full border-2 border-dashed border-border text-muted-foreground"
-        >
-          <svg
-            aria-hidden="true"
-            fill="none"
-            height="1.5rem"
-            viewBox="0 0 24 24"
-            width="1.5rem"
-          >
-            <path
-              d="M12 5v14M5 12h14"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeWidth="1.8"
-            />
-          </svg>
-        </span>
+        <EmployeeAvatar
+          className="size-14 rounded-full border-2 border-dashed border-border p-0.5"
+          instance={prebuiltAgentAvatarDataUrl(
+            prebuiltHeadForFunction(functionId) ?? { name: "Scout" },
+          )}
+          name={prebuiltHeadForFunction(functionId)?.name ?? "Scout"}
+          role={`Head of ${detail.name}`}
+        />
         <div>
+          <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-extrabold text-primary">
+            Pre-built
+          </span>
           <h2 className="text-lg font-extrabold" id="function-lead-title">
-            No lead for {detail.name} yet
+            {prebuiltHeadForFunction(functionId)?.name ??
+              `Head of ${detail.name}`}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            This function is visible and ready for a lead.
+            Scout runs {detail.name} for now.
           </p>
         </div>
       </div>
@@ -208,10 +215,9 @@ function SubFunctionsCard({
       </h2>
       <ul className="mt-3 divide-y divide-border">
         {FUNCTION_DETAILS[functionId].subFunctions.map((name) => {
-          const scoutCoversFinanceItem =
-            functionId === "finance" && ["Quotes", "Deposits"].includes(name);
+          const doer = companyMapJobDoer(slot);
           const status =
-            slot.state === "covered_by_scout" || scoutCoversFinanceItem
+            doer.kind === "scout"
               ? "Scout covers"
               : slot.state === "filled"
                 ? `Led by ${leadName ?? "the assigned lead"}`
@@ -231,42 +237,53 @@ function SubFunctionsCard({
   );
 }
 
-function EmptySlotSuggestion({ functionId }: { functionId: FunctionId }) {
-  const detail = FUNCTION_DETAILS[functionId];
-  if (functionId === "operations") return null;
+function EmptySlotSuggestion({
+  canHirePrebuiltHeads,
+  functionId,
+  onHireHead,
+}: {
+  canHirePrebuiltHeads: boolean;
+  functionId: FunctionId;
+  onHireHead: (functionId: FunctionId) => void;
+}) {
+  const head = prebuiltHeadForFunction(functionId);
+  if (!head) return null;
   return (
     <section
       aria-labelledby="function-suggestion-title"
       className="team-card p-5 sm:p-6"
     >
-      <p className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-        Scout suggests
-      </p>
-      <p className="ml-2 inline text-sm text-muted-foreground">
-        A suggested next role for this company
-      </p>
       <div className="mt-4 flex items-center gap-3">
-        <EmployeeAvatar className="size-11 rounded-xl" name="Scout" />
+        <EmployeeAvatar
+          className="size-11 rounded-full border-2 border-dashed border-border p-0.5"
+          instance={prebuiltAgentAvatarDataUrl(head)}
+          name={head.name}
+          role={head.name}
+        />
         <div>
+          <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-extrabold text-primary">
+            Pre-built
+          </span>
           <h2
             className="text-base font-extrabold"
             id="function-suggestion-title"
           >
-            Hire a {detail.suggestedHire}
+            {head.name}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            This lead owns {detail.name} and runs its workers.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{head.does[0]}</p>
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
-        <Link
-          className="team-hire-button"
-          data-testid="cofounder-fill-slot"
-          to="/hire/roles"
-        >
-          Fill this slot
-        </Link>
+        {canHirePrebuiltHeads ? (
+          <button
+            className="team-hire-button"
+            data-testid="cofounder-fill-slot"
+            onClick={() => onHireHead(functionId)}
+            type="button"
+          >
+            Hire {head.name}
+          </button>
+        ) : null}
         <Link
           className="inline-flex h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
           to="/company/map"
@@ -293,12 +310,15 @@ export function FunctionScreen({
   const { activeCommunity } = useCommunities();
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const membership = useMyRelayMembershipQuery();
+  const ownerProfile = useProfileQuery(Boolean(activeCommunity));
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
+  const channelsQuery = useChannelsQuery({ enabled: Boolean(activeCommunity) });
   const enabled = settingsQuery.data?.settings.enabled === true;
   const numbers = useFunctionNumbers(functionId, enabled);
   const numbersAction = useNumbersAction();
   const refreshRequested = useRef(false);
+  const [hireFunctionId, setHireFunctionId] = useState<FunctionId | null>(null);
   const refreshScorecard = useCallback(
     (expectedHeadEventId?: string) =>
       numbersAction.mutate(
@@ -323,6 +343,7 @@ export function FunctionScreen({
   ]);
   const canApprove =
     membership.data?.role === "owner" || membership.data?.role === "admin";
+  const canHirePrebuiltHeads = membership.data?.role === "owner";
   const slot = slots.find(
     (candidate) => candidate.functionId === functionId,
   ) ?? {
@@ -350,6 +371,10 @@ export function FunctionScreen({
     (member) =>
       (member.fallbackName ?? member.managedAgent?.name ?? "").toLowerCase() ===
       "scout",
+  );
+  const scoutChannelId = useMemo(
+    () => companyMapScoutChannelId(channelsQuery.data, scout?.pubkey ?? null),
+    [channelsQuery.data, scout?.pubkey],
   );
   // An unfilled slot is covered by Scout, so Scout's worker runs belong here.
   const parent = slot.state === "filled" ? lead : scout;
@@ -403,6 +428,20 @@ export function FunctionScreen({
       profiles={profiles}
       numbersAction={numbersAction}
       key={functionId}
+    />
+  );
+  const ownerName = ownerProfile.data?.displayName?.trim() || "Owner";
+  const hireDialog = (
+    <PrebuiltHeadHireDialog
+      defaultChannelId={scoutChannelId}
+      functionId={hireFunctionId}
+      managerPubkey={scout?.pubkey}
+      onCompleted={() => setHireFunctionId(null)}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setHireFunctionId(null);
+      }}
+      open={hireFunctionId !== null}
+      ownerName={ownerName}
     />
   );
 
@@ -462,86 +501,103 @@ export function FunctionScreen({
 
   if (functionId === "operations") {
     return (
-      <div
-        className="flex min-h-0 flex-1 flex-col"
-        data-testid="cofounder-function-screen"
-      >
-        <OperationsPlaybookScreen
-          scorecardAndGoals={
-            <div className="space-y-5">
-              {scorecard}
-              {goals}
-            </div>
-          }
-          selectedPlaybookId={selectedOperationsPlaybookId}
-        />
-      </div>
+      <>
+        <div
+          className="flex min-h-0 flex-1 flex-col"
+          data-testid="cofounder-function-screen"
+        >
+          <OperationsPlaybookScreen
+            scorecardAndGoals={
+              <div className="space-y-5">
+                {scorecard}
+                {slot.state !== "filled" ? (
+                  <EmptySlotSuggestion
+                    canHirePrebuiltHeads={canHirePrebuiltHeads}
+                    functionId={functionId}
+                    onHireHead={setHireFunctionId}
+                  />
+                ) : null}
+                {goals}
+              </div>
+            }
+            selectedPlaybookId={selectedOperationsPlaybookId}
+          />
+        </div>
+        {hireDialog}
+      </>
     );
   }
 
   return (
-    <TeamPage testId="cofounder-function-screen" title={detail.name}>
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="team-head-copy">
-          <TeamPageTitle>{detail.name}</TeamPageTitle>
-          <p className="team-subtitle">{FUNCTION_DESCRIPTIONS[functionId]}</p>
-        </div>
-        <button
-          className="inline-flex h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-          onClick={routeBack.goBack}
-          title={routeBack.backLabel}
-          type="button"
-        >
-          {routeBack.backLabel}
-        </button>
-      </header>
+    <>
+      <TeamPage testId="cofounder-function-screen" title={detail.name}>
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div className="team-head-copy">
+            <TeamPageTitle>{detail.name}</TeamPageTitle>
+            <p className="team-subtitle">{FUNCTION_DESCRIPTIONS[functionId]}</p>
+          </div>
+          <button
+            className="inline-flex h-11 items-center rounded-xl border border-border px-4 text-sm font-bold hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            onClick={routeBack.goBack}
+            title={routeBack.backLabel}
+            type="button"
+          >
+            {routeBack.backLabel}
+          </button>
+        </header>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
-        <div className="space-y-5">
-          {scorecard}
-          {slot.state === "empty" ? (
-            <EmptySlotSuggestion functionId={functionId} />
-          ) : null}
-          <WorkerList
-            parentName={parentName}
-            parentPubkey={parent?.pubkey ?? null}
-          />
-          {goals}
-        </div>
-        <div className="space-y-5">
-          <LeadCard
-            functionId={functionId}
-            lead={lead}
-            leadAvatarUrl={leadAvatarUrl}
-            leadName={leadName}
-            managerName={managerName}
-            slot={slot}
-          />
-          {slot.state === "empty" ? (
-            <section
-              aria-labelledby="function-filled-title"
-              className="team-card p-5 sm:p-6"
-            >
-              <h2
-                className="text-base font-extrabold"
-                id="function-filled-title"
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(17rem,0.9fr)]">
+          <div className="space-y-5">
+            {scorecard}
+            {slot.state !== "filled" ? (
+              <EmptySlotSuggestion
+                canHirePrebuiltHeads={canHirePrebuiltHeads}
+                functionId={functionId}
+                onHireHead={setHireFunctionId}
+              />
+            ) : null}
+            <WorkerList
+              parentName={parentName}
+              parentPubkey={parent?.pubkey ?? null}
+            />
+            {goals}
+          </div>
+          <div className="space-y-5">
+            <LeadCard
+              functionId={functionId}
+              lead={lead}
+              leadAvatarUrl={leadAvatarUrl}
+              leadName={leadName}
+              managerName={managerName}
+              slot={slot}
+            />
+            {slot.state !== "filled" ? (
+              <section
+                aria-labelledby="function-filled-title"
+                className="team-card p-5 sm:p-6"
               >
-                Once the slot is filled
-              </h2>
-              <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
-                <li>The lead owns this function and runs its own workers.</li>
-                <li>Scorecards and approved goals live here.</li>
-                <li>Anything sent or spent still waits for your OK.</li>
-              </ul>
-            </section>
-          ) : null}
-          <SubFunctionsCard
-            functionId={functionId}
-            leadName={leadName}
-            slot={slot}
-          />
+                <h2
+                  className="text-base font-extrabold"
+                  id="function-filled-title"
+                >
+                  Once the slot is filled
+                </h2>
+                <ul className="mt-3 space-y-3 text-sm text-muted-foreground">
+                  <li>The lead owns this function and runs its own workers.</li>
+                  <li>Scorecards and approved goals live here.</li>
+                  <li>Anything sent or spent still waits for your OK.</li>
+                </ul>
+              </section>
+            ) : null}
+            <SubFunctionsCard
+              functionId={functionId}
+              leadName={leadName}
+              slot={slot}
+            />
+          </div>
         </div>
-      </div>
-    </TeamPage>
+      </TeamPage>
+      {hireDialog}
+    </>
   );
 }

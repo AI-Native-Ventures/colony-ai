@@ -30,21 +30,21 @@ test("workflow-only Operations matches the ArmOperations positions", () => {
       layout.parts.map(({ functionId, point }) => [functionId, point]),
     ),
     {
-      sales: { x: 980, y: 212 },
-      operations: { x: 420, y: 127 },
+      sales: { x: 980, y: 239 },
+      operations: { x: 420, y: 151 },
       customer_success: { x: 420, y: 339 },
       finance: { x: 980, y: 562 },
-      brand: { x: 420, y: 599 },
+      brand: { x: 420, y: 575 },
     },
   );
   assert.deepEqual(
     layout.workflows.map(({ playbookId, point }) => ({ playbookId, point })),
     [
-      { playbookId: "delivery", point: { x: 220, y: 79 } },
-      { playbookId: "follow-up", point: { x: 220, y: 127 } },
+      { playbookId: "delivery", point: { x: 220, y: 103 } },
+      { playbookId: "follow-up", point: { x: 220, y: 151 } },
     ],
   );
-  assert.deepEqual(layout.addWorkflow.point, { x: 220, y: 175 });
+  assert.deepEqual(layout.addWorkflow.point, { x: 220, y: 199 });
   assert.equal(
     layout.jobs.some((job) => job.functionId === "operations"),
     false,
@@ -59,29 +59,29 @@ test("an open seven-step workflow matches ArmDelivery and WalkOps", () => {
 
   assert.deepEqual(
     layout.parts.find((part) => part.functionId === "operations")?.point,
-    { x: 420, y: 197 },
+    { x: 420, y: 214 },
   );
   assert.deepEqual(
     layout.workflows.map(({ playbookId, point }) => ({ playbookId, point })),
     [
-      { playbookId: "delivery", point: { x: 220, y: 23 } },
-      { playbookId: "follow-up", point: { x: 220, y: 323 } },
+      { playbookId: "delivery", point: { x: 220, y: 40 } },
+      { playbookId: "follow-up", point: { x: 220, y: 340 } },
     ],
   );
   assert.deepEqual(
     layout.steps.map(({ stepId, point }) => ({ stepId, point })),
     [
-      { stepId: "brief", point: { x: 220, y: 68 } },
-      { stepId: "logins", point: { x: 220, y: 98 } },
-      { stepId: "build", point: { x: 220, y: 128 } },
-      { stepId: "approval", point: { x: 220, y: 158 } },
-      { stepId: "present", point: { x: 220, y: 188 } },
-      { stepId: "revisions", point: { x: 220, y: 218 } },
-      { stepId: "launch", point: { x: 220, y: 248 } },
+      { stepId: "brief", point: { x: 220, y: 85 } },
+      { stepId: "logins", point: { x: 220, y: 115 } },
+      { stepId: "build", point: { x: 220, y: 145 } },
+      { stepId: "approval", point: { x: 220, y: 175 } },
+      { stepId: "present", point: { x: 220, y: 205 } },
+      { stepId: "revisions", point: { x: 220, y: 235 } },
+      { stepId: "launch", point: { x: 220, y: 265 } },
     ],
   );
-  assert.deepEqual(layout.addStep?.point, { x: 220, y: 278 });
-  assert.deepEqual(layout.addWorkflow.point, { x: 220, y: 371 });
+  assert.deepEqual(layout.addStep?.point, { x: 220, y: 295 });
+  assert.deepEqual(layout.addWorkflow.point, { x: 220, y: 388 });
 });
 
 test("a twelve-step rail remains represented even when the board starts above the default frame", () => {
@@ -97,9 +97,9 @@ test("a twelve-step rail remains represented even when the board starts above th
     openPlaybookId: "delivery",
   });
 
-  assert.deepEqual(layout.workflows[0]?.point, { x: 220, y: -52 });
-  assert.deepEqual(layout.steps[0]?.point, { x: 220, y: -7 });
-  assert.deepEqual(layout.steps.at(-1)?.point, { x: 220, y: 323 });
-  assert.deepEqual(layout.addStep?.point, { x: 220, y: 353 });
-  assert.deepEqual(layout.addWorkflow.point, { x: 220, y: 446 });
+  assert.deepEqual(layout.workflows[0]?.point, { x: 220, y: -35 });
+  assert.deepEqual(layout.steps[0]?.point, { x: 220, y: 10 });
+  assert.deepEqual(layout.steps.at(-1)?.point, { x: 220, y: 340 });
+  assert.deepEqual(layout.addStep?.point, { x: 220, y: 370 });
+  assert.deepEqual(layout.addWorkflow.point, { x: 220, y: 463 });
 });

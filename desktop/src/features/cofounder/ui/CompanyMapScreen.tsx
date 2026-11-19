@@ -1,12 +1,11 @@
-import { useMemo } from "react";
-import { Link } from "@tanstack/react-router";
-
+import { useEffect, useMemo, useState } from "react";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import {
   useCofounderSettingsQuery,
   useFunctionSlotsQuery,
@@ -22,8 +21,13 @@ import {
   companyMapScoutChannelId,
   companyMapScoutPubkey,
 } from "../companyMapScout";
+import {
+  readPrebuiltHireCompletion,
+  type PrebuiltHireCompletion,
+} from "../prebuiltHireStorage";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
+import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
 import type { CompanyMapWindowJob } from "../companyMapJobRoutes";
 
 export function CompanyMapScreen({
@@ -43,12 +47,13 @@ export function CompanyMapScreen({
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
   const profileQuery = useProfileQuery(Boolean(activeCommunity));
   const identityQuery = useIdentityQuery();
+  const membershipQuery = useMyRelayMembershipQuery();
   const needsYouSummary = useNeedsYouSummary();
   const workerRunsQuery = useWorkerRunsQuery(null, { all: true });
   const enabled = settingsQuery.data?.settings.enabled === true;
   const whatsappStatus = useWhatsAppStatusQuery(enabled);
   const playbooksQuery = usePlaybooksQuery(Boolean(activeCommunity));
-  const channelsQuery = useChannelsQuery({ enabled });
+  const channelsQuery = useChannelsQuery({ enabled: Boolean(activeCommunity) });
   const members = teamQuery.data?.members ?? [];
   const pubkeys = members.map((member) => member.pubkey);
   const profilesQuery = useUsersBatchQuery(pubkeys, {
@@ -60,6 +65,25 @@ export function CompanyMapScreen({
     [members, profiles],
   );
   const companyName = activeCommunity?.name ?? "Company";
+  const [hireFunctionId, setHireFunctionId] = useState<
+    (typeof FUNCTION_ORDER)[number] | null
+  >(null);
+  const [recentPrebuiltHires, setRecentPrebuiltHires] = useState<
+    Partial<Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>>
+  >({});
+  useEffect(() => {
+    const restored: Partial<
+      Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>
+    > = {};
+    for (const functionId of FUNCTION_ORDER) {
+      const completion = readPrebuiltHireCompletion(
+        activeCommunity?.id,
+        functionId,
+      );
+      if (completion) restored[functionId] = completion;
+    }
+    setRecentPrebuiltHires(restored);
+  }, [activeCommunity?.id]);
   const operationsWorkflows = useMemo(
     () =>
       operationsMapWorkflows({
@@ -139,47 +163,64 @@ export function CompanyMapScreen({
       </TeamPage>
     );
   }
-  if (!settingsQuery.data?.settings.enabled) {
-    return (
-      <TeamPage testId="cofounder-company-map" title="Company map">
-        <div className="space-y-3">
-          <TeamPageTitle>Company map</TeamPageTitle>
-          <p className="text-sm text-muted-foreground">
-            Co-founder mode is off for {companyName}.
-          </p>
-          <Link
-            className="inline-flex items-center rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted"
-            to="/settings"
-          >
-            Open settings
-          </Link>
-        </div>
-      </TeamPage>
-    );
-  }
+  const ownerName = profileQuery.data?.displayName?.trim() || "Owner";
+  const canHirePrebuiltHeads = membershipQuery.data?.role === "owner";
 
   return (
-    <CompanyMapBoard
-      companyId={activeCommunity?.id}
-      companyName={companyName}
-      members={members}
-      ownerAvatarUrl={profileQuery.data?.avatarUrl}
-      ownerName={profileQuery.data?.displayName?.trim() || "Owner"}
-      ownerPubkey={identityQuery.data?.pubkey}
-      profiles={profiles}
-      relayUrl={activeCommunity?.relayUrl}
-      scoutPubkey={scoutPubkey}
-      slots={slots}
-      liveFunctionIds={liveFunctionIds}
-      mapWindowDepth={mapWindowDepth}
-      mapWindowJob={mapWindowJob}
-      onMapWindowClose={onMapWindowClose}
-      onMapWindowFit={onMapWindowFit}
-      clientChannelId={clientChannelId}
-      operationsWorkflows={operationsWorkflows}
-      scoutChannelId={scoutChannelId}
-      summary={needsYouSummary.data}
-      whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
-    />
+    <>
+      {!enabled ? (
+        <p
+          className="mx-auto mt-3 max-w-2xl rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+          data-testid="cofounder-map-mode-off-notice"
+        >
+          Co-founder mode is off. You can still choose a head here, then turn it
+          on in Settings when you are ready for the company to work with them.
+        </p>
+      ) : null}
+      <CompanyMapBoard
+        companyId={activeCommunity?.id}
+        companyName={companyName}
+        members={members}
+        ownerAvatarUrl={profileQuery.data?.avatarUrl}
+        ownerName={ownerName}
+        ownerPubkey={identityQuery.data?.pubkey}
+        profiles={profiles}
+        relayUrl={activeCommunity?.relayUrl}
+        scoutPubkey={scoutPubkey}
+        canHirePrebuiltHeads={canHirePrebuiltHeads}
+        onHireHead={setHireFunctionId}
+        recentPrebuiltHires={recentPrebuiltHires}
+        slots={slots}
+        liveFunctionIds={liveFunctionIds}
+        mapWindowDepth={mapWindowDepth}
+        mapWindowJob={mapWindowJob}
+        onMapWindowClose={onMapWindowClose}
+        onMapWindowFit={onMapWindowFit}
+        clientChannelId={clientChannelId}
+        operationsWorkflows={operationsWorkflows}
+        scoutChannelId={scoutChannelId}
+        summary={needsYouSummary.data}
+        whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
+      />
+      <PrebuiltHeadHireDialog
+        defaultChannelId={scoutChannelId}
+        functionId={hireFunctionId}
+        managerPubkey={scoutPubkey}
+        onCompleted={(completion) => {
+          if (completion) {
+            setRecentPrebuiltHires((current) => ({
+              ...current,
+              [completion.functionId]: completion,
+            }));
+          }
+          setHireFunctionId(null);
+        }}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setHireFunctionId(null);
+        }}
+        open={hireFunctionId !== null}
+        ownerName={ownerName}
+      />
+    </>
   );
 }

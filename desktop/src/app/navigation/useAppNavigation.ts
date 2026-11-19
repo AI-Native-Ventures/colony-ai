@@ -207,6 +207,12 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goCompanyMap = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/company/map" }, behavior),
+    [commitNavigation],
+  );
+
   const goHireRolePack = React.useCallback(
     (personaId?: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -493,6 +499,7 @@ export function useAppNavigation() {
     goTeamPause,
     goTeamArchive,
     goHireRoles,
+    goCompanyMap,
     goHireRolePack,
     goHireConfigure,
     goHireReview,

@@ -5,6 +5,7 @@ import type {
 } from "@/features/cofounder/cofounderRecords";
 import type { CompanyMapWindowJob } from "@/features/cofounder/companyMapJobRoutes";
 import type { CompanyMapOperationsWorkflow } from "@/features/cofounder/companyMapOperations";
+import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
 
 export type ProfileLookup = Record<
   string,
@@ -29,6 +30,11 @@ export type CompanyMapBoardProps = {
   ownerPubkey?: string;
   ownerAvatarUrl?: string | null;
   scoutPubkey?: string | null;
+  /** Prebuilt heads are an owner-only map action. */
+  canHirePrebuiltHeads?: boolean;
+  onHireHead?: (functionId: FunctionId) => void;
+  /** The newest successful map hire, used to reopen its direct chat. */
+  recentPrebuiltHires?: Partial<Record<FunctionId, PrebuiltHireCompletion>>;
   summary: CompanyMapSummary | undefined;
   whatsAppChannelId?: string | null;
   /** Data-backed Operations workflows. Phone keeps the established static map. */

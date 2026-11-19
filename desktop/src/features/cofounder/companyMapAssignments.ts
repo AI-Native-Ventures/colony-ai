@@ -1,38 +1,54 @@
 import type { FunctionId, FunctionSlotView } from "./cofounderRecords";
 import { FUNCTION_DETAILS } from "./functions";
 
-/** Jobs assigned to Scout in the approved company map, unless a part is hired. */
+export type CompanyMapJobDoer =
+  | { kind: "specialist"; pubkey: string }
+  | { kind: "head"; pubkey: string }
+  | { kind: "scout" };
+
+/**
+ * One source of truth for every job circle. A specialist argument is already
+ * first so the later specialist-hire slice only has to supply its assignment.
+ */
+export function companyMapJobDoer(
+  slot: FunctionSlotView,
+  specialistPubkey: string | null = null,
+): CompanyMapJobDoer {
+  if (specialistPubkey) return { kind: "specialist", pubkey: specialistPubkey };
+  if (slot.state === "filled" && slot.leadPubkey) {
+    return { kind: "head", pubkey: slot.leadPubkey };
+  }
+  return { kind: "scout" };
+}
+
+/** Compatibility helper for existing map presentation call sites. */
 export function companyMapJobIsScoutLed(
   functionId: FunctionId,
-  jobName: string,
+  _jobName: string,
   slotState: FunctionSlotView["state"],
 ): boolean {
-  if (slotState === "covered_by_scout") return true;
-  if (
-    functionId === "finance" &&
-    ["Quotes", "Deposits", "Recurring plans"].includes(jobName)
-  ) {
-    return true;
-  }
   return (
-    slotState === "empty" && ["customer_success", "brand"].includes(functionId)
+    companyMapJobDoer({
+      functionId,
+      state: slotState,
+      leadPubkey: slotState === "filled" ? "assigned-head" : null,
+    }).kind === "scout"
   );
 }
 
-/** Copy that names Scout's map jobs without inventing coverage for other parts. */
+/** Copy that describes the one job ownership rule on a part card. */
 export function companyMapScoutCoverageSentence(
   functionId: FunctionId,
   slotState: FunctionSlotView["state"],
 ): string {
-  const jobs = FUNCTION_DETAILS[functionId].subFunctions.filter((jobName) =>
-    companyMapJobIsScoutLed(functionId, jobName, slotState),
-  );
-  if (jobs.length === 0) {
-    return `Scout suggests hiring a ${FUNCTION_DETAILS[functionId].suggestedHire}.`;
-  }
-  if (jobs.length === FUNCTION_DETAILS[functionId].subFunctions.length) {
+  if (
+    companyMapJobDoer({
+      functionId,
+      state: slotState,
+      leadPubkey: slotState === "filled" ? "assigned-head" : null,
+    }).kind === "scout"
+  ) {
     return "Scout does its jobs for now.";
   }
-  const lastJob = jobs[jobs.length - 1];
-  return `Scout does ${jobs.slice(0, -1).join(", ")} and ${lastJob}.`;
+  return `${FUNCTION_DETAILS[functionId].name} lead does its jobs.`;
 }

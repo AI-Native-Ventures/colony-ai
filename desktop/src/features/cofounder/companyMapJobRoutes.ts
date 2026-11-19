@@ -88,10 +88,6 @@ const ROUTES: Record<string, CompanyMapJobRoute> = {
   "operations:Handover": { kind: "app", to: "/clients" },
   "customer_success:Client chats": { kind: "whatsapp", tab: "chats" },
   "customer_success:Change requests": { kind: "work" },
-  "customer_success:Renewals": {
-    kind: "part",
-    functionId: "customer_success",
-  },
   "customer_success:Upsell": {
     kind: "part",
     functionId: "customer_success",
@@ -100,7 +96,6 @@ const ROUTES: Record<string, CompanyMapJobRoute> = {
     kind: "part",
     functionId: "customer_success",
   },
-  "finance:Quotes": { kind: "app", to: "/clients" },
   "finance:Invoices": { kind: "app", to: "/money/invoices" },
   "finance:Deposits": { kind: "app", to: "/money" },
   "finance:Recurring plans": { kind: "part", functionId: "finance" },
@@ -119,7 +114,6 @@ const MAP_WINDOW_JOBS: readonly CompanyMapStaticWindowJob[] = [
   { functionId: "sales", jobName: "Follow-ups" },
   { functionId: "sales", jobName: "Quotes" },
   { functionId: "sales", jobName: "Closing" },
-  { functionId: "finance", jobName: "Quotes" },
   { functionId: "finance", jobName: "Invoices" },
   { functionId: "finance", jobName: "Deposits" },
   { functionId: "finance", jobName: "Chasing payments" },
@@ -142,11 +136,6 @@ export function getCompanyMapJobRoute(
 const NO_SCREEN_MAP_WINDOW_JOBS: readonly CompanyMapNoScreenWindowJob[] = [
   { functionId: "sales", jobName: "Calls", noScreen: true },
   { functionId: "finance", jobName: "Recurring plans", noScreen: true },
-  {
-    functionId: "customer_success",
-    jobName: "Renewals",
-    noScreen: true,
-  },
   { functionId: "customer_success", jobName: "Upsell", noScreen: true },
   { functionId: "customer_success", jobName: "Reviews", noScreen: true },
   { functionId: "brand", jobName: "Website", noScreen: true },

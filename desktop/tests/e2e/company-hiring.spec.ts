@@ -26,7 +26,7 @@ function newRelayKey() {
   };
 }
 
-test("owner hires from a role and the configured draft survives reload", async ({
+test("a direct role route preserves a configured draft across reload", async ({
   page,
 }) => {
   const relay = newRelayKey();
@@ -59,8 +59,7 @@ test("owner hires from a role and the configured draft survives reload", async (
     },
   });
 
-  await page.goto("/#/team");
-  await page.getByRole("button", { name: "Hire an agent" }).click();
+  await page.goto("/#/hire/roles");
   const role = page.getByTestId(`hire-role-${PERSONA_ID}`);
   await expect(role).toBeVisible();
   await expect(role.getByRole("button", { name: "Edit pack" })).toBeVisible();

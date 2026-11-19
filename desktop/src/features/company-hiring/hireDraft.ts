@@ -3,9 +3,21 @@ import {
   parseCompanyHireAction,
 } from "./companyHireModels";
 import type { HireProposal } from "@/features/company-asks/askRecords";
+import type { RespondToMode } from "@/shared/api/types";
+
+export type HireLocalConfiguration = {
+  channelIds: string[];
+  respondTo: RespondToMode;
+  effortLevel?: string;
+};
 
 export type HireDraft = {
   proposal: HireProposal;
+  /**
+   * Local-only setup values. The relay HireProposal intentionally excludes
+   * these because its Rust schema rejects unknown fields.
+   */
+  localConfiguration?: HireLocalConfiguration;
   /** Session-local picture selection; never included in the public hire ask. */
   avatarUrl?: string;
   employeePubkey?: string;
@@ -39,6 +51,75 @@ function getSessionStorage(): Storage | null {
 
 function storageKey(relayUrl: string, hireId: string) {
   return `company-hire:${relayUrl}:${hireId}`;
+}
+
+export function defaultHireLocalConfiguration(
+  proposal: Pick<HireProposal, "introductionChannelId">,
+): HireLocalConfiguration {
+  return {
+    channelIds: [proposal.introductionChannelId],
+    respondTo: "owner-only",
+  };
+}
+
+function parseLocalConfiguration(
+  value: unknown,
+  proposal: Pick<HireProposal, "introductionChannelId">,
+): HireLocalConfiguration | null {
+  if (value === undefined) return defaultHireLocalConfiguration(proposal);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const knownKeys = new Set(["channelIds", "respondTo", "effortLevel"]);
+  if (
+    Object.keys(record).some((key) => !knownKeys.has(key)) ||
+    !Array.isArray(record.channelIds) ||
+    record.channelIds.length === 0 ||
+    record.channelIds.length > 32 ||
+    !record.channelIds.every(
+      (channelId) =>
+        typeof channelId === "string" &&
+        /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(channelId),
+    ) ||
+    new Set(record.channelIds).size !== record.channelIds.length ||
+    !record.channelIds.includes(proposal.introductionChannelId) ||
+    !["owner-only", "allowlist", "anyone"].includes(String(record.respondTo)) ||
+    (record.effortLevel !== undefined &&
+      (typeof record.effortLevel !== "string" ||
+        !record.effortLevel.trim() ||
+        record.effortLevel.length > 64))
+  ) {
+    return null;
+  }
+  return {
+    channelIds: [...record.channelIds],
+    respondTo: record.respondTo as RespondToMode,
+    ...(typeof record.effortLevel === "string"
+      ? { effortLevel: record.effortLevel }
+      : {}),
+  };
+}
+
+function splitLegacyProposal(value: unknown): {
+  proposal: unknown;
+  localConfiguration: unknown;
+} {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { proposal: value, localConfiguration: undefined };
+  }
+  const record = value as Record<string, unknown>;
+  const { channelIds, respondTo, effortLevel, ...proposal } = record;
+  const hasLegacyConfiguration =
+    channelIds !== undefined ||
+    respondTo !== undefined ||
+    effortLevel !== undefined;
+  return {
+    proposal,
+    localConfiguration: hasLegacyConfiguration
+      ? { channelIds, respondTo, effortLevel }
+      : undefined,
+  };
 }
 
 export function readHireDraft(
@@ -76,18 +157,27 @@ export function readHireDraft(
   const record = value as Record<string, unknown>;
   const knownKeys = new Set([
     "proposal",
+    "localConfiguration",
     "avatarUrl",
     "employeePubkey",
     "baseHeadEventId",
   ]);
+  const split = splitLegacyProposal(record.proposal);
   const createAction = parseCompanyHireAction({
     schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
     hireId,
     action: "create",
-    proposal: record.proposal,
+    proposal: split.proposal,
   });
+  const localConfiguration = createAction?.proposal
+    ? parseLocalConfiguration(
+        record.localConfiguration ?? split.localConfiguration,
+        createAction.proposal,
+      )
+    : null;
   if (
     !createAction ||
+    !localConfiguration ||
     Object.keys(record).some((key) => !knownKeys.has(key)) ||
     (record.avatarUrl !== undefined && !isAvatarDraftValue(record.avatarUrl)) ||
     (record.employeePubkey !== undefined &&
@@ -106,6 +196,7 @@ export function readHireDraft(
   }
   return {
     proposal: createAction.proposal as HireProposal,
+    localConfiguration,
     ...(typeof record.avatarUrl === "string"
       ? { avatarUrl: record.avatarUrl }
       : {}),

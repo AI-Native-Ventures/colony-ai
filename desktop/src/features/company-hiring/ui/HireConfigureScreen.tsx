@@ -37,6 +37,12 @@ import {
 import type { CompanyHireHeadRecord } from "../companyHireModels";
 import { readHireDraft, writeHireDraft } from "../hireDraft";
 import {
+  buildHireProposal,
+  formFromProposal,
+  localConfigurationFromForm,
+  type HireFormValues,
+} from "../hireConfigureDraft";
+import {
   HIRE_CONFIGURE_TIMEOUT_MS,
   hireConfigureStatus,
 } from "../hireConfigureStatus";
@@ -61,20 +67,6 @@ import {
   HireTitle,
 } from "./HirePresentation";
 
-type HireFormValues = {
-  displayName: string;
-  title: string;
-  managerPubkey: string;
-  introductionChannelId: string;
-  channelIds: string[];
-  respondTo: RespondToMode;
-  weeklyAllowance: string;
-  runtimeId: string;
-  providerId: string;
-  modelId: string;
-  effortLevel: string;
-};
-
 type ModelChoice = {
   value: string;
   runtimeId: string;
@@ -82,55 +74,6 @@ type ModelChoice = {
   modelId: string;
   label: string;
 };
-
-function formFromProposal(proposal: HireProposal): HireFormValues {
-  return {
-    displayName: proposal.displayName,
-    title: proposal.title,
-    managerPubkey: proposal.managerPubkey ?? "",
-    introductionChannelId: proposal.introductionChannelId,
-    channelIds: proposal.channelIds ?? [proposal.introductionChannelId],
-    respondTo: proposal.respondTo === "anyone" ? "anyone" : "owner-only",
-    weeklyAllowance: proposal.weeklyAllowance ?? "",
-    runtimeId: proposal.runtimeId,
-    providerId: proposal.providerId ?? "",
-    modelId: proposal.modelId ?? "",
-    effortLevel: proposal.effortLevel ?? "",
-  };
-}
-
-function buildHireProposal(
-  hireId: string,
-  rolePack: HireProposal["rolePack"],
-  values: HireFormValues,
-): HireProposal {
-  return {
-    hireId,
-    rolePack: {
-      personaId: rolePack.personaId,
-      title: rolePack.title,
-      job: rolePack.job,
-      skills: [...rolePack.skills],
-      tools: rolePack.tools.map((tool) => ({ ...tool })),
-      workerMenu: [...rolePack.workerMenu],
-    },
-    displayName: values.displayName.trim(),
-    title: values.title.trim(),
-    ...(values.managerPubkey ? { managerPubkey: values.managerPubkey } : {}),
-    introductionChannelId: values.introductionChannelId,
-    ...(values.channelIds.length > 0
-      ? { channelIds: [...values.channelIds] }
-      : {}),
-    respondTo: values.respondTo,
-    runtimeId: values.runtimeId,
-    ...(values.providerId ? { providerId: values.providerId } : {}),
-    ...(values.modelId ? { modelId: values.modelId } : {}),
-    ...(values.effortLevel ? { effortLevel: values.effortLevel } : {}),
-    ...(values.weeklyAllowance.trim()
-      ? { weeklyAllowance: values.weeklyAllowance.trim() }
-      : {}),
-  };
-}
 
 function modelChoiceValue(
   runtimeId: string,
@@ -313,7 +256,9 @@ export function HireConfigureScreen({
   >({});
   const [form, setForm] = React.useState<HireFormValues | null>(() => {
     const stored = readHireDraft(relayUrl, hireId);
-    return stored ? formFromProposal(stored.proposal) : null;
+    return stored
+      ? formFromProposal(stored.proposal, stored.localConfiguration)
+      : null;
   });
   const [avatarUrl, setAvatarUrl] = React.useState(
     () => readHireDraft(relayUrl, hireId)?.avatarUrl ?? "",
@@ -339,7 +284,7 @@ export function HireConfigureScreen({
     if (initialized.current) return;
     const stored = readHireDraft(relayUrl, hireId);
     if (stored) {
-      setForm(formFromProposal(stored.proposal));
+      setForm(formFromProposal(stored.proposal, stored.localConfiguration));
       if (stored.avatarUrl) setAvatarUrl(stored.avatarUrl);
       initialized.current = true;
       return;
@@ -594,6 +539,10 @@ export function HireConfigureScreen({
     () => (form && rolePack ? buildHireProposal(hireId, rolePack, form) : null),
     [form, hireId, rolePack],
   );
+  const candidateLocalConfiguration = React.useMemo(
+    () => (form ? localConfigurationFromForm(form) : null),
+    [form],
+  );
   const candidateCreateAction = React.useMemo(
     () =>
       candidateProposal
@@ -608,9 +557,11 @@ export function HireConfigureScreen({
   );
   const previousDraft = readHireDraft(relayUrl, hireId);
   React.useEffect(() => {
-    if (!candidateCreateAction?.proposal) return;
+    if (!candidateCreateAction?.proposal || !candidateLocalConfiguration)
+      return;
     writeHireDraft(relayUrl, {
       proposal: candidateCreateAction.proposal,
+      localConfiguration: candidateLocalConfiguration,
       ...(avatarUrl ? { avatarUrl } : {}),
       ...(previousDraft?.employeePubkey
         ? { employeePubkey: previousDraft.employeePubkey }
@@ -625,6 +576,7 @@ export function HireConfigureScreen({
   }, [
     avatarUrl,
     candidateCreateAction,
+    candidateLocalConfiguration,
     headQuery.data?.event.id,
     previousDraft?.baseHeadEventId,
     previousDraft?.employeePubkey,
@@ -668,6 +620,7 @@ export function HireConfigureScreen({
       return;
     const saved = writeHireDraft(relayUrl, {
       proposal,
+      localConfiguration: localConfigurationFromForm(form),
       ...(avatarUrl ? { avatarUrl } : {}),
       ...(storedDraft?.employeePubkey
         ? { employeePubkey: storedDraft.employeePubkey }

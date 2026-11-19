@@ -8,10 +8,7 @@ import type {
   FunctionId,
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
-import {
-  companyMapJobIsScoutLed,
-  companyMapScoutCoverageSentence,
-} from "@/features/cofounder/companyMapAssignments";
+import { companyMapJobDoer } from "@/features/cofounder/companyMapAssignments";
 import {
   FUNCTION_DESCRIPTIONS,
   FUNCTION_DETAILS,
@@ -24,8 +21,16 @@ import {
   getCompanyMapJobRoute,
   isCompanyMapJobFallback,
 } from "@/features/cofounder/companyMapJobRoutes";
+import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
+import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
+import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
 
 import type { CompanyMapBoardProps, ProfileLookup } from "./companyMapTypes";
+import {
+  PrebuiltHeadPreview,
+  PrebuiltHiredHeadPreview,
+  PrebuiltJustHiredContent,
+} from "./CompanyMapPartCard";
 
 function fullName(
   member: CompanyMapBoardProps["members"][number],
@@ -92,6 +97,7 @@ function PersonAvatar({
   owner,
   ownerPubkey,
   ownerAvatarUrl,
+  fallbackInstance,
 }: {
   className: string;
   member?: CompanyMapBoardProps["members"][number];
@@ -101,6 +107,7 @@ function PersonAvatar({
   owner?: boolean;
   ownerPubkey?: string;
   ownerAvatarUrl?: string | null;
+  fallbackInstance?: string | null;
 }) {
   if (owner) {
     return (
@@ -126,10 +133,14 @@ function PersonAvatar({
   return member.kind === "employee" ? (
     <EmployeeAvatar
       className={className}
-      instance={member.managedAgent?.avatarUrl}
+      instance={member.managedAgent?.avatarUrl ?? fallbackInstance}
       name={display}
       personaId={member.managedAgent?.personaId}
-      profile={profiles[member.pubkey.toLowerCase()]?.avatarUrl ?? null}
+      profile={
+        fallbackInstance
+          ? null
+          : (profiles[member.pubkey.toLowerCase()]?.avatarUrl ?? null)
+      }
       pubkey={member.pubkey}
     />
   ) : (
@@ -144,14 +155,12 @@ function PersonAvatar({
 }
 
 function LeadAvatar({
-  functionId,
   jobName,
   slot,
   members,
   profiles,
   size,
 }: {
-  functionId: FunctionId;
   jobName?: string;
   slot: FunctionSlotView;
   members: CompanyMapBoardProps["members"];
@@ -159,20 +168,22 @@ function LeadAvatar({
   size: "part" | "job";
 }) {
   const className = `company-map-phone-${size}-avatar`;
-  if (
-    slot.state === "covered_by_scout" ||
-    (jobName !== undefined &&
-      companyMapJobIsScoutLed(functionId, jobName, slot.state))
-  ) {
+  const jobDoer = jobName === undefined ? null : companyMapJobDoer(slot);
+  if (slot.state === "covered_by_scout" || jobDoer?.kind === "scout") {
     return <PersonAvatar className={className} profiles={profiles} scout />;
   }
   const member =
-    slot.state === "filled" && slot.leadPubkey
+    jobDoer?.kind === "head" || jobDoer?.kind === "specialist"
       ? members.find(
           (candidate) =>
-            candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
+            candidate.pubkey.toLowerCase() === jobDoer.pubkey.toLowerCase(),
         )
-      : undefined;
+      : slot.state === "filled" && slot.leadPubkey
+        ? members.find(
+            (candidate) =>
+              candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
+          )
+        : undefined;
   if (!member)
     return (
       <span
@@ -180,9 +191,15 @@ function LeadAvatar({
         className={`${className} company-map-phone-plus`}
       />
     );
+  const prebuiltHead = prebuiltHeadForFunction(slot.functionId);
+  const fallbackInstance =
+    prebuiltHead && fullName(member, profiles) === prebuiltHead.name
+      ? prebuiltAgentAvatarDataUrl(prebuiltHead)
+      : null;
   return (
     <PersonAvatar
       className={className}
+      fallbackInstance={fallbackInstance}
       member={member}
       name={fullName(member, profiles)}
       profiles={profiles}
@@ -312,20 +329,26 @@ function PartStatus({
 
 function PhoneActionCard({
   activePart,
+  canHirePrebuiltHeads,
   ownerName,
   slots,
   summary,
   members,
   profiles,
+  recentPrebuiltHires,
   onClose,
+  onHireHead,
 }: {
   activePart: FunctionId | null;
+  canHirePrebuiltHeads: boolean;
   ownerName: string;
   slots: FunctionSlotView[];
   summary: CompanyMapBoardProps["summary"];
   members: CompanyMapBoardProps["members"];
   profiles: ProfileLookup;
+  recentPrebuiltHires?: Partial<Record<FunctionId, PrebuiltHireCompletion>>;
   onClose: () => void;
+  onHireHead: (functionId: FunctionId) => void;
 }) {
   const firstName = ownerName.trim().split(/\s+/)[0] || "there";
   if (!activePart) {
@@ -372,16 +395,57 @@ function PhoneActionCard({
         )
       : undefined;
   const count = countForPart(summary, activePart);
+  const prebuiltHead = prebuiltHeadForFunction(activePart);
+  const recentHire =
+    slot.state === "filled" &&
+    slot.leadPubkey &&
+    recentPrebuiltHires?.[activePart]?.employeePubkey.toLowerCase() ===
+      slot.leadPubkey.toLowerCase()
+      ? (recentPrebuiltHires[activePart] ?? null)
+      : null;
   const leader =
     slot.state === "covered_by_scout"
-      ? `Scout runs ${detail.name} until you hire someone.`
+      ? `Scout runs ${detail.name} for now.`
       : lead
         ? `${fullName(lead, profiles)} runs ${detail.name}.`
         : slot.state === "filled"
           ? `The assigned lead runs ${detail.name}.`
-          : activePart === "operations"
-            ? "Nobody runs Operations yet."
-            : `Nobody runs ${detail.name} yet. ${companyMapScoutCoverageSentence(activePart, slot.state)}`;
+          : `Scout runs ${detail.name} for now.`;
+  const canHireHead = Boolean(
+    slot.state !== "filled" && prebuiltHead && canHirePrebuiltHeads,
+  );
+
+  if (recentHire && prebuiltHead) {
+    return (
+      <section
+        aria-label={`${detail.name} part details`}
+        className="company-map-card company-map-card--part"
+      >
+        <PrebuiltJustHiredContent
+          head={prebuiltHead}
+          lead={lead}
+          leadName={lead ? fullName(lead, profiles) : null}
+          recentHire={recentHire}
+        />
+        <div className="company-map-card-actions">
+          <Link
+            className="company-map-primary-action"
+            params={{ channelId: recentHire.directChannelId }}
+            to="/channels/$channelId"
+          >
+            Open direct chat
+          </Link>
+          <button
+            className="company-map-secondary-action"
+            onClick={onClose}
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -394,19 +458,42 @@ function PhoneActionCard({
         {FUNCTION_DESCRIPTIONS[activePart]} {leader}
         {count > 0 ? ` ${partCountSentence(count)}` : ""}
       </p>
+      {slot.state !== "filled" ? (
+        <PrebuiltHeadPreview functionId={activePart} />
+      ) : null}
+      {slot.state === "filled" && prebuiltHead ? (
+        <PrebuiltHiredHeadPreview
+          head={prebuiltHead}
+          isPrebuilt={
+            lead?.managedAgent?.name === prebuiltHead.name ||
+            recentHire !== null
+          }
+          lead={lead}
+          leadName={lead ? fullName(lead, profiles) : null}
+        />
+      ) : null}
       <div className="company-map-card-actions">
+        {canHireHead && prebuiltHead ? (
+          <button
+            className="company-map-primary-action"
+            data-testid={`cofounder-hire-head-phone-${activePart}`}
+            onClick={() => onHireHead(activePart)}
+            type="button"
+          >
+            Hire {prebuiltHead.name}
+          </button>
+        ) : null}
         <Link
-          className="company-map-primary-action"
+          className={
+            canHireHead
+              ? "company-map-secondary-action"
+              : "company-map-primary-action"
+          }
           params={{ function: activePart }}
           to="/company/function/$function"
         >
           Open {detail.name}
         </Link>
-        {slot.state === "empty" && activePart !== "operations" ? (
-          <Link className="company-map-secondary-action" to="/hire/roles">
-            Hire a {detail.suggestedHire}
-          </Link>
-        ) : null}
         <button
           className="company-map-secondary-action"
           onClick={onClose}
@@ -431,6 +518,9 @@ export function CompanyMapPhone({
   slots,
   summary,
   whatsAppChannelId,
+  canHirePrebuiltHeads = false,
+  onHireHead = () => undefined,
+  recentPrebuiltHires,
 }: CompanyMapBoardProps) {
   const [activePart, setActivePart] = useState<FunctionId | null>(null);
   return (
@@ -489,7 +579,6 @@ export function CompanyMapPhone({
               >
                 <span className="company-map-phone-part-disc">
                   <LeadAvatar
-                    functionId={functionId}
                     members={members}
                     profiles={profiles}
                     size="part"
@@ -537,7 +626,6 @@ export function CompanyMapPhone({
                         <span className="company-map-phone-job">
                           <span className="company-map-phone-job-disc">
                             <LeadAvatar
-                              functionId={functionId}
                               jobName={jobName}
                               members={members}
                               profiles={profiles}
@@ -586,10 +674,13 @@ export function CompanyMapPhone({
       </div>
       <PhoneActionCard
         activePart={activePart}
+        canHirePrebuiltHeads={canHirePrebuiltHeads}
         members={members}
         onClose={() => setActivePart(null)}
+        onHireHead={onHireHead}
         ownerName={ownerName}
         profiles={profiles}
+        recentPrebuiltHires={recentPrebuiltHires}
         slots={slots}
         summary={summary}
       />

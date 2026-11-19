@@ -211,7 +211,7 @@ export function TeamScreen() {
   const teamQuery = useCompanyTeamQuery();
   const identityQuery = useIdentityQuery();
   const personasQuery = usePersonasQuery();
-  const { goHireRoles } = useAppNavigation();
+  const { goCompanyMap } = useAppNavigation();
   const members = teamQuery.data?.members ?? [];
   const memberPubkeys = React.useMemo(
     () => members.map((member) => member.pubkey),
@@ -290,7 +290,7 @@ export function TeamScreen() {
           <button
             className="team-hire-button"
             data-testid="team-hire-button"
-            onClick={() => void goHireRoles()}
+            onClick={() => void goCompanyMap()}
             type="button"
           >
             <PlusIcon aria-hidden="true" size={17} strokeWidth={2.4} />

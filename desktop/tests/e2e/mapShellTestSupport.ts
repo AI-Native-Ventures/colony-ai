@@ -39,6 +39,7 @@ export const MAP_SHELL_WORKSPACES = [
 export type MapShellExtraChannel = NonNullable<
   Colony3Extras["channels"]
 >[number];
+type MapShellMock = NonNullable<Parameters<typeof installMockBridge>[1]>;
 
 export const DENSE_MAP_SHELL_CHANNELS: MapShellExtraChannel[] = [
   { id: "1e1a7000-0000-4000-8000-000000000101", name: "Accounts" },
@@ -168,6 +169,8 @@ export async function prepareMapShell(
     cofounderEnabled?: boolean;
     workspaces?: typeof MAP_SHELL_WORKSPACES;
     extraChannels?: MapShellExtraChannel[];
+    identity?: (typeof TEST_IDENTITIES)[keyof typeof TEST_IDENTITIES];
+    mock?: MapShellMock;
   },
 ) {
   await page.emulateMedia({ colorScheme: options.theme });
@@ -254,8 +257,10 @@ export async function prepareMapShell(
   }
   await installMockBridge(
     page,
-    mapShellFixture(options.cofounderEnabled, options.extraChannels),
+    options.mock ??
+      mapShellFixture(options.cofounderEnabled, options.extraChannels),
     {
+      identity: options.identity,
       skipCommunitySeed: Boolean(options.workspaces),
       seedPreviewFeatures: true,
       previewFeatureOverrides: { map_home: options.featureEnabled === true },
