@@ -184,6 +184,11 @@ pub struct CreateManagedAgentRequest {
     pub system_prompt: Option<String>,
     pub avatar_url: Option<String>,
     pub model: Option<String>,
+    /// Explicit model for a linked persona instance. This is the only
+    /// per-agent model authority that beats the linked persona and global
+    /// defaults at launch.
+    #[serde(default)]
+    pub model_override: Option<String>,
     pub provider: Option<String>,
     #[serde(default)]
     pub effort_level: Option<String>,

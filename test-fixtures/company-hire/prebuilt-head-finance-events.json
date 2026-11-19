@@ -1,0 +1,140 @@
+{
+  "hireHeads": {
+    "proposed": {
+      "tags": [["d", "company:hire:00000000-0000-4000-8000-000000000001"]],
+      "content": {
+        "schemaVersion": 1,
+        "proposal": {
+          "hireId": "00000000-0000-4000-8000-000000000001",
+          "rolePack": {
+            "personaId": "persona-finance-head",
+            "title": "Head of Finance",
+            "job": "Head of Finance",
+            "skills": [
+              "Asks for money in and keeps the records.",
+              "Tells you every week what came in, what is owed and who is late.",
+              "Never pays anyone."
+            ],
+            "tools": [],
+            "workerMenu": ["codex"]
+          },
+          "displayName": "Head of Finance",
+          "title": "Head of Finance",
+          "managerPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "introductionChannelId": "00000000-0000-4000-8000-000000000002",
+          "runtimeId": "codex",
+          "providerId": "openai",
+          "modelId": "gpt-6"
+        },
+        "status": "proposed",
+        "proposedByPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceActionEventId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "approved": {
+      "tags": [["d", "company:hire:00000000-0000-4000-8000-000000000001"]],
+      "content": {
+        "schemaVersion": 1,
+        "proposal": {
+          "hireId": "00000000-0000-4000-8000-000000000001",
+          "rolePack": {
+            "personaId": "persona-finance-head",
+            "title": "Head of Finance",
+            "job": "Head of Finance",
+            "skills": [
+              "Asks for money in and keeps the records.",
+              "Tells you every week what came in, what is owed and who is late.",
+              "Never pays anyone."
+            ],
+            "tools": [],
+            "workerMenu": ["codex"]
+          },
+          "displayName": "Head of Finance",
+          "title": "Head of Finance",
+          "managerPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "introductionChannelId": "00000000-0000-4000-8000-000000000002",
+          "runtimeId": "codex",
+          "providerId": "openai",
+          "modelId": "gpt-6"
+        },
+        "status": "approved",
+        "proposedByPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "founderPubkey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "sourceActionEventId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    },
+    "approvedWithEmployee": {
+      "tags": [
+        ["d", "company:hire:00000000-0000-4000-8000-000000000001"],
+        ["p", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]
+      ],
+      "content": {
+        "schemaVersion": 1,
+        "proposal": {
+          "hireId": "00000000-0000-4000-8000-000000000001",
+          "rolePack": {
+            "personaId": "persona-finance-head",
+            "title": "Head of Finance",
+            "job": "Head of Finance",
+            "skills": [
+              "Asks for money in and keeps the records.",
+              "Tells you every week what came in, what is owed and who is late.",
+              "Never pays anyone."
+            ],
+            "tools": [],
+            "workerMenu": ["codex"]
+          },
+          "displayName": "Head of Finance",
+          "title": "Head of Finance",
+          "managerPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "introductionChannelId": "00000000-0000-4000-8000-000000000002",
+          "runtimeId": "codex",
+          "providerId": "openai",
+          "modelId": "gpt-6"
+        },
+        "status": "approved",
+        "proposedByPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "founderPubkey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "employeePubkey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "sourceActionEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "hired": {
+      "tags": [
+        ["d", "company:hire:00000000-0000-4000-8000-000000000001"],
+        ["p", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]
+      ],
+      "content": {
+        "schemaVersion": 1,
+        "proposal": {
+          "hireId": "00000000-0000-4000-8000-000000000001",
+          "rolePack": {
+            "personaId": "persona-finance-head",
+            "title": "Head of Finance",
+            "job": "Head of Finance",
+            "skills": [
+              "Asks for money in and keeps the records.",
+              "Tells you every week what came in, what is owed and who is late.",
+              "Never pays anyone."
+            ],
+            "tools": [],
+            "workerMenu": ["codex"]
+          },
+          "displayName": "Head of Finance",
+          "title": "Head of Finance",
+          "managerPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "introductionChannelId": "00000000-0000-4000-8000-000000000002",
+          "runtimeId": "codex",
+          "providerId": "openai",
+          "modelId": "gpt-6"
+        },
+        "status": "hired",
+        "proposedByPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "founderPubkey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "employeePubkey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "introductionEventId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "sourceActionEventId": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    }
+  }
+}

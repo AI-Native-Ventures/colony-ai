@@ -33,31 +33,16 @@ mod pending;
 use pending::build_agent_archive_request;
 pub(crate) use pending::{retain_managed_agent_pending, tombstone_managed_agent_pending};
 
-/// Build a summary from fresh disk state (personas, teams, global config).
-/// For one-shot command paths only — the 5s list poll calls
-/// `build_managed_agent_summary` directly with stores loaded once per call,
-/// not once per record.
-pub(super) fn summarize_from_disk(
-    app: &AppHandle,
-    record: &ManagedAgentRecord,
-    runtimes: &std::collections::HashMap<
-        crate::managed_agents::ManagedAgentRuntimeKey,
-        crate::managed_agents::ManagedAgentPairRuntime,
-    >,
-) -> Result<ManagedAgentSummary, String> {
-    build_managed_agent_summary(
-        app,
-        record,
-        runtimes,
-        &load_personas(app).unwrap_or_default(),
-        &load_teams(app).unwrap_or_default(),
-        &crate::managed_agents::load_global_agent_config(app).unwrap_or_default(),
-    )
-}
+#[path = "agents_summary.rs"]
+mod summary;
+use summary::summarize_from_disk;
 
 #[path = "agents_create_fields.rs"]
 mod create_fields;
-use create_fields::{normalize_relay_mesh, resolve_created_avatar_url, trim_to_optional_string};
+use create_fields::{
+    apply_create_model_override, normalize_relay_mesh, requested_model_override,
+    resolve_created_avatar_url, trim_to_optional_string,
+};
 
 #[cfg(feature = "mesh-llm")]
 async fn ensure_relay_mesh_for_record(
@@ -374,6 +359,7 @@ pub async fn create_managed_agent(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
+    let requested_model_override = requested_model_override(input.model_override.as_deref())?;
     validate_create_definition(&name, requested_persona_id.as_deref(), &input)?;
     if let Some(parallelism) = input.parallelism {
         if !(1..=32).contains(&parallelism) {
@@ -721,6 +707,7 @@ pub async fn create_managed_agent(
             &mut record,
             input.effort_level.clone(),
         );
+        apply_create_model_override(&mut record, requested_model_override.clone())?;
 
         records.push(record);
 

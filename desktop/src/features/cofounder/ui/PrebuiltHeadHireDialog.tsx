@@ -108,6 +108,8 @@ type ChoiceDraft = {
   effortLevel: string;
 };
 
+type HireRecoveryState = "idle" | "checking" | "ready" | "failed";
+
 const EMPTY_CHOICE: ChoiceDraft = {
   runtimeId: "",
   providerId: "",
@@ -206,11 +208,16 @@ export function PrebuiltHeadHireDialog({
   const [progress, setProgress] = React.useState<PrebuiltHireProgress | null>(
     null,
   );
+  const [recoveryState, setRecoveryState] =
+    React.useState<HireRecoveryState>("idle");
+  const [recoveryHireId, setRecoveryHireId] = React.useState<string | null>(
+    null,
+  );
   const [failure, setFailure] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
   const agent = functionId ? prebuiltHeadForFunction(functionId) : null;
-  const headQuery = useCompanyHireHeadQuery(progress?.hireId ?? null);
+  const headQuery = useCompanyHireHeadQuery(progress?.hireId ?? recoveryHireId);
   const agentDefaults = useAgentDialogDefaults({
     open,
   });
@@ -296,6 +303,7 @@ export function PrebuiltHeadHireDialog({
   const selectionReady = Boolean(
     selectedRuntime &&
       selectedModel &&
+      recoveryState === "ready" &&
       (!requiresEffort || effortOptions.includes(choice.effortLevel)) &&
       validChannels.some((channel) => channel.id === channelId),
   );
@@ -329,6 +337,8 @@ export function PrebuiltHeadHireDialog({
     const savedChoice = readPrebuiltHireChoice(communityId) ?? null;
     const preferredChoice = savedProgress?.choice ?? savedChoice;
     setProgress(savedProgress);
+    setRecoveryHireId(null);
+    setRecoveryState(savedProgress ? "ready" : "checking");
     setHasSavedChoice(savedChoice !== null);
     setChoice(
       preferredChoice
@@ -345,6 +355,118 @@ export function PrebuiltHeadHireDialog({
     );
     setFailure(null);
   }, [communityId, defaultChannelId, functionId, open]);
+
+  React.useEffect(() => {
+    if (
+      !open ||
+      !communityId ||
+      !functionId ||
+      progress ||
+      recoveryState !== "checking" ||
+      recoveryHireId !== null
+    ) {
+      return;
+    }
+    if (accessQuery.isPending) return;
+    if (accessQuery.isError) {
+      setRecoveryState("failed");
+      setFailure(
+        "Colony could not check for an unfinished hire, so it will not start another one. Close this and try again.",
+      );
+      return;
+    }
+    const slotHire = accessQuery.data?.slotHires.find(
+      (entry) => entry.functionId === functionId,
+    );
+    if (!slotHire) {
+      setRecoveryState("ready");
+      return;
+    }
+    setRecoveryHireId(slotHire.hireId);
+  }, [
+    accessQuery.data?.slotHires,
+    accessQuery.isError,
+    accessQuery.isPending,
+    communityId,
+    functionId,
+    open,
+    progress,
+    recoveryHireId,
+    recoveryState,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !open ||
+      !communityId ||
+      !functionId ||
+      !agent ||
+      progress ||
+      recoveryState !== "checking" ||
+      !recoveryHireId
+    ) {
+      return;
+    }
+    if (headQuery.isPending) return;
+    if (headQuery.isError || !headQuery.data) {
+      setRecoveryState("failed");
+      setFailure(
+        "Colony found an unfinished hire but could not read it, so it will not start another one. Close this and try again.",
+      );
+      return;
+    }
+    const recoveredHead = headQuery.data;
+    if (
+      !sameProposal(recoveredHead, recoveryHireId, functionId) ||
+      recoveredHead.head.status === "denied" ||
+      recoveredHead.head.status === "hired"
+    ) {
+      setRecoveryHireId(null);
+      setRecoveryState("ready");
+      return;
+    }
+    const proposal = recoveredHead.head.proposal;
+    if (!proposal.modelId) {
+      setRecoveryState("failed");
+      setFailure(
+        "This unfinished hire has no model selected. Choose a model before hiring. Colony will not create another agent without one.",
+      );
+      return;
+    }
+    const recoveredChoice: PrebuiltHireChoice = {
+      runtimeId: proposal.runtimeId,
+      providerId: proposal.providerId ?? "",
+      modelId: proposal.modelId,
+    };
+    const recoveredProgress: PrebuiltHireProgress = {
+      hireId: proposal.hireId,
+      functionId,
+      agentId: agent.id,
+      introductionChannelId: proposal.introductionChannelId,
+      choice: recoveredChoice,
+      ...(recoveredHead.head.employeePubkey
+        ? { employeePubkey: recoveredHead.head.employeePubkey }
+        : {}),
+    };
+    writePrebuiltHireChoice(communityId, recoveredChoice);
+    writePrebuiltHireProgress(communityId, recoveredProgress);
+    setChoice({ ...recoveredChoice, effortLevel: "" });
+    setChannelId(proposal.introductionChannelId);
+    setHasSavedChoice(true);
+    setProgress(recoveredProgress);
+    setRecoveryState("ready");
+  }, [
+    agent,
+    communityId,
+    functionId,
+    headQuery.data,
+    headQuery.isError,
+    headQuery.isPending,
+    open,
+    progress,
+    recoveryHireId,
+    recoveryState,
+  ]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -447,11 +569,17 @@ export function PrebuiltHeadHireDialog({
       !communityId ||
       !relayUrl ||
       !identityQuery.data?.pubkey ||
-      !isOwner ||
-      !selectionReady
+      !isOwner
     ) {
       return;
     }
+    if (selectedRuntime && !selectedModel) {
+      setFailure(
+        "Choose a model before hiring. Colony will not create an agent without one.",
+      );
+      return;
+    }
+    if (!selectionReady) return;
     submittingRef.current = true;
     setSubmitting(true);
     setFailure(null);
@@ -568,6 +696,7 @@ export function PrebuiltHeadHireDialog({
             agentArgs: [],
             mcpCommand: runtime.mcpCommand ?? "",
             model: selectedChoice.modelId,
+            modelOverride: selectedChoice.modelId,
             provider: selectedChoice.providerId || undefined,
             effortLevel: selectedChoice.effortLevel,
             avatarUrl: prebuiltAgentAvatarDataUrl(agent),
@@ -907,6 +1036,11 @@ export function PrebuiltHeadHireDialog({
             Checking which AI is ready on this Mac.
           </p>
         ) : null}
+        {recoveryState === "checking" ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            Checking for an unfinished hire before starting a new one.
+          </p>
+        ) : null}
         {!runtimesQuery.isPending && runtimes.length === 0 ? (
           <p className="text-sm text-muted-foreground" role="status">
             No AI is ready on this Mac.{" "}
@@ -959,7 +1093,11 @@ export function PrebuiltHeadHireDialog({
         <div className="flex flex-wrap items-center justify-between gap-3">
           {!selectionReady ? (
             <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-              Pick all three to hire.
+              {recoveryState === "checking"
+                ? "Checking for an unfinished hire."
+                : selectedRuntime && !selectedModel
+                  ? "Choose a model before hiring. Colony will not create an agent without one."
+                  : "Pick all three to hire."}
             </p>
           ) : (
             <span aria-hidden="true" />

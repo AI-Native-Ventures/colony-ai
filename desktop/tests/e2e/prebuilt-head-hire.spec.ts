@@ -1,9 +1,12 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { hexToBytes } from "@noble/hashes/utils.js";
+import { finalizeEvent } from "nostr-tools/pure";
 import { expect, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES } from "../helpers/bridge";
+import { KIND_HIRE_HEAD } from "../../src/shared/constants/kinds";
 import { test } from "./cofounder-map-test";
 import {
   AYA_PUBKEY,
@@ -25,6 +28,8 @@ const PREBUILT_HIRE_CHANNEL = {
   name: "general",
 };
 const LONG_GOOSE_MODEL = "goose-claude-4-6-opus";
+const RECOVERY_HIRE_ID = "11111111-2222-4333-8444-555555555555";
+const RECOVERY_EMPLOYEE_PUBKEY = "c".repeat(64);
 
 type PrebuiltHireTheme = "light" | "dark";
 type PrebuiltHireViewport = { width: number; height: number };
@@ -155,6 +160,129 @@ function fixtureWithPrebuiltFinanceHead() {
         : agent,
     ),
   };
+}
+
+function approvedFinanceHireHead(relayPrivateKeyHex: string) {
+  const proposal = {
+    hireId: RECOVERY_HIRE_ID,
+    rolePack: {
+      personaId: "builtin:prebuilt-head-finance",
+      title: "Head of Finance",
+      job: "Head of Finance",
+      skills: ["Keeps the money records clear."],
+      tools: [],
+      workerMenu: ["goose"],
+    },
+    displayName: "Head of Finance",
+    title: "Head of Finance",
+    introductionChannelId: PREBUILT_HIRE_CHANNEL.id,
+    runtimeId: "goose",
+    modelId: LONG_GOOSE_MODEL,
+  };
+  return finalizeEvent(
+    {
+      kind: KIND_HIRE_HEAD,
+      created_at: 1_790_000_000,
+      tags: [
+        ["d", `company:hire:${RECOVERY_HIRE_ID}`],
+        ["p", RECOVERY_EMPLOYEE_PUBKEY],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        proposal,
+        status: "approved",
+        proposedByPubkey: "a".repeat(64),
+        founderPubkey: TEST_IDENTITIES.tyler.pubkey,
+        employeePubkey: RECOVERY_EMPLOYEE_PUBKEY,
+        sourceActionEventId: "b".repeat(64),
+      }),
+    },
+    hexToBytes(relayPrivateKeyHex),
+  );
+}
+
+function interruptedFinanceHireMock() {
+  const base = fixture({
+    identity: TEST_IDENTITIES.tyler,
+    includeAya: false,
+    includeScout: true,
+  });
+  return {
+    ...base,
+    companyHireHeads: [
+      approvedFinanceHireHead(base.companyHireRelayPrivateKeyHex),
+    ],
+    companyAccessRecords: [
+      {
+        dTag: `company:slot-hire:${RECOVERY_HIRE_ID}`,
+        content: {
+          schemaVersion: 1,
+          hireId: RECOVERY_HIRE_ID,
+          function: "finance",
+          setByPubkey: TEST_IDENTITIES.tyler.pubkey,
+          updatedAt: 1_790_000_000,
+        },
+      },
+    ],
+    managedAgents: [
+      ...base.managedAgents,
+      {
+        pubkey: RECOVERY_EMPLOYEE_PUBKEY,
+        name: "Head of Finance",
+        runtime: "goose",
+        model: LONG_GOOSE_MODEL,
+        status: "stopped" as const,
+      },
+    ],
+    visualChannels: [PREBUILT_HIRE_CHANNEL],
+  };
+}
+
+async function assertOneRecoveryGreeting(page: Page) {
+  const marker = `company-prebuilt-hire:${RECOVERY_HIRE_ID}:first-message`;
+  await expect
+    .poll(async () => {
+      const commands = await readCommandLog(page);
+      return commands.filter(
+        (entry) =>
+          entry.command === "send_managed_agent_channel_message" &&
+          (entry.payload as { marker?: string } | null)?.marker === marker,
+      ).length;
+    })
+    .toBe(1);
+  const payload = commandPayload<{
+    agentPubkey?: string;
+    channelId?: string;
+    marker?: string;
+    markerScope?: string;
+  }>(await readCommandLog(page), "send_managed_agent_channel_message");
+  expect(payload).toMatchObject({
+    agentPubkey: RECOVERY_EMPLOYEE_PUBKEY,
+    marker,
+    markerScope: "agent",
+  });
+  expect(typeof payload?.channelId).toBe("string");
+  expect(
+    await page.evaluate(
+      async ({ agentPubkey, channelId, marker: messageMarker }) =>
+        Boolean(
+          await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+            "has_managed_agent_channel_message_marker",
+            {
+              agentPubkey,
+              channelId,
+              marker: messageMarker,
+              markerScope: "agent",
+            },
+          ),
+        ),
+      {
+        agentPubkey: RECOVERY_EMPLOYEE_PUBKEY,
+        channelId: payload?.channelId ?? "",
+        marker,
+      },
+    ),
+  ).toBe(true);
 }
 
 async function preparePrebuiltHireCapture(
@@ -455,6 +583,33 @@ test.describe("prebuilt head visual proof", () => {
 });
 
 test.describe("prebuilt head hiring journeys", () => {
+  test("a missing model stops the hire before an agent is created", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireCapture(page, "light", {
+      width: 1440,
+      height: 900,
+    });
+    await selectMapPart(page, "finance", "Finance");
+    await page.getByTestId("cofounder-hire-head-finance").click();
+    const dialog = page.getByTestId("prebuilt-head-hire-dialog");
+    await expect(dialog).toBeVisible();
+    await page.getByTestId("prebuilt-hire-harness").click();
+    await page.getByTestId("prebuilt-hire-harness-option-goose").click();
+
+    await expect(page.getByTestId("prebuilt-hire-finish")).toBeDisabled();
+    await expect(
+      dialog.getByText(
+        "Choose a model before hiring. Colony will not create an agent without one.",
+      ),
+    ).toBeVisible();
+    expect(
+      (await readCommandLog(page)).filter(
+        (entry) => entry.command === "create_managed_agent",
+      ),
+    ).toHaveLength(0);
+  });
+
   test("a long model label stays in its field and leaves optional effort neutral", async ({
     page,
   }) => {
@@ -557,6 +712,13 @@ test.describe("prebuilt head hiring journeys", () => {
       )
       .toBe(true);
     const commandsAfterHire = await readCommandLog(page);
+    const createPayload = commandPayload<{
+      input?: { model?: string; modelOverride?: string };
+    }>(commandsAfterHire, "create_managed_agent");
+    expect(createPayload?.input).toMatchObject({
+      model: LONG_GOOSE_MODEL,
+      modelOverride: LONG_GOOSE_MODEL,
+    });
     const startPayload = commandPayload<{ pubkey?: string }>(
       commandsAfterHire,
       "start_managed_agent",
@@ -626,6 +788,83 @@ test.describe("prebuilt head hiring journeys", () => {
     expect(
       decodeURIComponent((await directChatAvatar.getAttribute("src")) ?? ""),
     ).toContain("#D9A83F");
+  });
+
+  test("a saved employee-attached hire resumes without creating another agent", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireCapture(
+      page,
+      "light",
+      { width: 1440, height: 900 },
+      interruptedFinanceHireMock(),
+    );
+    await page.evaluate(
+      ({ hireId, employeePubkey }) => {
+        window.localStorage.setItem(
+          "company-map-prebuilt-progress:v1:e2e-default-community:finance",
+          JSON.stringify({
+            hireId,
+            functionId: "finance",
+            agentId: "prebuilt-head-finance",
+            introductionChannelId: "22222222-2222-4222-8222-222222222222",
+            choice: {
+              runtimeId: "goose",
+              providerId: "",
+              modelId: "goose-claude-4-6-opus",
+            },
+            employeePubkey,
+          }),
+        );
+      },
+      {
+        employeePubkey: RECOVERY_EMPLOYEE_PUBKEY,
+        hireId: RECOVERY_HIRE_ID,
+      },
+    );
+
+    await selectMapPart(page, "finance", "Finance");
+    await page.getByTestId("cofounder-hire-head-finance").click();
+    const dialog = page.getByTestId("prebuilt-head-hire-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId("prebuilt-hire-finish")).toBeEnabled();
+    const commandsBeforeHire = await readCommandLog(page);
+    const createdBeforeHire = commandsBeforeHire.filter(
+      (entry) => entry.command === "create_managed_agent",
+    ).length;
+
+    await page.getByTestId("prebuilt-hire-finish").click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Just hired",
+    );
+    const createdAfterHire = (await readCommandLog(page)).filter(
+      (entry) => entry.command === "create_managed_agent",
+    ).length;
+    expect(createdAfterHire).toBe(createdBeforeHire);
+    await assertOneRecoveryGreeting(page);
+  });
+
+  test("a relay slot record restores an attached hire after local progress is lost", async ({
+    page,
+  }) => {
+    await preparePrebuiltHireCapture(
+      page,
+      "light",
+      { width: 1440, height: 900 },
+      interruptedFinanceHireMock(),
+    );
+    await selectMapPart(page, "finance", "Finance");
+    await page.getByTestId("cofounder-hire-head-finance").click();
+    const dialog = page.getByTestId("prebuilt-head-hire-dialog");
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId("prebuilt-hire-finish")).toBeEnabled();
+    await page.getByTestId("prebuilt-hire-finish").click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
+      "Just hired",
+    );
+    await assertOneRecoveryGreeting(page);
   });
 
   test("the sidebar map keeps the same Finance hire journey", async ({

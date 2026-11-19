@@ -10381,7 +10381,12 @@ function acceptMockHireAction(
         Math.floor(Date.now() / 1_000),
         (currentEvent?.created_at ?? 0) + 1,
       ),
-      tags: [["d", dTag]],
+      tags: [
+        ["d", dTag],
+        ...(typeof head.employeePubkey === "string"
+          ? [["p", head.employeePubkey]]
+          : []),
+      ],
       content: JSON.stringify(head),
     },
     relaySecret,
