@@ -1139,7 +1139,7 @@ export function PrebuiltHeadHireDialog({
               Cancel
             </button>
             <button
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-[var(--colony-ink-button)] px-4 py-2 text-sm font-bold text-[hsl(var(--colony-canvas))] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="prebuilt-hire-finish"
               disabled={
                 !selectionReady ||

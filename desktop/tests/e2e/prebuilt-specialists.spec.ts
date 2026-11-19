@@ -48,6 +48,13 @@ type CommandLogEntry = { command: string; payload: unknown };
 type SpecialistTheme = "light" | "dark";
 type SpecialistViewport = { width: number; height: number };
 
+function decodeAvatarSource(source: string) {
+  const base64Prefix = "data:image/svg+xml;base64,";
+  return source.startsWith(base64Prefix)
+    ? Buffer.from(source.slice(base64Prefix.length), "base64").toString("utf8")
+    : decodeURIComponent(source);
+}
+
 async function readCommandLog(page: Page): Promise<CommandLogEntry[]> {
   return page.evaluate(
     () =>
@@ -691,6 +698,64 @@ function overlaps(
 }
 
 test.describe("prebuilt specialists in the map shell", () => {
+  test("job cards keep the board visuals and a clean map mock", async ({
+    page,
+  }) => {
+    await prepareSpecialistMap(page);
+    const card = await openJobSpot(page, "sales", "Follow-ups", "follow-ups");
+    const specialistBox = card.getByTestId("job-assignment-specialist-box");
+    await expect(specialistBox).toHaveCSS(
+      "background-color",
+      "rgb(245, 241, 248)",
+    );
+    await expect(specialistBox).toHaveCSS("border-top-width", "1px");
+    await expect(page.getByTestId("whatsapp-thread-messages")).toContainText(
+      "Good morning. Can we talk on Tuesday?",
+    );
+    await expect(
+      page.getByText(
+        "The relay returned an invalid WhatsApp thread message list.",
+      ),
+    ).toHaveCount(0);
+
+    const headAvatar = await page
+      .getByTestId("fullmap-window-job-ring")
+      .locator("img")
+      .getAttribute("src");
+    expect(decodeAvatarSource(headAvatar ?? "")).toContain("#E0826B");
+
+    await card.getByRole("button", { name: "Close" }).click();
+    await expect(card).toBeHidden();
+    await page
+      .getByTestId(spotTestId("sales", "follow-ups"))
+      .getByRole("button")
+      .click();
+    await expect(card).toBeVisible();
+
+    const spotPrimary = await card
+      .getByRole("button", { name: "Hire Follow-ups specialist" })
+      .evaluate((element) => window.getComputedStyle(element).backgroundColor);
+    await card
+      .getByRole("button", { name: "Hire Follow-ups specialist" })
+      .click();
+    await choosePrebuiltRuntimeAndModel(page);
+    const finish = page.getByTestId("prebuilt-hire-finish");
+    expect(
+      await finish.evaluate(
+        (element) => window.getComputedStyle(element).backgroundColor,
+      ),
+    ).toBe(spotPrimary);
+    await finish.click();
+    await expect(page.getByTestId("prebuilt-head-hire-dialog")).toBeHidden();
+
+    const specialistAvatar = await page
+      .getByTestId("fullmap-window-job-ring")
+      .locator("img")
+      .getAttribute("src");
+    expect(decodeAvatarSource(specialistAvatar ?? "")).toContain("#E0826B");
+    await expect(card.getByRole("button", { name: "Close" })).toBeVisible();
+  });
+
   test("an owner hires and removes a specialist through the job pill", async ({
     page,
   }) => {

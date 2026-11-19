@@ -102,7 +102,10 @@ function SpecialistCardBox({
 }) {
   const name = member ? memberName(member) : agent.name;
   return (
-    <div className="map-job-assignment-specialist-box">
+    <div
+      className="map-job-assignment-specialist-box"
+      data-testid="job-assignment-specialist-box"
+    >
       <JobAssigneeAvatar agent={agent} member={member} name={name} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -281,6 +284,18 @@ export function JobAssignmentSpot({
           jobId,
         );
 
+  const closeCard =
+    presentation === "pill" ? (
+      <button
+        className="map-job-assignment-close"
+        data-testid={`job-assignment-close-${functionId}-${jobId}`}
+        onClick={() => setCardOpen(false)}
+        type="button"
+      >
+        Close
+      </button>
+    ) : null;
+
   const openMessage = async () => {
     if (!specialistMember) return;
     setMessageError(null);
@@ -402,6 +417,9 @@ export function JobAssignmentSpot({
         <p className="mt-2 text-sm text-destructive" role="alert">
           {messageError}
         </p>
+      ) : null}
+      {closeCard ? (
+        <div className="mt-3 flex flex-wrap gap-2">{closeCard}</div>
       ) : null}
     </section>
   );

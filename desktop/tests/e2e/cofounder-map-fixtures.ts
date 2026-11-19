@@ -162,6 +162,7 @@ export function fixture({
             {
               pubkey: AYA_PUBKEY,
               name: "Aya",
+              avatarRole: "Sales",
               status: "running" as const,
               channelNames: ["general"],
             },
@@ -383,6 +384,67 @@ export async function seedCompanyMapWhatsApp(
           request.body?.what === "batches"
         ) {
           return { batches: [] };
+        }
+        if (
+          request.action === "post" &&
+          request.path === "/api/whatsapp/query" &&
+          request.body?.what === "thread"
+        ) {
+          return {
+            contact: {
+              waId: "27123456789",
+              e164: "+27212345678",
+              displayName: "Thandeka",
+              profileName: "Thandeka",
+              businessName: "Plane Tree Guesthouse",
+              website: null,
+              label: null,
+              leadId: null,
+              ownerPubkey: null,
+              threadRootEventId: null,
+              lastInboundAt: "2026-11-19T08:30:00.000Z",
+              lastContactedAt: null,
+              lastOutboundState: null,
+              lastFailureSummary: null,
+              deliveryFailure: null,
+              lastReplyAt: "2026-11-19T08:30:00.000Z",
+              stage: "wants_call",
+              stageSetBy: null,
+              stageChangedAt: "2026-11-19T08:30:00.000Z",
+              queuedFrom: null,
+              outreachStatus: null,
+              hasSentOutbound: false,
+              windowOpen: false,
+              windowClosesAt: null,
+              optedOut: false,
+              paused: false,
+              pauseReason: null,
+              unanswered: false,
+              awaitingApproval: false,
+              businessOutreachStopped: false,
+              businessStopReason: null,
+            },
+            messages: [
+              {
+                id: "e2e-company-map-whatsapp-message",
+                waId: "27123456789",
+                direction: "in",
+                kind: "text",
+                text: "Good morning. Can we talk on Tuesday?",
+                templateName: null,
+                state: "received",
+                errorCode: null,
+                errorText: null,
+                failureSummary: null,
+                retryScope: null,
+                canRetry: false,
+                canRetryLater: false,
+                eventId: null,
+                senderPubkey: null,
+                createdAt: "2026-11-19T08:30:00.000Z",
+              },
+            ],
+          };
         }
         return {};
       };

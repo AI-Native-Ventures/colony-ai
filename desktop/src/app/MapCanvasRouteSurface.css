@@ -300,7 +300,8 @@
 
 .map-job-assignment-pill:focus-visible,
 .map-job-assignment-primary:focus-visible,
-.map-job-assignment-secondary:focus-visible {
+.map-job-assignment-secondary:focus-visible,
+.map-job-assignment-close:focus-visible {
   outline: 3px solid hsl(var(--colony-accent));
   outline-offset: 3px;
 }
@@ -336,8 +337,9 @@
   align-items: center;
   margin-top: 0.75rem;
   padding: 0.75rem;
+  border: 1px solid hsl(var(--colony-border-strong));
   border-radius: 0.875rem;
-  background: hsl(var(--colony-muted) / 0.35);
+  background: var(--colony-soft-raised);
 }
 
 .map-job-assignment-just-hired {
@@ -382,7 +384,8 @@
 }
 
 .map-job-assignment-primary,
-.map-job-assignment-secondary {
+.map-job-assignment-secondary,
+.map-job-assignment-close {
   display: inline-flex;
   min-height: 2.75rem;
   align-items: center;
@@ -406,8 +409,15 @@
   color: hsl(var(--colony-fg));
 }
 
+.map-job-assignment-close {
+  border: 0;
+  background: var(--colony-soft-track);
+  color: hsl(var(--colony-fg));
+}
+
 .map-job-assignment-primary:disabled,
-.map-job-assignment-secondary:disabled {
+.map-job-assignment-secondary:disabled,
+.map-job-assignment-close:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

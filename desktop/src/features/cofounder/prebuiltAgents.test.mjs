@@ -108,4 +108,11 @@ test("a prebuilt head keeps its colored ant as a self-contained avatar", () => {
   const avatar = prebuiltAgentAvatarDataUrl(finance);
   assert.match(avatar, /^data:image\/svg\+xml,/);
   assert.match(decodeURIComponent(avatar), /#D9A83F/);
+
+  const followUps = prebuiltSpecialistForJob("sales", "follow-ups");
+  assert.ok(followUps);
+  assert.match(
+    decodeURIComponent(prebuiltAgentAvatarDataUrl(followUps)),
+    /#E0826B/,
+  );
 });

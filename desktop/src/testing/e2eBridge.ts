@@ -279,6 +279,8 @@ export type MockManagedAgentSeed = {
   name: string;
   about?: string | null;
   avatarUrl?: string | null;
+  /** Generate a shipped coloured ant when a fixture does not supply an image. */
+  avatarRole?: string | null;
   personaId?: string | null;
   sessionPolicy?: "channel" | "thread";
   provider?: string | null;
@@ -3559,6 +3561,13 @@ function applyMockAgentConfigSurfaceOverride(
   };
 }
 
+function mockManagedAgentAvatarUrl(seed: MockManagedAgentSeed) {
+  return (
+    seed.avatarUrl ??
+    (seed.avatarRole ? agentAntAvatarDataUrl(seed.avatarRole) : null)
+  );
+}
+
 function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
   const now = new Date().toISOString();
   const status = seed.status ?? "stopped";
@@ -3601,7 +3610,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     max_turn_duration_seconds: null,
     parallelism: 1,
     system_prompt: seed.systemPrompt ?? null,
-    avatar_url: seed.avatarUrl ?? null,
+    avatar_url: mockManagedAgentAvatarUrl(seed),
     model: seed.model ?? null,
     running_runtime_id:
       status === "running"
@@ -3691,7 +3700,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
     mockProfiles.set(seed.pubkey, {
       pubkey: seed.pubkey,
       display_name: seed.name,
-      avatar_url: null,
+      avatar_url: mockManagedAgentAvatarUrl(seed),
       about: seed.about ?? null,
       nip05_handle: null,
       owner_pubkey: MOCK_IDENTITY_PUBKEY,
