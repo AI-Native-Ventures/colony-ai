@@ -15,6 +15,12 @@ import type { RelayEvent } from "@/shared/api/types";
 
 export const MAX_OUTREACH_LIST_LEADS = 500;
 
+export function outreachListLimitMessage(leadCount: number): string | null {
+  return leadCount > MAX_OUTREACH_LIST_LEADS
+    ? `You selected ${leadCount}. A list holds ${MAX_OUTREACH_LIST_LEADS} at most.`
+    : null;
+}
+
 const UUID_PATTERN =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HEX64_PATTERN = /^[a-f0-9]{64}$/i;
@@ -413,8 +419,9 @@ export function buildOutreachListCreateAction(input: {
     if (!UUID_PATTERN.test(id)) throw new Error("A lead id must be a UUID.");
     return id.toLowerCase();
   });
-  if (leadIds.length > MAX_OUTREACH_LIST_LEADS) {
-    throw new Error("A list can contain at most 500 leads.");
+  const limitMessage = outreachListLimitMessage(leadIds.length);
+  if (limitMessage) {
+    throw new Error(limitMessage);
   }
   if (
     input.note !== undefined &&
@@ -500,7 +507,9 @@ export function buildOutreachListMutation(input: {
       if (!UUID_PATTERN.test(id)) throw new Error("A lead id must be a UUID.");
       return id.toLowerCase();
     });
-    if (leadIds.length < 1 || leadIds.length > MAX_OUTREACH_LIST_LEADS) {
+    const limitMessage = outreachListLimitMessage(leadIds.length);
+    if (limitMessage) throw new Error(limitMessage);
+    if (leadIds.length < 1) {
       throw new Error("Choose between 1 and 500 leads.");
     }
     return { ...base, op: input.op, leadIds };

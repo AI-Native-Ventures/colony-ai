@@ -83,11 +83,13 @@ export function useBusinessRecords(
     queryKey: recordsKey,
     enabled: Boolean(channelId && pubkey && tenant.tenantId),
     staleTime: BUSINESS_CHANNEL_STALE_MS,
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!channelId || !pubkey || !tenant.tenantId) {
         throw new Error("Business records are not available yet.");
       }
-      return loadBusinessRecords(channelId, tenant.tenantId, pubkey);
+      return loadBusinessRecords(channelId, tenant.tenantId, pubkey, {
+        signal,
+      });
     },
   });
   React.useEffect(() => {

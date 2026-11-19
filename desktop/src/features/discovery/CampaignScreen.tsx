@@ -12,7 +12,10 @@ import {
   resumePendingProspectUpdate,
   updateProspectsStage,
 } from "./bulkProspectUpdateRuntime";
-import type { PendingBulkProspectUpdate } from "./bulkProspectUpdate";
+import {
+  bulkProspectUpdateLimitMessage,
+  type PendingBulkProspectUpdate,
+} from "./bulkProspectUpdate";
 import {
   acceptButtonState,
   acceptProspects,
@@ -504,6 +507,11 @@ export function CampaignScreen(context: CampaignContext) {
 
   async function changeSelectedStage(stage: ProspectStage) {
     if (!canWrite || selectedRows.length === 0 || progress) return;
+    const limitMessage = bulkProspectUpdateLimitMessage(selectedRows.length);
+    if (limitMessage) {
+      setError(limitMessage);
+      return;
+    }
     setError("");
     setProgress({ done: 0, total: selectedRows.length });
     try {
@@ -527,6 +535,11 @@ export function CampaignScreen(context: CampaignContext) {
 
   async function markSelectedLost() {
     if (!canWrite || selectedRows.length === 0 || progress) return;
+    const limitMessage = bulkProspectUpdateLimitMessage(selectedRows.length);
+    if (limitMessage) {
+      setError(limitMessage);
+      return;
+    }
     setError("");
     setProgress({ done: 0, total: selectedRows.length });
     try {
