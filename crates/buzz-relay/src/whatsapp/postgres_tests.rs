@@ -39,6 +39,7 @@ use super::connect;
 use super::graph::{
     DownloadError, GraphApi, GraphError, MediaInfo, PhoneInfo, RemoteTemplate, SendRequest,
 };
+use super::inbound::{load_lead_phone_lookup_paged, LeadPhoneMatch};
 use super::media;
 use super::sender;
 use crate::handlers::ingest::{HttpAuthMethod, IngestAuth, IngestError, IngestResult};
@@ -685,6 +686,45 @@ async fn a_batch_without_lead_id_links_its_exact_phone_match_without_renaming_th
         .expect("batch contact");
     assert_eq!(contact.lead_id.as_deref(), Some(lead_id.as_str()));
     assert_eq!(contact.display_name, "Meta profile");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn the_phone_lookup_reads_every_page_and_fails_closed_past_its_ceiling() {
+    // GUARD: the paging loop in `inbound::load_lead_phone_lookup_paged`, which the sender, the
+    // inbound webhook and batch creation all reach through `load_lead_phone_lookup`. A company
+    // with more prospect heads than one query returns must still resolve the heads on later
+    // pages: a company that passed the old one-query ceiling of 2000 had every send pass and
+    // every first reply fail. Past the ceiling the lookup is an error, never a truncated
+    // snapshot treated as a no-match.
+    let fx = fixture().await;
+    let phones = [
+        "+27820003001",
+        "+27820003002",
+        "+27820003003",
+        "+27820003004",
+        "+27820003005",
+    ];
+    let mut leads = Vec::new();
+    for (index, phone) in phones.iter().enumerate() {
+        leads.push(seed_prospect_head(&fx, phone, &format!("Paged lead {index}"), "active").await);
+    }
+
+    let lookup = load_lead_phone_lookup_paged(&fx.state, &fx.tenant, 2, 100)
+        .await
+        .expect("five heads read two at a time");
+    for (phone, lead_id) in phones.iter().zip(&leads) {
+        assert_eq!(
+            lookup.find_lead_by_phone(&phone[1..]),
+            LeadPhoneMatch::Unique(lead_id.clone()),
+            "{phone} must resolve whichever page its head is on"
+        );
+    }
+
+    let error = load_lead_phone_lookup_paged(&fx.state, &fx.tenant, 2, 4)
+        .await
+        .expect_err("five heads pass a ceiling of four");
+    assert!(error.contains("bounded scan of 4 heads"), "{error}");
 }
 
 #[tokio::test]
