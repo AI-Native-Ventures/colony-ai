@@ -29,8 +29,8 @@ function row(n, { accepted = false } = {}) {
 const rows = (count) => Array.from({ length: count }, (_, i) => row(i + 1));
 const noSleep = async () => {};
 
-test("any number of selected rows is accepted, 13 and 42 included", async () => {
-  for (const count of [2, 13, 42, 200]) {
+test("any number of selected rows is accepted, including 620", async () => {
+  for (const count of [2, 13, 42, 200, 620]) {
     const published = [];
     const result = await acceptProspects({
       rows: rows(count),

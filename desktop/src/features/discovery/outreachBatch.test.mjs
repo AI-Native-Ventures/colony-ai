@@ -83,6 +83,27 @@ test("batch plan keeps only eligible leads and explains every skipped row", () =
   assert.equal(result.content.note, "List Melville guesthouses.");
 });
 
+test("batch plan keeps all 620 eligible selected leads", () => {
+  const leadCount = 620;
+  const result = buildOutreachBatchPlan({
+    batchId: "all-prospects-batch",
+    listName: "All prospects",
+    leads: Array.from({ length: leadCount }, (_, index) => ({
+      leadId: `lead-${index}`,
+      name: `Lead ${index}`,
+      contactName: null,
+      phone: `+2782${String(10_000_000 + index)}`,
+    })),
+    contacts: [],
+    inBatchLeadIds: new Set(),
+    template: { name: "welcome_note", language: "en", slots: 1 },
+  });
+
+  assert.equal(result.content.rows.length, leadCount);
+  assert.equal(result.skipped.noPhone, 0);
+  assert.equal(result.skipped.duplicate, 0);
+});
+
 test("a saved WhatsApp number takes precedence over the business phone", () => {
   const result = buildOutreachBatchPlan({
     batchId: "override-batch",

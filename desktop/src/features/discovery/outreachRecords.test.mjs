@@ -203,15 +203,17 @@ test("list create action enforces the contract name and membership limits", () =
     leadIds: [],
   };
   assert.throws(() => buildOutreachListCreateAction({ ...base, name: "  " }));
-  assert.throws(() =>
-    buildOutreachListCreateAction({
-      ...base,
-      leadIds: Array.from(
-        { length: 501 },
-        (_, index) =>
-          `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-      ),
-    }),
+  assert.throws(
+    () =>
+      buildOutreachListCreateAction({
+        ...base,
+        leadIds: Array.from(
+          { length: 501 },
+          (_, index) =>
+            `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        ),
+      }),
+    /You selected 501\. A list holds 500 at most\./,
   );
 });
 

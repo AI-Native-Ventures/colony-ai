@@ -19,6 +19,25 @@
   font-size: 0.95rem;
 }
 
+.business-record-truncation-notice {
+  margin: 0.75rem 1rem 0;
+  border: 1px solid var(--colony-warning-ink);
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--colony-warning-surface);
+  color: var(--colony-warning-ink);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.business-record-truncation-notice p {
+  margin: 0;
+}
+
+.business-record-truncation-notice p + p {
+  margin-top: 0.25rem;
+}
+
 .w10-root *,
 .w10-root *::before,
 .w10-root *::after {
