@@ -4,6 +4,10 @@ import { expect, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES } from "../helpers/bridge";
+import {
+  KIND_COMPANY_JOB_ACTION,
+  KIND_HIRE_ACTION,
+} from "../../src/shared/constants/kinds";
 import { test } from "./cofounder-map-test";
 import {
   AYA_PUBKEY,
@@ -43,6 +47,162 @@ type FunctionId =
 type CommandLogEntry = { command: string; payload: unknown };
 type SpecialistTheme = "light" | "dark";
 type SpecialistViewport = { width: number; height: number };
+
+async function readCommandLog(page: Page): Promise<CommandLogEntry[]> {
+  return page.evaluate(
+    () =>
+      (
+        window as Window & {
+          __BUZZ_E2E_COMMAND_LOG__?: CommandLogEntry[];
+        }
+      ).__BUZZ_E2E_COMMAND_LOG__ ?? [],
+  );
+}
+
+function signedCompanyAction(
+  entry: CommandLogEntry,
+  kind: number,
+  expectedAction: string,
+) {
+  if (entry.command !== "sign_event") return null;
+  const payload = entry.payload as { content?: unknown; kind?: unknown } | null;
+  if (payload?.kind !== kind || typeof payload.content !== "string") {
+    return null;
+  }
+  try {
+    const action: unknown = JSON.parse(payload.content);
+    if (!action || typeof action !== "object" || Array.isArray(action)) {
+      return null;
+    }
+    return (action as Record<string, unknown>).action === expectedAction
+      ? (action as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function assertSpecialistHireSequence(
+  page: Page,
+  employeePubkey: string,
+) {
+  await expect
+    .poll(async () => {
+      const commands = await readCommandLog(page);
+      return commands.some(
+        (entry) =>
+          signedCompanyAction(entry, KIND_HIRE_ACTION, "complete") !== null,
+      );
+    })
+    .toBe(true);
+
+  const commands = await readCommandLog(page);
+  const findAction = (kind: number, action: string) =>
+    commands.findIndex(
+      (entry) => signedCompanyAction(entry, kind, action) !== null,
+    );
+  const createIndex = findAction(KIND_HIRE_ACTION, "create");
+  const jobIntentIndex = findAction(KIND_COMPANY_JOB_ACTION, "hire_set");
+  const approveIndex = findAction(KIND_HIRE_ACTION, "approve");
+  const attachIndex = findAction(KIND_HIRE_ACTION, "attach_employee");
+  const completeIndex = findAction(KIND_HIRE_ACTION, "complete");
+  const createEntry = commands[createIndex];
+  const jobIntentEntry = commands[jobIntentIndex];
+  const completeEntry = commands[completeIndex];
+  const create = createEntry
+    ? signedCompanyAction(createEntry, KIND_HIRE_ACTION, "create")
+    : null;
+  const jobIntent = jobIntentEntry
+    ? signedCompanyAction(jobIntentEntry, KIND_COMPANY_JOB_ACTION, "hire_set")
+    : null;
+  const completion = completeEntry
+    ? signedCompanyAction(completeEntry, KIND_HIRE_ACTION, "complete")
+    : null;
+  const proposal = create?.proposal as Record<string, unknown> | undefined;
+  const homeChannelId = proposal?.introductionChannelId;
+  const hireId = create?.hireId;
+
+  expect(createIndex).toBeGreaterThanOrEqual(0);
+  expect(jobIntentIndex).toBeGreaterThan(createIndex);
+  expect(approveIndex).toBeGreaterThan(jobIntentIndex);
+  expect(attachIndex).toBeGreaterThan(approveIndex);
+  expect(completeIndex).toBeGreaterThan(attachIndex);
+  expect(hireId).toEqual(expect.any(String));
+  expect(homeChannelId).toEqual(expect.any(String));
+  expect(jobIntent).toMatchObject({
+    action: "hire_set",
+    function: "sales",
+    hireId,
+    jobId: "follow-ups",
+  });
+  expect(completion).toMatchObject({
+    action: "complete",
+    employeePubkey,
+    hireId,
+    introductionEventId: expect.any(String),
+  });
+
+  const managedAgentCreateIndex = commands.findIndex(
+    (entry) => entry.command === "create_managed_agent",
+  );
+  const managedAgentCreate = commands[managedAgentCreateIndex]?.payload as
+    | { input?: { model?: unknown; modelOverride?: unknown } }
+    | undefined;
+  expect(managedAgentCreateIndex).toBeGreaterThan(approveIndex);
+  expect(managedAgentCreateIndex).toBeLessThan(attachIndex);
+  expect(managedAgentCreate?.input?.model).toEqual(expect.any(String));
+  expect(managedAgentCreate?.input?.modelOverride).toBe(
+    managedAgentCreate?.input?.model,
+  );
+
+  const introductionMarker = `company-prebuilt-hire:${hireId}:introduction`;
+  const firstMessageMarker = `company-prebuilt-hire:${hireId}:first-message`;
+  const messages = commands
+    .map((entry, index) => ({ entry, index }))
+    .filter(
+      ({ entry }) => entry.command === "send_managed_agent_channel_message",
+    );
+  const introductions = messages.filter(
+    ({ entry }) =>
+      (entry.payload as { marker?: unknown } | null)?.marker ===
+      introductionMarker,
+  );
+  const firstMessages = messages.filter(
+    ({ entry }) =>
+      (entry.payload as { marker?: unknown } | null)?.marker ===
+      firstMessageMarker,
+  );
+  expect(introductions).toHaveLength(1);
+  expect(firstMessages).toHaveLength(1);
+  const introduction = introductions[0];
+  const firstMessage = firstMessages[0];
+  if (!introduction || !firstMessage) {
+    throw new Error("The specialist hire did not post both durable messages.");
+  }
+  expect(introduction.index).toBeGreaterThan(attachIndex);
+  expect(introduction.index).toBeLessThan(completeIndex);
+  expect(firstMessage.index).toBeGreaterThan(completeIndex);
+  const introductionPayload = introduction.entry.payload as {
+    agentPubkey?: unknown;
+    channelId?: unknown;
+    markerScope?: unknown;
+  };
+  const firstMessagePayload = firstMessage.entry.payload as {
+    agentPubkey?: unknown;
+    channelId?: unknown;
+    markerScope?: unknown;
+  };
+  expect(introductionPayload).toMatchObject({
+    agentPubkey: employeePubkey,
+    channelId: homeChannelId,
+    markerScope: "agent",
+  });
+  expect(firstMessagePayload).toMatchObject({
+    agentPubkey: employeePubkey,
+    markerScope: "agent",
+  });
+  expect(firstMessagePayload.channelId).not.toBe(homeChannelId);
+}
 
 function specialistScreenshotPath(
   screenshotDir: string,
@@ -544,6 +704,7 @@ test.describe("prebuilt specialists in the map shell", () => {
 
     await hireFromSpot(page, card, "Follow-ups specialist");
     const employeePubkey = await startedEmployeePubkey(page);
+    await assertSpecialistHireSequence(page, employeePubkey);
     await expect(card).toContainText("Follow-ups specialist");
     await expect(card).toContainText("Works here");
     await expect(card).toContainText("Just hired");
