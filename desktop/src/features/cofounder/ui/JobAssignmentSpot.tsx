@@ -307,7 +307,11 @@ export function JobAssignmentSpot({
       <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
         Job in {FUNCTION_DETAILS[functionId].name}
       </p>
-      <h2 className="mt-0.5 text-lg font-extrabold">{jobName}</h2>
+      {presentation === "inline" ? (
+        <p className="mt-0.5 text-lg font-extrabold">{jobName}</p>
+      ) : (
+        <h2 className="mt-0.5 text-lg font-extrabold">{jobName}</h2>
+      )}
       {hasSpecialist ? (
         <>
           <p className="mt-2 text-sm text-muted-foreground">

@@ -489,6 +489,10 @@
   background: hsl(var(--colony-surface));
 }
 
+.map-shell-mobile-sheet button {
+  min-height: 44px;
+}
+
 .map-shell-mobile-sheet > button {
   display: grid;
   width: 44px;

@@ -698,6 +698,52 @@ test.describe("prebuilt specialists in the map shell", () => {
     ).toBeVisible();
   });
 
+  test("keeps specialist details out of the no-screen card heading hierarchy", async ({
+    page,
+  }) => {
+    await prepareSpecialistMap(page, specialistFixture());
+    await page.goto("/#/company/function/sales?mapJob=sales%3ACalls");
+    const noScreenCard = page.getByTestId("fullmap-no-screen-card");
+    const specialistCard = page.getByTestId("job-assignment-card-sales-calls");
+
+    await expect(noScreenCard).toBeVisible();
+    await expect(specialistCard).toBeVisible();
+    await expect(
+      noScreenCard.getByRole("heading", { name: "No screen yet", exact: true }),
+    ).toHaveCount(1);
+    await expect(noScreenCard.getByRole("heading")).toHaveCount(1);
+    await expect(specialistCard).toHaveAccessibleName("Calls specialist");
+    await expect(specialistCard.getByRole("heading")).toHaveCount(0);
+  });
+
+  test("keeps every mobile map-shell action touch sized", async ({ page }) => {
+    await prepareMapShell(page, {
+      featureEnabled: true,
+      height: 844,
+      theme: "light",
+      width: 390,
+    });
+    await page.getByTestId("map-shell-mobile-menu-button").click();
+    const sheet = page.getByTestId("map-shell-mobile-sheet");
+    await expect(sheet).toBeVisible();
+    const undersizedControls = await sheet
+      .locator("button:visible")
+      .evaluateAll((buttons) =>
+        buttons
+          .map((button) => ({
+            className: button.className,
+            height: Math.round(button.getBoundingClientRect().height),
+            label:
+              button.getAttribute("aria-label") ??
+              button.textContent?.trim() ??
+              "unnamed action",
+          }))
+          .filter((button) => button.height < 44),
+      );
+
+    expect(undersizedControls).toEqual([]);
+  });
+
   test("the job pill works by pointer and keyboard without covering map controls", async ({
     page,
   }) => {
