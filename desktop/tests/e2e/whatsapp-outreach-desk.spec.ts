@@ -618,7 +618,7 @@ test.describe("Outreach desk", () => {
     await expect(
       settings.getByText("What counts as an opt-out?"),
     ).toBeVisible();
-    await expect(settings.getByText("Whole-business stop")).toBeVisible();
+    await expect(settings.getByText("Business-wide opt-out")).toBeVisible();
     await expect(settings.getByText("Auto-stop")).toBeVisible();
     await settings.getByRole("button", { name: "Manage list" }).click();
     await settings

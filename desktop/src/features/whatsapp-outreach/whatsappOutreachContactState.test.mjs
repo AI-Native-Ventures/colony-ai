@@ -170,7 +170,7 @@ test("thread details preserve safety holds when only the additive thread view ha
     displayName: "Corner Cottage",
     hasSentOutbound: true,
     businessOutreachStopped: true,
-    businessStopReason: "Lindiwe replied stop.",
+    businessStopReason: "Lindiwe opted out.",
     leadId: "business-id",
   };
   const resolved = contactWithThreadDetails(
@@ -182,6 +182,6 @@ test("thread details preserve safety holds when only the additive thread view ha
   assert.equal(resolved?.displayName, "Corner Cottage");
   assert.equal(resolved?.hasSentOutbound, true);
   assert.equal(resolved?.businessOutreachStopped, true);
-  assert.equal(resolved?.businessStopReason, "Lindiwe replied stop.");
+  assert.equal(resolved?.businessStopReason, "Lindiwe opted out.");
   assert.equal(resolved?.leadId, "business-id");
 });

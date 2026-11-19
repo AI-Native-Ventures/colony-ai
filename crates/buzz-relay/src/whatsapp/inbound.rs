@@ -672,7 +672,7 @@ async fn handle_message(
     let opt_out = match_opt_out(&message.text);
     let opt_out_kind = opt_out.map(|matched| matched.kind);
     // Every safety write is one transaction. A failed write returns 500, so Meta redelivers the
-    // same inbound message instead of allowing an incomplete contact or business fence.
+    // same inbound message instead of allowing an incomplete contact or opt-out fence.
     let safety = state
         .db
         .whatsapp_record_inbound_safety(
@@ -778,7 +778,7 @@ async fn handle_message(
             state,
             tenant,
             "business_outreach_stopped",
-            "An inbound reply stopped outreach to every contact of this business.",
+            "A linked contact opted out, so outreach is stopped for every contact of this business.",
         )
         .await;
     }

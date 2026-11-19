@@ -784,8 +784,8 @@ CREATE INDEX whatsapp_suppressions_active_lookup
     ON whatsapp_suppressions (community_id, identity_kind, identity_value)
     WHERE undone_at IS NULL;
 
--- Any inbound reply puts the entire business on hold. The contact-level opt-out ledger above
--- stays separate so one number's consent record remains explainable after the business hold.
+-- A linked opt-out puts the entire business on hold. The contact-level opt-out ledger above
+-- stays separate so one number's consent record remains explainable after the business stop.
 CREATE TABLE whatsapp_business_stops (
     community_id UUID NOT NULL REFERENCES communities(id),
     business_id TEXT NOT NULL CHECK (char_length(business_id) BETWEEN 1 AND 128),

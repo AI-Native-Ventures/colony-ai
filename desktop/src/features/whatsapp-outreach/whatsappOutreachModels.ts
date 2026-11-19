@@ -170,9 +170,9 @@ export type WhatsAppContact = Readonly<{
   pauseReason: string | null;
   unanswered: boolean;
   awaitingApproval: boolean;
-  /** Additive whole-business outreach hold. Older relays omit it. */
+  /** Additive business-wide outreach stop. Older relays omit it. */
   businessOutreachStopped: boolean;
-  /** Plain reason for the additive whole-business outreach hold. */
+  /** Plain reason for the additive business-wide outreach stop. */
   businessStopReason: string | null;
 }>;
 

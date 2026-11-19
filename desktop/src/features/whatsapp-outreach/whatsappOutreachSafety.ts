@@ -11,7 +11,7 @@ export type WhatsAppSuppression = Readonly<{
   undoneAt: string | null;
 }>;
 
-/** A durable stop that applies to every current and future contact for one business. */
+/** A durable opt-out or fail-closed safety stop for every contact at one business. */
 export type WhatsAppBusinessStop = Readonly<{
   businessId: string;
   sourceWaId: string;
