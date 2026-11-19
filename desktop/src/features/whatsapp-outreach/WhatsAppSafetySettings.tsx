@@ -183,7 +183,7 @@ export function WhatsAppSafetySettings({
             </div>
           ) : null}
           <div className="c3wa-safety-rule">
-            <strong>Whole-business stop</strong>
+            <strong>Business-wide opt-out</strong>
             <span>
               When a linked contact replies with an opt-out, automatic outreach
               stays stopped for everyone at that business.{" "}
