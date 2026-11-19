@@ -72,38 +72,21 @@ test("ahead work uses at most 30 slots and shares them between live campaigns", 
   budget.registerCampaign("a");
   budget.registerCampaign("b");
   const admitted = [];
-  const firstA = Array.from({ length: 10 }, () =>
-    budget
-      .acquire({
-        campaignId: "a",
-        kind: "ahead",
-        signal: new AbortController().signal,
-      })
-      .then(() => admitted.push("a")),
-  );
-  await Promise.all(firstA);
-  const queuedA = Array.from({ length: 10 }, () =>
-    budget
-      .acquire({
-        campaignId: "a",
-        kind: "ahead",
-        signal: new AbortController().signal,
-      })
-      .then(() => admitted.push("a")),
-  );
-  const queuedB = Array.from({ length: 10 }, () =>
-    budget
-      .acquire({
-        campaignId: "b",
-        kind: "ahead",
-        signal: new AbortController().signal,
-      })
-      .then(() => admitted.push("b")),
-  );
-  await Promise.all([...queuedA, ...queuedB]);
+  const requests = Array.from({ length: 20 }, () => ["a", "b"])
+    .flat()
+    .map((campaignId) =>
+      budget
+        .acquire({
+          campaignId,
+          kind: "ahead",
+          signal: new AbortController().signal,
+        })
+        .then(() => admitted.push(campaignId)),
+    );
+  await settle();
   assert.deepEqual(budget.snapshot(), {
     ahead: MAX_DISCOVERY_AHEAD_REQUESTS_PER_MINUTE,
-    queued: 0,
+    queued: 10,
     requests: MAX_DISCOVERY_AHEAD_REQUESTS_PER_MINUTE,
   });
   assert.equal(
@@ -111,11 +94,9 @@ test("ahead work uses at most 30 slots and shares them between live campaigns", 
     15,
     "the first city cannot take more than its fair share while city B waits",
   );
-  assert.equal(
-    admitted.filter((campaignId) => campaignId === "b").length,
-    15,
-  );
+  assert.equal(admitted.filter((campaignId) => campaignId === "b").length, 15);
   budget.dispose();
+  await Promise.allSettled(requests);
 });
 
 test("an in-turn page takes the next available slot before queued ahead work", async () => {
@@ -158,6 +139,42 @@ test("an in-turn page takes the next available slot before queued ahead work", a
   budget.dispose();
 });
 
+test("an aborted queued request leaves the shared budget immediately", async () => {
+  const budget = createDiscoveryRequestBudget({
+    nowSeconds: () => 0,
+    sleep: (_ms, signal) =>
+      new Promise((_, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("stopped", "AbortError")),
+          { once: true },
+        ),
+      ),
+  });
+  budget.registerCampaign("a");
+  await Promise.all(
+    Array.from({ length: MAX_DISCOVERY_SEARCH_REQUESTS_PER_MINUTE }, () =>
+      budget.acquire({
+        campaignId: "a",
+        kind: "in_turn",
+        signal: new AbortController().signal,
+      }),
+    ),
+  );
+  const controller = new AbortController();
+  const pending = budget.acquire({
+    campaignId: "a",
+    kind: "in_turn",
+    signal: controller.signal,
+  });
+  await settle();
+  assert.equal(budget.snapshot().queued, 1);
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(budget.snapshot().queued, 0);
+  budget.dispose();
+});
+
 test("a rate-limited page waits at most six times, caps each wait, and leaves monthly limits alone", async () => {
   const waits = [];
   let attempts = 0;
@@ -173,7 +190,12 @@ test("a rate-limited page waits at most six times, caps each wait, and leaves mo
           { status: 429 },
         );
       }
-      return { provider: "test", places: [], estimatedCostUsd: 0, nextSkip: null };
+      return {
+        provider: "test",
+        places: [],
+        estimatedCostUsd: 0,
+        nextSkip: null,
+      };
     },
     sleep: async (ms) => {
       waits.push(ms);

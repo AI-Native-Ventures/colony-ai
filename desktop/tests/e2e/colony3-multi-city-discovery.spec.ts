@@ -158,7 +158,9 @@ async function openCampaignDialog(page: Page) {
   const discovery = page.getByTestId("w10-discovery-page");
   if (!(await discovery.isVisible())) {
     await page.getByTestId("cofounder-map-sales").click();
-    const leadFinding = page.getByTestId("cofounder-map-job-sales-lead-finding");
+    const leadFinding = page.getByTestId(
+      "cofounder-map-job-sales-lead-finding",
+    );
     await expect(leadFinding).toBeVisible();
     await leadFinding.click();
     await expect(page.getByTestId("fullmap-window")).toBeVisible();
@@ -179,7 +181,11 @@ async function openCampaignDialog(page: Page) {
   return dialog;
 }
 
-async function assertCityTabGeometry(page: Page, expectedTabs: number, oneRow = false) {
+async function assertCityTabGeometry(
+  page: Page,
+  expectedTabs: number,
+  oneRow = false,
+) {
   const tablist = page.getByRole("tablist", { name: "Campaign cities" });
   await expect(tablist).toBeVisible();
   await waitForAnimations(page);
@@ -204,15 +210,11 @@ async function assertCityTabGeometry(page: Page, expectedTabs: number, oneRow = 
               name: "name",
             },
             {
-              element: tab.querySelector<HTMLElement>(
-                ".c3mc-city-tab-status",
-              ),
+              element: tab.querySelector<HTMLElement>(".c3mc-city-tab-status"),
               name: "status",
             },
             {
-              element: tab.querySelector<HTMLElement>(
-                ".c3mc-city-tab-count",
-              ),
+              element: tab.querySelector<HTMLElement>(".c3mc-city-tab-count"),
               name: "count",
             },
           ].flatMap(({ name, element }) =>
@@ -309,9 +311,15 @@ async function exerciseFourCityGroup(page: Page, screenshotPrefix: string) {
   await expect(
     page.getByRole("tab", { name: /Johannesburg.*Searching/ }),
   ).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Cape Town.*Searching/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Durban.*Searching/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Pretoria.*Waiting/ })).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Cape Town.*Searching/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Durban.*Searching/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Pretoria.*Waiting/ }),
+  ).toBeVisible();
   await capture(page, `${screenshotPrefix}-four-one-row.png`);
   const capeTown = page.getByRole("tab", { name: /Cape Town/ });
   await capeTown.click();
@@ -342,9 +350,11 @@ async function createTenCityCampaign(page: Page) {
   await expect(dialog.getByTestId("multi-city-total")).toHaveText(
     "10 campaigns, up to 1000 prospects in all.",
   );
-  await dialog.getByRole("checkbox", {
-    name: "I approve the maximum budget for all 10 campaigns.",
-  }).check();
+  await dialog
+    .getByRole("checkbox", {
+      name: "I approve the maximum budget for all 10 campaigns.",
+    })
+    .check();
   await dialog.getByRole("button", { name: "Approve & start 10" }).click();
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
 }
@@ -356,9 +366,11 @@ async function createFiveCityCampaign(page: Page) {
     if (index % 2 === 0) await chooseByKeyboard(input, location.label);
     else await chooseByPointer(dialog, input, location.label);
   }
-  await dialog.getByRole("checkbox", {
-    name: "I approve the maximum budget for all 5 campaigns.",
-  }).check();
+  await dialog
+    .getByRole("checkbox", {
+      name: "I approve the maximum budget for all 5 campaigns.",
+    })
+    .check();
   await dialog.getByRole("button", { name: "Approve & start 5" }).click();
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
 }
@@ -370,9 +382,11 @@ async function createThreeCityCampaign(page: Page) {
     if (index % 2 === 0) await chooseByKeyboard(input, location.label);
     else await chooseByPointer(dialog, input, location.label);
   }
-  await dialog.getByRole("checkbox", {
-    name: "I approve the maximum budget for all 3 campaigns.",
-  }).check();
+  await dialog
+    .getByRole("checkbox", {
+      name: "I approve the maximum budget for all 3 campaigns.",
+    })
+    .check();
   await dialog.getByRole("button", { name: "Approve & start 3" }).click();
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
 }
@@ -425,7 +439,8 @@ async function exerciseFailedCityRecovery(page: Page) {
   const failed = page.getByRole("tab", { name: /Failed/ });
   await expect(failed).toBeVisible({ timeout: 5_000 });
   const failedCity = (await failed.getAttribute("aria-label"))?.split(",")[0];
-  if (!failedCity) throw new Error("The failed city tab needs an accessible name.");
+  if (!failedCity)
+    throw new Error("The failed city tab needs an accessible name.");
   await failed.click();
   const panel = page.getByTestId("multi-city-failed-city");
   await expect(panel).toContainText(new RegExp(`${failedCity} stopped`));
@@ -449,9 +464,15 @@ test("five cities retain a paused slot and replace only completed or cancelled s
     width: 1440,
   });
   await createFiveCityCampaign(page);
-  await expect(page.getByRole("tab", { name: /Johannesburg.*Searching/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Cape Town.*Searching/ })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Durban.*Searching/ })).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Johannesburg.*Searching/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Cape Town.*Searching/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /Durban.*Searching/ }),
+  ).toBeVisible();
   const pretoria = page.getByRole("tab", { name: /Pretoria.*Waiting/ });
   const bloemfontein = page.getByRole("tab", { name: /Bloemfontein.*Waiting/ });
   const johannesburg = page.getByRole("tab", { name: /Johannesburg/ });

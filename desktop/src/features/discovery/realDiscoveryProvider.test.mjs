@@ -157,9 +157,7 @@ function harness(options = {}) {
     },
     getOwnerPubkey: async () => context.pubkey,
     resolveContext: async () =>
-      options.resolveContext
-        ? options.resolveContext(context, log)
-        : context,
+      options.resolveContext ? options.resolveContext(context, log) : context,
     search: async (request, signal) => {
       log.searches.push(request);
       return options.search
@@ -1763,7 +1761,11 @@ test("simultaneous starts share one context read and retain each other's saved l
     target: 1,
   });
   await settle();
-  assert.equal(contextReads, 1, "the simultaneous start batch loads Sales once");
+  assert.equal(
+    contextReads,
+    1,
+    "the simultaneous start batch loads Sales once",
+  );
   contextReady.resolve(context);
   await Promise.all([first, second, third]);
   await controller.whenIdle();

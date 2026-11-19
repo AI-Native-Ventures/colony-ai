@@ -425,8 +425,8 @@ export function groupProgress(
       if (city.state === "starting" || city.state === "continuing") return true;
       return (
         city.campaignId !== null &&
-        campaigns.find((campaign) => campaign.id === city.campaignId)?.status ===
-          "running"
+        campaigns.find((campaign) => campaign.id === city.campaignId)
+          ?.status === "running"
       );
     }).length,
   };

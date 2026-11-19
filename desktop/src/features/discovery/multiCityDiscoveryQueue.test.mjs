@@ -183,7 +183,9 @@ function fakeProvider(plan) {
           patch(currentId, { status: "running" });
       },
       async resumeCampaign(id) {
-        if (campaigns.find((campaign) => campaign.id === id)?.status === "paused") {
+        if (
+          campaigns.find((campaign) => campaign.id === id)?.status === "paused"
+        ) {
           patch(id, { status: "running" });
         }
       },
@@ -198,7 +200,9 @@ function fakeProvider(plan) {
       },
       async retryCampaign(id) {
         retriedCampaignIds.push(id);
-        if (campaigns.find((campaign) => campaign.id === id)?.status === "failed") {
+        if (
+          campaigns.find((campaign) => campaign.id === id)?.status === "failed"
+        ) {
           patch(id, { status: "running", failureReason: null });
         }
       },
@@ -234,7 +238,9 @@ test("multi-city queue starts three cities together and replaces a finished slot
     })(),
   });
 
-  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]));
+  await coordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
   await waitFor(
     () => assert.equal(fake.startedInputs.length, 3),
     "the first three city starts",
@@ -327,7 +333,11 @@ test("a pause keeps its slot, a different completion fills only its free slot, a
 
   await coordinator.performAction("campaign-1", "pause");
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(fake.startedInputs.length, 3, "a pause buys no replacement page");
+  assert.equal(
+    fake.startedInputs.length,
+    3,
+    "a pause buys no replacement page",
+  );
 
   fake.finish("campaign-2");
   await waitFor(
@@ -387,7 +397,11 @@ test("resuming an interrupted group restores its scheduler without an automatic 
     storageKey: "restart-queue",
   });
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.equal(fake.startedInputs.length, 3, "restart did not start a paid city");
+  assert.equal(
+    fake.startedInputs.length,
+    3,
+    "restart did not start a paid city",
+  );
 
   await restored.performAction("campaign-1", "resume");
   await waitFor(
@@ -409,7 +423,9 @@ test("a city-only start failure is recorded and the queue continues", async () =
     groupId: () => "group-1",
   });
 
-  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]));
+  await coordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
   await waitFor(
     () => assert.equal(fake.startedInputs.length, 4),
     "the next city starts after one city alone fails",
@@ -489,7 +505,9 @@ test("passing start errors retry at 5, 20, and 60 seconds, while permanent error
   assert.equal(isPassingStartError(new TypeError("Failed to fetch")), true);
   assert.equal(isPassingStartError(new Error("socket hang up")), true);
   assert.equal(
-    isPassingStartError(new DiscoverySearchError("Gateway timeout.", { status: 504 })),
+    isPassingStartError(
+      new DiscoverySearchError("Gateway timeout.", { status: 504 }),
+    ),
     true,
   );
   for (const message of [
@@ -527,8 +545,9 @@ test("passing start errors retry at 5, 20, and 60 seconds, while permanent error
   await waitFor(
     () =>
       assert.equal(
-        fake.startedInputs.filter((entry) => entry.location === JOHANNESBURG.label)
-          .length,
+        fake.startedInputs.filter(
+          (entry) => entry.location === JOHANNESBURG.label,
+        ).length,
         4,
       ),
     "all three passing-error retries",
@@ -563,9 +582,16 @@ test("a failed city shows a fresh-start retry, while a failed campaign retries t
     "the pre-campaign failure",
   );
   const groupId = coordinator.getGroups()[0].groupId;
-  await coordinator.retryCity(groupId, coordinator.getGroups()[0].cities[0].cityId);
+  await coordinator.retryCity(
+    groupId,
+    coordinator.getGroups()[0].cities[0].cityId,
+  );
   await waitFor(
-    () => assert.equal(coordinator.getGroups()[0].cities[0].campaignId, "campaign-2"),
+    () =>
+      assert.equal(
+        coordinator.getGroups()[0].cities[0].campaignId,
+        "campaign-2",
+      ),
     "a new campaign after the start failure",
   );
   const firstCampaign = coordinator.getGroups()[0].cities[0].campaignId;
@@ -578,7 +604,10 @@ test("a failed city shows a fresh-start retry, while a failed campaign retries t
       ),
     "the existing campaign remains attached",
   );
-  await coordinator.retryCity(groupId, coordinator.getGroups()[0].cities[0].cityId);
+  await coordinator.retryCity(
+    groupId,
+    coordinator.getGroups()[0].cities[0].cityId,
+  );
   await waitFor(
     () => assert.deepEqual(fake.retriedCampaignIds, [firstCampaign]),
     "the campaign retry",

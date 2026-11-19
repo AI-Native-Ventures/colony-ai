@@ -117,12 +117,12 @@ export function createDiscoveryRequestBudget(
     }
     if (entry.kind !== "ahead") return true;
     if (aheadCount() >= MAX_DISCOVERY_AHEAD_REQUESTS_PER_MINUTE) return false;
+    if (!hasWaitingAheadCompetitor(entry)) return true;
     const fairShare = Math.ceil(
       MAX_DISCOVERY_AHEAD_REQUESTS_PER_MINUTE /
         Math.max(1, activeCampaigns.size),
     );
     if (aheadCount(entry.campaignId) >= fairShare) return false;
-    if (!hasWaitingAheadCompetitor(entry)) return true;
 
     const ownAhead = aheadCount(entry.campaignId);
     const lowestWaitingAhead = Math.min(
@@ -159,7 +159,10 @@ export function createDiscoveryRequestBudget(
       rejectAll(new Error("Discovery request scheduling stalled."));
       return;
     }
-    const waitMs = Math.max(1, Math.ceil((oldest.startedAt + 60 - now()) * 1_000));
+    const waitMs = Math.max(
+      1,
+      Math.ceil((oldest.startedAt + 60 - now()) * 1_000),
+    );
     const controller = new AbortController();
     wake = controller;
     void deps.sleep(waitMs, controller.signal).then(

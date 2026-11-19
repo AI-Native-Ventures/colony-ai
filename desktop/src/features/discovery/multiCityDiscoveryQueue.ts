@@ -339,7 +339,10 @@ export class MultiCityDiscoveryCoordinator {
             retryRequested: true,
           };
         }
-        if (!city.campaignId && ["not_started", "failed"].includes(city.state)) {
+        if (
+          !city.campaignId &&
+          ["not_started", "failed"].includes(city.state)
+        ) {
           return {
             ...city,
             state: "waiting",
@@ -361,7 +364,9 @@ export class MultiCityDiscoveryCoordinator {
   }
 
   async retryCity(groupId: string, cityId: string): Promise<void> {
-    const group = this.groups.find((candidate) => candidate.groupId === groupId);
+    const group = this.groups.find(
+      (candidate) => candidate.groupId === groupId,
+    );
     const city = group?.cities.find((candidate) => candidate.cityId === cityId);
     if (!group || !city) return;
     const campaign = campaignForCity(city, this.campaigns());
@@ -547,7 +552,8 @@ export class MultiCityDiscoveryCoordinator {
         return { ...city, state: "not_started", retryRequested: false };
       }),
     }));
-    if (changed) writeMultiCityState(this.storage, this.storageKey, this.groups);
+    if (changed)
+      writeMultiCityState(this.storage, this.storageKey, this.groups);
   }
 
   private onProviderChanged(): void {
@@ -639,7 +645,7 @@ export class MultiCityDiscoveryCoordinator {
       return false;
     }
     const continuation = this.provider.getContinuationFor(campaign.id);
-    if (!continuation || continuation.state !== "ready") return false;
+    if (continuation?.state !== "ready") return false;
     const key = this.cityKey(group.groupId, city.cityId);
     if (this.continuingCities.has(key)) return true;
     this.continuingCities.add(key);
@@ -732,7 +738,9 @@ export class MultiCityDiscoveryCoordinator {
     failedCampaignId: string | null,
     reason: string,
   ): void {
-    const group = this.groups.find((candidate) => candidate.groupId === groupId);
+    const group = this.groups.find(
+      (candidate) => candidate.groupId === groupId,
+    );
     if (!group) return;
     this.armedGroups.delete(groupId);
     for (const city of group.cities) {
@@ -780,7 +788,9 @@ export class MultiCityDiscoveryCoordinator {
 
   private async advance(groupId: string): Promise<void> {
     if (this.disposed || !this.armedGroups.has(groupId)) return;
-    const group = this.groups.find((candidate) => candidate.groupId === groupId);
+    const group = this.groups.find(
+      (candidate) => candidate.groupId === groupId,
+    );
     if (!group || group.blockedReason) return;
     const campaigns = this.campaigns();
     const available = MAX_CITIES_AT_ONCE - this.occupiedSlots(group, campaigns);
@@ -867,7 +877,8 @@ export class MultiCityDiscoveryCoordinator {
             ? {
                 ...candidate,
                 state: "failed",
-                reason: errorText(error) || "Discovery could not restart this city.",
+                reason:
+                  errorText(error) || "Discovery could not restart this city.",
                 retryRequested: false,
               }
             : candidate,
@@ -883,8 +894,12 @@ export class MultiCityDiscoveryCoordinator {
   ): Promise<void> {
     for (let attempt = 0; ; attempt += 1) {
       if (signal.aborted || this.disposed) return;
-      const group = this.groups.find((candidate) => candidate.groupId === groupId);
-      const city = group?.cities.find((candidate) => candidate.cityId === cityId);
+      const group = this.groups.find(
+        (candidate) => candidate.groupId === groupId,
+      );
+      const city = group?.cities.find(
+        (candidate) => candidate.cityId === cityId,
+      );
       if (!group || !city || city.campaignId || group.blockedReason) return;
       try {
         const campaign = await this.provider.start(
@@ -936,7 +951,8 @@ export class MultiCityDiscoveryCoordinator {
         return;
       } catch (error) {
         if (signal.aborted || isAbortError(error) || this.disposed) return;
-        const reason = errorText(error) || "Discovery could not start this city.";
+        const reason =
+          errorText(error) || "Discovery could not start this city.";
         if (isGlobalQueueFailure(error)) {
           this.blockGroup(groupId, null, reason);
           return;

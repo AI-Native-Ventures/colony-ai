@@ -820,7 +820,7 @@ export function createDiscoveryController(
     const continuation = target ? continuationFor(target) : null;
     if (!target || !continuation) return;
     if (continuation.state === "unavailable") {
-      throw new Error(continuation.message ?? GENERIC_STOP_REASON);
+      throw new Error(continuation.message ?? plainDiscoveryReason(undefined));
     }
     // Without an amount the page allowance grows by what the remaining target
     // needs. It is provider cost the owner is not charged for.
@@ -1140,11 +1140,15 @@ export function createDiscoveryController(
 
     resume: () => {
       const campaignId = state.currentId;
-      return campaignId ? resumeCampaign(campaignId, "paused") : Promise.resolve();
+      return campaignId
+        ? resumeCampaign(campaignId, "paused")
+        : Promise.resolve();
     },
     retry: () => {
       const campaignId = state.currentId;
-      return campaignId ? resumeCampaign(campaignId, "failed") : Promise.resolve();
+      return campaignId
+        ? resumeCampaign(campaignId, "failed")
+        : Promise.resolve();
     },
     resumeCampaign: (campaignId) => resumeCampaign(campaignId, "paused"),
     retryCampaign: (campaignId) => resumeCampaign(campaignId, "failed"),

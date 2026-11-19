@@ -270,7 +270,10 @@ function createReferenceDiscoveryProvider(
       campaigns.map((campaign) => cloneCampaign(campaign) as DiscoveryCampaign),
     getContinuationFor(campaignId) {
       const campaign = campaignById(campaignId);
-      if (!campaign || campaign.status !== "complete" || campaign.count >= campaign.target) {
+      if (
+        campaign?.status !== "complete" ||
+        campaign.count >= campaign.target
+      ) {
         return null;
       }
       return {
@@ -292,7 +295,10 @@ function createReferenceDiscoveryProvider(
     },
     async continueCampaignFor(campaignId) {
       const campaign = campaignById(campaignId);
-      if (!campaign || campaign.status !== "complete" || campaign.count >= campaign.target) {
+      if (
+        campaign?.status !== "complete" ||
+        campaign.count >= campaign.target
+      ) {
         return;
       }
       update({ ...campaign, status: "running" });

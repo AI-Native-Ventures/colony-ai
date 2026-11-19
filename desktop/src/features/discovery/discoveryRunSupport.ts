@@ -88,9 +88,7 @@ export function requestedCoverageKey(
 }
 
 /** Finds the tag that owns the page being saved from durable cursor state. */
-export function requestedTagIndex(
-  campaign: CampaignSearchSpec,
-): number | null {
+export function requestedTagIndex(campaign: CampaignSearchSpec): number | null {
   const plan = buildDiscoverySearchPlan({
     verticalName: campaign.verticalName,
     location: campaign.location,
@@ -164,7 +162,11 @@ export function createSearchPageRunner({
         }
         return await search(request, requestSignal);
       } catch (error) {
-        if (requestSignal.aborted || waitSignal.aborted || isAbortError(error)) {
+        if (
+          requestSignal.aborted ||
+          waitSignal.aborted ||
+          isAbortError(error)
+        ) {
           throw error;
         }
         const retryAfterSeconds = rateLimitRetrySeconds(error);

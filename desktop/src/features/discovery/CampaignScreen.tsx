@@ -127,8 +127,9 @@ export function CampaignScreen(context: CampaignContext) {
   const multiCity = useMultiCityDiscovery(provider);
   const [multiCityTab, setMultiCityTab] =
     React.useState<MultiCityCampaignTab>("all");
-  const [openedMultiCityGroupId, setOpenedMultiCityGroupId] =
-    React.useState<string | null>(() => takeOpenedMultiCityDiscoveryGroupView());
+  const [openedMultiCityGroupId, setOpenedMultiCityGroupId] = React.useState<
+    string | null
+  >(() => takeOpenedMultiCityDiscoveryGroupView());
   const [query, setQuery] = React.useState(restored?.query ?? "");
   const [filter, setFilter] = React.useState<ProspectFilter>(
     restored?.filter ?? "all",
@@ -170,6 +171,7 @@ export function CampaignScreen(context: CampaignContext) {
   const openedGroup = openedMultiCityGroupId
     ? (multiCity.coordinator?.getGroup(openedMultiCityGroupId) ?? null)
     : null;
+  const hasCampaignTarget = Boolean(selectedCampaign || openedGroup);
   const lastCampaignId = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     if (campaignId === undefined) return;
@@ -242,10 +244,10 @@ export function CampaignScreen(context: CampaignContext) {
   ]);
 
   React.useEffect(() => {
-    if (!provider || (!selectedCampaign && !openedGroup)) {
+    if (!provider || !hasCampaignTarget) {
       void navigate({ to: "/discovery" });
     }
-  }, [navigate, openedGroup, provider, selectedCampaign]);
+  }, [hasCampaignTarget, navigate, provider]);
 
   React.useEffect(() => {
     try {
@@ -311,7 +313,9 @@ export function CampaignScreen(context: CampaignContext) {
         activeCityStatus === "starting" ||
         activeCityStatus === "not_started"),
   );
-  const failedCity = Boolean(group && activeCity && activeCityStatus === "failed");
+  const failedCity = Boolean(
+    group && activeCity && activeCityStatus === "failed",
+  );
   const summaryCampaign = group
     ? groupSummaryCampaign(group, multiCity.campaigns)
     : null;
@@ -495,7 +499,7 @@ export function CampaignScreen(context: CampaignContext) {
     if (!provider) return;
     try {
       if (group && !allCities && multiCity.coordinator) {
-        await multiCity.coordinator.performAction(campaign.id, action);
+        await multiCity.coordinator.performAction(currentCampaign.id, action);
       } else {
         await provider[action]();
       }
@@ -1148,9 +1152,7 @@ function MultiCityAllSummary({
       ) : null}
       {failedCities > 0 ? (
         <div>
-          <p>
-            {failedCities} cities could not start.
-          </p>
+          <p>{failedCities} cities could not start.</p>
           {onRetry ? (
             <button
               aria-label="Try again all failed cities"
@@ -1178,13 +1180,15 @@ function MultiCityWaitingCity({
   return (
     <section className="c3mc-waiting-city" data-testid="multi-city-waiting">
       <div>
-        <h2>{shortPlaceName(city.label)} is {starting ? "starting" : "waiting"}</h2>
+        <h2>
+          {shortPlaceName(city.label)} is {starting ? "starting" : "waiting"}
+        </h2>
         <p>
           {starting && city.reason
             ? city.reason
             : group.blockedReason
-            ? "This city has not started yet."
-            : "It starts when one of the three city slots is free."}
+              ? "This city has not started yet."
+              : "It starts when one of the three city slots is free."}
         </p>
       </div>
       {group.blockedReason ? <p>{group.blockedReason}</p> : null}
@@ -1201,7 +1205,10 @@ function MultiCityFailedCity({
   city: import("./multiCityDiscovery").MultiCityGroupCity;
   onRetry: (() => void) | null;
 }) {
-  const reason = campaign?.failureReason ?? city.reason ?? "Discovery could not start this city.";
+  const reason =
+    campaign?.failureReason ??
+    city.reason ??
+    "Discovery could not start this city.";
   return (
     <section className="c3mc-waiting-city" data-testid="multi-city-failed-city">
       <div>
