@@ -14,6 +14,7 @@ import {
   companyJobDTag,
   companyJobHireDTag,
   parseCompanyJobHead,
+  parseCompanyJobHeads,
   parseCompanyJobHireIntent,
 } from "./jobAssignments.ts";
 
@@ -119,6 +120,10 @@ test("pending job intents stay separate from current assignment heads", () => {
     eventId: intent.id,
   });
   assert.equal(parseCompanyJobHead(intent, RELAY), null);
+});
+
+test("a relay without job records leaves every job on its existing fallback", () => {
+  assert.deepEqual(parseCompanyJobHeads([], RELAY), []);
 });
 
 test("job action builders bind their content to the relay coordinate", () => {

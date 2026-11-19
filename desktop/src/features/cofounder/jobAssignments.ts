@@ -268,6 +268,32 @@ export const companyJobHeadsQueryKey = (
   relayUrl: string | null,
 ) => ["company-job-heads", communityId, relayUrl] as const;
 
+/**
+ * Selects the newest valid assignment head for each job from relay events.
+ * An older relay has no job records, which deliberately resolves to no
+ * specialist assignments rather than a parsing or map failure.
+ */
+export function parseCompanyJobHeads(
+  events: readonly RelayEvent[],
+  relaySelfPubkey: string,
+): CompanyJobHead[] {
+  const newestFirst = [...events].sort(
+    (first, second) =>
+      second.created_at - first.created_at || first.id.localeCompare(second.id),
+  );
+  const seen = new Set<string>();
+  const heads: CompanyJobHead[] = [];
+  for (const event of newestFirst) {
+    const dTag = dTagOf(event);
+    if (seen.has(dTag)) continue;
+    const head = parseCompanyJobHead(event, relaySelfPubkey);
+    if (!head) continue;
+    seen.add(dTag);
+    heads.push(head);
+  }
+  return heads;
+}
+
 /** Reads newest valid head per job. A relay with no job records simply returns []. */
 export async function fetchCompanyJobHeads(): Promise<CompanyJobHead[]> {
   const relaySelf = await getRelaySelf();
@@ -279,21 +305,7 @@ export async function fetchCompanyJobHeads(): Promise<CompanyJobHead[]> {
     authors: [relaySelf],
     limit: 500,
   });
-  const newestFirst = [...events].sort(
-    (first, second) =>
-      second.created_at - first.created_at || first.id.localeCompare(second.id),
-  );
-  const seen = new Set<string>();
-  const heads: CompanyJobHead[] = [];
-  for (const event of newestFirst) {
-    const dTag = dTagOf(event);
-    if (seen.has(dTag)) continue;
-    const head = parseCompanyJobHead(event, relaySelf);
-    if (!head) continue;
-    seen.add(dTag);
-    heads.push(head);
-  }
-  return heads;
+  return parseCompanyJobHeads(events, relaySelf);
 }
 
 /** Reads the current job intent for one recoverable specialist hire. */
