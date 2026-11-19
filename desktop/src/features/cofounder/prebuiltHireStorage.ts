@@ -14,6 +14,7 @@ export type PrebuiltHireProgress = {
   introductionChannelId: string;
   choice: PrebuiltHireChoice;
   employeePubkey?: string;
+  introductionEventId?: string;
   directChannelId?: string;
   firstMessageEventId?: string;
 };
@@ -155,6 +156,7 @@ export function readPrebuiltHireProgress(
         key !== "introductionChannelId" &&
         key !== "choice" &&
         key !== "employeePubkey" &&
+        key !== "introductionEventId" &&
         key !== "directChannelId" &&
         key !== "firstMessageEventId" &&
         key !== "firstMoveEventId",
@@ -167,6 +169,8 @@ export function readPrebuiltHireProgress(
     !choice ||
     (record.employeePubkey !== undefined &&
       !nonEmptyString(record.employeePubkey)) ||
+    (record.introductionEventId !== undefined &&
+      !nonEmptyString(record.introductionEventId)) ||
     (record.directChannelId !== undefined &&
       !nonEmptyString(record.directChannelId)) ||
     (record.firstMessageEventId !== undefined &&
@@ -186,6 +190,9 @@ export function readPrebuiltHireProgress(
     choice,
     ...(typeof record.employeePubkey === "string"
       ? { employeePubkey: record.employeePubkey.trim() }
+      : {}),
+    ...(typeof record.introductionEventId === "string"
+      ? { introductionEventId: record.introductionEventId.trim() }
       : {}),
     ...(typeof record.directChannelId === "string"
       ? { directChannelId: record.directChannelId.trim() }
@@ -215,6 +222,8 @@ function readableProgress(value: PrebuiltHireProgress): boolean {
     parseChoice(value.choice) !== null &&
     (value.employeePubkey === undefined ||
       nonEmptyString(value.employeePubkey)) &&
+    (value.introductionEventId === undefined ||
+      nonEmptyString(value.introductionEventId)) &&
     (value.directChannelId === undefined ||
       nonEmptyString(value.directChannelId)) &&
     (value.firstMessageEventId === undefined ||

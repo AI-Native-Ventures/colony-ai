@@ -14,7 +14,7 @@ export function WhatsAppBusinessStopNotice({
       <span>
         {reason
           ? `Reason: ${reason}`
-          : "A linked reply created a durable business-level hold."}
+          : "A linked safety decision created a durable business-level stop."}
       </span>
     </div>
   );

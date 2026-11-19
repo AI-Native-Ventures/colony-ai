@@ -1634,7 +1634,7 @@ export async function installWhatsAppMockBridge(
         }
         Object.assign(cornerCottage, {
           businessOutreachStopped: true,
-          businessStopReason: "Lindiwe replied stop.",
+          businessStopReason: "Lindiwe opted out.",
         });
         Object.assign(awaitingReply, {
           hasSentOutbound: true,
@@ -1674,7 +1674,7 @@ export async function installWhatsAppMockBridge(
         state.businessStops.push({
           businessId: String(cornerCottage.leadId ?? "corner-cottage"),
           sourceWaId: cornerCottage.waId,
-          reason: "Lindiwe replied stop.",
+          reason: "Lindiwe opted out.",
           matchedRule: "stop",
           createdAt: "2026-10-29T08:45:00+02:00",
         });

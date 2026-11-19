@@ -1996,7 +1996,7 @@ pub enum WhatsappSafetyCmd {
         #[arg(long)]
         wa_id: String,
     },
-    /// Undo one active opt-out entry; a whole-business reply hold remains active
+    /// Undo one active opt-out entry
     UndoOptOut {
         /// Phone number, for example +27821234567
         #[arg(long)]
