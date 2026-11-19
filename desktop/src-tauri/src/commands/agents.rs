@@ -35,7 +35,7 @@ pub(crate) use pending::{retain_managed_agent_pending, tombstone_managed_agent_p
 
 #[path = "agents_summary.rs"]
 mod summary;
-use summary::summarize_from_disk;
+pub(super) use summary::summarize_from_disk;
 
 #[path = "agents_create_fields.rs"]
 mod create_fields;

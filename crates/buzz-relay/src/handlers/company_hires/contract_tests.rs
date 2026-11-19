@@ -36,7 +36,7 @@ fn relay_hire_heads_match_the_checked_in_desktop_contract() {
             .and_then(|tag| tag.get(1))
             .unwrap_or_else(|| panic!("{state} head must include a d tag"));
         let (content, tags) = relay_hire_head_content_and_tags(&head, d_tag)
-            .unwrap_or_else(|error| panic!("{state} head must build: {error}"));
+            .unwrap_or_else(|error| panic!("{state} head must build: {error:?}"));
 
         assert_eq!(
             tags.iter()

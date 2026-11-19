@@ -54,7 +54,7 @@ pub(super) fn apply_create_model_override(
     requested_model_override: Option<String>,
 ) -> Result<(), String> {
     if let Some(model_override) = requested_model_override {
-        crate::commands::agent_models_update::apply_linked_model_override(
+        crate::commands::agent_models::apply_linked_model_override(
             record,
             Some(Some(model_override)),
         )?;
