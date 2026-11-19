@@ -101,6 +101,84 @@ fn persona_record(id: &str, model: Option<&str>, provider: Option<&str>) -> Agen
     }
 }
 
+#[test]
+fn prebuilt_linked_model_and_effort_reach_locked_claude_launch() {
+    let mut record = bare_agent_record(
+        Some("prebuilt-sales-head"),
+        Some("sonnet"),
+        Some("opencode"),
+    );
+    record.agent_command_override = Some("claude-agent-acp".to_string());
+    apply_create_model_override(&mut record, Some("sonnet".to_string()))
+        .expect("the selected model writes through the linked-instance authority");
+    crate::commands::agent_config::apply_picker_effort_level(&mut record, Some("high".to_string()));
+
+    let personas = vec![persona_record("prebuilt-sales-head", None, None)];
+    let global = crate::managed_agents::GlobalAgentConfig {
+        model: Some("opencode/deepseek-v4.1-flash-free".to_string()),
+        provider: Some("opencode".to_string()),
+        ..Default::default()
+    };
+    let effective = crate::managed_agents::effective_config::resolve_effective_config(
+        &record, &personas, &global,
+    )
+    .require_resolved()
+    .expect("the linked prebuilt employee resolves at launch");
+
+    assert_eq!(effective.model.value.as_deref(), Some("sonnet"));
+    assert_eq!(
+        effective.model.source,
+        crate::managed_agents::effective_config::ConfigSource::InstanceOverride
+    );
+    let descriptor =
+        crate::managed_agents::resolve_effective_harness_descriptor(&record, &personas, &global)
+            .expect("the selected Claude harness resolves at launch");
+    assert_eq!(descriptor.command, "claude-agent-acp");
+    let runtime = crate::managed_agents::known_acp_runtime(&descriptor.command)
+        .expect("the selected Claude harness is in the runtime catalog");
+    assert!(runtime.provider_locked);
+    assert_eq!(runtime.provider_env_var, None);
+    assert!(
+        !descriptor.env.contains_key("GOOSE_PROVIDER")
+            && !descriptor.env.contains_key("BUZZ_AGENT_PROVIDER"),
+        "the global OpenCode provider must not be projected into locked Claude"
+    );
+    assert_eq!(
+        descriptor
+            .env
+            .get("BUZZ_ACP_EFFORT_LEVEL")
+            .map(String::as_str),
+        Some("high"),
+        "the hire-selected effort must reach the Claude ACP launch"
+    );
+
+    let mut command = std::process::Command::new("unused");
+    crate::managed_agents::apply_runtime_startup_model_env(
+        &mut command,
+        runtime.id == "claude",
+        effective.model.value.as_deref(),
+    );
+    let launch_env: std::collections::HashMap<_, _> = command.get_envs().collect();
+    assert_eq!(
+        launch_env.get(std::ffi::OsStr::new("ANTHROPIC_MODEL")),
+        Some(&Some(std::ffi::OsStr::new("sonnet"))),
+        "the selected model must reach the Claude process, not the global OpenCode default"
+    );
+    assert_eq!(
+        launch_env.get(std::ffi::OsStr::new("BUZZ_ACP_MODEL")),
+        Some(&None),
+        "Claude has one startup-model authority"
+    );
+}
+
+#[test]
+fn create_rejects_a_blank_linked_model_override_before_record_creation() {
+    assert_eq!(
+        requested_model_override(Some("  ")),
+        Err("Choose a model before creating this agent.".to_string())
+    );
+}
+
 /// Auto-archive uses the same NIP-IA wire builder as the explicit GUI action,
 /// attaches owner consent, and marks a deliberate delete as `retired`.
 #[test]

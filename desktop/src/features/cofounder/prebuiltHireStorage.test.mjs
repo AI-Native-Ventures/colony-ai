@@ -50,6 +50,7 @@ test("unfinished hires preserve a retry record until the head finishes", () => {
       modelId: "gpt-6",
     },
     employeePubkey: "employee-1",
+    introductionEventId: "introduction-1",
   };
   assert.equal(writePrebuiltHireProgress("company-a", progress), true);
   assert.deepEqual(readPrebuiltHireProgress("company-a", "finance"), progress);

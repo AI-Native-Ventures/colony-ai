@@ -735,7 +735,9 @@ use databricks::{discover_databricks_models, DatabricksAuthIntent};
 #[path = "agent_models_update.rs"]
 mod update;
 pub use update::update_managed_agent;
-pub(super) use update::{flush_managed_agent_policy, managed_agent_access_policy_changed};
+pub(crate) use update::{
+    apply_linked_model_override, flush_managed_agent_policy, managed_agent_access_policy_changed,
+};
 
 // ── Model normalization ───────────────────────────────────────────────────────
 

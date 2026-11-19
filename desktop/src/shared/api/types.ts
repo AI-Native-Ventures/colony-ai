@@ -484,6 +484,8 @@ export type CreateManagedAgentInput = {
   systemPrompt?: string;
   avatarUrl?: string;
   model?: string;
+  /** Explicit per-agent model for a linked persona. */
+  modelOverride?: string;
   provider?: string;
   /** Runtime-supported thinking effort for this agent, when available. */
   effortLevel?: string;

@@ -757,6 +757,7 @@ export async function createManagedAgent(input: CreateManagedAgentInput) {
         systemPrompt: input.systemPrompt,
         avatarUrl: input.avatarUrl,
         model: input.model,
+        modelOverride: input.modelOverride,
         provider: input.provider,
         effortLevel: input.effortLevel,
         envVars: input.envVars ?? {},

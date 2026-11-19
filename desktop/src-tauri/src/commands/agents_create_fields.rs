@@ -1,7 +1,9 @@
 //! Field normalization for `create_managed_agent` — the pure validators and
 //! resolvers its request-to-record mapping runs before any side effect.
 
-use crate::managed_agents::{managed_agent_avatar_url, BackendKind, RelayMeshConfig};
+use crate::managed_agents::{
+    managed_agent_avatar_url, BackendKind, ManagedAgentRecord, RelayMeshConfig,
+};
 
 pub(super) fn normalize_relay_mesh(
     config: Option<&RelayMeshConfig>,
@@ -31,6 +33,33 @@ pub(super) fn trim_to_optional_string(value: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+/// Normalizes an explicit linked-instance model choice before creation starts.
+pub(super) fn requested_model_override(value: Option<&str>) -> Result<Option<String>, String> {
+    let model_override = value.and_then(trim_to_optional_string);
+    if value.is_some() && model_override.is_none() {
+        return Err("Choose a model before creating this agent.".to_string());
+    }
+    Ok(model_override)
+}
+
+/// Applies the one existing linked-instance model authority during creation.
+///
+/// A linked record's `model` field is a materialized snapshot and does not
+/// control launch resolution. A deliberate create-time choice must therefore
+/// take the same `model_override` path as an edit before the record is saved.
+pub(super) fn apply_create_model_override(
+    record: &mut ManagedAgentRecord,
+    requested_model_override: Option<String>,
+) -> Result<(), String> {
+    if let Some(model_override) = requested_model_override {
+        crate::commands::agent_models::apply_linked_model_override(
+            record,
+            Some(Some(model_override)),
+        )?;
+    }
+    Ok(())
 }
 
 pub(super) fn resolve_created_avatar_url(
