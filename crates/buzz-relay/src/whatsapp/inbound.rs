@@ -25,7 +25,12 @@ use super::sender::handle_failure;
 use crate::state::AppState;
 use buzz_core::whatsapp_stage::OptOutKind;
 
-const MAX_LEADS_SCANNED: i64 = 2000;
+/// Prospect heads read per query while a company's phone index is built.
+const LEAD_SCAN_PAGE: i64 = 1000;
+/// Ceiling on the prospect heads one phone index reads. It only bounds the loop (AGENTS.md
+/// rule 4): a company with thousands of prospects is ordinary, so reaching the previous
+/// ceiling of 2000 stopped every send and every first reply for that company.
+const MAX_LEADS_SCANNED: i64 = 100_000;
 
 /// Result of looking up one WhatsApp number in the active prospect heads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -507,31 +512,77 @@ pub fn parse_payload(payload: &Value, expected_phone_number_id: &str) -> ParsedP
     parsed
 }
 
-/// Load the bounded authoritative prospect-phone and activity-note index for a company.
+/// Load the authoritative prospect-phone and activity-note index for a company.
 ///
-/// Fetching one extra row makes an over-limit result an error instead of silently treating a
-/// truncated snapshot as a no-match. Callers then leave their durable retry record untouched.
+/// Every active prospect head is read, a page at a time. A company past the ceiling is an
+/// error instead of a truncated snapshot silently treated as a no-match. Callers then leave
+/// their durable retry record untouched.
 pub async fn load_lead_phone_lookup(
     state: &Arc<AppState>,
     tenant: &TenantContext,
 ) -> Result<LeadPhoneLookup, String> {
+    load_lead_phone_lookup_paged(state, tenant, LEAD_SCAN_PAGE, MAX_LEADS_SCANNED).await
+}
+
+/// [`load_lead_phone_lookup`] with its page size and ceiling as arguments, so a test can cross
+/// both without seeding thousands of heads.
+///
+/// Pages walk the `(created_at, id)` keyset cursor the event query already orders by. The
+/// loop ends on a short page or at the ceiling, whichever comes first.
+pub(crate) async fn load_lead_phone_lookup_paged(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    page_size: i64,
+    max_heads: i64,
+) -> Result<LeadPhoneLookup, String> {
+    let page_size = page_size.max(1);
     let mut query = EventQuery::for_community(tenant.community());
     query.kinds = Some(vec![KIND_PROSPECT_HEAD as i32]);
-    query.limit = Some(MAX_LEADS_SCANNED + 1);
-    query.max_limit = Some(MAX_LEADS_SCANNED + 1);
-    let rows = state
-        .db
-        .query_events_for_event_write(&query)
-        .await
-        .map_err(|error| format!("prospect phone lookup failed: {error}"))?;
-    if rows.len() > MAX_LEADS_SCANNED as usize {
-        return Err(format!(
-            "prospect phone lookup exceeds its bounded scan of {MAX_LEADS_SCANNED} heads"
-        ));
-    }
+    query.limit = Some(page_size);
+    query.max_limit = Some(page_size);
 
     let mut phone_candidates: HashMap<String, HashSet<String>> = HashMap::new();
     let mut activity_note_candidates: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut scanned: i64 = 0;
+    loop {
+        let rows = state
+            .db
+            .query_events_for_event_write(&query)
+            .await
+            .map_err(|error| format!("prospect phone lookup failed: {error}"))?;
+        let page_len = rows.len() as i64;
+        scanned += page_len;
+        if scanned > max_heads {
+            return Err(format!(
+                "prospect phone lookup exceeds its bounded scan of {max_heads} heads"
+            ));
+        }
+        let cursor = rows
+            .last()
+            .map(|stored| (stored.event.created_at, stored.event.id));
+        index_prospect_heads(rows, &mut phone_candidates, &mut activity_note_candidates)?;
+        if page_len < page_size {
+            break;
+        }
+        let Some((created_at, id)) = cursor else {
+            break;
+        };
+        query.until = DateTime::from_timestamp(created_at.as_secs() as i64, 0);
+        query.before_id = Some(id.to_bytes().to_vec());
+    }
+
+    Ok(LeadPhoneLookup {
+        phone_matches: candidate_matches(phone_candidates),
+        activity_note_matches: candidate_matches(activity_note_candidates),
+    })
+}
+
+/// Add one page of prospect heads to the phone and Scout-note candidates.
+fn index_prospect_heads(
+    rows: Vec<buzz_core::StoredEvent>,
+    phone_candidates: &mut HashMap<String, HashSet<String>>,
+    activity_note_candidates: &mut HashMap<String, HashSet<String>>,
+) -> Result<(), String> {
     for stored in rows {
         let head: ProspectHead = serde_json::from_str(&stored.event.content)
             .map_err(|error| format!("invalid prospect head during phone lookup: {error}"))?;
@@ -557,11 +608,7 @@ pub async fn load_lead_phone_lookup(
             }
         }
     }
-
-    Ok(LeadPhoneLookup {
-        phone_matches: candidate_matches(phone_candidates),
-        activity_note_matches: candidate_matches(activity_note_candidates),
-    })
+    Ok(())
 }
 
 /// Find the active lead whose phone number matches, by E.164 digits.
