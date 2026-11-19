@@ -83,6 +83,8 @@ export const MEMBERSHIP_MESSAGE =
   "Join this community to search for prospects.";
 export const SEARCH_FAILED_MESSAGE =
   "The prospect search did not finish. Try again.";
+export const RATE_LIMIT_EXHAUSTED_MESSAGE =
+  "Colony is searching too fast for the server right now. Try again in a minute.";
 
 /** Server codes worth a quiet retry on a later page; everything else is final. */
 const TRANSIENT_CODES = new Set([
@@ -123,6 +125,24 @@ export class DiscoverySearchError extends Error {
 
 export function isTransientSearchError(error: unknown): boolean {
   return error instanceof DiscoverySearchError && error.transient;
+}
+
+/**
+ * Reads the relay's short rate-limit wait without treating a monthly quota as
+ * a passing error. A null result is intentionally left to the normal failure
+ * path so an unfamiliar 429 cannot spin forever.
+ */
+export function rateLimitRetrySeconds(error: unknown): number | null {
+  if (!(error instanceof DiscoverySearchError) || error.status !== 429) {
+    return null;
+  }
+  if (error.code === "monthly_limit" || /monthly/i.test(error.message)) {
+    return null;
+  }
+  const match = error.message.match(/retry\s+in\s+(\d+)\s*s(?:econds?)?/i);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
 function text(value: unknown): string | null {

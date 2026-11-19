@@ -12,6 +12,11 @@ import {
   getMultiCityDiscoveryCoordinator,
   resetMultiCityDiscoveryRuntime,
 } from "./multiCityDiscoveryRuntime.ts";
+import { DiscoverySearchError } from "./discoverySearch.ts";
+import {
+  isPassingStartError,
+  START_RETRY_DELAYS_SECONDS,
+} from "./multiCityDiscoveryQueue.ts";
 
 function place(label, latitude, longitude) {
   return {
@@ -36,6 +41,7 @@ const CAPE_TOWN = place(
   18.4241,
 );
 const DURBAN = place("Durban, KwaZulu-Natal, South Africa", -29.8587, 31.0218);
+const PRETORIA = place("Pretoria, Gauteng, South Africa", -25.7479, 28.2293);
 
 function input(locations = [JOHANNESBURG, CAPE_TOWN, DURBAN]) {
   return {
@@ -70,6 +76,9 @@ function fakeProvider(plan) {
   const campaigns = [];
   const listeners = new Set();
   const startedInputs = [];
+  const continuedCampaignIds = [];
+  const retriedCampaignIds = [];
+  const continuationReady = new Set();
   let currentId = null;
   let sequence = 0;
 
@@ -90,14 +99,40 @@ function fakeProvider(plan) {
 
   return {
     startedInputs,
+    continuedCampaignIds,
+    retriedCampaignIds,
     listenerCount: () => listeners.size,
-    finish(id, status = "complete", failureReason = null) {
-      patch(id, { status, failureReason });
+    finish(id, status = "complete", failureReason = null, details = {}) {
+      patch(id, { status, failureReason, ...details });
+    },
+    setContinuationReady(id, ready = true) {
+      if (ready) continuationReady.add(id);
+      else continuationReady.delete(id);
     },
     provider: {
       getCurrent: () => current(),
       getCampaigns: () => campaigns.map((campaign) => ({ ...campaign })),
-      getContinuation: () => null,
+      getContinuation: () => {
+        const campaign = current();
+        return campaign ? this.getContinuationFor(campaign.id) : null;
+      },
+      getContinuationFor(id) {
+        const campaign = campaigns.find((entry) => entry.id === id);
+        if (!campaign || !continuationReady.has(id)) return null;
+        return {
+          campaignId: id,
+          state: "ready",
+          message: null,
+          remainingTarget: Math.max(0, campaign.target - campaign.count),
+          pagesAtProviderCeiling: 1,
+          spentUsd: 0,
+          approvedBudgetUsd: campaign.budgetUsd,
+          minimumAdditionalBudgetUsd: 0,
+          recommendedAdditionalBudgetUsd: 0,
+          estimatedPages: 1,
+          estimatedCostUsd: 0,
+        };
+      },
       async select(id) {
         if (!campaigns.some((campaign) => campaign.id === id)) return;
         currentId = id;
@@ -127,6 +162,18 @@ function fakeProvider(plan) {
         publish();
         return { ...campaign };
       },
+      async continueCampaignFor(id) {
+        continuedCampaignIds.push(id);
+        const campaign = campaigns.find((entry) => entry.id === id);
+        if (!campaign || !continuationReady.has(id)) {
+          throw new Error("This search has no next page.");
+        }
+        patch(id, { status: "running", endReason: null });
+      },
+      async continueCampaign() {
+        const campaign = current();
+        if (campaign) await this.continueCampaignFor(campaign.id);
+      },
       async pause() {
         if (current()?.status === "running")
           patch(currentId, { status: "paused" });
@@ -134,6 +181,13 @@ function fakeProvider(plan) {
       async resume() {
         if (current()?.status === "paused")
           patch(currentId, { status: "running" });
+      },
+      async resumeCampaign(id) {
+        if (
+          campaigns.find((campaign) => campaign.id === id)?.status === "paused"
+        ) {
+          patch(id, { status: "running" });
+        }
       },
       async cancel() {
         if (["running", "paused"].includes(current()?.status)) {
@@ -143,6 +197,14 @@ function fakeProvider(plan) {
       async retry() {
         if (current()?.status === "failed")
           patch(currentId, { status: "running" });
+      },
+      async retryCampaign(id) {
+        retriedCampaignIds.push(id);
+        if (
+          campaigns.find((campaign) => campaign.id === id)?.status === "failed"
+        ) {
+          patch(id, { status: "running", failureReason: null });
+        }
       },
     },
   };
@@ -163,7 +225,7 @@ async function waitFor(assertion, label) {
   throw new Error(`${label}: ${lastError?.message ?? "timed out"}`);
 }
 
-test("multi-city queue starts cities in order and continues after a completed city", async () => {
+test("multi-city queue starts three cities together and replaces a finished slot in order", async () => {
   const fake = fakeProvider(async () => ({ status: "running" }));
   const coordinator = createMultiCityDiscoveryCoordinator({
     provider: fake.provider,
@@ -176,12 +238,17 @@ test("multi-city queue starts cities in order and continues after a completed ci
     })(),
   });
 
-  const group = await coordinator.startGroup(input());
+  await coordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "the first three city starts",
+  );
   assert.deepEqual(
     fake.startedInputs.map((entry) => entry.location),
-    [JOHANNESBURG.label],
+    [JOHANNESBURG.label, CAPE_TOWN.label, DURBAN.label],
   );
-  assert.equal(group.cities[0].campaignId, "campaign-1");
   assert.equal(
     fake.startedInputs[0].name,
     "Home furnishing prospects · Johannesburg",
@@ -192,40 +259,192 @@ test("multi-city queue starts cities in order and continues after a completed ci
     () =>
       assert.deepEqual(
         fake.startedInputs.map((entry) => entry.location),
-        [JOHANNESBURG.label, CAPE_TOWN.label],
+        [JOHANNESBURG.label, CAPE_TOWN.label, DURBAN.label, PRETORIA.label],
       ),
-    "the next city starts after the first completes",
+    "the fourth city takes the finished slot",
   );
   coordinator.dispose();
 });
 
+test("ten cities start exactly three and a completed city starts only the next one", async () => {
+  const cities = Array.from({ length: 10 }, (_, index) =>
+    place(`City ${index + 1}, Gauteng, South Africa`, -26 - index, 28 + index),
+  );
+  const fake = fakeProvider(async () => ({ status: "running" }));
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "ten-city-queue",
+  });
+  await coordinator.startGroup(input(cities));
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "only the first three of ten starts",
+  );
+  assert.deepEqual(
+    fake.startedInputs.map((entry) => entry.location),
+    cities.slice(0, 3).map((city) => city.label),
+  );
+  fake.finish("campaign-1");
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 4),
+    "the fourth city replaces the completed one",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(fake.startedInputs.length, 4, "one completion starts one city");
+  coordinator.dispose();
+});
+
+test("two selected cities begin together", async () => {
+  const fake = fakeProvider(async () => ({ status: "running" }));
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "two-city-queue",
+  });
+  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN]));
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 2),
+    "both selected cities begin immediately",
+  );
+  coordinator.dispose();
+});
+
+test("a pause keeps its slot, a different completion fills only its free slot, and cancel replaces its own slot", async () => {
+  const fake = fakeProvider(async () => ({ status: "running" }));
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "queue",
+    groupId: () => "group-1",
+    cityId: (() => {
+      let index = 0;
+      return () => `city-${++index}`;
+    })(),
+  });
+
+  await coordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "the initial three city starts",
+  );
+
+  await coordinator.performAction("campaign-1", "pause");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(
+    fake.startedInputs.length,
+    3,
+    "a pause buys no replacement page",
+  );
+
+  fake.finish("campaign-2");
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 4),
+    "one completed running city frees one slot beside the paused city",
+  );
+  assert.equal(
+    fake.startedInputs[3]?.location,
+    PRETORIA.label,
+    "the next city remains ordered",
+  );
+  coordinator.dispose();
+
+  const cancelFake = fakeProvider(async () => ({ status: "running" }));
+  const cancelCoordinator = createMultiCityDiscoveryCoordinator({
+    provider: cancelFake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "cancel-queue",
+  });
+  await cancelCoordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
+  await waitFor(
+    () => assert.equal(cancelFake.startedInputs.length, 3),
+    "the three cancellable city starts",
+  );
+  await cancelCoordinator.performAction("campaign-1", "cancel");
+  await waitFor(
+    () => assert.equal(cancelFake.startedInputs.length, 4),
+    "cancelling a city frees exactly one slot",
+  );
+  cancelCoordinator.dispose();
+});
+
+test("resuming an interrupted group restores its scheduler without an automatic restart", async () => {
+  const storage = inMemoryStorage();
+  const fake = fakeProvider(async () => ({ status: "running" }));
+  const initial = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage,
+    storageKey: "restart-queue",
+  });
+  await initial.startGroup(input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]));
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "the initial city starts",
+  );
+  await initial.performAction("campaign-1", "pause");
+  initial.dispose();
+
+  // The finished campaign is a persisted external fact while the app is away.
+  // Reconstructing the coordinator must not spend on Pretoria by itself.
+  fake.finish("campaign-2");
+  const restored = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage,
+    storageKey: "restart-queue",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(
+    fake.startedInputs.length,
+    3,
+    "restart did not start a paid city",
+  );
+
+  await restored.performAction("campaign-1", "resume");
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 4),
+    "the owner resume lets the fourth city take the open slot",
+  );
+  restored.dispose();
+});
+
 test("a city-only start failure is recorded and the queue continues", async () => {
   const fake = fakeProvider(async (_input, call) => {
-    if (call === 1) return { status: "complete" };
-    if (call === 2) return new Error("No matching businesses in this area.");
+    if (call === 1) return new Error("No matching businesses in this area.");
     return { status: "running" };
   });
   const coordinator = createMultiCityDiscoveryCoordinator({
     provider: fake.provider,
     storage: inMemoryStorage(),
     storageKey: "queue",
+    groupId: () => "group-1",
   });
 
-  const group = await coordinator.startGroup(input());
+  await coordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 4),
+    "the next city starts after one city alone fails",
+  );
+  const group = coordinator.getGroup("group-1") ?? coordinator.getGroups()[0];
   assert.deepEqual(
-    fake.startedInputs.map((entry) => entry.location),
+    fake.startedInputs.map((entry) => entry.location).slice(0, 3),
     [JOHANNESBURG.label, CAPE_TOWN.label, DURBAN.label],
   );
-  assert.equal(group.cities[1].state, "failed");
-  assert.equal(group.cities[2].campaignId, "campaign-2");
+  assert.equal(group.cities[0].state, "failed");
+  assert.equal(group.cities[3].campaignId, "campaign-3");
   coordinator.dispose();
 });
 
 test("a global start failure blocks remaining cities and restored groups do not restart", async () => {
   const storage = inMemoryStorage();
   let blocked = true;
-  const fake = fakeProvider(async () =>
-    blocked
+  const fake = fakeProvider(async (_input, call) =>
+    blocked && call > 1
       ? new Error("Discovery server is not configured for this community.")
       : { status: "running" },
   );
@@ -236,13 +455,21 @@ test("a global start failure blocks remaining cities and restored groups do not 
     groupId: () => "group-1",
   });
 
-  const group = await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN]));
-  assert.match(group.blockedReason ?? "", /not configured/i);
-  assert.deepEqual(
-    group.cities.map((city) => city.state),
-    ["not_started", "not_started"],
+  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN]));
+  await waitFor(
+    () => assert.ok(coordinator.getGroup("group-1")?.blockedReason),
+    "the global failure block",
   );
-  assert.equal(fake.startedInputs.length, 1);
+  const group = coordinator.getGroup("group-1");
+  assert.ok(group);
+  assert.match(group.blockedReason ?? "", /not configured/i);
+  assert.equal(group.cities[0].campaignId, "campaign-1");
+  assert.equal(
+    fake.provider.getCampaigns()[0]?.status,
+    "running",
+    "a setup error does not stop a city that was already running",
+  );
+  assert.equal(fake.startedInputs.length, 2);
   coordinator.dispose();
 
   const restored = createMultiCityDiscoveryCoordinator({
@@ -251,11 +478,202 @@ test("a global start failure blocks remaining cities and restored groups do not 
     storageKey: "queue",
   });
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(fake.startedInputs.length, 1);
+  assert.equal(fake.startedInputs.length, 2);
   blocked = false;
   await restored.retryGroup("group-1");
-  assert.equal(fake.startedInputs.length, 2);
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "the owner-requested retry",
+  );
   restored.dispose();
+});
+
+test("passing start errors retry at 5, 20, and 60 seconds, while permanent errors do not", async () => {
+  const waits = [];
+  assert.equal(
+    isPassingStartError(new Error("Timed out while loading channel history.")),
+    true,
+  );
+  assert.equal(
+    isPassingStartError(
+      new DiscoverySearchError("The provider is unavailable.", {
+        code: "discovery_provider_unavailable",
+      }),
+    ),
+    true,
+  );
+  assert.equal(isPassingStartError(new TypeError("Failed to fetch")), true);
+  assert.equal(isPassingStartError(new Error("socket hang up")), true);
+  assert.equal(
+    isPassingStartError(
+      new DiscoverySearchError("Gateway timeout.", { status: 504 }),
+    ),
+    true,
+  );
+  for (const message of [
+    "Discovery server is not configured for this community.",
+    "The prospect search provider has no credits left.",
+    "Your monthly prospect limit has been reached.",
+    "You are signed out.",
+    "You are not allowed to use Sales.",
+  ]) {
+    assert.equal(isPassingStartError(new Error(message)), false, message);
+  }
+
+  const fake = fakeProvider(async (campaignInput) => {
+    if (campaignInput.location === JOHANNESBURG.label) {
+      const attempts = fake.startedInputs.filter(
+        (entry) => entry.location === JOHANNESBURG.label,
+      ).length;
+      if (attempts <= 3) {
+        return new Error("Timed out while loading channel history.");
+      }
+    }
+    return { status: "running" };
+  });
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "queue",
+    sleep: async (ms, signal) => {
+      if (signal.aborted) throw new DOMException("stopped", "AbortError");
+      waits.push(ms);
+    },
+  });
+
+  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN]));
+  await waitFor(
+    () =>
+      assert.equal(
+        fake.startedInputs.filter(
+          (entry) => entry.location === JOHANNESBURG.label,
+        ).length,
+        4,
+      ),
+    "all three passing-error retries",
+  );
+  assert.deepEqual(
+    waits,
+    START_RETRY_DELAYS_SECONDS.map((seconds) => seconds * 1_000),
+  );
+  const group = coordinator.getGroups()[0];
+  assert.equal(group.cities[0].campaignId, "campaign-2");
+  assert.equal(group.cities[0].state, "waiting");
+  coordinator.dispose();
+});
+
+test("a failed city shows a fresh-start retry, while a failed campaign retries the same campaign", async () => {
+  let failFirstStart = true;
+  const fake = fakeProvider(async (campaignInput) => {
+    if (campaignInput.location === JOHANNESBURG.label && failFirstStart) {
+      failFirstStart = false;
+      return new Error("No matching businesses in this area.");
+    }
+    return { status: "running" };
+  });
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "queue",
+  });
+  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN]));
+  await waitFor(
+    () => assert.equal(coordinator.getGroups()[0].cities[0].state, "failed"),
+    "the pre-campaign failure",
+  );
+  const groupId = coordinator.getGroups()[0].groupId;
+  await coordinator.retryCity(
+    groupId,
+    coordinator.getGroups()[0].cities[0].cityId,
+  );
+  await waitFor(
+    () =>
+      assert.equal(
+        coordinator.getGroups()[0].cities[0].campaignId,
+        "campaign-2",
+      ),
+    "a new campaign after the start failure",
+  );
+  const firstCampaign = coordinator.getGroups()[0].cities[0].campaignId;
+  fake.finish(firstCampaign, "failed", "The provider stopped.");
+  await waitFor(
+    () =>
+      assert.equal(
+        coordinator.getGroups()[0].cities[0].campaignId,
+        firstCampaign,
+      ),
+    "the existing campaign remains attached",
+  );
+  await coordinator.retryCity(
+    groupId,
+    coordinator.getGroups()[0].cities[0].cityId,
+  );
+  await waitFor(
+    () => assert.deepEqual(fake.retriedCampaignIds, [firstCampaign]),
+    "the campaign retry",
+  );
+  assert.equal(
+    coordinator.getGroups()[0].cities[0].campaignId,
+    firstCampaign,
+    "a campaign failure never creates a second campaign",
+  );
+  coordinator.dispose();
+});
+
+test("automatic continuation keeps a city slot, uses at most three attempts, and skips terminal reasons", async () => {
+  const fake = fakeProvider(async () => ({ status: "running" }));
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "queue",
+  });
+  await coordinator.startGroup(
+    input([JOHANNESBURG, CAPE_TOWN, DURBAN, PRETORIA]),
+  );
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "the three occupied slots",
+  );
+  const firstId = "campaign-1";
+  fake.setContinuationReady(firstId);
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    fake.finish(firstId, "complete", null, {
+      count: 20,
+      target: 100,
+      endReason: "approved_budget",
+    });
+    await waitFor(
+      () => assert.equal(fake.continuedCampaignIds.length, attempt),
+      `automatic continuation ${attempt}`,
+    );
+    assert.equal(
+      fake.startedInputs.length,
+      3,
+      "a continuation holds its slot instead of launching a fourth city",
+    );
+  }
+  fake.finish(firstId, "complete", null, {
+    count: 20,
+    target: 100,
+    endReason: "approved_budget",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(fake.continuedCampaignIds.length, 3);
+
+  const secondId = "campaign-2";
+  fake.setContinuationReady(secondId);
+  fake.finish(secondId, "complete", null, {
+    count: 20,
+    target: 100,
+    endReason: "provider_end",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(
+    fake.continuedCampaignIds.filter((id) => id === secondId).length,
+    0,
+    "provider-end completion remains done",
+  );
+  coordinator.dispose();
 });
 
 test("duplicate places are ignored and total provider budget includes every city", () => {
