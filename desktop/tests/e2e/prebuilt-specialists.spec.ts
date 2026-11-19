@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
@@ -15,6 +17,13 @@ import { prepareMapShell } from "./mapShellTestSupport";
 
 const JOB_ASSIGNMENT_EXTENSION = "colony-job-assignments";
 const VIEWPORT = { width: 1440, height: 900 };
+const PREBUILT_SPECIALIST_CAPTURE_ENABLED =
+  process.env.COLONY_PREBUILT_SPECIALIST_CAPTURE === "1";
+const PREBUILT_SPECIALIST_SCREENSHOT_DIR =
+  process.env.COLONY_PREBUILT_SPECIALIST_SCREENSHOT_DIR ??
+  "test-results/prebuilt-specialists";
+const PREBUILT_SPECIALIST_BOARD_DIR =
+  "/Users/mac/.claude/coord-work/colony-prebuilt/renders";
 const PREBUILT_SPECIALIST_CHANNEL = {
   id: "33333333-3333-4333-8333-333333333333",
   name: "general",
@@ -32,6 +41,77 @@ type FunctionId =
   | "brand";
 
 type CommandLogEntry = { command: string; payload: unknown };
+type SpecialistTheme = "light" | "dark";
+type SpecialistViewport = { width: number; height: number };
+
+function specialistScreenshotPath(
+  screenshotDir: string,
+  name: string,
+  theme: SpecialistTheme,
+  viewport: SpecialistViewport,
+) {
+  return join(
+    screenshotDir,
+    `${name}-${theme}-${viewport.width}x${viewport.height}.png`,
+  );
+}
+
+async function captureSpecialistBoard(
+  page: Page,
+  screenshotDir: string,
+  name: string,
+  theme: SpecialistTheme,
+  viewport: SpecialistViewport,
+) {
+  const path = specialistScreenshotPath(screenshotDir, name, theme, viewport);
+  await waitForAnimations(page);
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: false,
+    path,
+  });
+  return path;
+}
+
+async function captureSpecialistComparison(
+  page: Page,
+  board: "PbHireNext" | "PbJob" | "PbSpotStates",
+  appScreenshot: string,
+  screenshotDir: string,
+) {
+  const boardPath = join(PREBUILT_SPECIALIST_BOARD_DIR, `${board}.png`);
+  const boardHeight = board === "PbHireNext" ? 1000 : 900;
+  const boardImage = readFileSync(boardPath).toString("base64");
+  const appImage = readFileSync(appScreenshot).toString("base64");
+
+  await page.setViewportSize({ width: 2880, height: boardHeight });
+  await page.setContent(`
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <style>
+          * { box-sizing: border-box; }
+          html, body { margin: 0; width: 2880px; height: ${boardHeight}px; overflow: hidden; }
+          main { display: flex; width: 2880px; height: ${boardHeight}px; background: #fff; }
+          img { display: block; width: 1440px; height: ${boardHeight}px; object-fit: cover; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <img alt="Approved ${board} board" src="data:image/png;base64,${boardImage}" />
+          <img alt="Implemented ${board} state" src="data:image/png;base64,${appImage}" />
+        </main>
+      </body>
+    </html>
+  `);
+  await expect(page.getByRole("img")).toHaveCount(2);
+  await waitForAnimations(page);
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: false,
+    path: join(screenshotDir, `${board}-compare.png`),
+  });
+}
 
 function mapJobTestId(functionId: FunctionId, jobName: string) {
   return `cofounder-map-job-${functionId}-${jobName
@@ -79,6 +159,7 @@ async function prepareSpecialistMap(
   page: Page,
   mock = specialistFixture(),
   viewport = VIEWPORT,
+  theme: SpecialistTheme = "light",
 ) {
   await page.addInitScript(() => {
     for (const key of Object.keys(window.localStorage)) {
@@ -93,7 +174,7 @@ async function prepareSpecialistMap(
     height: viewport.height,
     identity: TEST_IDENTITIES.tyler,
     mock,
-    theme: "light",
+    theme,
     width: viewport.width,
   });
   // prepareMapShell's default WhatsApp mock is installed before this proof.
@@ -102,6 +183,11 @@ async function prepareSpecialistMap(
   await seedCompanyMapWhatsApp(page, MAP_CHANNEL_ID);
   await page.reload();
   await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.classList.contains("dark")),
+    )
+    .toBe(theme === "dark");
 }
 
 async function openJobSpot(
@@ -180,6 +266,257 @@ async function hireFromSpot(
   await expect(dialog).toBeHidden();
   return startedEmployeePubkey(page);
 }
+
+test.describe("prebuilt specialist visual proof", () => {
+  for (const theme of ["light", "dark"] as const) {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1728, height: 1117 },
+    ] as const) {
+      test(`captures specialist boards in ${theme} at ${viewport.width}x${viewport.height}`, async ({
+        page,
+      }) => {
+        test.skip(
+          !PREBUILT_SPECIALIST_CAPTURE_ENABLED,
+          "The specialist proof capture only runs when explicitly requested.",
+        );
+        test.setTimeout(180_000);
+        mkdirSync(PREBUILT_SPECIALIST_SCREENSHOT_DIR, { recursive: true });
+
+        await prepareSpecialistMap(page, specialistFixture(), viewport, theme);
+        const jobCard = await openJobSpot(
+          page,
+          "sales",
+          "Follow-ups",
+          "follow-ups",
+        );
+        await expect(jobCard).toContainText(
+          "Aya does Follow-ups as Head of Sales.",
+        );
+        const jobScreenshot = await captureSpecialistBoard(
+          page,
+          PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          "PbJob",
+          theme,
+          viewport,
+        );
+
+        await prepareSpecialistMap(page, specialistFixture(), viewport, theme);
+        const specialistCard = await openJobSpot(
+          page,
+          "sales",
+          "Follow-ups",
+          "follow-ups",
+        );
+        await hireFromSpot(page, specialistCard, "Follow-ups specialist");
+        await expect(specialistCard).toContainText("Works here");
+        await expect(specialistCard).toContainText("Just hired");
+        await expect(
+          page.getByTestId("fullmap-window-job-ring").locator("img"),
+        ).toHaveCount(1);
+        const specialistScreenshot = await captureSpecialistBoard(
+          page,
+          PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          "PbSpotStates-specialist",
+          theme,
+          viewport,
+        );
+
+        await prepareSpecialistMap(page, specialistFixture(), viewport, theme);
+        const beforeHeadCard = await openJobSpot(
+          page,
+          "finance",
+          "Invoices",
+          "invoices",
+        );
+        await hireFromSpot(page, beforeHeadCard, "Invoices specialist");
+        await expect(beforeHeadCard).toContainText(
+          "Scout leads this specialist until you hire a Head of Finance.",
+        );
+        await captureSpecialistBoard(
+          page,
+          PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          "PbSpotStates-before-head",
+          theme,
+          viewport,
+        );
+
+        await prepareSpecialistMap(
+          page,
+          specialistFixture({
+            jobHeads: [
+              {
+                function: "sales",
+                jobId: "follow-ups",
+                state: "filled",
+                assigneePubkey: AYA_PUBKEY,
+              },
+            ],
+            role: "member",
+          }),
+          viewport,
+          theme,
+        );
+        const memberCard = await openJobSpot(
+          page,
+          "sales",
+          "Follow-ups",
+          "follow-ups",
+        );
+        await expect(memberCard).toContainText("Works here");
+        await expect(
+          memberCard.getByRole("button", { name: "Remove" }),
+        ).toHaveCount(0);
+        await captureSpecialistBoard(
+          page,
+          PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          "PbSpotStates-member",
+          theme,
+          viewport,
+        );
+
+        await prepareSpecialistMap(page, specialistFixture(), viewport, theme);
+        await selectMapPart(page, "sales", "Sales");
+        await page.getByTestId(mapJobTestId("sales", "Calls")).click();
+        const unavailableCard = page.getByTestId(
+          "job-assignment-card-sales-calls",
+        );
+        await expect(unavailableCard).toContainText("Not available yet");
+        await expect(unavailableCard).toContainText(
+          "Colony cannot make phone calls yet.",
+        );
+        await captureSpecialistBoard(
+          page,
+          PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          "PbSpotStates-not-available",
+          theme,
+          viewport,
+        );
+
+        await prepareSpecialistMap(page, specialistFixture(), viewport, theme);
+        const firstSpecialistCard = await openJobSpot(
+          page,
+          "sales",
+          "Follow-ups",
+          "follow-ups",
+        );
+        await hireFromSpot(page, firstSpecialistCard, "Follow-ups specialist");
+        await page.goto("/#/company/map");
+        const nextSpecialistCard = await openJobSpot(
+          page,
+          "sales",
+          "Outreach",
+          "outreach",
+        );
+        await nextSpecialistCard
+          .getByRole("button", { name: "Hire Outreach specialist" })
+          .click();
+        const nextHireDialog = page.getByTestId("prebuilt-head-hire-dialog");
+        await expect(nextHireDialog).toBeVisible();
+        await expect(nextHireDialog).toContainText("Outreach specialist");
+        await expect(
+          nextHireDialog.getByTestId("prebuilt-hire-choice-helper"),
+        ).toHaveText("Same as your last hire. Change any of them.");
+        await captureSpecialistBoard(
+          page,
+          PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          "PbHireNext",
+          theme,
+          viewport,
+        );
+
+        let nextHireComparisonSource: string | null = null;
+        if (
+          theme === "light" &&
+          viewport.width === 1440 &&
+          viewport.height === 900
+        ) {
+          const comparisonSourceDir = join(
+            PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+            ".compare-sources",
+          );
+          mkdirSync(comparisonSourceDir, { recursive: true });
+          nextHireComparisonSource = join(
+            comparisonSourceDir,
+            "PbHireNext-light-1440x1000.png",
+          );
+          await page.setViewportSize({ width: 1440, height: 1000 });
+          await waitForAnimations(page);
+          await page.screenshot({
+            animations: "disabled",
+            fullPage: false,
+            path: nextHireComparisonSource,
+          });
+          await page.setViewportSize(viewport);
+
+          await prepareSpecialistMap(
+            page,
+            specialistFixture(),
+            viewport,
+            theme,
+          );
+          await captureSpecialistBoard(
+            page,
+            PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+            "MapShell-sidebar",
+            theme,
+            viewport,
+          );
+
+          await captureSpecialistComparison(
+            page,
+            "PbJob",
+            jobScreenshot,
+            PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          );
+          await captureSpecialistComparison(
+            page,
+            "PbSpotStates",
+            specialistScreenshot,
+            PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          );
+          await captureSpecialistComparison(
+            page,
+            "PbHireNext",
+            nextHireComparisonSource,
+            PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+          );
+        }
+      });
+    }
+
+    test(`captures the phone map in ${theme}`, async ({ page }) => {
+      test.skip(
+        !PREBUILT_SPECIALIST_CAPTURE_ENABLED,
+        "The specialist proof capture only runs when explicitly requested.",
+      );
+      test.setTimeout(120_000);
+      const phoneViewport = { width: 390, height: 844 };
+      mkdirSync(PREBUILT_SPECIALIST_SCREENSHOT_DIR, { recursive: true });
+      await prepareSpecialistMap(
+        page,
+        specialistFixture(),
+        phoneViewport,
+        theme,
+      );
+      await expect(page.getByTestId("cofounder-map-phone")).toBeVisible();
+      await page.getByTestId("cofounder-map-phone-sales").click();
+      await page
+        .getByTestId("cofounder-map-phone-job-spot-sales-follow-ups")
+        .click();
+      await expect(
+        page.getByTestId("job-assignment-card-sales-follow-ups"),
+      ).toBeVisible();
+      await captureSpecialistBoard(
+        page,
+        PREBUILT_SPECIALIST_SCREENSHOT_DIR,
+        "Phone-map",
+        theme,
+        phoneViewport,
+      );
+    });
+  }
+});
 
 function overlaps(
   first: { x: number; y: number; width: number; height: number },

@@ -57,7 +57,9 @@ pub fn job_hire_d_tag(hire_id: Uuid) -> String {
 pub enum JobRecordRef {
     /// The current assignment for a job.
     Assignment {
+        /// The company part that owns the job.
         function: CompanyFunction,
+        /// The stable job identifier within the company part.
         job_id: String,
     },
     /// A pending job intent attached to a hire.
