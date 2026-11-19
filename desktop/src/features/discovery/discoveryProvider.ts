@@ -206,6 +206,10 @@ declare global {
     __BUZZ_E2E_W10_DISCOVERY_PROVIDER__?: DiscoveryCampaignProvider;
     __BUZZ_E2E_W10_FAIL_NEXT_RUN__?: boolean;
     __BUZZ_E2E_W10_FAIL_NEXT_START__?: boolean;
+    /** Number of transient start failures left for multi-city E2E coverage. */
+    __BUZZ_E2E_W10_TRANSIENT_START_FAILURES__?: number;
+    /** Makes the next initial city start fail for every unstarted city. */
+    __BUZZ_E2E_W10_FAIL_NEXT_START_GLOBALLY__?: boolean;
   }
 }
 

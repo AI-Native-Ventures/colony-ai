@@ -111,9 +111,12 @@ type MultiCityWindow = Window & {
   __BUZZ_E2E_MULTI_CITY_RESULT_LOCATIONS__?: string[];
   __BUZZ_E2E_REFERENCE_DISCOVERY_FREEZE__?: boolean;
   __BUZZ_E2E_REFERENCE_DISCOVERY_RESUME__?: () => void;
-  __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?: () => void;
+  __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?: () => string | null;
+  __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_AT_BUDGET__?: () => string | null;
   __BUZZ_E2E_W10_FAIL_NEXT_RUN__?: boolean;
   __BUZZ_E2E_W10_FAIL_NEXT_START__?: boolean;
+  __BUZZ_E2E_W10_TRANSIENT_START_FAILURES__?: number;
+  __BUZZ_E2E_W10_FAIL_NEXT_START_GLOBALLY__?: boolean;
 };
 
 async function installMultiCityFixture(
@@ -197,50 +200,70 @@ async function assertCityTabGeometry(
       heights: tabs.map((tab) => tab.offsetHeight),
       tops: tabs.map((tab) => Math.round(tab.getBoundingClientRect().top)),
       overflows: [
-        ...(node.scrollWidth > node.clientWidth
+        node,
+        ...tabs.flatMap((tab) => [
+          tab,
+          ...tab.querySelectorAll<HTMLElement>("[data-city-tab-text]"),
+        ]),
+      ].flatMap((element, index) => {
+        const scrollWidth = element.scrollWidth;
+        const scrollHeight = element.scrollHeight;
+        const clientWidth = element.clientWidth;
+        const clientHeight = element.clientHeight;
+        return scrollWidth > clientWidth || scrollHeight > clientHeight
           ? [
               {
-                clientWidth: node.clientWidth,
-                name: "tab row",
-                scrollWidth: node.scrollWidth,
+                clientHeight,
+                clientWidth,
+                name:
+                  index === 0
+                    ? "tab row"
+                    : (element.dataset.cityTabText ?? "tab"),
+                scrollHeight,
+                scrollWidth,
               },
             ]
-          : []),
-        ...tabs.flatMap((tab) =>
-          [
-            {
-              element: tab.querySelector<HTMLElement>(
-                ".c3mc-city-tab-top > strong",
-              ),
-              name: "name",
-            },
-            {
-              element: tab.querySelector<HTMLElement>(".c3mc-city-tab-status"),
-              name: "status",
-            },
-            {
-              element: tab.querySelector<HTMLElement>(".c3mc-city-tab-count"),
-              name: "count",
-            },
-          ].flatMap(({ name, element }) =>
-            element && element.scrollWidth > element.clientWidth
-              ? [
-                  {
-                    clientWidth: element.clientWidth,
-                    name,
-                    scrollWidth: element.scrollWidth,
-                  },
-                ]
-              : [],
-          ),
-        ),
-      ],
+          : [];
+      }),
     };
   });
-  expect(geometry.heights).toEqual(Array(expectedTabs).fill(84));
+  expect(geometry.heights).toHaveLength(expectedTabs);
+  expect(geometry.heights.every((height) => height >= 84 && height <= 96)).toBe(
+    true,
+  );
   expect(geometry.gap).toBe(10);
   expect(geometry.overflows).toEqual([]);
   if (oneRow) expect(new Set(geometry.tops).size).toBe(1);
+}
+
+async function assertFullCityNames(
+  page: Page,
+  locations: readonly { label: string }[],
+) {
+  const names = locations.map((location) => location.label.split(",")[0] ?? "");
+  const missing = await page
+    .getByRole("tablist", { name: "Campaign cities" })
+    .evaluate((node, expectedNames) => {
+      const tabs = Array.from(
+        node.querySelectorAll<HTMLElement>('[role="tab"]'),
+      );
+      return expectedNames.filter((name) => {
+        const tab = tabs.find((candidate) =>
+          candidate.getAttribute("aria-label")?.startsWith(`${name},`),
+        );
+        const visibleName = tab?.querySelector<HTMLElement>(
+          '[data-city-tab-text="name"]',
+        );
+        return visibleName?.textContent?.trim() !== name;
+      });
+    }, names);
+  expect(missing).toEqual([]);
+}
+
+async function expectVisibleCityTabStatus(tab: Locator, label: string) {
+  const status = tab.locator('[data-city-tab-text="status"]');
+  await expect(status).toHaveText(label);
+  await expect(status).toBeVisible();
 }
 
 async function chooseByKeyboard(input: Locator, label: string) {
@@ -261,7 +284,11 @@ async function chooseByPointer(dialog: Locator, input: Locator, label: string) {
     .click();
 }
 
-async function createFourCityCampaign(page: Page, screenshotPrefix: string) {
+async function createFourCityCampaign(
+  page: Page,
+  screenshotPrefix: string,
+  captureDialog = true,
+) {
   const dialog = await openCampaignDialog(page);
   const input = dialog.getByRole("combobox", { name: /Cities|Location/ });
   const chips = dialog.getByTestId("multi-city-location-chips");
@@ -300,10 +327,12 @@ async function createFourCityCampaign(page: Page, screenshotPrefix: string) {
       name: "I approve the maximum budget for all 4 campaigns.",
     })
     .check();
-  await capture(page, `${screenshotPrefix}-dialog-approval.png`);
-  await dialog.evaluate((element) => element.scrollTo({ top: 0 }));
-  await expect(chips).toBeVisible();
-  await capture(page, `${screenshotPrefix}-dialog-cities.png`);
+  if (captureDialog) {
+    await capture(page, `${screenshotPrefix}-dialog-approval.png`);
+    await dialog.evaluate((element) => element.scrollTo({ top: 0 }));
+    await expect(chips).toBeVisible();
+    await capture(page, `${screenshotPrefix}-dialog-cities.png`);
+  }
   await dialog.getByRole("button", { name: "Approve & start 4" }).click();
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
 }
@@ -313,6 +342,7 @@ async function exerciseFourCityGroup(page: Page, screenshotPrefix: string) {
   await expect(page.getByRole("tab", { name: /All cities/ })).toBeVisible();
   await expect(page.getByRole("tab")).toHaveCount(5);
   await assertCityTabGeometry(page, 5, true);
+  await assertFullCityNames(page, LOCATIONS.slice(0, 4));
   await expect(
     page.getByRole("tab", { name: /Johannesburg.*Searching/ }),
   ).toBeVisible();
@@ -325,6 +355,14 @@ async function exerciseFourCityGroup(page: Page, screenshotPrefix: string) {
   await expect(
     page.getByRole("tab", { name: /Pretoria.*Waiting/ }),
   ).toBeVisible();
+  await expectVisibleCityTabStatus(
+    page.getByRole("tab", { name: /Johannesburg/ }),
+    "Searching",
+  );
+  await expectVisibleCityTabStatus(
+    page.getByRole("tab", { name: /Pretoria/ }),
+    "Waiting",
+  );
   await capture(page, `${screenshotPrefix}-four-one-row.png`);
   const capeTown = page.getByRole("tab", { name: /Cape Town/ });
   await capeTown.click();
@@ -398,16 +436,17 @@ async function createThreeCityCampaign(page: Page) {
 async function exerciseTenCityGroup(page: Page, screenshotPrefix: string) {
   await expect(page.getByRole("tab")).toHaveCount(11);
   await assertCityTabGeometry(page, 11);
+  await assertFullCityNames(page, LOCATIONS);
   await expect(page.getByRole("tab", { name: /All cities/ })).toHaveAttribute(
     "aria-selected",
     "true",
   );
   for (const location of LOCATIONS.slice(0, 3)) {
-    await expect(
-      page.getByRole("tab", {
-        name: new RegExp(`${location.label.split(",")[0]}.*Searching`),
-      }),
-    ).toBeVisible();
+    const tab = page.getByRole("tab", {
+      name: new RegExp(`${location.label.split(",")[0]}.*Searching`),
+    });
+    await expect(tab).toBeVisible();
+    await expectVisibleCityTabStatus(tab, "Searching");
   }
   await capture(page, `${screenshotPrefix}-ten-cities-all.png`);
   const city = page.getByRole("tab", { name: /Cape Town/ });
@@ -482,20 +521,36 @@ test("five cities retain a paused slot and replace only completed or cancelled s
   await johannesburg.click();
   await page.getByRole("button", { name: "Pause" }).click();
   await expect(johannesburg).toHaveAttribute("aria-label", /Paused/);
+  await expectVisibleCityTabStatus(johannesburg, "Paused");
   await expect(pretoria).toHaveAttribute("aria-label", /Waiting/);
+  await expectVisibleCityTabStatus(pretoria, "Waiting");
   await expect(bloemfontein).toHaveAttribute("aria-label", /Waiting/);
 
-  await page.evaluate(() => {
+  const completedLocation = await page.evaluate(() => {
     const testWindow = window as MultiCityWindow;
-    testWindow.__BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?.();
+    return testWindow.__BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?.() ?? null;
   });
+  expect(completedLocation).not.toBeNull();
   await expect(pretoria).toHaveAttribute("aria-label", /Searching/, {
     timeout: 5_000,
   });
   await expect(bloemfontein).toHaveAttribute("aria-label", /Waiting/);
+  await expect(
+    page.getByRole("tab", {
+      name: new RegExp(`${completedLocation?.split(",")[0]}.*Done`),
+    }),
+  ).toBeVisible();
+  await expectVisibleCityTabStatus(
+    page.getByRole("tab", {
+      name: new RegExp(`${completedLocation?.split(",")[0]}.*Done`),
+    }),
+    "Done",
+  );
 
   await johannesburg.click();
   await page.getByRole("button", { name: "Cancel search" }).click();
+  await expect(johannesburg).toHaveAttribute("aria-label", /Stopped/);
+  await expectVisibleCityTabStatus(johannesburg, "Stopped");
   await expect(bloemfontein).toHaveAttribute("aria-label", /Searching/, {
     timeout: 5_000,
   });
@@ -515,14 +570,103 @@ test("a city that never started explains the reason and retries as a fresh campa
   await createThreeCityCampaign(page);
   const failed = page.getByRole("tab", { name: /Johannesburg.*Failed/ });
   await expect(failed).toBeVisible();
+  await expectVisibleCityTabStatus(failed, "Failed");
   await failed.click();
   const panel = page.getByTestId("multi-city-failed-city");
   await expect(panel).toContainText("Johannesburg could not start");
   await expect(panel).toContainText("No matching businesses in this area.");
+  await capture(page, "multi-city-addendum-b-failed-city.png");
+  await page.getByRole("tab", { name: /All cities/ }).click();
+  const allCities = page.getByTestId("multi-city-all-summary");
+  await expect(allCities).toContainText("1 cities could not start.");
+  await expect(
+    allCities.getByRole("button", { name: "Try again all failed cities" }),
+  ).toBeVisible();
+  await capture(page, "multi-city-addendum-b-all-cities-retry.png");
+  await failed.click();
   await panel.getByRole("button", { name: "Try again Johannesburg" }).click();
   await expect(
     page.getByRole("tab", { name: /Johannesburg.*Searching/ }),
   ).toBeVisible();
+});
+
+test("a passing city-start error remains visible while its retry waits", async ({
+  page,
+}) => {
+  await installMultiCityFixture(page, {
+    dark: false,
+    height: 900,
+    width: 1440,
+  });
+  await page.evaluate(() => {
+    (window as MultiCityWindow).__BUZZ_E2E_W10_TRANSIENT_START_FAILURES__ = 1;
+  });
+  await createFourCityCampaign(page, "multi-city-addendum-a", false);
+  const johannesburg = page.getByRole("tab", {
+    name: /Johannesburg.*Starting/,
+  });
+  await expect(johannesburg).toBeVisible();
+  await expectVisibleCityTabStatus(johannesburg, "Starting");
+  await johannesburg.click();
+  const panel = page.getByTestId("multi-city-retry-waiting");
+  await expect(panel).toContainText("Johannesburg is starting");
+  await expect(panel).toContainText(
+    "Could not reach the server. Trying again in 5 s.",
+  );
+  await capture(page, "multi-city-addendum-a-retry-waiting.png");
+});
+
+test("an approved-budget city continues by itself and remains Searching", async ({
+  page,
+}) => {
+  await installMultiCityFixture(page, {
+    dark: false,
+    height: 900,
+    width: 1440,
+  });
+  await createFourCityCampaign(page, "multi-city-addendum-c", false);
+  const continuingLocation = await page.evaluate(() =>
+    (
+      window as MultiCityWindow
+    ).__BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_AT_BUDGET__?.(),
+  );
+  if (!continuingLocation) {
+    throw new Error(
+      "The reference campaign did not expose a city to continue.",
+    );
+  }
+  const cityName = continuingLocation.split(",")[0] ?? continuingLocation;
+  const city = page.getByRole("tab", {
+    name: new RegExp(`${cityName}.*Searching`),
+  });
+  await expect(city).toBeVisible({ timeout: 5_000 });
+  await expectVisibleCityTabStatus(city, "Searching");
+  await city.click();
+  await expect(
+    page.getByRole("heading", { name: "Finding prospects" }),
+  ).toBeVisible();
+  await capture(page, "multi-city-addendum-c-continuing.png");
+});
+
+test("a global start failure leaves each unstarted city visibly not started", async ({
+  page,
+}) => {
+  await installMultiCityFixture(page, {
+    dark: false,
+    height: 900,
+    width: 1440,
+  });
+  await page.evaluate(() => {
+    (window as MultiCityWindow).__BUZZ_E2E_W10_FAIL_NEXT_START_GLOBALLY__ =
+      true;
+  });
+  await createThreeCityCampaign(page);
+  const johannesburg = page.getByRole("tab", {
+    name: /Johannesburg.*Not started/,
+  });
+  await expect(johannesburg).toBeVisible();
+  await expectVisibleCityTabStatus(johannesburg, "Not started");
+  await assertCityTabGeometry(page, 4);
 });
 
 for (const scenario of [

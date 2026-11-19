@@ -10,8 +10,6 @@
  * async results are fenced by generation; every loop is bounded.
  */
 
-import type { ProspectChanges } from "./businessRecordMutations";
-import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import {
   findCampaign,
   MAX_SEEN_PROVIDER_PLACE_IDS,
@@ -22,7 +20,6 @@ import {
   withTopFit,
   writeState,
   emptyState,
-  type StorageLike,
   type StoredCampaign,
   type StoredState,
 } from "./discoveryCampaignStore";
@@ -69,9 +66,7 @@ import {
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
-  DiscoveryCampaignProvider,
   DiscoveryCoverage,
-  DiscoveryEndReason,
   DiscoveryPageLog,
 } from "./discoveryProvider";
 import {
@@ -81,7 +76,6 @@ import {
   normalizePickedTags,
   QUERY_PLACE_CEILING,
   type DiscoveryPlace,
-  type DiscoverySearchRequest,
   type DiscoverySearchResponse,
 } from "./discoverySearch";
 import {
@@ -89,75 +83,44 @@ import {
   createSearchPageRunner,
   createSharedAsyncLoader,
   isAbortError,
-  isAlreadyExistsError,
   plainDiscoveryReason,
   requestedCoverageKey,
   requestedTagIndex,
 } from "./discoveryRunSupport";
+import {
+  FIRST_START_ERROR,
+  MAX_RATE_LIMIT_WAIT_MS,
+  MAX_RATE_LIMIT_WAITS,
+  MAX_TARGET,
+  PUBLISH_BACKOFF_MS,
+  PUBLISH_CONCURRENCY,
+  SEARCH_BACKOFF_MS,
+  STOPPED_ERROR,
+  type DiscoveryContext,
+  type DiscoveryController,
+  type DiscoveryDeps,
+} from "./discoveryControllerContract";
+import { publishWithRetry } from "./discoveryProspectPublisher";
+import { markLastPageStop, type PageOutcome } from "./discoveryPageOutcome";
 
-/** The owner-facing campaign form permits targets from 100 through 500. */
-export const MIN_TARGET = 100;
-export const MAX_TARGET = 500;
-export const PUBLISH_CONCURRENCY = 6;
-export const PUBLISH_BACKOFF_MS = [400, 800, 1600] as const;
-export const SEARCH_BACKOFF_MS = [1_000, 3_000] as const;
-export const MAX_RATE_LIMIT_WAITS = 6;
-export const MAX_RATE_LIMIT_WAIT_MS = 65_000;
 export { BUDGET_USD_PER_PROSPECT, buildEndNote, MAX_PAGES };
 export { buildResultsMessage, isAbortError };
-
-export type DiscoveryContext = {
-  /** The private Sales channel that holds business records. */
-  channelId: string;
-  /** The relay's tenant community id; never the local community id. */
-  communityId: TenantCommunityId;
-  pubkey: string;
-  displayName: string;
-  /** Record ids already in Leads. The controller adds what it saves. */
-  existingProspectIds: Set<string>;
-  /**
-   * Names (see `leadNameKey`) of the leads that existed before this run. Leads
-   * are one per business name, so a place with one of these names is skipped.
-   */
-  existingNames: ReadonlySet<string>;
-};
-
-export type DiscoveryDeps = {
-  storage: StorageLike | null;
-  storageKey: string;
-  nowSeconds: () => number;
-  newId: () => string;
-  /** Resolves after `ms`, or rejects with an AbortError when `signal` fires. */
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  getOwnerPubkey: () => Promise<string>;
-  /** Looks up the Sales channel, the signed-in person and existing leads. */
-  resolveContext: () => Promise<DiscoveryContext>;
-  search: (
-    request: DiscoverySearchRequest,
-    signal: AbortSignal,
-  ) => Promise<DiscoverySearchResponse>;
-  prospectId: (place: DiscoveryPlace) => Promise<string>;
-  publishProspect: (input: {
-    context: DiscoveryContext;
-    changes: ProspectChanges;
-  }) => Promise<void>;
-  postToSales: (input: {
-    context: DiscoveryContext;
-    content: string;
-  }) => Promise<void>;
-  leadLink: (prospectId: string) => string;
-};
-
-export type DiscoveryController = DiscoveryCampaignProvider & {
-  /** Stops any run and drops listeners. The next community builds a new one. */
-  dispose: () => void;
-  /** Resolves when no run is in flight (tests). */
-  whenIdle: () => Promise<void>;
-};
-
-export const FIRST_START_ERROR =
-  "Pick a location from the list and choose 100 to 500 prospects.";
-export const STOPPED_ERROR = "The search was stopped before it began.";
+export {
+  FIRST_START_ERROR,
+  MAX_RATE_LIMIT_WAIT_MS,
+  MAX_RATE_LIMIT_WAITS,
+  MAX_TARGET,
+  MIN_TARGET,
+  PUBLISH_BACKOFF_MS,
+  PUBLISH_CONCURRENCY,
+  SEARCH_BACKOFF_MS,
+  STOPPED_ERROR,
+} from "./discoveryControllerContract";
+export type {
+  DiscoveryContext,
+  DiscoveryController,
+  DiscoveryDeps,
+} from "./discoveryControllerContract";
 export function createDiscoveryController(
   deps: DiscoveryDeps,
 ): DiscoveryController {
@@ -249,30 +212,6 @@ export function createDiscoveryController(
     }
   }
 
-  type PublishOutcome = "created" | "duplicate";
-
-  async function publishWithRetry(
-    run: ActiveDiscoveryRun,
-    context: DiscoveryContext,
-    changes: ProspectChanges,
-  ): Promise<PublishOutcome> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        await deps.publishProspect({ context, changes });
-        return "created";
-      } catch (error) {
-        // The relay refuses a second create for the same record. On the first
-        // try that means someone else saved it first; after a retry it means
-        // our earlier try did land and only its acknowledgement was lost.
-        if (isAlreadyExistsError(error))
-          return attempt === 0 ? "duplicate" : "created";
-        const delay = PUBLISH_BACKOFF_MS[attempt];
-        if (delay === undefined || run.abort.signal.aborted) throw error;
-        await deps.sleep(delay, run.abort.signal);
-      }
-    }
-  }
-
   function recordSaved(
     run: ActiveDiscoveryRun,
     context: DiscoveryContext,
@@ -294,22 +233,6 @@ export function createDiscoveryController(
           },
     );
   }
-
-  /** Each outcome records what this paid page actually added or skipped. */
-  type PageOutcome =
-    | {
-        ok: true;
-        /** Prospects actually persisted from this provider page. */
-        newProspectsSaved: number;
-        /** Results that were already in Leads when this page was processed. */
-        alreadyInLeads: number;
-        /** Ids that identify overlap with an earlier campaign page. */
-        providerPlaceIds: string[];
-        repeatedInCampaign: number;
-        /** Only a page made entirely of prior campaign ids is a provider loop. */
-        providerLooped: boolean;
-      }
-    | { ok: false; error: unknown };
 
   /**
    * Saves one page of places. Results that reach the relay are recorded on the
@@ -412,7 +335,13 @@ export function createDiscoveryController(
             id,
           );
           if (!changes) return null;
-          const outcome = await publishWithRetry(run, context, changes);
+          const outcome = await publishWithRetry(
+            run,
+            context,
+            changes,
+            deps,
+            PUBLISH_BACKOFF_MS,
+          );
           return {
             id,
             name: changes.displayName,
@@ -487,15 +416,6 @@ export function createDiscoveryController(
       pendingPage: existing.pendingPage ?? page.response,
       pendingTagCursors: existing.pendingTagCursors ?? page.tagCursors,
     }));
-  }
-
-  function markLastPageStop(
-    pageLog: DiscoveryPageLog[],
-    stopReason: DiscoveryEndReason,
-  ): DiscoveryPageLog[] {
-    const last = pageLog.at(-1);
-    if (!last) return pageLog;
-    return [...pageLog.slice(0, -1), { ...last, stopReason }];
   }
 
   async function runLoop(

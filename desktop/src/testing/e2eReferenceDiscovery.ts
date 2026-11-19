@@ -141,7 +141,9 @@ declare global {
     /** Starts timers for frozen reference campaigns after a screenshot. */
     __BUZZ_E2E_REFERENCE_DISCOVERY_RESUME__?: () => void;
     /** Completes one running fixture campaign so scheduler tests stay deterministic. */
-    __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?: () => void;
+    __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?: () => string | null;
+    /** Completes one city at its allowance so the group starts its next page. */
+    __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_AT_BUDGET__?: () => string | null;
   }
 }
 
@@ -270,13 +272,33 @@ function createReferenceDiscoveryProvider(
     const campaign = campaigns.find(
       (candidate) => candidate.status === "running",
     );
-    if (!campaign) return;
+    if (!campaign) return null;
     stopProgress(campaign.id);
     update({
       ...campaign,
       count: Math.min(campaign.target, campaign.prospectIds.length),
       status: "complete",
     });
+    return campaign.location;
+  };
+
+  window.__BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_AT_BUDGET__ = () => {
+    const campaign = campaigns.find(
+      (candidate) =>
+        candidate.status === "running" && candidate.count < candidate.target,
+    );
+    if (!campaign) return null;
+    stopProgress(campaign.id);
+    update({
+      ...campaign,
+      count: Math.min(
+        campaign.prospectIds.length || 1,
+        Math.max(1, campaign.target - 1),
+      ),
+      endReason: "approved_budget",
+      status: "complete",
+    });
+    return campaign.location;
   };
 
   return {
@@ -334,6 +356,17 @@ function createReferenceDiscoveryProvider(
       return () => listeners.delete(listener);
     },
     async start(input) {
+      if (window.__BUZZ_E2E_W10_FAIL_NEXT_START_GLOBALLY__) {
+        window.__BUZZ_E2E_W10_FAIL_NEXT_START_GLOBALLY__ = false;
+        throw new Error("Discovery is not configured for this community.");
+      }
+      const transientFailures =
+        window.__BUZZ_E2E_W10_TRANSIENT_START_FAILURES__ ?? 0;
+      if (transientFailures > 0) {
+        window.__BUZZ_E2E_W10_TRANSIENT_START_FAILURES__ =
+          transientFailures - 1;
+        throw new Error("Timed out while loading channel history.");
+      }
       if (window.__BUZZ_E2E_W10_FAIL_NEXT_START__) {
         window.__BUZZ_E2E_W10_FAIL_NEXT_START__ = false;
         throw new Error("No matching businesses in this area.");
