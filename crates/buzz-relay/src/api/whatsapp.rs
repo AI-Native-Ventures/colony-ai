@@ -298,8 +298,8 @@ fn contact_view(
     })
 }
 
-/// Additive safety fields for a linked business hold. Older desktops ignore the fields while
-/// the desktop safety slice can make the whole-business stop visible in the existing chat row.
+/// Additive safety fields for a linked business stop. Older desktops ignore the fields while
+/// the desktop safety slice can make the active stop visible in the existing chat row.
 fn with_business_stop(mut view: Value, business_stop: Option<&WhatsappBusinessStop>) -> Value {
     if let Some(object) = view.as_object_mut() {
         object.insert(
@@ -1417,8 +1417,8 @@ mod tests {
         let stop = WhatsappBusinessStop {
             business_id: "business-1".into(),
             source_wa_id: "27821230000".into(),
-            reason: "inbound reply received".into(),
-            matched_rule: None,
+            reason: "contact opted out".into(),
+            matched_rule: Some("en_stop".into()),
             created_at: Utc::now(),
         };
         let stopped = with_business_stop(
@@ -1426,7 +1426,7 @@ mod tests {
             Some(&stop),
         );
         assert_eq!(stopped["businessOutreachStopped"], true);
-        assert_eq!(stopped["businessStopReason"], "inbound reply received");
+        assert_eq!(stopped["businessStopReason"], "contact opted out");
 
         let clear = with_business_stop(
             contact_view(&contact, Utc::now(), &OutreachFlags::default()),
