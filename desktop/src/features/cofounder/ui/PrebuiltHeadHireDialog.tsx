@@ -77,7 +77,9 @@ import {
   buildPrebuiltHireProposal,
   buildPrebuiltSlotHireSetAction,
   prebuiltFirstMessageText,
+  prebuiltHireIntroductionMarker,
   prebuiltHireFirstMessageMarker,
+  prebuiltIntroductionText,
 } from "../prebuiltHireModels";
 import { prebuiltAgentAvatarDataUrl } from "../prebuiltAgentAvatar";
 import {
@@ -595,6 +597,15 @@ export function PrebuiltHeadHireDialog({
         ...(progress?.employeePubkey
           ? { employeePubkey: progress.employeePubkey }
           : {}),
+        ...(progress?.introductionEventId
+          ? { introductionEventId: progress.introductionEventId }
+          : {}),
+        ...(progress?.directChannelId
+          ? { directChannelId: progress.directChannelId }
+          : {}),
+        ...(progress?.firstMessageEventId
+          ? { firstMessageEventId: progress.firstMessageEventId }
+          : {}),
       };
       writePrebuiltHireChoice(communityId, selectedChoice);
       writePrebuiltHireProgress(communityId, flow);
@@ -739,11 +750,69 @@ export function PrebuiltHeadHireDialog({
               employeePubkey?.toLowerCase(),
           );
         }
-        await attachManagedAgentToChannel(channelId, {
+        const introductionChannelId =
+          current.head.proposal.introductionChannelId;
+        if (flow.introductionChannelId !== introductionChannelId) {
+          flow = { ...flow, introductionChannelId };
+          writePrebuiltHireProgress(communityId, flow);
+          setProgress(flow);
+        }
+        await attachManagedAgentToChannel(introductionChannelId, {
           agent: managedAgent,
           role: "bot",
           ensureRunning: true,
         });
+        if (!flow.introductionEventId) {
+          const introduction = await sendManagedAgentChannelMessage({
+            agentPubkey: employeePubkey,
+            channelId: introductionChannelId,
+            content: prebuiltIntroductionText(agent, ownerName),
+            marker: prebuiltHireIntroductionMarker(hireId),
+            markerScope: "agent",
+          });
+          flow = { ...flow, introductionEventId: introduction.eventId };
+          writePrebuiltHireProgress(communityId, flow);
+          setProgress(flow);
+        }
+        current = await fetchCurrentCompanyHireHead(hireId);
+        if (!current)
+          throw new Error("The relay could not find the saved hire. Retry it.");
+        if (current.head.status !== "hired") {
+          const introductionEventId = flow.introductionEventId;
+          if (!introductionEventId) {
+            throw new Error(
+              "The channel introduction was not saved. Retry this hire.",
+            );
+          }
+          current = await publishAndConfirm(
+            buildPrebuiltHireCompleteAction({
+              hireId,
+              expectedHeadEventId: current.event.id,
+              employeePubkey,
+              introductionEventId,
+            }),
+            (record) =>
+              record?.head.status === "hired" &&
+              record.head.employeePubkey?.toLowerCase() ===
+                employeePubkey?.toLowerCase() &&
+              record.head.introductionEventId === introductionEventId,
+          );
+        }
+      }
+      current = await fetchCurrentCompanyHireHead(hireId);
+      if (current?.head.status !== "hired") {
+        throw new Error("The relay did not complete this hire. Retry it.");
+      }
+      const employeePubkey = current.head.employeePubkey ?? flow.employeePubkey;
+      if (!employeePubkey) {
+        throw new Error("The completed hire has no employee. Retry it.");
+      }
+      if (flow.employeePubkey !== employeePubkey) {
+        flow = { ...flow, employeePubkey };
+        writePrebuiltHireProgress(communityId, flow);
+        setProgress(flow);
+      }
+      if (!flow.directChannelId) {
         const directChat = await openDm.mutateAsync({
           pubkeys: [employeePubkey],
           expectedRelayUrl: relayUrl,
@@ -752,9 +821,15 @@ export function PrebuiltHeadHireDialog({
         flow = { ...flow, directChannelId: directChat.id };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
+      }
+      const directChannelId = flow.directChannelId;
+      if (!directChannelId) {
+        throw new Error("The direct chat could not be recovered. Retry it.");
+      }
+      if (!flow.firstMessageEventId) {
         const firstMessage = await sendManagedAgentChannelMessage({
           agentPubkey: employeePubkey,
-          channelId: directChat.id,
+          channelId: directChannelId,
           content: prebuiltFirstMessageText(agent, ownerName),
           marker: prebuiltHireFirstMessageMarker(hireId),
           markerScope: "agent",
@@ -762,29 +837,8 @@ export function PrebuiltHeadHireDialog({
         flow = { ...flow, firstMessageEventId: firstMessage.eventId };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
-        current = await fetchCurrentCompanyHireHead(hireId);
-        if (!current)
-          throw new Error("The relay could not find the saved hire. Retry it.");
-        if (current.head.status !== "hired") {
-          current = await publishAndConfirm(
-            buildPrebuiltHireCompleteAction({
-              hireId,
-              expectedHeadEventId: current.event.id,
-              employeePubkey,
-              introductionEventId: firstMessage.eventId,
-            }),
-            (record) =>
-              record?.head.status === "hired" &&
-              record.head.employeePubkey?.toLowerCase() ===
-                employeePubkey?.toLowerCase() &&
-              record.head.introductionEventId === firstMessage.eventId,
-          );
-        }
       }
-      const completedEventId =
-        flow.firstMessageEventId ??
-        current?.head.introductionEventId ??
-        undefined;
+      const completedEventId = flow.firstMessageEventId;
       const completion =
         flow.employeePubkey && flow.directChannelId && completedEventId
           ? {

@@ -6,7 +6,10 @@ import { expect, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES } from "../helpers/bridge";
-import { KIND_HIRE_HEAD } from "../../src/shared/constants/kinds";
+import {
+  KIND_HIRE_ACTION,
+  KIND_HIRE_HEAD,
+} from "../../src/shared/constants/kinds";
 import { test } from "./cofounder-map-test";
 import {
   AYA_PUBKEY,
@@ -231,58 +234,221 @@ function interruptedFinanceHireMock() {
         name: "Head of Finance",
         runtime: "goose",
         model: LONG_GOOSE_MODEL,
-        status: "stopped" as const,
+        status: "running" as const,
       },
     ],
     visualChannels: [PREBUILT_HIRE_CHANNEL],
   };
 }
 
-async function assertOneRecoveryGreeting(page: Page) {
-  const marker = `company-prebuilt-hire:${RECOVERY_HIRE_ID}:first-message`;
+async function seedRecoveryDirectConversation(page: Page): Promise<string> {
+  return page.evaluate(async (agentPubkey) => {
+    const directChannel = (await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+      "open_dm",
+      { pubkeys: [agentPubkey] },
+    )) as { id?: string } | null | undefined;
+    if (!directChannel?.id) {
+      throw new Error(
+        "Recovery fixture could not open its existing direct chat.",
+      );
+    }
+
+    await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("send_channel_message", {
+      channelId: directChannel.id,
+      content: "I need help with an invoice.",
+      mentionPubkeys: [],
+    });
+    await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+      "send_managed_agent_channel_message",
+      {
+        agentPubkey,
+        channelId: directChannel.id,
+        content: "I can help with that.",
+        marker: "prebuilt-recovery-existing-reply",
+        markerScope: "agent",
+      },
+    );
+    return directChannel.id;
+  }, RECOVERY_EMPLOYEE_PUBKEY);
+}
+
+function parsedCompleteHireAction(entry: CommandLogEntry) {
+  if (entry.command !== "sign_event") return null;
+  const payload = entry.payload as { content?: unknown; kind?: unknown } | null;
+  if (
+    payload?.kind !== KIND_HIRE_ACTION ||
+    typeof payload.content !== "string"
+  ) {
+    return null;
+  }
+  try {
+    const action = JSON.parse(payload.content) as {
+      action?: unknown;
+      employeePubkey?: unknown;
+      hireId?: unknown;
+      introductionEventId?: unknown;
+    };
+    return action.action === "complete" && typeof action.hireId === "string"
+      ? action
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function assertPrebuiltHireSequence(page: Page, expectedHireId?: string) {
   await expect
     .poll(async () => {
       const commands = await readCommandLog(page);
-      return commands.filter(
+      return commands.some((entry) => parsedCompleteHireAction(entry) !== null);
+    })
+    .toBe(true);
+  const commands = await readCommandLog(page);
+  const completionIndex = commands.findIndex(
+    (entry) => parsedCompleteHireAction(entry) !== null,
+  );
+  const completionEntry = commands[completionIndex];
+  const completion = completionEntry
+    ? parsedCompleteHireAction(completionEntry)
+    : null;
+  expect(completion).not.toBeNull();
+  const hireId = completion?.hireId;
+  expect(hireId).toBe(expectedHireId ?? hireId);
+  expect(typeof completion?.employeePubkey).toBe("string");
+  expect(typeof completion?.introductionEventId).toBe("string");
+
+  const introductionMarker = `company-prebuilt-hire:${hireId}:introduction`;
+  const firstMessageMarker = `company-prebuilt-hire:${hireId}:first-message`;
+  await expect
+    .poll(async () => {
+      const currentCommands = await readCommandLog(page);
+      return currentCommands.filter(
         (entry) =>
           entry.command === "send_managed_agent_channel_message" &&
-          (entry.payload as { marker?: string } | null)?.marker === marker,
+          (entry.payload as { marker?: string } | null)?.marker ===
+            introductionMarker,
       ).length;
     })
     .toBe(1);
-  const payload = commandPayload<{
-    agentPubkey?: string;
-    channelId?: string;
-    marker?: string;
-    markerScope?: string;
-  }>(await readCommandLog(page), "send_managed_agent_channel_message");
-  expect(payload).toMatchObject({
-    agentPubkey: RECOVERY_EMPLOYEE_PUBKEY,
-    marker,
+  await expect
+    .poll(async () => {
+      const currentCommands = await readCommandLog(page);
+      return currentCommands.filter(
+        (entry) =>
+          entry.command === "send_managed_agent_channel_message" &&
+          (entry.payload as { marker?: string } | null)?.marker ===
+            firstMessageMarker,
+      ).length;
+    })
+    .toBe(1);
+  const completedCommands = await readCommandLog(page);
+  const introductionIndex = completedCommands.findIndex(
+    (entry) =>
+      entry.command === "send_managed_agent_channel_message" &&
+      (entry.payload as { marker?: string } | null)?.marker ===
+        introductionMarker,
+  );
+  const firstMessageIndex = completedCommands.findIndex(
+    (entry) =>
+      entry.command === "send_managed_agent_channel_message" &&
+      (entry.payload as { marker?: string } | null)?.marker ===
+        firstMessageMarker,
+  );
+  const introductionPayload = completedCommands[introductionIndex]?.payload as
+    | {
+        agentPubkey?: string;
+        channelId?: string;
+        marker?: string;
+        markerScope?: string;
+      }
+    | undefined;
+  const firstMessagePayload = completedCommands[firstMessageIndex]?.payload as
+    | {
+        agentPubkey?: string;
+        channelId?: string;
+        marker?: string;
+        markerScope?: string;
+      }
+    | undefined;
+  expect(introductionIndex).toBeGreaterThanOrEqual(0);
+  expect(firstMessageIndex).toBeGreaterThanOrEqual(0);
+  expect(introductionIndex).toBeLessThan(completionIndex);
+  expect(completionIndex).toBeLessThan(firstMessageIndex);
+  expect(introductionPayload).toMatchObject({
+    agentPubkey: completion?.employeePubkey,
+    channelId: PREBUILT_HIRE_CHANNEL.id,
+    marker: introductionMarker,
     markerScope: "agent",
   });
-  expect(typeof payload?.channelId).toBe("string");
-  expect(
-    await page.evaluate(
-      async ({ agentPubkey, channelId, marker: messageMarker }) =>
-        Boolean(
-          await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
-            "has_managed_agent_channel_message_marker",
-            {
-              agentPubkey,
-              channelId,
-              marker: messageMarker,
-              markerScope: "agent",
-            },
+  expect(firstMessagePayload).toMatchObject({
+    agentPubkey: completion?.employeePubkey,
+    marker: firstMessageMarker,
+    markerScope: "agent",
+  });
+  expect(firstMessagePayload?.channelId).not.toBe(PREBUILT_HIRE_CHANNEL.id);
+
+  for (const [payload, marker] of [
+    [introductionPayload, introductionMarker],
+    [firstMessagePayload, firstMessageMarker],
+  ] as const) {
+    expect(
+      await page.evaluate(
+        async ({ agentPubkey, channelId, messageMarker }) =>
+          Boolean(
+            await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+              "has_managed_agent_channel_message_marker",
+              {
+                agentPubkey,
+                channelId,
+                marker: messageMarker,
+                markerScope: "agent",
+              },
+            ),
           ),
-        ),
-      {
-        agentPubkey: RECOVERY_EMPLOYEE_PUBKEY,
-        channelId: payload?.channelId ?? "",
-        marker,
-      },
-    ),
-  ).toBe(true);
+        {
+          agentPubkey: payload?.agentPubkey ?? "",
+          channelId: payload?.channelId ?? "",
+          messageMarker: marker,
+        },
+      ),
+    ).toBe(true);
+  }
+
+  return {
+    directChannelId: firstMessagePayload?.channelId,
+    employeePubkey: completion?.employeePubkey,
+    hireId,
+  };
+}
+
+async function assertOneRecoveryGreeting(page: Page, directChannelId: string) {
+  const sequence = await assertPrebuiltHireSequence(page, RECOVERY_HIRE_ID);
+  expect(sequence.directChannelId).toBe(directChannelId);
+  expect(sequence.employeePubkey).toBe(RECOVERY_EMPLOYEE_PUBKEY);
+}
+
+function startCommandsForEmployee(
+  commands: readonly CommandLogEntry[],
+  employeePubkey: string,
+) {
+  return commands.filter(
+    (entry) =>
+      entry.command === "start_managed_agent" &&
+      (entry.payload as { pubkey?: string } | null)?.pubkey === employeePubkey,
+  );
+}
+
+async function assertPreservedRecoveryConversation(page: Page) {
+  await page
+    .getByTestId("cofounder-map-part-card")
+    .getByRole("link", { name: "Open direct chat" })
+    .click();
+  await expect(page.getByTestId("message-timeline")).toContainText(
+    "I need help with an invoice.",
+  );
+  await expect(page.getByTestId("message-timeline")).toContainText(
+    "I can help with that.",
+  );
 }
 
 async function preparePrebuiltHireCapture(
@@ -692,6 +858,10 @@ test.describe("prebuilt head hiring journeys", () => {
     await choosePrebuiltRuntimeAndModel(page);
     await page.getByTestId("prebuilt-hire-finish").click();
     await expect(dialog).toBeHidden();
+    // The mock rejects completion unless this marker belongs to the home-channel
+    // introduction. A regression that supplies the direct-chat greeting here
+    // leaves the dialog open and fails this journey.
+    await assertPrebuiltHireSequence(page);
     await expect(card).toContainText("Just hired");
     await expect(card).toContainText(
       "Hi Lerato. I run Finance from here. To start, send me one invoice you are happy with. I will copy its layout and terms.",
@@ -799,6 +969,7 @@ test.describe("prebuilt head hiring journeys", () => {
       { width: 1440, height: 900 },
       interruptedFinanceHireMock(),
     );
+    const directChannelId = await seedRecoveryDirectConversation(page);
     await page.evaluate(
       ({ hireId, employeePubkey }) => {
         window.localStorage.setItem(
@@ -842,7 +1013,14 @@ test.describe("prebuilt head hiring journeys", () => {
       (entry) => entry.command === "create_managed_agent",
     ).length;
     expect(createdAfterHire).toBe(createdBeforeHire);
-    await assertOneRecoveryGreeting(page);
+    await assertOneRecoveryGreeting(page, directChannelId);
+    expect(
+      startCommandsForEmployee(
+        await readCommandLog(page),
+        RECOVERY_EMPLOYEE_PUBKEY,
+      ),
+    ).toHaveLength(0);
+    await assertPreservedRecoveryConversation(page);
   });
 
   test("a relay slot record restores an attached hire after local progress is lost", async ({
@@ -854,6 +1032,7 @@ test.describe("prebuilt head hiring journeys", () => {
       { width: 1440, height: 900 },
       interruptedFinanceHireMock(),
     );
+    const directChannelId = await seedRecoveryDirectConversation(page);
     await selectMapPart(page, "finance", "Finance");
     await page.getByTestId("cofounder-hire-head-finance").click();
     const dialog = page.getByTestId("prebuilt-head-hire-dialog");
@@ -864,7 +1043,14 @@ test.describe("prebuilt head hiring journeys", () => {
     await expect(page.getByTestId("cofounder-map-part-card")).toContainText(
       "Just hired",
     );
-    await assertOneRecoveryGreeting(page);
+    await assertOneRecoveryGreeting(page, directChannelId);
+    expect(
+      startCommandsForEmployee(
+        await readCommandLog(page),
+        RECOVERY_EMPLOYEE_PUBKEY,
+      ),
+    ).toHaveLength(0);
+    await assertPreservedRecoveryConversation(page);
   });
 
   test("the sidebar map keeps the same Finance hire journey", async ({
