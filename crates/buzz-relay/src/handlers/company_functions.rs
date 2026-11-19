@@ -493,7 +493,8 @@ pub(super) async fn clear_slots_led_by_in_tx(
         if head.state != SlotState::Filled || head.lead_pubkey.as_deref() != Some(lead) {
             continue;
         }
-        let fallback_manager = fallback_manager_for_departing_lead(state, community_id, lead).await?;
+        let fallback_manager =
+            fallback_manager_for_departing_lead(state, community_id, lead).await?;
         match empty_slot_in_tx(
             tx,
             state,
@@ -507,15 +508,16 @@ pub(super) async fn clear_slots_led_by_in_tx(
             Some(event) => {
                 cleared.push(event);
                 if let Some(manager) = fallback_manager.as_deref() {
-                    let positions = super::company_jobs::reparent_job_specialists_for_function_in_tx(
-                        tx,
-                        tenant,
-                        state,
-                        function,
-                        manager,
-                        &source_action_event_id,
-                    )
-                    .await?;
+                    let positions =
+                        super::company_jobs::reparent_job_specialists_for_function_in_tx(
+                            tx,
+                            tenant,
+                            state,
+                            function,
+                            manager,
+                            &source_action_event_id,
+                        )
+                        .await?;
                     reparented_positions.extend(positions);
                 }
             }
@@ -547,7 +549,8 @@ async fn scout_manager_for_specialists(
         super::company_cofounder_lead::Lead::Missing
         | super::company_cofounder_lead::Lead::Several => return Ok(None),
     };
-    if departing_lead != Some(scout.as_str()) && lead_is_active(state, community_id, &scout).await? {
+    if departing_lead != Some(scout.as_str()) && lead_is_active(state, community_id, &scout).await?
+    {
         Ok(Some(scout))
     } else {
         Ok(None)

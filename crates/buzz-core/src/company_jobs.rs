@@ -56,7 +56,10 @@ pub fn job_hire_d_tag(hire_id: Uuid) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobRecordRef {
     /// The current assignment for a job.
-    Assignment { function: CompanyFunction, job_id: String },
+    Assignment {
+        function: CompanyFunction,
+        job_id: String,
+    },
     /// A pending job intent attached to a hire.
     HireIntent(Uuid),
 }
@@ -304,8 +307,10 @@ mod tests {
     #[test]
     fn action_is_closed_and_parses_through_company_command() {
         let content = serde_json::to_string(&assign()).unwrap();
-        assert!(crate::company_records::parse_company_command(KIND_COMPANY_JOB_ACTION, &content)
-            .is_ok());
+        assert!(
+            crate::company_records::parse_company_command(KIND_COMPANY_JOB_ACTION, &content)
+                .is_ok()
+        );
         let with_extra = content.replacen('}', ",\"extra\":true}", 1);
         assert!(serde_json::from_str::<JobAction>(&with_extra).is_err());
     }

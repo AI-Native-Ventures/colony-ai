@@ -13,8 +13,8 @@ use uuid::Uuid;
 use buzz_core::company_functions::CompanyFunction;
 use buzz_core::company_jobs::{
     job_d_tag, job_hire_d_tag, parse_job_d_tag, validate_job_action, validate_job_head,
-    validate_job_hire_head, JobAction, JobActionKind, JobHead, JobHireHead, JobRecordRef,
-    JobState, KIND_COMPANY_JOB_ACTION, KIND_COMPANY_JOB_HEAD,
+    validate_job_hire_head, JobAction, JobActionKind, JobHead, JobHireHead, JobRecordRef, JobState,
+    KIND_COMPANY_JOB_ACTION, KIND_COMPANY_JOB_HEAD,
 };
 use buzz_core::company_members::{MemberPositionAction, MemberPositionActionKind, MemberStatus};
 use buzz_core::company_records::{
@@ -76,8 +76,10 @@ pub(super) async fn handle(
     match (action.action, parse_job_d_tag(&d_tag)) {
         (JobActionKind::HireSet, Ok(JobRecordRef::HireIntent(hire_id)))
             if action.hire_id == Some(hire_id) => {}
-        (JobActionKind::Assign | JobActionKind::Clear, Ok(JobRecordRef::Assignment { function, job_id }))
-            if function == action.function && job_id == action.job_id => {}
+        (
+            JobActionKind::Assign | JobActionKind::Clear,
+            Ok(JobRecordRef::Assignment { function, job_id }),
+        ) if function == action.function && job_id == action.job_id => {}
         _ => return Err(invalid("job command d tag has the wrong record family")),
     }
 
@@ -324,7 +326,9 @@ async fn ensure_hire_can_take_job(
             "the job can only be chosen while the hire is waiting for a decision",
         ));
     }
-    let Some(existing) = current_job_head(state, community_id, action.function, &action.job_id).await? else {
+    let Some(existing) =
+        current_job_head(state, community_id, action.function, &action.job_id).await?
+    else {
         return Ok(());
     };
     if existing.state == JobState::Filled {
@@ -345,7 +349,8 @@ async fn job_assignee_is_active(
     assignee: &str,
 ) -> Result<bool, IngestError> {
     if matches!(
-        super::company_member_records::member_position_status(state, community_id, assignee).await?,
+        super::company_member_records::member_position_status(state, community_id, assignee)
+            .await?,
         Some(MemberStatus::Paused | MemberStatus::Terminated)
     ) {
         return Ok(false);
@@ -461,19 +466,15 @@ pub(super) async fn manager_for_job_hire(
     let Some(intent) = current_job_hire(state, community_id, hire_id).await? else {
         return Ok(None);
     };
-    let Some(stored) = super::company_functions::current_function_head(
-        state,
-        community_id,
-        intent.function,
-    )
-    .await?
+    let Some(stored) =
+        super::company_functions::current_function_head(state, community_id, intent.function)
+            .await?
     else {
         return Ok(Some(fallback_manager.to_owned()));
     };
-    let head = serde_json::from_str::<buzz_core::company_functions::FunctionHead>(
-        &stored.event.content,
-    )
-    .map_err(|error| internal(format!("stored function head is invalid: {error}")))?;
+    let head =
+        serde_json::from_str::<buzz_core::company_functions::FunctionHead>(&stored.event.content)
+            .map_err(|error| internal(format!("stored function head is invalid: {error}")))?;
     if head.state == buzz_core::company_functions::SlotState::Filled {
         if let Some(lead) = head.lead_pubkey.as_deref() {
             if job_assignee_is_active(state, community_id, lead).await? {
@@ -631,8 +632,8 @@ async fn empty_job_in_tx(
     expected_head_id: &[u8],
     actor_pubkey: &str,
 ) -> Result<Option<StoredEvent>, IngestError> {
-    let d_tag = job_d_tag(function, job_id)
-        .map_err(|error| internal(format!("job id: {error}")))?;
+    let d_tag =
+        job_d_tag(function, job_id).map_err(|error| internal(format!("job id: {error}")))?;
     lock_job_coordinate(tx, community_id, &d_tag).await?;
     let current_head_id = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
         tx,
@@ -796,12 +797,17 @@ pub(super) async fn reparent_job_specialists_for_function_in_tx(
         let Some(assignee) = assignment.assignee_pubkey.as_deref() else {
             continue;
         };
-        if assignee == manager_pubkey || !job_assignee_is_active(state, community_id, assignee).await? {
+        if assignee == manager_pubkey
+            || !job_assignee_is_active(state, community_id, assignee).await?
+        {
             continue;
         }
-        let Some((current, position)) =
-            super::company_member_records::load_position_for_proposal(state, community_id, assignee)
-                .await?
+        let Some((current, position)) = super::company_member_records::load_position_for_proposal(
+            state,
+            community_id,
+            assignee,
+        )
+        .await?
         else {
             continue;
         };

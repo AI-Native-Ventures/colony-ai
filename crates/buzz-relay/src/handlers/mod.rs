@@ -31,11 +31,11 @@ pub mod company_employee_history;
 pub mod company_factory;
 /// Nostr-first broker for company function slot records.
 pub mod company_functions;
-/// Nostr-first broker for per-job specialist assignments.
-pub mod company_jobs;
 pub mod company_hires;
 /// Shared helpers for the business brief and onboarding brokers.
 pub(crate) mod company_initiative;
+/// Nostr-first broker for per-job specialist assignments.
+pub mod company_jobs;
 pub mod company_lessons;
 /// Nostr-first broker for community-wide company member positions.
 pub mod company_member_records;

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use buzz_core::company_functions::{CompanyFunction, FunctionAction, FunctionActionKind};
-use buzz_core::company_jobs::{JobAction, JobActionKind, JobHead, JobState};
+use buzz_core::company_jobs::{job_d_tag, JobAction, JobActionKind, JobHead, JobState};
 use buzz_core::company_members::{MemberPositionAction, MemberPositionActionKind};
 use buzz_core::company_records::{
     hire_d_tag, HireAction, HireActionKind, HireProposal, HireRolePack, HireTool, HireToolRisk,
@@ -17,7 +17,7 @@ use buzz_core::kind::{KIND_HIRE_ACTION, KIND_STREAM_MESSAGE};
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::channel::{ChannelType, ChannelVisibility};
 use buzz_db::channel_members::MemberRole;
-use nostr::{Event, EventBuilder, Kind, Keys, Tag};
+use nostr::{Event, EventBuilder, Keys, Kind, Tag};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -133,18 +133,15 @@ fn auth(keys: &Keys) -> IngestAuth {
 }
 
 async fn job_head(fixture: &Fixture) -> Option<(StoredEvent, JobHead)> {
-    current_job_head(
-        &fixture.state,
-        fixture.tenant.community(),
-        CompanyFunction::Sales,
-        "follow-ups",
-    )
-    .await
-    .expect("query job head")
-    .map(|stored| {
-        let head = serde_json::from_str(&stored.event.content).expect("parse job head");
-        (stored, head)
-    })
+    let d_tag =
+        job_d_tag(CompanyFunction::Sales, "follow-ups").expect("the fixed test job id is valid");
+    current_job_stored(&fixture.state, fixture.tenant.community(), &d_tag)
+        .await
+        .expect("query job head")
+        .map(|stored| {
+            let head = serde_json::from_str(&stored.event.content).expect("parse job head");
+            (stored, head)
+        })
 }
 
 async fn write_job(
@@ -222,11 +219,7 @@ async fn set_active_position(fixture: &Fixture, employee: &Keys) -> String {
     .to_hex()
 }
 
-async fn terminate_employee(
-    fixture: &Fixture,
-    employee: &Keys,
-    expected_head_event_id: String,
-) {
+async fn terminate_employee(fixture: &Fixture, employee: &Keys, expected_head_event_id: String) {
     let action = MemberPositionAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
         pubkey: employee.public_key().to_hex(),
@@ -472,7 +465,9 @@ async fn terminating_a_specialist_clears_their_job_in_the_member_transaction() {
 
     terminate_employee(&fixture, &fixture.employee, position_head_id).await;
 
-    let (_, head) = job_head(&fixture).await.expect("job head remains as empty truth");
+    let (_, head) = job_head(&fixture)
+        .await
+        .expect("job head remains as empty truth");
     assert_eq!(head.state, JobState::Empty);
     assert_eq!(head.assignee_pubkey, None);
 }
@@ -505,15 +500,9 @@ async fn completing_a_hire_applies_its_recorded_job_intent() {
     let hire_id = Uuid::new_v4();
     create_hire(&fixture, hire_id).await;
 
-    write_job(
-        &fixture,
-        JobActionKind::HireSet,
-        None,
-        Some(hire_id),
-        None,
-    )
-    .await
-    .expect("record job intent");
+    write_job(&fixture, JobActionKind::HireSet, None, Some(hire_id), None)
+        .await
+        .expect("record job intent");
     let intent = current_job_hire(&fixture.state, fixture.tenant.community(), hire_id)
         .await
         .expect("query job intent")
@@ -522,7 +511,9 @@ async fn completing_a_hire_applies_its_recorded_job_intent() {
 
     complete_hire(&fixture, hire_id).await;
 
-    let (_, head) = job_head(&fixture).await.expect("completion assigned the job");
+    let (_, head) = job_head(&fixture)
+        .await
+        .expect("completion assigned the job");
     assert_eq!(head.state, JobState::Filled);
     assert_eq!(
         head.assignee_pubkey,
