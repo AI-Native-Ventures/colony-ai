@@ -11,6 +11,8 @@ import type {
   MockCofounderSettings,
   MockAgentConfigSurfaceOverride,
   MockCompanyFunctionHead,
+  MockCompanyJobHead,
+  MockCompanyJobHireIntent,
   MockFactoryProjectSeed,
   MockFactoryRunSeed,
   MockManagedAgentSeed,
@@ -370,6 +372,10 @@ type MockBridgeOptions = {
   companyHireRelayPrivateKeyHex?: string;
   /** Reject successive hire action publishes in order, then accept them. */
   companyHireActionErrors?: string[];
+  /** Relay-signed current specialist-job assignment heads. */
+  companyJobHeads?: MockCompanyJobHead[];
+  /** Pending specialist-job destinations, keyed by their hire id. */
+  companyJobHireIntents?: MockCompanyJobHireIntent[];
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */
@@ -666,6 +672,8 @@ type MockBridgeOptions = {
   oaOwnerIsMe?: boolean;
   /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
   relayRequiresMembership?: boolean;
+  /** NIP-11 extensions exposed by the mock relay to capability-gated UI. */
+  relayExtensions?: string[];
   /** Delay EOSE for membership snapshots after delivering the event. */
   relayMembershipEoseDelayMs?: number;
   /**

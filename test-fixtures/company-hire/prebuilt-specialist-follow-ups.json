@@ -1,0 +1,57 @@
+{
+  "create": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000021",
+    "action": "create",
+    "proposal": {
+      "hireId": "00000000-0000-4000-8000-000000000021",
+      "rolePack": {
+        "personaId": "persona-follow-ups-specialist",
+        "title": "Follow-ups specialist",
+        "job": "Follow-ups",
+        "skills": [
+          "Messages leads who were reached and stayed silent.",
+          "Up to three times: after 3 days, then 4 more, then 5 more, on the sending days set in Settings.",
+          "Stops the moment a lead replies or says stop. Also warms a lead again after handover."
+        ],
+        "tools": [],
+        "workerMenu": ["codex"]
+      },
+      "displayName": "Follow-ups specialist",
+      "title": "Follow-ups",
+      "managerPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "introductionChannelId": "00000000-0000-4000-8000-000000000022",
+      "runtimeId": "codex",
+      "providerId": "openai",
+      "modelId": "gpt-6"
+    }
+  },
+  "jobHireSet": {
+    "schemaVersion": 1,
+    "action": "hire_set",
+    "function": "sales",
+    "jobId": "follow-ups",
+    "hireId": "00000000-0000-4000-8000-000000000021"
+  },
+  "approve": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000021",
+    "action": "approve",
+    "expectedHeadEventId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "attachEmployee": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000021",
+    "action": "attach_employee",
+    "expectedHeadEventId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "employeePubkey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "complete": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000021",
+    "action": "complete",
+    "expectedHeadEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "employeePubkey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "introductionEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

@@ -8,7 +8,6 @@ import type {
   FunctionId,
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
-import { companyMapJobDoer } from "@/features/cofounder/companyMapAssignments";
 import {
   FUNCTION_DESCRIPTIONS,
   FUNCTION_DETAILS,
@@ -23,6 +22,7 @@ import {
 } from "@/features/cofounder/companyMapJobRoutes";
 import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
 import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
+import { JobAssignmentAvatar, JobAssignmentSpot } from "../JobAssignmentSpot";
 import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
 
 import type { CompanyMapBoardProps, ProfileLookup } from "./companyMapTypes";
@@ -168,22 +168,25 @@ function LeadAvatar({
   size: "part" | "job";
 }) {
   const className = `company-map-phone-${size}-avatar`;
-  const jobDoer = jobName === undefined ? null : companyMapJobDoer(slot);
-  if (slot.state === "covered_by_scout" || jobDoer?.kind === "scout") {
+  if (jobName !== undefined) {
+    return (
+      <JobAssignmentAvatar
+        className={className}
+        functionId={slot.functionId}
+        jobName={jobName}
+      />
+    );
+  }
+  if (slot.state === "covered_by_scout") {
     return <PersonAvatar className={className} profiles={profiles} scout />;
   }
   const member =
-    jobDoer?.kind === "head" || jobDoer?.kind === "specialist"
+    slot.state === "filled" && slot.leadPubkey
       ? members.find(
           (candidate) =>
-            candidate.pubkey.toLowerCase() === jobDoer.pubkey.toLowerCase(),
+            candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
         )
-      : slot.state === "filled" && slot.leadPubkey
-        ? members.find(
-            (candidate) =>
-              candidate.pubkey.toLowerCase() === slot.leadPubkey?.toLowerCase(),
-          )
-        : undefined;
+      : undefined;
   if (!member)
     return (
       <span
@@ -407,7 +410,7 @@ function PhoneActionCard({
     slot.state === "covered_by_scout"
       ? `Scout runs ${detail.name} for now.`
       : lead
-        ? `${fullName(lead, profiles)} runs ${detail.name}.`
+        ? `${fullName(lead, profiles)} runs ${detail.name}. ${fullName(lead, profiles)} does every job here that has no specialist of its own.`
         : slot.state === "filled"
           ? `The assigned lead runs ${detail.name}.`
           : `Scout runs ${detail.name} for now.`;
@@ -523,6 +526,10 @@ export function CompanyMapPhone({
   recentPrebuiltHires,
 }: CompanyMapBoardProps) {
   const [activePart, setActivePart] = useState<FunctionId | null>(null);
+  const [selectedJob, setSelectedJob] = useState<{
+    functionId: FunctionId;
+    jobName: string;
+  } | null>(null);
   return (
     <div className="company-map-phone" data-testid="cofounder-map-phone">
       <div className="company-map-phone-hub">
@@ -574,7 +581,10 @@ export function CompanyMapPhone({
                 aria-expanded={expanded}
                 className="company-map-phone-part-button"
                 data-testid={`cofounder-map-phone-${functionId}`}
-                onClick={() => setActivePart(expanded ? null : functionId)}
+                onClick={() => {
+                  setActivePart(expanded ? null : functionId);
+                  setSelectedJob(null);
+                }}
                 type="button"
               >
                 <span className="company-map-phone-part-disc">
@@ -615,48 +625,72 @@ export function CompanyMapPhone({
                 <div className="company-map-phone-jobs">
                   {detail.subFunctions.map((jobName) => {
                     const jobCount = countForJob(summary, functionId, jobName);
+                    const jobSelected =
+                      selectedJob?.functionId === functionId &&
+                      selectedJob.jobName === jobName;
                     return (
-                      <PhoneJobLink
-                        count={jobCount}
-                        functionId={functionId}
-                        jobName={jobName}
-                        key={jobName}
-                        whatsappChannelId={whatsAppChannelId}
-                      >
-                        <span className="company-map-phone-job">
-                          <span className="company-map-phone-job-disc">
-                            <LeadAvatar
-                              jobName={jobName}
-                              members={members}
-                              profiles={profiles}
-                              size="job"
-                              slot={slot}
-                            />
-                            {jobCount > 0 ? (
-                              <span
-                                aria-hidden="true"
-                                className="company-map-needs-badge"
-                                data-testid={`cofounder-map-phone-job-needs-${functionId}-${jobName.toLowerCase().replaceAll(" ", "-")}`}
-                              >
-                                {jobCount}
-                              </span>
-                            ) : null}
+                      <div className="company-map-phone-job-row" key={jobName}>
+                        <PhoneJobLink
+                          count={jobCount}
+                          functionId={functionId}
+                          jobName={jobName}
+                          whatsappChannelId={whatsAppChannelId}
+                        >
+                          <span className="company-map-phone-job">
+                            <span className="company-map-phone-job-disc">
+                              <LeadAvatar
+                                jobName={jobName}
+                                members={members}
+                                profiles={profiles}
+                                size="job"
+                                slot={slot}
+                              />
+                              {jobCount > 0 ? (
+                                <span
+                                  aria-hidden="true"
+                                  className="company-map-needs-badge"
+                                  data-testid={`cofounder-map-phone-job-needs-${functionId}-${jobName.toLowerCase().replaceAll(" ", "-")}`}
+                                >
+                                  {jobCount}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span
+                              data-built={
+                                !isCompanyMapJobFallback(functionId, jobName)
+                              }
+                            >
+                              {jobName}
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              className="company-map-phone-job-arrow"
+                            >
+                              ›
+                            </span>
                           </span>
-                          <span
-                            data-built={
-                              !isCompanyMapJobFallback(functionId, jobName)
-                            }
-                          >
-                            {jobName}
-                          </span>
-                          <span
-                            aria-hidden="true"
-                            className="company-map-phone-job-arrow"
-                          >
-                            ›
-                          </span>
-                        </span>
-                      </PhoneJobLink>
+                        </PhoneJobLink>
+                        <button
+                          aria-expanded={jobSelected}
+                          className="company-map-phone-job-spot-toggle"
+                          data-testid={`cofounder-map-phone-job-spot-${functionId}-${jobName.toLowerCase().replaceAll(" ", "-")}`}
+                          onClick={() =>
+                            setSelectedJob(
+                              jobSelected ? null : { functionId, jobName },
+                            )
+                          }
+                          type="button"
+                        >
+                          Who does this?
+                        </button>
+                        {jobSelected ? (
+                          <JobAssignmentSpot
+                            functionId={functionId}
+                            jobName={jobName}
+                            presentation="inline"
+                          />
+                        ) : null}
+                      </div>
                     );
                   })}
                   <Link

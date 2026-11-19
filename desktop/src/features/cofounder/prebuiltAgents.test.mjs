@@ -9,8 +9,11 @@ import {
   PREBUILT_AGENT_RULES,
   PREBUILT_AGENTS,
   PREBUILT_HEADS,
+  PREBUILT_SPECIALISTS,
   prebuiltBuiltInRole,
   prebuiltHeadForFunction,
+  prebuiltJobId,
+  prebuiltSpecialistForJob,
 } from "./prebuiltAgents.ts";
 
 const APPROVED_PREBUILT_SOURCE_SHA256 =
@@ -62,6 +65,40 @@ test("only the approved head is exposed for each map part", () => {
   const role = prebuiltBuiltInRole(head, "codex");
   assert.deepEqual(role.companyRole.workerMenu, ["codex"]);
   assert.ok(role.systemPrompt.includes("Head of Sales"));
+});
+
+test("specialists derive frozen relay-safe job ids from the approved source", () => {
+  assert.equal(PREBUILT_SPECIALISTS.length, 20);
+  assert.deepEqual(
+    PREBUILT_SPECIALISTS.map((agent) => [agent.id, prebuiltJobId(agent)]),
+    [
+      ["prebuilt-lead-finding", "lead-finding"],
+      ["prebuilt-outreach", "outreach"],
+      ["prebuilt-follow-ups", "follow-ups"],
+      ["prebuilt-calls", "calls"],
+      ["prebuilt-quotes", "quotes"],
+      ["prebuilt-closing", "closing"],
+      ["prebuilt-client-chats", "client-chats"],
+      ["prebuilt-reviews", "reviews"],
+      ["prebuilt-upsell", "upsell"],
+      ["prebuilt-change-requests", "change-requests"],
+      ["prebuilt-deposits", "deposits"],
+      ["prebuilt-invoices", "invoices"],
+      ["prebuilt-chasing-payments", "chasing-payments"],
+      ["prebuilt-recurring-plans", "recurring-plans"],
+      ["prebuilt-costs", "costs"],
+      ["prebuilt-offer-prices", "offer-prices"],
+      ["prebuilt-marketing", "marketing"],
+      ["prebuilt-website", "website"],
+      ["prebuilt-portfolio", "portfolio"],
+      ["prebuilt-voice", "voice"],
+    ],
+  );
+  assert.equal(
+    prebuiltSpecialistForJob("sales", "follow-ups")?.name,
+    "Follow-ups specialist",
+  );
+  assert.equal(prebuiltSpecialistForJob("finance", "calls"), null);
 });
 
 test("a prebuilt head keeps its colored ant as a self-contained avatar", () => {

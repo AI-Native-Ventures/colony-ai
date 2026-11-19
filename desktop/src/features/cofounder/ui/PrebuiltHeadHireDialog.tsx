@@ -68,6 +68,7 @@ import {
   materializePrebuiltAgent,
   prebuiltHeadForFunction,
 } from "../prebuiltAgents";
+import type { PrebuiltAgent } from "../prebuiltAgents";
 import {
   buildPrebuiltHireApproveAction,
   buildPrebuiltHireAttachEmployeeAction,
@@ -75,6 +76,7 @@ import {
   buildPrebuiltHireCreateAction,
   buildPrebuiltHireDenyAction,
   buildPrebuiltHireProposal,
+  buildPrebuiltJobHireSetAction,
   buildPrebuiltSlotHireSetAction,
   prebuiltFirstMessageText,
   prebuiltHireFirstMessageMarker,
@@ -88,6 +90,12 @@ import {
   writePrebuiltHireChoice,
   writePrebuiltHireProgress,
 } from "../prebuiltHireStorage";
+import {
+  companyJobHeadsQueryKey,
+  fetchCompanyJobHireIntent,
+  useJobAssignmentCapability,
+  usePublishCompanyJobAction,
+} from "../jobAssignments";
 import type {
   PrebuiltHireChoice,
   PrebuiltHireCompletion,
@@ -154,11 +162,12 @@ function prebuiltChoiceFieldClassName({
 function sameProposal(
   record: CompanyHireHeadRecord | null,
   hireId: string,
-  functionId: FunctionId,
+  agent: PrebuiltAgent,
 ) {
   return (
     record?.head.proposal.hireId === hireId &&
-    record.head.proposal.title === prebuiltHeadForFunction(functionId)?.name
+    record.head.proposal.displayName === agent.name &&
+    record.head.proposal.title === (agent.job ?? agent.name)
   );
 }
 
@@ -168,16 +177,23 @@ function errorText(error: unknown) {
 }
 
 export function PrebuiltHeadHireDialog({
+  agent: agentOverride = null,
   defaultChannelId,
   functionId,
+  jobId = null,
+  managerName = null,
   managerPubkey,
   onCompleted,
   onOpenChange,
   open,
   ownerName,
 }: {
+  /** A specialist override reuses this S1 flow without a second hire path. */
+  agent?: PrebuiltAgent | null;
   defaultChannelId?: string | null;
   functionId: FunctionId | null;
+  jobId?: string | null;
+  managerName?: string | null;
   managerPubkey?: string | null;
   onCompleted: (completion: PrebuiltHireCompletion | null) => void;
   onOpenChange: (open: boolean) => void;
@@ -199,6 +215,8 @@ export function PrebuiltHeadHireDialog({
   const openDm = useOpenDmMutation();
   const accessQuery = useCompanyAccessQuery(communityId);
   const publishAccessAction = usePublishAccessAction();
+  const jobAssignmentCapability = useJobAssignmentCapability();
+  const publishJobAction = usePublishCompanyJobAction();
   const hireAction = useCompanyHireActionMutation();
   const [choice, setChoice] = React.useState<ChoiceDraft>(EMPTY_CHOICE);
   const [channelId, setChannelId] = React.useState("");
@@ -209,7 +227,9 @@ export function PrebuiltHeadHireDialog({
   const [failure, setFailure] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
-  const agent = functionId ? prebuiltHeadForFunction(functionId) : null;
+  const agent =
+    agentOverride ?? (functionId ? prebuiltHeadForFunction(functionId) : null);
+  const isSpecialistHire = Boolean(agentOverride?.job && jobId);
   const headQuery = useCompanyHireHeadQuery(progress?.hireId ?? null);
   const agentDefaults = useAgentDialogDefaults({
     open,
@@ -325,7 +345,11 @@ export function PrebuiltHeadHireDialog({
 
   React.useEffect(() => {
     if (!open || !communityId || !functionId) return;
-    const savedProgress = readPrebuiltHireProgress(communityId, functionId);
+    const savedProgress = readPrebuiltHireProgress(
+      communityId,
+      functionId,
+      jobId,
+    );
     const savedChoice = readPrebuiltHireChoice(communityId) ?? null;
     const preferredChoice = savedProgress?.choice ?? savedChoice;
     setProgress(savedProgress);
@@ -344,7 +368,7 @@ export function PrebuiltHeadHireDialog({
       savedProgress?.introductionChannelId ?? defaultChannelId ?? "",
     );
     setFailure(null);
-  }, [communityId, defaultChannelId, functionId, open]);
+  }, [communityId, defaultChannelId, functionId, jobId, open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -439,6 +463,40 @@ export function PrebuiltHeadHireDialog({
     [accessQuery, publishAccessAction],
   );
 
+  const ensureJobIntent = React.useCallback(
+    async (
+      hireId: string,
+      selectedFunctionId: FunctionId,
+      selectedJobId: string,
+    ) => {
+      const current = await fetchCompanyJobHireIntent(hireId);
+      if (
+        current?.functionId === selectedFunctionId &&
+        current.jobId === selectedJobId
+      ) {
+        return;
+      }
+      if (current) {
+        throw new Error("This saved hire belongs to a different company job.");
+      }
+      await publishJobAction.mutateAsync(
+        buildPrebuiltJobHireSetAction({
+          functionId: selectedFunctionId,
+          hireId,
+          jobId: selectedJobId,
+        }),
+      );
+      const confirmed = await fetchCompanyJobHireIntent(hireId);
+      if (
+        confirmed?.functionId !== selectedFunctionId ||
+        confirmed.jobId !== selectedJobId
+      ) {
+        throw new Error("The relay did not reserve this job. Try again.");
+      }
+    },
+    [publishJobAction],
+  );
+
   const finishHire = async () => {
     if (
       submittingRef.current ||
@@ -448,7 +506,8 @@ export function PrebuiltHeadHireDialog({
       !relayUrl ||
       !identityQuery.data?.pubkey ||
       !isOwner ||
-      !selectionReady
+      !selectionReady ||
+      (isSpecialistHire && !jobAssignmentCapability.data)
     ) {
       return;
     }
@@ -461,6 +520,7 @@ export function PrebuiltHeadHireDialog({
       let flow: PrebuiltHireProgress = {
         hireId,
         functionId,
+        ...(jobId ? { jobId } : {}),
         agentId: agent.id,
         introductionChannelId: channelId,
         choice: selectedChoice,
@@ -505,10 +565,10 @@ export function PrebuiltHeadHireDialog({
       if (!current) {
         current = await publishAndConfirm(
           buildPrebuiltHireCreateAction(proposal),
-          (record) => sameProposal(record, hireId, functionId),
+          (record) => sameProposal(record, hireId, agent),
         );
       }
-      if (!sameProposal(current, hireId, functionId)) {
+      if (!sameProposal(current, hireId, agent)) {
         throw new Error(
           "A different hire already uses this saved recovery record.",
         );
@@ -522,7 +582,11 @@ export function PrebuiltHeadHireDialog({
         current.head.status === "proposed" ||
         current.head.status === "awaiting_founder"
       ) {
-        await ensureSlotIntent(hireId, functionId);
+        if (isSpecialistHire && jobId) {
+          await ensureJobIntent(hireId, functionId, jobId);
+        } else {
+          await ensureSlotIntent(hireId, functionId);
+        }
         current = await publishAndConfirm(
           buildPrebuiltHireApproveAction({
             hireId,
@@ -661,6 +725,7 @@ export function PrebuiltHeadHireDialog({
           ? {
               hireId: flow.hireId,
               functionId: flow.functionId,
+              ...(flow.jobId ? { jobId: flow.jobId } : {}),
               agentId: flow.agentId,
               employeePubkey: flow.employeePubkey,
               directChannelId: flow.directChannelId,
@@ -669,7 +734,7 @@ export function PrebuiltHeadHireDialog({
             }
           : null;
       if (completion) writePrebuiltHireCompletion(communityId, completion);
-      clearPrebuiltHireProgress(communityId, functionId);
+      clearPrebuiltHireProgress(communityId, functionId, jobId);
       removeHireDraft(relayUrl, hireId);
       await Promise.all([
         queryClient.invalidateQueries({
@@ -680,6 +745,9 @@ export function PrebuiltHeadHireDialog({
         }),
         queryClient.invalidateQueries({
           queryKey: companyAccessQueryKey(communityId, relayUrl),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: companyJobHeadsQueryKey(communityId, relayUrl),
         }),
         queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
       ]);
@@ -700,7 +768,11 @@ export function PrebuiltHeadHireDialog({
     try {
       const current = await fetchCurrentCompanyHireHead(progress.hireId);
       if (!current || current.head.status === "denied") {
-        clearPrebuiltHireProgress(communityId, progress.functionId);
+        clearPrebuiltHireProgress(
+          communityId,
+          progress.functionId,
+          progress.jobId,
+        );
         removeHireDraft(relayUrl, progress.hireId);
         setProgress(null);
         onOpenChange(false);
@@ -719,7 +791,11 @@ export function PrebuiltHeadHireDialog({
         }),
         (record) => record?.head.status === "denied",
       );
-      clearPrebuiltHireProgress(communityId, progress.functionId);
+      clearPrebuiltHireProgress(
+        communityId,
+        progress.functionId,
+        progress.jobId,
+      );
       removeHireDraft(relayUrl, progress.hireId);
       setProgress(null);
       onOpenChange(false);
@@ -736,6 +812,11 @@ export function PrebuiltHeadHireDialog({
   };
 
   if (!open || !agent || !functionId) return null;
+  const managerCopy = isSpecialistHire
+    ? managerName
+      ? `${managerName} keeps the rest of ${FUNCTION_DETAILS[functionId].name} and leads this specialist.`
+      : `Scout leads this specialist until you hire a Head of ${FUNCTION_DETAILS[functionId].name}.`
+    : `Scout hands ${FUNCTION_DETAILS[functionId].name} over the moment you hire.`;
 
   return (
     <Dialog onOpenChange={close} open={open}>
@@ -750,8 +831,7 @@ export function PrebuiltHeadHireDialog({
           </p>
           <DialogTitle className="mt-1">{agent.name}</DialogTitle>
           <DialogDescription id="prebuilt-hire-description">
-            Scout hands {FUNCTION_DETAILS[functionId].name} over the moment you
-            hire.
+            {managerCopy}
           </DialogDescription>
         </div>
 
@@ -760,7 +840,7 @@ export function PrebuiltHeadHireDialog({
             className="size-11 rounded-full"
             instance={prebuiltAgentAvatarDataUrl(agent)}
             name={agent.name}
-            role={`Head of ${FUNCTION_DETAILS[functionId].name}`}
+            role={agent.job ?? `Head of ${FUNCTION_DETAILS[functionId].name}`}
           />
           <div>
             <p className="text-sm font-extrabold">{agent.name}</p>
@@ -976,7 +1056,12 @@ export function PrebuiltHeadHireDialog({
             <button
               className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="prebuilt-hire-finish"
-              disabled={!selectionReady || !isOwner || submitting}
+              disabled={
+                !selectionReady ||
+                !isOwner ||
+                submitting ||
+                (isSpecialistHire && !jobAssignmentCapability.data)
+              }
               onClick={() => void finishHire()}
               type="button"
             >

@@ -11,6 +11,7 @@ import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { JobAssignmentSpot } from "@/features/cofounder/ui/JobAssignmentSpot";
 
 /** Renders an honest in-map destination for a job whose app screen is absent. */
 export function MapCanvasNoScreenCard({
@@ -67,6 +68,11 @@ export function MapCanvasNoScreenCard({
       <p className="map-canvas-no-screen-card-copy">
         {job.jobName} has no screen in the app yet.
       </p>
+      <JobAssignmentSpot
+        functionId={job.functionId}
+        jobName={job.jobName}
+        presentation="inline"
+      />
       {scoutChannelId ? (
         <Link
           className="map-canvas-no-screen-card-action"

@@ -10,6 +10,8 @@ export type PrebuiltHireChoice = {
 export type PrebuiltHireProgress = {
   hireId: string;
   functionId: FunctionId;
+  /** Present only for a specialist. Head hires retain the S1 function-only key. */
+  jobId?: string;
   agentId: string;
   introductionChannelId: string;
   choice: PrebuiltHireChoice;
@@ -26,6 +28,8 @@ export type PrebuiltHireProgress = {
 export type PrebuiltHireCompletion = {
   hireId: string;
   functionId: FunctionId;
+  /** Present only for a specialist. Head hires retain the S1 function-only key. */
+  jobId?: string;
   agentId: string;
   employeePubkey: string;
   directChannelId: string;
@@ -56,12 +60,24 @@ function choiceKey(communityId: string) {
   return `${CHOICE_KEY_PREFIX}${communityId}`;
 }
 
-function progressKey(communityId: string, functionId: FunctionId) {
-  return `${PROGRESS_KEY_PREFIX}${communityId}:${functionId}`;
+function scopedFunctionKey(functionId: FunctionId, jobId?: string | null) {
+  return jobId ? `${functionId}:${jobId}` : functionId;
 }
 
-function completionKey(communityId: string, functionId: FunctionId) {
-  return `${COMPLETION_KEY_PREFIX}${communityId}:${functionId}`;
+function progressKey(
+  communityId: string,
+  functionId: FunctionId,
+  jobId?: string | null,
+) {
+  return `${PROGRESS_KEY_PREFIX}${communityId}:${scopedFunctionKey(functionId, jobId)}`;
+}
+
+function completionKey(
+  communityId: string,
+  functionId: FunctionId,
+  jobId?: string | null,
+) {
+  return `${COMPLETION_KEY_PREFIX}${communityId}:${scopedFunctionKey(functionId, jobId)}`;
 }
 
 function nonEmptyString(value: unknown): value is string {
@@ -138,9 +154,10 @@ export function writePrebuiltHireChoice(
 export function readPrebuiltHireProgress(
   communityId: string | null | undefined,
   functionId: FunctionId,
+  jobId?: string | null,
 ): PrebuiltHireProgress | null {
   if (!communityId) return null;
-  const raw = readJson(progressKey(communityId, functionId));
+  const raw = readJson(progressKey(communityId, functionId, jobId));
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return null;
   }
@@ -151,6 +168,7 @@ export function readPrebuiltHireProgress(
       (key) =>
         key !== "hireId" &&
         key !== "functionId" &&
+        key !== "jobId" &&
         key !== "agentId" &&
         key !== "introductionChannelId" &&
         key !== "choice" &&
@@ -161,6 +179,7 @@ export function readPrebuiltHireProgress(
     ) ||
     !nonEmptyString(record.hireId) ||
     record.functionId !== functionId ||
+    (jobId ? record.jobId !== jobId : record.jobId !== undefined) ||
     !FUNCTION_IDS.has(record.functionId as FunctionId) ||
     !nonEmptyString(record.agentId) ||
     !nonEmptyString(record.introductionChannelId) ||
@@ -181,6 +200,7 @@ export function readPrebuiltHireProgress(
   return {
     hireId: record.hireId.trim(),
     functionId,
+    ...(jobId ? { jobId } : {}),
     agentId: record.agentId.trim(),
     introductionChannelId: record.introductionChannelId.trim(),
     choice,
@@ -203,13 +223,17 @@ export function writePrebuiltHireProgress(
   progress: PrebuiltHireProgress,
 ) {
   if (!communityId || !readableProgress(progress)) return false;
-  return writeJson(progressKey(communityId, progress.functionId), progress);
+  return writeJson(
+    progressKey(communityId, progress.functionId, progress.jobId),
+    progress,
+  );
 }
 
 function readableProgress(value: PrebuiltHireProgress): boolean {
   return (
     nonEmptyString(value.hireId) &&
     FUNCTION_IDS.has(value.functionId) &&
+    (value.jobId === undefined || nonEmptyString(value.jobId)) &&
     nonEmptyString(value.agentId) &&
     nonEmptyString(value.introductionChannelId) &&
     parseChoice(value.choice) !== null &&
@@ -226,6 +250,7 @@ function readableCompletion(value: PrebuiltHireCompletion): boolean {
   return (
     nonEmptyString(value.hireId) &&
     FUNCTION_IDS.has(value.functionId) &&
+    (value.jobId === undefined || nonEmptyString(value.jobId)) &&
     nonEmptyString(value.agentId) &&
     nonEmptyString(value.employeePubkey) &&
     nonEmptyString(value.directChannelId) &&
@@ -237,9 +262,10 @@ function readableCompletion(value: PrebuiltHireCompletion): boolean {
 export function readPrebuiltHireCompletion(
   communityId: string | null | undefined,
   functionId: FunctionId,
+  jobId?: string | null,
 ): PrebuiltHireCompletion | null {
   if (!communityId) return null;
-  const raw = readJson(completionKey(communityId, functionId));
+  const raw = readJson(completionKey(communityId, functionId, jobId));
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return null;
   }
@@ -249,6 +275,7 @@ export function readPrebuiltHireCompletion(
       (key) =>
         key !== "hireId" &&
         key !== "functionId" &&
+        key !== "jobId" &&
         key !== "agentId" &&
         key !== "employeePubkey" &&
         key !== "directChannelId" &&
@@ -256,6 +283,7 @@ export function readPrebuiltHireCompletion(
         key !== "firstMessage",
     ) ||
     record.functionId !== functionId ||
+    (jobId ? record.jobId !== jobId : record.jobId !== undefined) ||
     !FUNCTION_IDS.has(record.functionId as FunctionId) ||
     !nonEmptyString(record.hireId) ||
     !nonEmptyString(record.agentId) ||
@@ -269,6 +297,7 @@ export function readPrebuiltHireCompletion(
   return {
     hireId: record.hireId.trim(),
     functionId,
+    ...(jobId ? { jobId } : {}),
     agentId: record.agentId.trim(),
     employeePubkey: record.employeePubkey.trim(),
     directChannelId: record.directChannelId.trim(),
@@ -283,7 +312,7 @@ export function writePrebuiltHireCompletion(
 ) {
   if (!communityId || !readableCompletion(completion)) return false;
   return writeJson(
-    completionKey(communityId, completion.functionId),
+    completionKey(communityId, completion.functionId, completion.jobId),
     completion,
   );
 }
@@ -291,10 +320,11 @@ export function writePrebuiltHireCompletion(
 export function clearPrebuiltHireProgress(
   communityId: string | null | undefined,
   functionId: FunctionId,
+  jobId?: string | null,
 ) {
   if (!communityId) return;
   try {
-    storage()?.removeItem(progressKey(communityId, functionId));
+    storage()?.removeItem(progressKey(communityId, functionId, jobId));
   } catch {
     // Local recovery is optional. A storage failure must not hide the hire UI.
   }

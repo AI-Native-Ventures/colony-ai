@@ -61,6 +61,7 @@ pub(super) async fn handle(
     let d_tag = member_command_d_tag(&event, &action)?;
     let community_id = tenant.community();
     let actor_pubkey = auth.pubkey().to_hex();
+    let action_event_id = event.id.to_hex();
     let target_pubkey = action.pubkey.clone();
     let manager_pubkey = proposed_manager(&action);
     let mut tx = state
@@ -245,23 +246,51 @@ pub(super) async fn handle(
     ) {
         super::company_functions::clear_slots_led_by_in_tx(
             &mut tx,
+            tenant,
             state,
             community_id,
             &target_pubkey,
             &actor_pubkey,
+            &action_event_id,
         )
         .await?
     } else {
-        Vec::new()
+        super::company_functions::ClearedFunctionSlots {
+            slot_heads: Vec::new(),
+            job_heads: Vec::new(),
+            reparented_positions: Vec::new(),
+        }
     };
 
     tx.commit().await.map_err(internal)?;
-    for slot in &cleared_slots {
+    for slot in &cleared_slots.slot_heads {
         super::event::dispatch_persistent_event(
             tenant,
             state,
             slot,
             buzz_core::kind::KIND_COMPANY_FUNCTION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
+    }
+    for position in &cleared_slots.reparented_positions {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            position,
+            buzz_core::kind::KIND_MEMBER_POSITION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
+    }
+    for job in &cleared_slots.job_heads {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            job,
+            buzz_core::kind::KIND_COMPANY_JOB_HEAD,
             &state.relay_keypair.public_key().to_hex(),
             None,
         )

@@ -262,6 +262,156 @@
   outline-offset: 3px;
 }
 
+.map-job-assignment-pill-wrap {
+  position: absolute;
+  z-index: 4;
+  top: -22px;
+  left: 44px;
+  max-width: min(42rem, calc(100% - 9rem));
+}
+
+.map-job-assignment-pill {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem 0.375rem 0.375rem;
+  border: 0;
+  border-radius: 999px;
+  background: hsl(var(--colony-surface));
+  box-shadow:
+    0 0 0 2px hsl(var(--colony-accent)),
+    0 10px 24px -14px rgb(40 20 60 / 50%);
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.map-job-assignment-pill > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-job-assignment-pill:focus-visible,
+.map-job-assignment-primary:focus-visible,
+.map-job-assignment-secondary:focus-visible {
+  outline: 3px solid hsl(var(--colony-accent));
+  outline-offset: 3px;
+}
+
+.map-job-assignment-pill-action,
+.map-job-assignment-chip {
+  display: inline-flex;
+  min-height: 1.5rem;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-accent) / 0.12);
+  color: hsl(var(--colony-accent-ink));
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.map-job-assignment-card {
+  box-sizing: border-box;
+  width: min(30rem, calc(100vw - 3rem));
+  margin-top: 0.625rem;
+  padding: 1rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.875rem;
+  background: hsl(var(--colony-surface));
+  box-shadow: 0 16px 32px -20px rgb(40 20 60 / 55%);
+}
+
+.map-job-assignment-specialist-box {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.875rem;
+  background: hsl(var(--colony-muted) / 0.35);
+}
+
+.map-job-assignment-just-hired {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: rgb(16 185 129 / 0.1);
+  color: hsl(var(--colony-fg));
+}
+
+.map-job-assignment-just-hired > span {
+  display: inline-flex;
+  border-radius: 999px;
+  color: rgb(4 120 87);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.dark .map-job-assignment-just-hired > span {
+  color: rgb(110 231 183);
+}
+
+.map-job-assignment-just-hired > p {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.map-job-assignment-pill-wrap .map-job-assignment-card {
+  position: absolute;
+  top: 100%;
+  left: 0;
+}
+
+.map-job-assignment-inline {
+  max-width: 30rem;
+  margin-top: 1.25rem;
+}
+
+.map-job-assignment-inline .map-job-assignment-card {
+  width: 100%;
+}
+
+.map-job-assignment-primary,
+.map-job-assignment-secondary {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.map-job-assignment-primary {
+  border: 0;
+  background: var(--colony-ink-button);
+  color: hsl(var(--colony-canvas));
+}
+
+.map-job-assignment-secondary {
+  border: 1px solid hsl(var(--colony-border-strong));
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+}
+
+.map-job-assignment-primary:disabled,
+.map-job-assignment-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .map-canvas-route-connector {
   position: absolute;
   z-index: 0;

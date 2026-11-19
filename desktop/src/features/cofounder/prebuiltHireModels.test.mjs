@@ -7,6 +7,7 @@ import { buildAccessActionEvent } from "./accessRecords.ts";
 import {
   prebuiltBuiltInRole,
   prebuiltHeadForFunction,
+  prebuiltSpecialistForJob,
 } from "./prebuiltAgents.ts";
 import {
   buildPrebuiltHireApproveAction,
@@ -14,15 +15,27 @@ import {
   buildPrebuiltHireCompleteAction,
   buildPrebuiltHireCreateAction,
   buildPrebuiltHireProposal,
+  buildPrebuiltJobHireSetAction,
   buildPrebuiltSlotHireSetAction,
   prebuiltFirstMessageText,
   prebuiltHireFirstMessageMarker,
 } from "./prebuiltHireModels.ts";
+import { buildCompanyJobActionEvent } from "./jobAssignments.ts";
 
 const wireFixture = JSON.parse(
   readFileSync(
     new URL(
       "../../../../test-fixtures/company-hire/prebuilt-head-finance.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
+
+const specialistWireFixture = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../../../test-fixtures/company-hire/prebuilt-specialist-follow-ups.json",
       import.meta.url,
     ),
     "utf8",
@@ -163,4 +176,44 @@ test("the prebuilt Finance hire sends the shared relay contract", () => {
     }),
     wireFixture.complete,
   );
+});
+
+test("the specialist hire records a separate additive job intent", () => {
+  const agent = prebuiltSpecialistForJob("sales", "follow-ups");
+  assert.ok(agent);
+  const proposal = buildPrebuiltHireProposal({
+    agent,
+    choice: {
+      runtimeId: "codex",
+      providerId: "openai",
+      modelId: "gpt-6",
+    },
+    hireId: specialistWireFixture.create.hireId,
+    introductionChannelId:
+      specialistWireFixture.create.proposal.introductionChannelId,
+    managerPubkey: specialistWireFixture.create.proposal.managerPubkey,
+    personaId: specialistWireFixture.create.proposal.rolePack.personaId,
+  });
+  assert.deepEqual(
+    buildPrebuiltHireCreateAction(proposal),
+    specialistWireFixture.create,
+  );
+  assert.equal(proposal.title, "Follow-ups");
+  const jobHireSet = buildPrebuiltJobHireSetAction({
+    functionId: "sales",
+    hireId: specialistWireFixture.create.hireId,
+    jobId: "follow-ups",
+  });
+  assert.deepEqual(jobHireSet, {
+    action: "hire_set",
+    functionId: "sales",
+    jobId: "follow-ups",
+    hireId: specialistWireFixture.create.hireId,
+    expectedHeadEventId: null,
+  });
+  const wire = buildCompanyJobActionEvent(jobHireSet);
+  assert.deepEqual(JSON.parse(wire.content), specialistWireFixture.jobHireSet);
+  assert.deepEqual(wire.tags, [
+    ["d", `company:job-hire:${specialistWireFixture.create.hireId}`],
+  ]);
 });

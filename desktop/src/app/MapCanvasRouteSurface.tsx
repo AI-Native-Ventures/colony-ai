@@ -9,7 +9,10 @@ import {
 import { companyMapPartSide } from "@/features/cofounder/companyMapLayout";
 import { FUNCTION_DETAILS } from "@/features/cofounder/functions";
 import { CompanyMapScreen } from "@/features/cofounder/ui/CompanyMapScreen";
-import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
+import {
+  JobAssignmentAvatar,
+  JobAssignmentSpot,
+} from "@/features/cofounder/ui/JobAssignmentSpot";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { acquireEscapeSurface } from "@/shared/hooks/escapeSurfaces";
 
@@ -367,9 +370,10 @@ function MapCanvasWindow({
             className="map-canvas-route-job-ring"
             data-testid="fullmap-window-job-ring"
           >
-            <EmployeeAvatar
+            <JobAssignmentAvatar
               className="map-canvas-route-job-avatar"
-              name={job.jobName}
+              functionId={job.functionId}
+              jobName={job.jobName}
             />
           </span>
         </>
@@ -403,6 +407,12 @@ function MapCanvasWindow({
           <path d="m6 6 12 12M18 6 6 18" />
         </svg>
       </button>
+      <JobAssignmentSpot
+        functionId={job.functionId}
+        jobName={job.jobName}
+        onOpenJob={onClose}
+        presentation="pill"
+      />
       <div
         className="map-canvas-route-window-content"
         onClickCapture={onContentClickCapture}

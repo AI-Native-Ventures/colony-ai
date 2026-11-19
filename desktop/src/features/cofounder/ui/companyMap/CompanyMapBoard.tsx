@@ -9,7 +9,6 @@ import type {
   FunctionId,
   FunctionSlotView,
 } from "@/features/cofounder/cofounderRecords";
-import { companyMapJobDoer } from "@/features/cofounder/companyMapAssignments";
 import {
   FUNCTION_DETAILS,
   FUNCTION_ORDER,
@@ -25,6 +24,7 @@ import {
 } from "@/features/cofounder/companyMapLayout";
 import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
 import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
+import { JobAssignmentAvatar } from "../JobAssignmentSpot";
 import {
   companyMapJobKey,
   companyMapWhatsAppSearch,
@@ -139,40 +139,19 @@ function DoerForPart({
 }
 
 function JobDoer({
-  slot,
-  members,
-  profiles,
+  functionId,
+  jobName,
 }: {
-  slot: FunctionSlotView;
-  members: TeamMember[];
-  profiles: ProfileLookup;
+  functionId: FunctionId;
+  jobName: string;
 }) {
-  const assigned = companyMapJobDoer(slot);
-  if (assigned.kind === "scout") {
-    return <MapDoer className="company-map-job-avatar" scout />;
-  }
-  const member = members.find(
-    (candidate) =>
-      candidate.pubkey.toLowerCase() === assigned.pubkey.toLowerCase(),
+  return (
+    <JobAssignmentAvatar
+      className="company-map-job-avatar"
+      functionId={functionId}
+      jobName={jobName}
+    />
   );
-  if (member) {
-    const name = fullName(member, profiles);
-    const prebuiltHead = prebuiltHeadForFunction(slot.functionId);
-    return (
-      <MapDoer
-        avatarUrl={profiles[member.pubkey.toLowerCase()]?.avatarUrl}
-        className="company-map-job-avatar"
-        fallbackInstance={
-          prebuiltHead && name === prebuiltHead.name
-            ? prebuiltAgentAvatarDataUrl(prebuiltHead)
-            : null
-        }
-        member={member}
-        name={name}
-      />
-    );
-  }
-  return <MapDoer className="company-map-job-avatar" scout />;
 }
 
 function JobLink({
@@ -503,11 +482,8 @@ function JobNode({
   functionId,
   name,
   count,
-  slot,
   side,
   point,
-  members,
-  profiles,
   whatsappChannelId,
   onGroupFocus,
   onGroupBlur,
@@ -517,11 +493,8 @@ function JobNode({
   functionId: FunctionId;
   name: string;
   count: number;
-  slot: FunctionSlotView;
   side: -1 | 1;
   point: CompanyMapPoint;
-  members: TeamMember[];
-  profiles: ProfileLookup;
   whatsappChannelId?: string | null;
   onGroupFocus: (functionId: FunctionId) => void;
   onGroupBlur: (event: FocusEvent<HTMLElement>, functionId: FunctionId) => void;
@@ -550,7 +523,7 @@ function JobNode({
           className="company-map-job-disc"
           data-testid={`cofounder-map-job-disc-${functionId}-${name.toLowerCase().replaceAll(" ", "-")}`}
         >
-          <JobDoer members={members} profiles={profiles} slot={slot} />
+          <JobDoer functionId={functionId} jobName={name} />
           <NeedsBadge
             count={count}
             testId={`cofounder-map-job-needs-${functionId}-${name.toLowerCase().replaceAll(" ", "-")}`}
@@ -877,16 +850,13 @@ function CompanyMapDesktop({
                       count={countForJob(summary, job.functionId, job.name)}
                       functionId={job.functionId}
                       key={`${job.functionId}:${job.name}`}
-                      members={members}
                       name={job.name}
                       onGroupBlur={blurPart}
                       onGroupFocus={focusPart}
                       onGroupMouseEnter={enterPart}
                       onGroupMouseLeave={closeHoverSoon}
                       point={job.point}
-                      profiles={profiles}
                       side={job.side}
-                      slot={slotForFunction(job.functionId, slots)}
                       whatsappChannelId={whatsappChannelId}
                     />
                   ))}
