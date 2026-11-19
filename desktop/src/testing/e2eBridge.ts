@@ -10510,6 +10510,64 @@ function acceptMockAskResponse(
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
+function mockHireHeadHasExpectedTags(
+  event: RelayEvent,
+  dTag: string,
+  employeePubkey: string | undefined,
+) {
+  const expectedTags = [
+    ["d", dTag],
+    ...(employeePubkey ? [["p", employeePubkey]] : []),
+  ];
+  return (
+    event.tags.length === expectedTags.length &&
+    event.tags.every(
+      (tag, index) =>
+        tag.length === expectedTags[index]?.length &&
+        tag.every(
+          (value, tagIndex) => value === expectedTags[index]?.[tagIndex],
+        ),
+    )
+  );
+}
+
+function mockHireIntroductionMatches(
+  head: Record<string, unknown>,
+  employeePubkey: string,
+  introductionEventId: string,
+) {
+  const proposal = head.proposal;
+  if (
+    !introductionEventId.trim() ||
+    proposal === null ||
+    typeof proposal !== "object" ||
+    Array.isArray(proposal)
+  ) {
+    return false;
+  }
+  const introductionChannelId = (proposal as Record<string, unknown>)
+    .introductionChannelId;
+  if (typeof introductionChannelId !== "string" || !introductionChannelId) {
+    return false;
+  }
+  for (const [channelId, events] of mockMessages) {
+    const event = events.find(
+      (candidate) => candidate.id === introductionEventId,
+    );
+    if (!event) continue;
+    return (
+      channelId === introductionChannelId &&
+      [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2].includes(event.kind) &&
+      event.pubkey.toLowerCase() === employeePubkey.toLowerCase() &&
+      event.content.trim().length > 0 &&
+      event.tags.some(
+        (tag) => tag[0] === "h" && tag[1] === introductionChannelId,
+      )
+    );
+  }
+  return false;
+}
+
 function acceptMockHireAction(
   socket: MockSocket,
   event: RelayEvent,
@@ -10533,14 +10591,14 @@ function acceptMockHireAction(
   }
   const hireId = typeof action.hireId === "string" ? action.hireId : "";
   const dTag = `company:hire:${hireId.toLowerCase()}`;
-  const dTags = event.tags.filter((tag) => tag[0] === "d");
   if (
     action.schemaVersion !== 1 ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       hireId,
     ) ||
-    dTags.length !== 1 ||
-    dTags[0]?.[1] !== dTag
+    event.tags.length !== 1 ||
+    event.tags[0]?.[0] !== "d" ||
+    event.tags[0]?.[1] !== dTag
   ) {
     reject("invalid: hire action coordinates are invalid");
     return;
@@ -10623,6 +10681,12 @@ function acceptMockHireAction(
       reject("invalid: current hire head is malformed");
       return;
     }
+    const attachedEmployee =
+      typeof head.employeePubkey === "string" ? head.employeePubkey : undefined;
+    if (!mockHireHeadHasExpectedTags(currentEvent, dTag, attachedEmployee)) {
+      reject("invalid: current hire head tags are invalid");
+      return;
+    }
     const status = head.status;
     if (action.action === "update") {
       if (status !== "proposed" || !action.proposal) {
@@ -10674,6 +10738,18 @@ function acceptMockHireAction(
         );
         return;
       }
+      if (
+        !mockHireIntroductionMatches(
+          head,
+          action.employeePubkey,
+          action.introductionEventId,
+        )
+      ) {
+        reject(
+          "invalid: introduction must be a non-empty channel post signed by the new employee",
+        );
+        return;
+      }
       head.status = "hired";
       head.introductionEventId = action.introductionEventId;
     } else if (action.action === "deny") {
@@ -10716,11 +10792,22 @@ function acceptMockHireAction(
         Math.floor(Date.now() / 1_000),
         (currentEvent?.created_at ?? 0) + 1,
       ),
-      tags: [["d", dTag]],
+      tags: [
+        ["d", dTag],
+        ...(typeof head.employeePubkey === "string"
+          ? [["p", head.employeePubkey]]
+          : []),
+      ],
       content: JSON.stringify(head),
     },
     relaySecret,
   );
+  const nextEmployee =
+    typeof head.employeePubkey === "string" ? head.employeePubkey : undefined;
+  if (!mockHireHeadHasExpectedTags(nextHead, dTag, nextEmployee)) {
+    reject("invalid: next hire head tags are invalid");
+    return;
+  }
   for (let index = mockCompanyHireHeads.length - 1; index >= 0; index -= 1) {
     if (
       mockCompanyHireHeads[index]?.tags.some(

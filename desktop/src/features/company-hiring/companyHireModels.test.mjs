@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 
@@ -15,6 +16,15 @@ const OTHER_SECRET = new Uint8Array(32).fill(9);
 const RELAY_PUBKEY = getPublicKey(RELAY_SECRET);
 const HIRE_ID = "123e4567-e89b-12d3-a456-426614174010";
 const CHANNEL_ID = "123e4567-e89b-12d3-a456-426614174011";
+const relayHeadFixture = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../../../test-fixtures/company-hire/prebuilt-head-finance-events.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
 
 function proposal(overrides = {}) {
   return {
@@ -114,6 +124,76 @@ test("hire head parsing verifies relay signer, signature, kind and d-tag", () =>
   );
   assert.equal(
     parseCompanyHireHeadEvent(signedHead({ content: "{" }), RELAY_PUBKEY),
+    null,
+  );
+});
+
+test("hire head parsing accepts the relay's exact employee-attached tag shape", () => {
+  for (const [state, fixtureEvent] of Object.entries(
+    relayHeadFixture.hireHeads,
+  )) {
+    const record = parseCompanyHireHeadEvent(
+      signedHead({
+        tags: fixtureEvent.tags,
+        content: JSON.stringify(fixtureEvent.content),
+      }),
+      RELAY_PUBKEY,
+      fixtureEvent.content.proposal.hireId,
+    );
+    assert.equal(record?.head.status, fixtureEvent.content.status, state);
+  }
+});
+
+test("hire head parsing refuses an unbound or malformed employee tag", () => {
+  const employeeHead = relayHeadFixture.hireHeads.approvedWithEmployee;
+  const content = JSON.stringify(employeeHead.content);
+  const hireId = employeeHead.content.proposal.hireId;
+
+  assert.equal(
+    parseCompanyHireHeadEvent(
+      signedHead({
+        tags: [employeeHead.tags[1], employeeHead.tags[0]],
+        content,
+      }),
+      RELAY_PUBKEY,
+      hireId,
+    ),
+    null,
+  );
+  assert.equal(
+    parseCompanyHireHeadEvent(
+      signedHead({
+        tags: [employeeHead.tags[0], ["p", "f".repeat(64)]],
+        content,
+      }),
+      RELAY_PUBKEY,
+      hireId,
+    ),
+    null,
+  );
+  assert.equal(
+    parseCompanyHireHeadEvent(
+      signedHead({
+        tags: [employeeHead.tags[0], ["p"]],
+        content,
+      }),
+      RELAY_PUBKEY,
+      hireId,
+    ),
+    null,
+  );
+  assert.equal(
+    parseCompanyHireHeadEvent(
+      signedHead({
+        tags: [
+          relayHeadFixture.hireHeads.approved.tags[0],
+          ["p", "e".repeat(64)],
+        ],
+        content: JSON.stringify(relayHeadFixture.hireHeads.approved.content),
+      }),
+      RELAY_PUBKEY,
+      hireId,
+    ),
     null,
   );
 });

@@ -27,6 +27,7 @@ use buzz_db::channel::{ChannelType, ChannelVisibility};
 use buzz_db::channel_members::MemberRole;
 use buzz_workflow::schema::{ActionDef, TriggerDef, WorkflowDef};
 use nostr::Keys;
+use serde::Deserialize;
 
 static HIRE_DB_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
 
@@ -43,12 +44,24 @@ struct Fixture {
 }
 
 async fn fixture() -> Fixture {
-    fixture_with(true, true).await
+    fixture_with_employee_ownership(true, true, true).await
 }
 
-/// Builds a community with an owner, a managed employee bound to that owner
-/// and a private home channel. Either party can be left out of the channel.
+/// Builds a community with a private home channel. Either party can be left
+/// out of the channel, and the employee can be registered after approval.
 async fn fixture_with(employee_in_channel: bool, owner_in_channel: bool) -> Fixture {
+    fixture_with_employee_ownership(employee_in_channel, owner_in_channel, true).await
+}
+
+async fn fixture_without_employee_owner() -> Fixture {
+    fixture_with_employee_ownership(true, true, false).await
+}
+
+async fn fixture_with_employee_ownership(
+    employee_in_channel: bool,
+    owner_in_channel: bool,
+    employee_owned_by_owner: bool,
+) -> Fixture {
     let serial_guard = HIRE_DB_TEST_LOCK
         .get_or_init(|| tokio::sync::Mutex::new(()))
         .lock()
@@ -92,18 +105,20 @@ async fn fixture_with(employee_in_channel: bool, owner_in_channel: bool) -> Fixt
         .add_relay_member(community, &owner.public_key().to_hex(), "owner", None)
         .await
         .expect("add community owner");
-    assert!(
-        state
-            .db
-            .set_agent_owner(
-                community,
-                &employee.public_key().to_bytes(),
-                &owner.public_key().to_bytes(),
-            )
-            .await
-            .expect("bind the managed employee"),
-        "the employee is owned by the owner"
-    );
+    if employee_owned_by_owner {
+        assert!(
+            state
+                .db
+                .set_agent_owner(
+                    community,
+                    &employee.public_key().to_bytes(),
+                    &owner.public_key().to_bytes(),
+                )
+                .await
+                .expect("bind the managed employee"),
+            "the employee is owned by the owner"
+        );
+    }
     let channel = state
         .db
         .create_channel(
@@ -176,6 +191,23 @@ fn role_pack() -> HireRolePack {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrebuiltHeadFinanceActions {
+    create: HireAction,
+    slot_hire_set: AccessAction,
+    approve: HireAction,
+    attach_employee: HireAction,
+    complete: HireAction,
+}
+
+fn prebuilt_head_finance_actions() -> PrebuiltHeadFinanceActions {
+    serde_json::from_str(include_str!(
+        "../../../../../test-fixtures/company-hire/prebuilt-head-finance.json"
+    ))
+    .expect("the checked-in prebuilt Finance action shapes must deserialize")
+}
+
 fn hire_action(
     hire_id: Uuid,
     action: HireActionKind,
@@ -228,6 +260,72 @@ async fn hire_head(fixture: &Fixture, hire_id: Uuid) -> StoredEvent {
     .await
     .expect("read the hire head")
     .expect("the hire head exists")
+}
+
+async fn assert_prebuilt_hire_head(
+    fixture: &Fixture,
+    hire_id: Uuid,
+    expected_status: HireStatus,
+    expected_employee: Option<&str>,
+) -> HireHead {
+    let stored = hire_head(fixture, hire_id).await;
+    assert_eq!(
+        stored.event.pubkey,
+        fixture.state.relay_keypair.public_key(),
+        "the relay signs every current prebuilt hire head"
+    );
+    assert!(
+        stored.event.verify().is_ok(),
+        "the relay head signature verifies"
+    );
+    let mut expected_tags = vec![vec!["d".to_owned(), hire_d_tag(hire_id)]];
+    if let Some(employee) = expected_employee {
+        expected_tags.push(vec!["p".to_owned(), employee.to_owned()]);
+    }
+    let tags = stored
+        .event
+        .tags
+        .iter()
+        .map(|tag| tag.as_slice().to_vec())
+        .collect::<Vec<_>>();
+    assert_eq!(tags, expected_tags, "the relay head tags stay exact");
+    let head = parse_hire_head(&stored).expect("parse the relay hire head");
+    assert_eq!(head.status, expected_status);
+    assert_eq!(head.employee_pubkey.as_deref(), expected_employee);
+    head
+}
+
+async fn register_employee_for_owner(fixture: &Fixture) {
+    assert!(
+        fixture
+            .state
+            .db
+            .set_agent_owner(
+                fixture.tenant.community(),
+                &fixture.employee.public_key().to_bytes(),
+                &fixture.owner.public_key().to_bytes(),
+            )
+            .await
+            .expect("register the managed employee"),
+        "the founder registers the employee before attaching it"
+    );
+}
+
+async fn post_employee_introduction(fixture: &Fixture, channel_id: Uuid, content: &str) -> Event {
+    let introduction = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), content)
+        .tags([Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag")])
+        .sign_with_keys(&fixture.employee)
+        .expect("sign the employee introduction");
+    let accepted = crate::handlers::ingest::ingest_event(
+        &fixture.state,
+        &fixture.tenant,
+        introduction.clone(),
+        auth(&fixture.employee),
+    )
+    .await
+    .expect("ingest the employee introduction");
+    assert!(accepted.accepted, "the employee introduction is accepted");
+    introduction
 }
 
 /// Drives one hire to the point where only `complete` remains and returns
@@ -473,6 +571,198 @@ async fn assert_completion_left_nothing(fixture: &Fixture, complete: &HireAction
     assert!(
         kickoffs(fixture, complete.hire_id).await.is_empty(),
         "no on-hire kickoff"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn prebuilt_finance_replays_the_relay_completion_contract() {
+    let fixture = fixture_without_employee_owner().await;
+    let mut actions = prebuilt_head_finance_actions();
+    let hire_id = actions.create.hire_id;
+    let employee = fixture.employee.public_key().to_hex();
+    let owner = fixture.owner.public_key().to_hex();
+    let proposal = actions
+        .create
+        .proposal
+        .as_mut()
+        .expect("the prebuilt create action has its proposal");
+    assert!(
+        proposal.role_pack.duties.is_empty(),
+        "prebuilt hires add no duties"
+    );
+    assert!(
+        proposal.role_pack.on_hire.is_none(),
+        "prebuilt hires add no on-hire workflow"
+    );
+    proposal.introduction_channel_id = fixture.channel_id;
+    proposal.manager_pubkey = Some(owner);
+
+    let created = submit(&fixture, sign_hire_action(&fixture.owner, &actions.create))
+        .await
+        .expect("create the prebuilt Finance hire");
+    assert!(created.accepted);
+    assert_prebuilt_hire_head(&fixture, hire_id, HireStatus::Proposed, None).await;
+
+    let slot_event = buzz_sdk::company_records::build_access_action(&actions.slot_hire_set)
+        .expect("build the fixture slot intent")
+        .sign_with_keys(&fixture.owner)
+        .expect("sign the fixture slot intent");
+    let slot_set = crate::handlers::company_access::handle(
+        &fixture.tenant,
+        &fixture.state,
+        slot_event,
+        auth(&fixture.owner),
+    )
+    .await
+    .expect("record the Finance slot intent");
+    assert!(slot_set.accepted);
+    let slot_intent = crate::handlers::company_access::current_slot_hire(
+        &fixture.state,
+        fixture.tenant.community(),
+        hire_id,
+    )
+    .await
+    .expect("read the slot intent")
+    .expect("the fixture slot intent exists");
+    assert_eq!(slot_intent.function, CompanyFunction::Finance);
+    assert_prebuilt_hire_head(&fixture, hire_id, HireStatus::Proposed, None).await;
+
+    actions.approve.expected_head_event_id =
+        Some(hire_head(&fixture, hire_id).await.event.id.to_hex());
+    let approved = submit(&fixture, sign_hire_action(&fixture.owner, &actions.approve))
+        .await
+        .expect("approve the prebuilt Finance hire");
+    assert!(approved.accepted);
+    assert_prebuilt_hire_head(&fixture, hire_id, HireStatus::Approved, None).await;
+
+    register_employee_for_owner(&fixture).await;
+    actions.attach_employee.expected_head_event_id =
+        Some(hire_head(&fixture, hire_id).await.event.id.to_hex());
+    actions.attach_employee.employee_pubkey = Some(employee.clone());
+    let attached = submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &actions.attach_employee),
+    )
+    .await
+    .expect("attach the founder-managed employee");
+    assert!(attached.accepted);
+    assert_prebuilt_hire_head(
+        &fixture,
+        hire_id,
+        HireStatus::Approved,
+        Some(employee.as_str()),
+    )
+    .await;
+
+    let wrong_channel = fixture
+        .state
+        .db
+        .create_channel(
+            fixture.tenant.community(),
+            &format!("wrong-introduction-{}", Uuid::new_v4().simple()),
+            ChannelType::Stream,
+            ChannelVisibility::Private,
+            None,
+            &fixture.owner.public_key().to_bytes(),
+            None,
+        )
+        .await
+        .expect("create the other private channel");
+    fixture
+        .state
+        .db
+        .add_member(
+            fixture.tenant.community(),
+            wrong_channel.id,
+            &fixture.employee.public_key().to_bytes(),
+            MemberRole::Bot,
+            Some(&fixture.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("add the employee to the other channel");
+    let wrong_introduction =
+        post_employee_introduction(&fixture, wrong_channel.id, "I am in the wrong channel.").await;
+    let mut wrong_complete = actions.complete.clone();
+    wrong_complete.expected_head_event_id =
+        Some(hire_head(&fixture, hire_id).await.event.id.to_hex());
+    wrong_complete.employee_pubkey = Some(employee.clone());
+    wrong_complete.introduction_event_id = Some(wrong_introduction.id.to_hex());
+    wrong_complete.time_zone = None;
+    assert_eq!(
+        rejection(submit(&fixture, sign_hire_action(&fixture.owner, &wrong_complete)).await),
+        "invalid: introduction must be a non-empty channel post signed by the new employee"
+    );
+    assert_prebuilt_hire_head(
+        &fixture,
+        hire_id,
+        HireStatus::Approved,
+        Some(employee.as_str()),
+    )
+    .await;
+
+    let introduction = post_employee_introduction(
+        &fixture,
+        fixture.channel_id,
+        "Head of Finance here. I have joined to lead Finance.",
+    )
+    .await;
+    actions.complete.expected_head_event_id =
+        Some(hire_head(&fixture, hire_id).await.event.id.to_hex());
+    actions.complete.employee_pubkey = Some(employee.clone());
+    actions.complete.introduction_event_id = Some(introduction.id.to_hex());
+    assert!(
+        actions.complete.time_zone.is_none(),
+        "the prebuilt action keeps engine side effects opt-in"
+    );
+    let completion_event = sign_hire_action(&fixture.owner, &actions.complete);
+    let completed = submit(&fixture, completion_event.clone())
+        .await
+        .expect("complete from the home-channel introduction");
+    assert!(completed.accepted);
+    let hired = assert_prebuilt_hire_head(
+        &fixture,
+        hire_id,
+        HireStatus::Hired,
+        Some(employee.as_str()),
+    )
+    .await;
+    assert_eq!(hired.introduction_event_id, Some(introduction.id.to_hex()));
+    assert_eq!(hired.source_action_event_id, completion_event.id.to_hex());
+    assert_eq!(
+        member_heads(&fixture).await.len(),
+        1,
+        "the employee is hired"
+    );
+
+    let finance = slot_head(&fixture, CompanyFunction::Finance)
+        .await
+        .expect("the prebuilt hire fills Finance");
+    assert_eq!(finance.state, SlotState::Filled);
+    assert_eq!(finance.lead_pubkey, Some(employee.clone()));
+    // Completion consumes this immutable intent by applying it to the function
+    // head. The relay retains the signed intent record for recovery and audit.
+    let consumed_slot_intent = crate::handlers::company_access::current_slot_hire(
+        &fixture.state,
+        fixture.tenant.community(),
+        hire_id,
+    )
+    .await
+    .expect("read the consumed slot intent")
+    .expect("the immutable slot intent remains queryable");
+    assert_eq!(consumed_slot_intent.function, CompanyFunction::Finance);
+    assert!(
+        goal_heads(&fixture, hire_id).await.is_empty(),
+        "no hire goal"
+    );
+    assert!(duty_heads(&fixture).await.is_empty(), "no hire duties");
+    assert!(
+        channel_workflows(&fixture).await.is_empty(),
+        "no hire workflows"
+    );
+    assert!(
+        kickoffs(&fixture, hire_id).await.is_empty(),
+        "no relay kickoff or wake occurs without timeZone"
     );
 }
 

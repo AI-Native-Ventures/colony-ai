@@ -1650,7 +1650,7 @@ export function referenceSalesRecordEvents(
             )
           : REFERENCE_LEADS;
   const requestedLeadCount = Number.isInteger(options.leadCount)
-    ? Math.min(500, Math.max(sourceLeadSeeds.length, options.leadCount ?? 0))
+    ? Math.min(2_000, Math.max(sourceLeadSeeds.length, options.leadCount ?? 0))
     : sourceLeadSeeds.length;
   const createdProspectIds: string[] = [];
   Array.from(

@@ -7,6 +7,7 @@ import {
 import type { AccessActionInput } from "./accessRecords";
 import type { FunctionId } from "./cofounderRecords";
 import type { CompanyJobActionInput } from "./jobAssignments";
+import { FUNCTION_DETAILS } from "./functions";
 import { prebuiltBuiltInRole } from "./prebuiltAgents";
 import type { PrebuiltAgent } from "./prebuiltAgents";
 import type { PrebuiltHireChoice } from "./prebuiltHireStorage";
@@ -172,13 +173,32 @@ export function buildPrebuiltHireDenyAction({
   };
 }
 
+function ownerFirstName(ownerName: string) {
+  return ownerName.trim().split(/\s+/)[0] || "there";
+}
+
 /** Keeps prompt-only instructions separate from the owner's approved greeting. */
 export function prebuiltFirstMessageText(
   agent: PrebuiltAgent,
   ownerName: string,
 ): string {
-  const firstName = ownerName.trim().split(/\s+/)[0] || "there";
-  return `Hi ${firstName}. ${agent.firstMessage}`;
+  return `Hi ${ownerFirstName(ownerName)}. ${agent.firstMessage}`;
+}
+
+/** Names the new employee in the proposal's introduction channel before hire completion. */
+export function prebuiltIntroductionText(
+  agent: PrebuiltAgent,
+  ownerName: string,
+): string {
+  const partName = FUNCTION_DETAILS[agent.part].name;
+  const assignment = agent.job
+    ? `do ${agent.job} in ${partName}`
+    : `lead ${partName}`;
+  return `${agent.name} here. I have joined to ${assignment}. ${ownerFirstName(ownerName)}, I sent you a message to get started.`;
+}
+
+export function prebuiltHireIntroductionMarker(hireId: string): string {
+  return `company-prebuilt-hire:${hireId}:introduction`;
 }
 
 export function prebuiltHireFirstMessageMarker(hireId: string): string {

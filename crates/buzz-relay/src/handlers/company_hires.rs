@@ -1025,11 +1025,27 @@ pub(super) fn relay_hire_head_event(
     previous: Option<&StoredEvent>,
     state: &AppState,
 ) -> Result<Event, IngestError> {
-    let content = serde_json::to_string(head).map_err(internal)?;
+    let (content, tags) = relay_hire_head_content_and_tags(head, d_tag)?;
     let now = nostr::Timestamp::now().as_secs();
     let created_at = previous.map_or(now, |stored| {
         now.max(stored.event.created_at.as_secs().saturating_add(1))
     });
+    EventBuilder::new(Kind::Custom(KIND_HIRE_HEAD as u16), content)
+        .tags(tags)
+        .custom_created_at(nostr::Timestamp::from_secs(created_at))
+        .sign_with_keys(&state.relay_keypair)
+        .map_err(internal)
+}
+
+/// Serializes a hire head and assembles the exact relay-owned identity tags.
+///
+/// The desktop consumes this wire shape, including the employee `p` tag after
+/// attachment, so it stays in one testable helper used by the signed builder.
+pub(super) fn relay_hire_head_content_and_tags(
+    head: &HireHead,
+    d_tag: &str,
+) -> Result<(String, Vec<Tag>), IngestError> {
+    let content = serde_json::to_string(head).map_err(internal)?;
     let d_tag =
         Tag::parse(["d", d_tag]).map_err(|error| internal(format!("hire d-tag: {error}")))?;
     let mut tags = vec![d_tag];
@@ -1039,11 +1055,7 @@ pub(super) fn relay_hire_head_event(
                 .map_err(|error| internal(format!("hire employee tag: {error}")))?,
         );
     }
-    EventBuilder::new(Kind::Custom(KIND_HIRE_HEAD as u16), content)
-        .tags(tags)
-        .custom_created_at(nostr::Timestamp::from_secs(created_at))
-        .sign_with_keys(&state.relay_keypair)
-        .map_err(internal)
+    Ok((content, tags))
 }
 
 fn command_d_tag(event: &Event, hire_id: Uuid) -> Result<String, IngestError> {
@@ -1161,5 +1173,7 @@ fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
 }
 
+#[cfg(test)]
+mod contract_tests;
 #[cfg(test)]
 mod postgres_tests;

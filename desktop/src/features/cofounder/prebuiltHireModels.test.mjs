@@ -8,6 +8,7 @@ import {
   prebuiltBuiltInRole,
   prebuiltHeadForFunction,
   prebuiltSpecialistForJob,
+  PREBUILT_AGENTS,
 } from "./prebuiltAgents.ts";
 import {
   buildPrebuiltHireApproveAction,
@@ -18,7 +19,9 @@ import {
   buildPrebuiltJobHireSetAction,
   buildPrebuiltSlotHireSetAction,
   prebuiltFirstMessageText,
+  prebuiltHireIntroductionMarker,
   prebuiltHireFirstMessageMarker,
+  prebuiltIntroductionText,
 } from "./prebuiltHireModels.ts";
 import { buildCompanyJobActionEvent } from "./jobAssignments.ts";
 
@@ -110,12 +113,28 @@ test("prebuilt head role-pack jobs keep their approved display names", () => {
   }
 });
 
-test("the owner-visible first message is tagged durably and names the owner", () => {
+test("the channel introduction and owner-visible first message use distinct durable markers", () => {
   const agent = prebuiltHeadForFunction("sales");
   assert.ok(agent);
+  const specialist = PREBUILT_AGENTS.find(
+    (candidate) => candidate.id === "prebuilt-invoices",
+  );
+  assert.ok(specialist);
+  assert.equal(
+    prebuiltIntroductionText(agent, "Basheer N."),
+    "Head of Sales here. I have joined to lead Sales. Basheer, I sent you a message to get started.",
+  );
+  assert.equal(
+    prebuiltIntroductionText(specialist, "Basheer N."),
+    "Invoices specialist here. I have joined to do Invoices in Finance. Basheer, I sent you a message to get started.",
+  );
   assert.equal(
     prebuiltFirstMessageText(agent, "Basheer N."),
     `Hi Basheer. ${agent.firstMessage}`,
+  );
+  assert.equal(
+    prebuiltHireIntroductionMarker("hire-id"),
+    "company-prebuilt-hire:hire-id:introduction",
   );
   assert.equal(
     prebuiltHireFirstMessageMarker("hire-id"),

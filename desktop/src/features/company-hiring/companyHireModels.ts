@@ -291,10 +291,6 @@ export function parseCompanyHireHeadEvent(
   } catch {
     return null;
   }
-  const dTags = event.tags.filter((tag) => tag[0] === "d");
-  if (event.tags.length !== 1 || dTags.length !== 1 || dTags[0]?.length !== 2) {
-    return null;
-  }
   let content: unknown;
   try {
     content = JSON.parse(event.content) as unknown;
@@ -302,17 +298,30 @@ export function parseCompanyHireHeadEvent(
     return null;
   }
   const head = parseHead(content);
-  const dTag = dTags[0][1];
+  const dTag = event.tags[0];
+  const employeeTag = event.tags[1];
+  const hasDTag = dTag?.[0] === "d" && dTag.length === 2;
+  const hasOnlyDTag = event.tags.length === 1 && hasDTag;
+  const hasMatchingEmployeeTag =
+    event.tags.length === 2 &&
+    hasDTag &&
+    employeeTag?.[0] === "p" &&
+    employeeTag.length === 2 &&
+    head?.employeePubkey !== undefined &&
+    employeeTag[1]?.toLowerCase() === head.employeePubkey.toLowerCase();
+  if (!hasOnlyDTag && !hasMatchingEmployeeTag) return null;
+  const dTagValue = dTag?.[1];
   if (
     !head ||
-    head.proposal.hireId !== dTag?.slice("company:hire:".length) ||
-    dTag !== companyHireDTag(head.proposal.hireId) ||
+    !dTagValue ||
+    head.proposal.hireId !== dTagValue?.slice("company:hire:".length) ||
+    dTagValue !== companyHireDTag(head.proposal.hireId) ||
     (expectedHireId !== undefined &&
       head.proposal.hireId.toLowerCase() !== expectedHireId.toLowerCase())
   ) {
     return null;
   }
-  return { dTag, event, head };
+  return { dTag: dTagValue, event, head };
 }
 
 export function parseCompanyHireAction(
