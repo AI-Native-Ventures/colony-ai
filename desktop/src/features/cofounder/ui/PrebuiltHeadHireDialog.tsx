@@ -23,7 +23,6 @@ import {
 } from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { companyTeamQueryKey } from "@/features/company-team/teamRelay";
 import {
   companyAccessQueryKey,
@@ -33,13 +32,8 @@ import {
 import { companyFunctionHeadsQueryKey } from "@/features/cofounder/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMessages";
-import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import type { ManagedAgent } from "@/shared/api/types";
+import { Dialog, DialogContent } from "@/shared/ui/dialog";
 
 import {
   defaultHireLocalConfiguration,
@@ -103,82 +97,19 @@ import type {
   PrebuiltHireCompletion,
   PrebuiltHireProgress,
 } from "../prebuiltHireStorage";
-
-type ModelChoice = {
-  runtimeId: string;
-  providerId: string;
-  modelId: string;
-  label: string;
-};
-
-type ChoiceDraft = {
-  runtimeId: string;
-  providerId: string;
-  modelId: string;
-  effortLevel: string;
-};
-
-type HireRecoveryState = "idle" | "checking" | "ready" | "failed";
-
-const EMPTY_CHOICE: ChoiceDraft = {
-  runtimeId: "",
-  providerId: "",
-  modelId: "",
-  effortLevel: "",
-};
-
-function choiceKey(runtimeId: string, providerId: string) {
-  return JSON.stringify([runtimeId, providerId]);
-}
-
-function providerForRuntime(
-  runtime: AcpRuntimeCatalogEntry,
-  inheritedProvider: string,
-) {
-  return runtime.providerEnvVar ? inheritedProvider : "";
-}
-
-function storedChoice(draft: ChoiceDraft): PrebuiltHireChoice {
-  return {
-    runtimeId: draft.runtimeId,
-    providerId: draft.providerId,
-    modelId: draft.modelId,
-    ...(draft.effortLevel ? { effortLevel: draft.effortLevel } : {}),
-  };
-}
-
-function prebuiltChoiceFieldClassName({
-  required,
-  value,
-}: {
-  required: boolean;
-  value: string;
-}) {
-  const needsChoice = required && !value;
-  return [
-    "h-[2.875rem] min-w-0 max-w-full rounded-xl border-2 px-3 text-sm font-medium",
-    needsChoice
-      ? "border-primary focus-visible:ring-primary/35"
-      : "border-input",
-  ].join(" ");
-}
-
-function sameProposal(
-  record: CompanyHireHeadRecord | null,
-  hireId: string,
-  agent: PrebuiltAgent,
-) {
-  return (
-    record?.head.proposal.hireId === hireId &&
-    record.head.proposal.displayName === agent.name &&
-    record.head.proposal.title === (agent.job ?? agent.name)
-  );
-}
-
-function errorText(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  return "The hire paused before it finished. Retry to continue from the saved step.";
-}
+import { PrebuiltHireAgentSummary } from "./PrebuiltHireAgentSummary";
+import {
+  EMPTY_CHOICE,
+  choiceKey,
+  errorText,
+  prebuiltChoiceFieldClassName,
+  providerForRuntime,
+  sameProposal,
+  storedChoice,
+  type ChoiceDraft,
+  type HireRecoveryState,
+  type ModelChoice,
+} from "./prebuiltHireDialogHelpers";
 
 export function PrebuiltHeadHireDialog({
   agent: agentOverride = null,
@@ -1010,51 +941,11 @@ export function PrebuiltHeadHireDialog({
         className="max-w-[37.5rem]"
         data-testid="prebuilt-head-hire-dialog"
       >
-        <div className="pr-8">
-          <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-            Hire for {FUNCTION_DETAILS[functionId].name}
-          </p>
-          <DialogTitle className="mt-1">{agent.name}</DialogTitle>
-          <DialogDescription id="prebuilt-hire-description">
-            {managerCopy}
-          </DialogDescription>
-        </div>
-
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <EmployeeAvatar
-            className="size-11 rounded-full"
-            instance={prebuiltAgentAvatarDataUrl(agent)}
-            name={agent.name}
-            role={agent.job ?? `Head of ${FUNCTION_DETAILS[functionId].name}`}
-          />
-          <div>
-            <p className="text-sm font-extrabold">{agent.name}</p>
-            <p className="text-xs text-muted-foreground">Pre-built agent.</p>
-          </div>
-        </div>
-
-        <section className="rounded-xl border border-border bg-muted/30 p-4">
-          <div>
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              What it does
-            </p>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
-              {agent.does.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="mt-4 border-t border-border pt-4">
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              What it asks of you
-            </p>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
-              {agent.asks.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
+        <PrebuiltHireAgentSummary
+          agent={agent}
+          functionId={functionId}
+          managerCopy={managerCopy}
+        />
 
         {runtimes.map((runtime) => (
           <WorkerModelProbe
