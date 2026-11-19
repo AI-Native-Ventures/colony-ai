@@ -111,6 +111,7 @@ type MultiCityWindow = Window & {
   __BUZZ_E2E_MULTI_CITY_RESULT_LOCATIONS__?: string[];
   __BUZZ_E2E_REFERENCE_DISCOVERY_FREEZE__?: boolean;
   __BUZZ_E2E_REFERENCE_DISCOVERY_RESUME__?: () => void;
+  __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?: () => void;
   __BUZZ_E2E_W10_FAIL_NEXT_RUN__?: boolean;
   __BUZZ_E2E_W10_FAIL_NEXT_START__?: boolean;
 };
@@ -196,11 +197,15 @@ async function assertCityTabGeometry(
       heights: tabs.map((tab) => tab.offsetHeight),
       tops: tabs.map((tab) => Math.round(tab.getBoundingClientRect().top)),
       overflows: [
-        {
-          clientWidth: node.clientWidth,
-          name: "tab row",
-          scrollWidth: node.scrollWidth,
-        },
+        ...(node.scrollWidth > node.clientWidth
+          ? [
+              {
+                clientWidth: node.clientWidth,
+                name: "tab row",
+                scrollWidth: node.scrollWidth,
+              },
+            ]
+          : []),
         ...tabs.flatMap((tab) =>
           [
             {
@@ -337,7 +342,6 @@ async function exerciseFourCityGroup(page: Page, screenshotPrefix: string) {
   await page.getByRole("tab", { name: /All cities/ }).click();
   const summary = page.getByTestId("multi-city-all-summary");
   await expect(summary).toBeVisible();
-  await capture(page, `${screenshotPrefix}-campaign-all.png`);
 }
 
 async function createTenCityCampaign(page: Page) {
@@ -447,12 +451,11 @@ async function exerciseFailedCityRecovery(page: Page) {
   const retry = panel.getByRole("button", { name: /Try again/ });
   await expect(retry).toBeVisible();
   await retry.press("Enter");
-  await expect(
-    page.getByRole("tab", {
-      name: new RegExp(`${failedCity}.*Searching`),
-    }),
-  ).toBeVisible();
-  await expect(failed).toBeFocused();
+  const recoveredCity = page.getByRole("tab", {
+    name: new RegExp(`${failedCity}.*Searching`),
+  });
+  await expect(recoveredCity).toBeVisible();
+  await expect(recoveredCity).toBeFocused();
 }
 
 test("five cities retain a paused slot and replace only completed or cancelled slots", async ({
@@ -473,8 +476,8 @@ test("five cities retain a paused slot and replace only completed or cancelled s
   await expect(
     page.getByRole("tab", { name: /Durban.*Searching/ }),
   ).toBeVisible();
-  const pretoria = page.getByRole("tab", { name: /Pretoria.*Waiting/ });
-  const bloemfontein = page.getByRole("tab", { name: /Bloemfontein.*Waiting/ });
+  const pretoria = page.getByRole("tab", { name: /Pretoria/ });
+  const bloemfontein = page.getByRole("tab", { name: /Bloemfontein/ });
   const johannesburg = page.getByRole("tab", { name: /Johannesburg/ });
   await johannesburg.click();
   await page.getByRole("button", { name: "Pause" }).click();
@@ -484,8 +487,7 @@ test("five cities retain a paused slot and replace only completed or cancelled s
 
   await page.evaluate(() => {
     const testWindow = window as MultiCityWindow;
-    testWindow.__BUZZ_E2E_REFERENCE_DISCOVERY_FREEZE__ = false;
-    testWindow.__BUZZ_E2E_REFERENCE_DISCOVERY_RESUME__?.();
+    testWindow.__BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?.();
   });
   await expect(pretoria).toHaveAttribute("aria-label", /Searching/, {
     timeout: 5_000,

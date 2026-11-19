@@ -140,6 +140,8 @@ declare global {
     __BUZZ_E2E_REFERENCE_DISCOVERY_FREEZE__?: boolean;
     /** Starts timers for frozen reference campaigns after a screenshot. */
     __BUZZ_E2E_REFERENCE_DISCOVERY_RESUME__?: () => void;
+    /** Completes one running fixture campaign so scheduler tests stay deterministic. */
+    __BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__?: () => void;
   }
 }
 
@@ -262,6 +264,19 @@ function createReferenceDiscoveryProvider(
         advanceProgress(campaign.id);
       }
     }
+  };
+
+  window.__BUZZ_E2E_REFERENCE_DISCOVERY_COMPLETE_ONE__ = () => {
+    const campaign = campaigns.find(
+      (candidate) => candidate.status === "running",
+    );
+    if (!campaign) return;
+    stopProgress(campaign.id);
+    update({
+      ...campaign,
+      count: Math.min(campaign.target, campaign.prospectIds.length),
+      status: "complete",
+    });
   };
 
   return {
