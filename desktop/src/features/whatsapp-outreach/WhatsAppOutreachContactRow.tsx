@@ -189,7 +189,7 @@ export function WhatsAppOutreachContactRow({
           <span title={optOutReason}>Replied “{optOutReason}”. Permanent.</span>
           <WhatsAppConfirmAction
             confirmLabel="Undo opt-out"
-            description="This removes the active opt-out for this phone number. A whole-business hold, if present, remains in place."
+            description="This removes the active opt-out for this phone number. A business-wide stop, if present, remains in place."
             onConfirm={onUndoOptOut}
             testId={`whatsapp-opt-out-undo-${contact.waId}`}
             title="Undo this opt-out?"

@@ -275,7 +275,7 @@ const relayOutput = {
     // a contact-stage or message-state enum value before the desktop supports it.
     hasSentOutbound: true,
     businessOutreachStopped: true,
-    businessStopReason: "inbound reply received",
+    businessStopReason: "contact opted out",
   },
 };
 

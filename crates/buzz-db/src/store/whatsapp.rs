@@ -31,9 +31,19 @@ pub const MEDIA_MAX_ATTEMPTS: i32 = 8;
 pub const MEDIA_LINK_MAX_ATTEMPTS: i32 = 40;
 /// Idempotency-key prefix assigned only by the interactive WhatsApp send command.
 ///
-/// Batch and relay-owned follow-up rows use their own prefixes. This keeps the narrow owner
-/// reply exception below from becoming a general automatic-send exception.
+/// Batch and relay-owned follow-up rows use their own prefixes.
 pub const SEND_REQUEST_IDEMPOTENCY_PREFIX: &str = "req:";
+
+/// The shared predicate for every read of the durable business-stop ledger.
+///
+/// Legacy rows written for an ordinary inbound reply are inert. Every other reason, including
+/// an unknown future reason, remains an active stop so the relay fails closed.
+/// This expands to a SQL literal so sqlx continues to validate each query as static SQL.
+macro_rules! active_whatsapp_business_stop_predicate {
+    () => {
+        "b.reason IS DISTINCT FROM 'inbound reply received'"
+    };
+}
 
 async fn begin(pool: &PgPool) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
     let connection = crate::observability::acquire_writer(
@@ -381,12 +391,11 @@ pub struct WhatsappBusinessStop {
 /// The durable reason that created a whole-business stop.
 ///
 /// The database schema intentionally retains the plain reason for existing installations and
-/// owner-visible history. New writes use this type; reads classify historical rows by their
-/// persisted reason and fail closed for an unrecognized value.
+/// owner-visible history. `InboundReply` classifies historical rows only; new writes use
+/// `ContactOptOut`. Reads fail closed for an unrecognized persisted reason.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WhatsappBusinessStopCause {
-    /// A customer replied without opting out. Outreach stops, but an owner may answer that
-    /// contact with free text while its service window is open.
+    /// A customer replied without opting out. Retained to classify inert legacy rows.
     InboundReply,
     /// The inbound message was an opt-out. Nothing may bypass this stop.
     ContactOptOut,
@@ -424,23 +433,12 @@ pub struct WhatsappSendSafety {
     pub business_id: Option<String>,
 }
 
-impl WhatsappSendSafety {
-    /// Whether this is the one business-stop cause eligible for the owner reply exception.
-    pub fn is_inbound_reply_business_stop(&self) -> bool {
-        self.scope == "business_stop"
-            && matches!(
-                WhatsappBusinessStopCause::from_reason(&self.reason),
-                Some(WhatsappBusinessStopCause::InboundReply)
-            )
-    }
-}
-
 /// Result of durably applying an inbound reply's safety effect.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InboundSafetyOutcome {
     /// The inbound event made this phone's opt-out record active for the first time.
     pub opted_out_now: bool,
-    /// The inbound event stopped this linked business for the first time.
+    /// An inbound opt-out stopped this linked business for the first time.
     pub business_stopped_now: bool,
 }
 
@@ -1847,11 +1845,10 @@ impl Db {
         Ok(result.rows_affected() == 1)
     }
 
-    /// Persist every safety consequence of one inbound reply in a transaction. An opt-out keeps
-    /// the legacy contact projection for installed desktop clients and also records the exact
-    /// matched rule in the append-only suppression ledger. Any linked reply stops outreach to
-    /// every current and future contact of that business. The only exception is an owner-approved
-    /// free-text reply to a linked contact with an open service window.
+    /// Persist every safety consequence of one inbound reply in a transaction. Every reply
+    /// refreshes the contact's service window and one-message fence. An opt-out also keeps the
+    /// legacy contact projection, records the exact rule in the append-only suppression ledger,
+    /// and stops every current and future contact of the linked business.
     #[allow(clippy::too_many_arguments)]
     pub async fn whatsapp_record_inbound_safety(
         &self,
@@ -1888,15 +1885,19 @@ impl Db {
         .execute(&mut *tx)
         .await?;
 
-        let business_id: Option<String> = sqlx::query_scalar(
-            "SELECT lead_id FROM whatsapp_contacts WHERE community_id = $1 AND wa_id = $2 \
-             FOR UPDATE",
-        )
-        .bind(community.as_uuid())
-        .bind(wa_id)
-        .fetch_optional(&mut *tx)
-        .await?
-        .flatten();
+        let business_id: Option<String> = if opt_out_reason.is_some() {
+            sqlx::query_scalar(
+                "SELECT lead_id FROM whatsapp_contacts WHERE community_id = $1 AND wa_id = $2 \
+                 FOR UPDATE",
+            )
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .flatten()
+        } else {
+            None
+        };
 
         let mut outcome = InboundSafetyOutcome::default();
         if let Some(reason) = opt_out_reason {
@@ -1940,11 +1941,6 @@ impl Db {
         }
 
         if let Some(business_id) = business_id.as_deref() {
-            let cause = if opt_out_reason.is_some() {
-                WhatsappBusinessStopCause::ContactOptOut
-            } else {
-                WhatsappBusinessStopCause::InboundReply
-            };
             let inserted = sqlx::query(
                 "INSERT INTO whatsapp_business_stops \
                  (community_id, business_id, source_wa_id, reason, matched_rule) \
@@ -1953,7 +1949,7 @@ impl Db {
             .bind(community.as_uuid())
             .bind(business_id)
             .bind(wa_id)
-            .bind(cause.reason())
+            .bind(WhatsappBusinessStopCause::ContactOptOut.reason())
             .bind(matched_rule.map(|rule| rule.chars().take(120).collect::<String>()))
             .execute(&mut *tx)
             .await?;
@@ -2015,8 +2011,8 @@ impl Db {
     }
 
     /// Undo one active phone-safety decision while retaining its full history. Undoing an
-    /// opt-out clears the legacy contact projection as well; a business reply stop remains a
-    /// separate conservative hold until a later product decision provides an override.
+    /// opt-out clears the legacy contact projection as well; an existing business-wide stop
+    /// remains a separate conservative hold.
     pub async fn whatsapp_undo_suppression(
         &self,
         community: CommunityId,
@@ -2061,7 +2057,7 @@ impl Db {
         wa_id: &str,
         lead_id: Option<&str>,
     ) -> Result<Option<WhatsappSendSafety>> {
-        let row = sqlx::query(
+        let query = concat!(
             "SELECT scope, reason, matched_rule, business_id FROM ( \
                  SELECT s.scope, s.reason, s.matched_rule, NULL::text AS business_id, 0 AS priority \
                  FROM whatsapp_suppressions s \
@@ -2071,13 +2067,16 @@ impl Db {
                  SELECT 'business_stop', b.reason, b.matched_rule, b.business_id, 1 AS priority \
                  FROM whatsapp_business_stops b \
                  WHERE b.community_id = $1 AND b.business_id = $3::text \
-             ) safety ORDER BY priority LIMIT 1",
-        )
-        .bind(community.as_uuid())
-        .bind(wa_id)
-        .bind(lead_id)
-        .fetch_optional(&self.pool)
-        .await?;
+                   AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ) safety ORDER BY priority LIMIT 1",
+        );
+        let row = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .bind(lead_id)
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(|row| {
             Ok(WhatsappSendSafety {
                 scope: row.try_get("scope")?,
@@ -2087,38 +2086,6 @@ impl Db {
             })
         })
         .transpose()
-    }
-
-    /// Whether this stored row is the narrow direct-send shape that may answer an inbound-reply
-    /// business stop. A `req:` row is queued only by an owner/admin command or after an owner
-    /// approves an agent draft. The query deliberately excludes batches and relay-owned
-    /// follow-ups, and repeats the open-window predicate at sender time rather than trusting an
-    /// earlier command check.
-    pub async fn whatsapp_is_open_owner_reply(
-        &self,
-        community: CommunityId,
-        message_id: Uuid,
-        now: DateTime<Utc>,
-    ) -> Result<bool> {
-        sqlx::query_scalar(
-            "SELECT EXISTS ( \
-                 SELECT 1 FROM whatsapp_messages m \
-                 JOIN whatsapp_contacts c \
-                   ON c.community_id = m.community_id AND c.wa_id = m.wa_id \
-                 WHERE m.community_id = $1 AND m.id = $2 AND m.direction = 'out' \
-                   AND m.kind = 'text' AND m.batch_id IS NULL AND NOT m.new_chat \
-                   AND m.idempotency_key LIKE $3 \
-                   AND c.last_inbound_at IS NOT NULL \
-                   AND c.last_inbound_at + interval '24 hours' > $4 \
-             )",
-        )
-        .bind(community.as_uuid())
-        .bind(message_id)
-        .bind(format!("{SEND_REQUEST_IDEMPOTENCY_PREFIX}%"))
-        .bind(now)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(Into::into)
     }
 
     /// Active phone decisions for settings and discovery/list preflight. Historical rows stay
@@ -2141,25 +2108,28 @@ impl Db {
         rows.iter().map(row_to_suppression).collect()
     }
 
-    /// Active whole-business reply stops for the owner safety ledger.
+    /// Active business stops for the owner safety ledger.
     pub async fn whatsapp_list_business_stops(
         &self,
         community: CommunityId,
         limit: i64,
     ) -> Result<Vec<WhatsappBusinessStop>> {
-        let rows = sqlx::query(
+        let query = concat!(
             "SELECT business_id, source_wa_id, reason, matched_rule, created_at \
-             FROM whatsapp_business_stops WHERE community_id = $1 \
-             ORDER BY created_at DESC, business_id DESC LIMIT $2",
-        )
-        .bind(community.as_uuid())
-        .bind(limit.clamp(1, 1_000))
-        .fetch_all(&self.pool)
-        .await?;
+             FROM whatsapp_business_stops b WHERE b.community_id = $1 \
+               AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ORDER BY b.created_at DESC, b.business_id DESC LIMIT $2",
+        );
+        let rows = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(limit.clamp(1, 1_000))
+            .fetch_all(&self.pool)
+            .await?;
         rows.iter().map(row_to_business_stop).collect()
     }
 
-    /// Whole-business holds keyed by the contact number they fence. This bulk projection keeps
+    /// Active business stops keyed by the contact number they fence. This bulk projection keeps
     /// contact and thread reads additive while avoiding one query per contact row.
     pub async fn whatsapp_business_stops_for_contacts(
         &self,
@@ -2169,17 +2139,20 @@ impl Db {
         if wa_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
-        let rows = sqlx::query(
+        let query = concat!(
             "SELECT c.wa_id, b.business_id, b.source_wa_id, b.reason, b.matched_rule, \
                     b.created_at \
              FROM whatsapp_contacts c JOIN whatsapp_business_stops b \
                ON b.community_id = c.community_id AND b.business_id = c.lead_id \
-             WHERE c.community_id = $1 AND c.wa_id = ANY($2)",
-        )
-        .bind(community.as_uuid())
-        .bind(wa_ids)
-        .fetch_all(&self.pool)
-        .await?;
+             WHERE c.community_id = $1 AND c.wa_id = ANY($2) \
+               AND ",
+            active_whatsapp_business_stop_predicate!(),
+        );
+        let rows = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(wa_ids)
+            .fetch_all(&self.pool)
+            .await?;
         rows.iter()
             .map(|row| Ok((row.try_get("wa_id")?, row_to_business_stop(row)?)))
             .collect()
@@ -2820,7 +2793,7 @@ impl Db {
         lease_until: DateTime<Utc>,
         now: DateTime<Utc>,
     ) -> Result<bool> {
-        let result = sqlx::query(
+        let query = concat!(
             "UPDATE whatsapp_messages AS m SET state = 'sending', lease_token = $3, lease_until = $4, \
                  sent_at = $5, updated_at = now() \
              WHERE m.community_id = $1 AND m.id = $2 AND m.state IN ('queued', 'ready') \
@@ -2844,24 +2817,18 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
-                     AND NOT ( \
-                         m.direction = 'out' AND m.kind = 'text' AND m.batch_id IS NULL \
-                         AND NOT m.new_chat AND m.idempotency_key LIKE $6 \
-                         AND c.last_inbound_at IS NOT NULL \
-                         AND c.last_inbound_at + interval '24 hours' > $5 \
-                         AND b.reason = $7 \
-                     ) \
-               )",
-        )
-        .bind(community.as_uuid())
-        .bind(message_id)
-        .bind(lease_token)
-        .bind(lease_until)
-        .bind(now)
-        .bind(format!("{SEND_REQUEST_IDEMPOTENCY_PREFIX}%"))
-        .bind(WhatsappBusinessStopCause::InboundReply.reason())
-        .execute(&self.pool)
-        .await?;
+                     AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " )",
+        );
+        let result = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(message_id)
+            .bind(lease_token)
+            .bind(lease_until)
+            .bind(now)
+            .execute(&self.pool)
+            .await?;
         Ok(result.rows_affected() == 1)
     }
 
@@ -2991,7 +2958,7 @@ impl Db {
         if error_codes.is_empty() {
             return Ok(0);
         }
-        let count: i64 = sqlx::query_scalar(
+        let query = concat!(
             "SELECT count(*) FROM whatsapp_messages m \
              WHERE m.community_id = $1 AND m.direction = 'out' AND m.state = 'failed' \
                AND m.error_code = ANY($2) \
@@ -3010,12 +2977,15 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
-               )",
-        )
-        .bind(community.as_uuid())
-        .bind(error_codes)
-        .fetch_one(&self.pool)
-        .await?;
+                     AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " )",
+        );
+        let count: i64 = sqlx::query_scalar(query)
+            .bind(community.as_uuid())
+            .bind(error_codes)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(count)
     }
 
@@ -3030,7 +3000,7 @@ impl Db {
         if error_codes.is_empty() {
             return Ok(0);
         }
-        let count: i64 = sqlx::query_scalar(
+        let query = concat!(
             "SELECT count(*) FROM whatsapp_messages m \
              WHERE m.community_id = $1 AND m.direction = 'out' \
                AND (m.state IN ('queued', 'ready') \
@@ -3050,12 +3020,15 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
-               )",
-        )
-        .bind(community.as_uuid())
-        .bind(error_codes)
-        .fetch_one(&self.pool)
-        .await?;
+                     AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " )",
+        );
+        let count: i64 = sqlx::query_scalar(query)
+            .bind(community.as_uuid())
+            .bind(error_codes)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(count)
     }
 
@@ -3072,7 +3045,7 @@ impl Db {
             return Ok(0);
         }
         let mut tx = begin(&self.pool).await?;
-        let rows = sqlx::query(
+        let query = concat!(
             "UPDATE whatsapp_messages m SET \
                  state = CASE WHEN m.batch_id IS NULL THEN 'queued' ELSE 'ready' END, \
                  lease_token = NULL, lease_until = NULL, sent_at = NULL, send_after = NULL, \
@@ -3094,13 +3067,16 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
-               ) \
+                     AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ) \
              RETURNING m.batch_id",
-        )
-        .bind(community.as_uuid())
-        .bind(error_codes)
-        .fetch_all(&mut *tx)
-        .await?;
+        );
+        let rows = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(error_codes)
+            .fetch_all(&mut *tx)
+            .await?;
         let batch_ids = rows
             .iter()
             .filter_map(|row| row.try_get::<Option<Uuid>, _>("batch_id").ok().flatten())
@@ -3161,7 +3137,7 @@ impl Db {
         .execute(&mut *tx)
         .await?;
 
-        let rows = sqlx::query(
+        let query = concat!(
             "UPDATE whatsapp_messages m SET \
                  state = CASE WHEN m.batch_id IS NULL THEN 'queued' ELSE 'ready' END, \
                  lease_token = NULL, lease_until = NULL, sent_at = NULL, send_after = NULL, \
@@ -3183,13 +3159,16 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
-               ) \
+                     AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ) \
              RETURNING m.batch_id",
-        )
-        .bind(community.as_uuid())
-        .bind(error_codes)
-        .fetch_all(&mut *tx)
-        .await?;
+        );
+        let rows = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(error_codes)
+            .fetch_all(&mut *tx)
+            .await?;
         let batch_ids = rows
             .iter()
             .filter_map(|row| row.try_get::<Option<Uuid>, _>("batch_id").ok().flatten())
@@ -3237,7 +3216,7 @@ impl Db {
         expected_error_code: &str,
     ) -> Result<bool> {
         let mut tx = begin(&self.pool).await?;
-        let row = sqlx::query(
+        let query = concat!(
             "UPDATE whatsapp_messages m SET \
                  state = CASE WHEN m.batch_id IS NULL THEN 'queued' ELSE 'ready' END, \
                  lease_token = NULL, lease_until = NULL, sent_at = NULL, send_after = NULL, \
@@ -3259,15 +3238,18 @@ impl Db {
                    JOIN whatsapp_business_stops b \
                      ON b.community_id = c.community_id AND b.business_id = c.lead_id \
                    WHERE c.community_id = m.community_id AND c.wa_id = m.wa_id \
-               ) \
+                     AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ) \
              RETURNING m.batch_id",
-        )
-        .bind(community.as_uuid())
-        .bind(message_id)
-        .bind(wa_id)
-        .bind(expected_error_code)
-        .fetch_optional(&mut *tx)
-        .await?;
+        );
+        let row = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(message_id)
+            .bind(wa_id)
+            .bind(expected_error_code)
+            .fetch_optional(&mut *tx)
+            .await?;
         let Some(row) = row else {
             tx.commit().await?;
             return Ok(false);
@@ -3299,7 +3281,7 @@ impl Db {
         now: DateTime<Utc>,
     ) -> Result<bool> {
         let mut tx = begin(&self.pool).await?;
-        let result = sqlx::query(
+        let query = concat!(
             "WITH scheduled_contact AS ( \
                  UPDATE whatsapp_contacts c SET paused_at = COALESCE(c.paused_at, $5), \
                      pause_reason = $6, retry_after = $7, updated_at = now() \
@@ -3314,7 +3296,9 @@ impl Db {
                    AND NOT EXISTS ( \
                        SELECT 1 FROM whatsapp_business_stops b \
                        WHERE b.community_id = c.community_id AND b.business_id = c.lead_id \
-                   ) \
+                         AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ) \
                    AND EXISTS ( \
                        SELECT 1 FROM whatsapp_messages m \
                        WHERE m.community_id = c.community_id AND m.id = $3 AND m.wa_id = c.wa_id \
@@ -3326,16 +3310,17 @@ impl Db {
              FROM scheduled_contact c \
              WHERE m.community_id = $1 AND m.wa_id = c.wa_id AND m.id = $3 \
                AND m.direction = 'out' AND m.state = 'failed' AND m.error_code = $4",
-        )
-        .bind(community.as_uuid())
-        .bind(wa_id)
-        .bind(message_id)
-        .bind(expected_error_code)
-        .bind(now)
-        .bind(format!("Meta error {expected_error_code}"))
-        .bind(retry_after)
-        .execute(&mut *tx)
-        .await?;
+        );
+        let result = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(wa_id)
+            .bind(message_id)
+            .bind(expected_error_code)
+            .bind(now)
+            .bind(format!("Meta error {expected_error_code}"))
+            .bind(retry_after)
+            .execute(&mut *tx)
+            .await?;
         tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
@@ -3350,7 +3335,7 @@ impl Db {
         now: DateTime<Utc>,
     ) -> Result<i64> {
         let mut tx = begin(&self.pool).await?;
-        let rows = sqlx::query(
+        let query = concat!(
             "WITH due_contacts AS ( \
                  UPDATE whatsapp_contacts c SET paused_at = NULL, pause_reason = NULL, \
                      retry_after = NULL, updated_at = now() \
@@ -3365,7 +3350,9 @@ impl Db {
                    AND NOT EXISTS ( \
                        SELECT 1 FROM whatsapp_business_stops b \
                        WHERE b.community_id = c.community_id AND b.business_id = c.lead_id \
-                   ) \
+                         AND ",
+            active_whatsapp_business_stop_predicate!(),
+            " ) \
                    AND EXISTS ( \
                        SELECT 1 FROM whatsapp_messages m \
                        WHERE m.community_id = c.community_id AND m.wa_id = c.wa_id \
@@ -3383,13 +3370,14 @@ impl Db {
                AND m.state = 'failed' AND m.error_code = $4 \
                AND m.send_after IS NOT NULL AND m.send_after <= $3 \
              RETURNING m.batch_id",
-        )
-        .bind(community.as_uuid())
-        .bind(format!("Meta error {expected_error_code}"))
-        .bind(now)
-        .bind(expected_error_code)
-        .fetch_all(&mut *tx)
-        .await?;
+        );
+        let rows = sqlx::query(query)
+            .bind(community.as_uuid())
+            .bind(format!("Meta error {expected_error_code}"))
+            .bind(now)
+            .bind(expected_error_code)
+            .fetch_all(&mut *tx)
+            .await?;
         let batch_ids = rows
             .iter()
             .filter_map(|row| row.try_get::<Option<Uuid>, _>("batch_id").ok().flatten())

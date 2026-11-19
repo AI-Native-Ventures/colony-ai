@@ -1367,10 +1367,7 @@ async fn handle_safety_action(
                 changed,
                 "opt_out_undo",
                 if changed {
-                    format!(
-                        "opt-out undone for {}; the business reply hold remains",
-                        e164(&wa_id)
-                    )
+                    format!("opt-out undone for {}", e164(&wa_id))
                 } else {
                     "duplicate: no active opt-out for this number".to_string()
                 },

@@ -182,7 +182,8 @@ buttons: [{type, text}] }`.
 Contact: `{ waId, e164, displayName, leadId, ownerPubkey, threadRootEventId, lastInboundAt,
 windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered, businessOutreachStopped,
 businessStopReason }`. The two business-stop fields are additive booleans/text: installed desktops
-ignore them, while the safety UI can show that a reply stopped the whole business.
+ignore them, while the safety UI can show an active business-wide stop. A business with only a
+legacy `inbound reply received` row returns `false` and `null` for these fields.
 
 Suppression: `{ id, identityKind: "phone"|"email"|"domain", identityValue, scope:
 "opt_out"|"never_contact", reason, matchedRule, source, createdAt, undoneAt }`.
@@ -280,8 +281,9 @@ accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
 
 The relay validates the template (approved, slot count matches), normalises numbers to E.164,
 re-renders every preview itself and stores the batch as `pending`. A pending batch never sends.
-Opted-out, paused, never-contact, or whole-business-stopped numbers are refused at create time
-with a clear reason per row.
+Opted-out, paused, never-contact, or business-wide-stopped numbers are refused at create time
+with a clear reason per row. Business-wide stops come from a linked opt-out or an unrecognized
+stored reason, which remains fail-closed.
 Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
 ### `47049` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
@@ -324,7 +326,7 @@ To decide one agent draft (see `47050`) send `draftId` instead of `batchId`:
 ```
 
 Approve can be one tap in the thread (no edit fields). Approval re-checks every send rule at that
-moment (opted out, never-contact, whole-business stop, paused, quality stop, 24 hour window for
+moment (opted out, never-contact, business-wide stop, paused, quality stop, 24 hour window for
 free text, one message in a row); a
 refused approval leaves the draft pending with the plain reason. A draft can be decided once: a
 repeat is answered `duplicate: this draft was already decided`.
@@ -338,7 +340,7 @@ repeat is answered `duplicate: this draft was already decided`.
 or `"threadRoot": "<hex event id>"` instead of `to`, and `"template": { "name", "language", "params" }`
 instead of `text`. Rules the relay enforces:
 
-1. Contact opted out, never-contact, whole-business-stopped, or paused: refused with the reason.
+1. Contact opted out, never-contact, business-wide-stopped, or paused: refused with the reason.
 2. `text` only inside the 24 hour window after the contact's last inbound message.
 3. Outside the window only a template. A template to a NEW chat needs an approved batch,
    unless the sender is owner/admin (then it counts to the daily cap).
@@ -422,7 +424,7 @@ The action is written to a durable suppression ledger and every effective add or
 to the audit log as `whatsapp_outreach_safety_changed`. A never-contact decision immediately
 skips queued rows for that number, is checked by batch/list creation and direct-send preflight,
 and is checked again by the final atomic lease claim. An opt-out undo retains history; it does not
-remove a separate whole-business stop created by the inbound reply.
+remove a separate business-wide stop created by a linked opt-out.
 
 ### `47054` `KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY` (owner/admin only)
 
@@ -469,11 +471,13 @@ unambiguous equivalents, including a complete phrase inside a longer reply. The 
 stored with the contact-scoped opt-out. The Afrikaans, Zulu and Xhosa lists need native-speaker
 review before a wider language rollout.
 
-Every inbound reply from a contact linked to a business also creates a whole-business hold: every
-current and future number linked to that business is skipped at once and refused by the final
-atomic lease claim. This is separate from the contact-scoped opt-out, so an owner can audit or
-undo a number's opt-out without accidentally releasing the business hold. A reply that contains
-both an opt-out and a complaint or legal signal still opts out and raises an owner notice.
+An ordinary inbound reply updates that contact's service window and one-message fence only. It
+does not create a business-wide stop. A linked opt-out creates the business-wide stop, so every
+current and future number linked to that business is skipped and refused by the final atomic lease
+claim. This is separate from the contact-scoped opt-out, so an owner can audit or undo a number's
+opt-out without accidentally releasing the business stop. Legacy `inbound reply received` rows
+remain stored but are inert. A reply that contains both an opt-out and a complaint or legal signal
+still opts out and raises an owner notice.
 
 An owner or admin can add a never-contact phone entry with a reason, then undo it later. The
 schema supports phone, email and domain identities so later channels can share the ledger without

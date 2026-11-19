@@ -68,7 +68,7 @@ test("contact parser accepts the additive stage and identity view fields", () =>
     unanswered: true,
     hasSentOutbound: true,
     businessOutreachStopped: true,
-    businessStopReason: "Lindiwe replied stop.",
+    businessStopReason: "Lindiwe opted out.",
   };
   const contact = parseWhatsAppContact(payload);
   assert.equal(contact.stage, "wants_call");
@@ -83,7 +83,7 @@ test("contact parser accepts the additive stage and identity view fields", () =>
   assert.equal(contact.lastFailureSummary, null);
   assert.equal(contact.hasSentOutbound, true);
   assert.equal(contact.businessOutreachStopped, true);
-  assert.equal(contact.businessStopReason, "Lindiwe replied stop.");
+  assert.equal(contact.businessStopReason, "Lindiwe opted out.");
 
   const legacyContact = parseWhatsAppContact({
     ...payload,
