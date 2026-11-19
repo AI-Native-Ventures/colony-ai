@@ -36,12 +36,20 @@ pub const SEND_REQUEST_IDEMPOTENCY_PREFIX: &str = "req:";
 
 /// The shared predicate for every read of the durable business-stop ledger.
 ///
-/// Legacy rows written for an ordinary inbound reply are inert. Every other reason, including
-/// an unknown future reason, remains an active stop so the relay fails closed.
+/// Legacy rows written for an ordinary inbound reply are inert only while no linked contact has
+/// an active opt-out. The contact projection is updated atomically with an inbound opt-out and
+/// cleared by its undo path, so it is the current source of truth for this fallback. Every other
+/// reason, including an unknown future reason, remains an active stop so the relay fails closed.
 /// This expands to a SQL literal so sqlx continues to validate each query as static SQL.
 macro_rules! active_whatsapp_business_stop_predicate {
     () => {
-        "b.reason IS DISTINCT FROM 'inbound reply received'"
+        "(b.reason IS DISTINCT FROM 'inbound reply received' \
+          OR EXISTS ( \
+              SELECT 1 FROM whatsapp_contacts opted_out_contact \
+              WHERE opted_out_contact.community_id = b.community_id \
+                AND opted_out_contact.lead_id = b.business_id \
+                AND opted_out_contact.opted_out_at IS NOT NULL \
+          ))"
     };
 }
 
@@ -395,7 +403,8 @@ pub struct WhatsappBusinessStop {
 /// `ContactOptOut`. Reads fail closed for an unrecognized persisted reason.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WhatsappBusinessStopCause {
-    /// A customer replied without opting out. Retained to classify inert legacy rows.
+    /// A customer replied without opting out. Retained to classify legacy rows, which are inert
+    /// unless a linked contact has an active opt-out.
     InboundReply,
     /// The inbound message was an opt-out. Nothing may bypass this stop.
     ContactOptOut,
@@ -438,7 +447,7 @@ pub struct WhatsappSendSafety {
 pub struct InboundSafetyOutcome {
     /// The inbound event made this phone's opt-out record active for the first time.
     pub opted_out_now: bool,
-    /// An inbound opt-out stopped this linked business for the first time.
+    /// An inbound opt-out inserted or upgraded this linked business's durable stop row.
     pub business_stopped_now: bool,
 }
 
@@ -1941,19 +1950,26 @@ impl Db {
         }
 
         if let Some(business_id) = business_id.as_deref() {
-            let inserted = sqlx::query(
+            // Preserve created_at from a legacy reply row so the ledger retains its original
+            // chronology. A changed row is either a new stop or an upgrade from a legacy reply row.
+            let inserted_or_upgraded = sqlx::query(
                 "INSERT INTO whatsapp_business_stops \
                  (community_id, business_id, source_wa_id, reason, matched_rule) \
-                 VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+                 VALUES ($1, $2, $3, $4, $5) \
+                 ON CONFLICT (community_id, business_id) DO UPDATE \
+                 SET reason = EXCLUDED.reason, source_wa_id = EXCLUDED.source_wa_id, \
+                     matched_rule = EXCLUDED.matched_rule \
+                 WHERE whatsapp_business_stops.reason = $6",
             )
             .bind(community.as_uuid())
             .bind(business_id)
             .bind(wa_id)
             .bind(WhatsappBusinessStopCause::ContactOptOut.reason())
             .bind(matched_rule.map(|rule| rule.chars().take(120).collect::<String>()))
+            .bind(WhatsappBusinessStopCause::InboundReply.reason())
             .execute(&mut *tx)
             .await?;
-            outcome.business_stopped_now = inserted.rows_affected() == 1;
+            outcome.business_stopped_now = inserted_or_upgraded.rows_affected() == 1;
             sqlx::query(
                 "UPDATE whatsapp_messages m SET state = 'skipped', \
                      skip_reason = 'outreach stopped for the whole business', updated_at = now() \

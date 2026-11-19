@@ -183,7 +183,9 @@ Contact: `{ waId, e164, displayName, leadId, ownerPubkey, threadRootEventId, las
 windowOpen, windowClosesAt, optedOut, paused, pauseReason, unanswered, businessOutreachStopped,
 businessStopReason }`. The two business-stop fields are additive booleans/text: installed desktops
 ignore them, while the safety UI can show an active business-wide stop. A business with only a
-legacy `inbound reply received` row returns `false` and `null` for these fields.
+legacy `inbound reply received` row and no linked active opt-out returns `false` and `null` for
+these fields. If a linked contact has an active opt-out, that legacy row stays an active stop until
+a later inbound opt-out upgrades its stored reason.
 
 Suppression: `{ id, identityKind: "phone"|"email"|"domain", identityValue, scope:
 "opt_out"|"never_contact", reason, matchedRule, source, createdAt, undoneAt }`.
@@ -282,8 +284,9 @@ accepted with a `duplicate: ...` message. Content is JSON, `"v": 1`.
 The relay validates the template (approved, slot count matches), normalises numbers to E.164,
 re-renders every preview itself and stores the batch as `pending`. A pending batch never sends.
 Opted-out, paused, never-contact, or business-wide-stopped numbers are refused at create time
-with a clear reason per row. Business-wide stops come from a linked opt-out or an unrecognized
-stored reason, which remains fail-closed.
+with a clear reason per row. Business-wide stops come from a linked opt-out, an unrecognized
+stored reason, or a legacy reply row with a linked active opt-out. Unknown reasons remain
+fail-closed.
 Maximum 500 rows. Re-sending the same `batchId` is an idempotent no-op.
 
 ### `47049` `KIND_WHATSAPP_BATCH_DECISION` (owner/admin only): decides a batch OR one draft
@@ -423,8 +426,9 @@ Additive Contact fields: `stage`, `stageSetBy` (`auto` or the setter's hex pubke
 The action is written to a durable suppression ledger and every effective add or undo is appended
 to the audit log as `whatsapp_outreach_safety_changed`. A never-contact decision immediately
 skips queued rows for that number, is checked by batch/list creation and direct-send preflight,
-and is checked again by the final atomic lease claim. An opt-out undo retains history; it does not
-remove a separate business-wide stop created by a linked opt-out.
+and is checked again by the final atomic lease claim. An opt-out undo retains history. It does not
+remove a `contact opted out` business row created by a linked opt-out; the legacy-reply fallback
+is active only while its linked contact opt-out remains active.
 
 ### `47054` `KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY` (owner/admin only)
 
@@ -474,10 +478,12 @@ review before a wider language rollout.
 An ordinary inbound reply updates that contact's service window and one-message fence only. It
 does not create a business-wide stop. A linked opt-out creates the business-wide stop, so every
 current and future number linked to that business is skipped and refused by the final atomic lease
-claim. This is separate from the contact-scoped opt-out, so an owner can audit or undo a number's
-opt-out without accidentally releasing the business stop. Legacy `inbound reply received` rows
-remain stored but are inert. A reply that contains both an opt-out and a complaint or legal signal
-still opts out and raises an owner notice.
+claim. A `contact opted out` business row is separate from the contact-scoped opt-out, so an owner
+can audit or undo a number's opt-out without releasing that row. Legacy `inbound reply received`
+rows remain stored and are inert only when no linked contact has an active opt-out. If an old collision
+left a linked opt-out beside that legacy row, the row remains a business stop; a later inbound
+opt-out upgrades its stored reason without changing its original timestamp. A reply that contains
+both an opt-out and a complaint or legal signal still opts out and raises an owner notice.
 
 An owner or admin can add a never-contact phone entry with a reason, then undo it later. The
 schema supports phone, email and domain identities so later channels can share the ledger without

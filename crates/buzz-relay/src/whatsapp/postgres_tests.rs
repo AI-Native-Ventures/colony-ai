@@ -1090,6 +1090,145 @@ async fn a_preexisting_reply_stop_is_inert_in_views_batch_planning_and_claims() 
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn a_legacy_reply_stop_with_an_active_contact_opt_out_is_fail_closed() {
+    // GUARD: production has legacy collision rows where the contact opt-out is active but the
+    // business row still says "inbound reply received". The shared predicate must make that row
+    // active in views, direct and batch preflight, and the final claim before an upgrade arrives.
+    let fx = fixture().await;
+    let business_id = "business-legacy-reply-active-opt-out";
+    let source = "27821234570";
+    let sibling = "27821234571";
+    for wa_id in [source, sibling] {
+        fx.state
+            .db
+            .whatsapp_ensure_contact(fx.community(), wa_id, None)
+            .await
+            .expect("create linked contact");
+        fx.state
+            .db
+            .whatsapp_set_lead(fx.community(), wa_id, business_id)
+            .await
+            .expect("link contact to business");
+    }
+    sqlx::query(
+        "INSERT INTO whatsapp_business_stops \
+         (community_id, business_id, source_wa_id, reason, matched_rule) \
+         VALUES ($1, $2, $3, 'inbound reply received', NULL)",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(business_id)
+    .bind(source)
+    .execute(&fx.pool)
+    .await
+    .expect("insert legacy reply row");
+    sqlx::query(
+        "UPDATE whatsapp_contacts SET opted_out_at = $3, opt_out_reason = 'STOP' \
+         WHERE community_id = $1 AND wa_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(source)
+    .bind(base())
+    .execute(&fx.pool)
+    .await
+    .expect("simulate the active contact opt-out in a legacy collision");
+
+    let sibling_contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), sibling)
+        .await
+        .expect("sibling contact query")
+        .expect("sibling contact exists");
+    let contacts = crate::api::whatsapp::contacts_view(
+        &fx.state,
+        fx.community(),
+        std::slice::from_ref(&sibling_contact),
+        Utc::now(),
+    )
+    .await
+    .expect("contact view");
+    assert_eq!(contacts["contacts"][0]["businessOutreachStopped"], true);
+    assert_eq!(
+        contacts["contacts"][0]["businessStopReason"], "inbound reply received",
+        "the read fallback does not mutate the historical reason"
+    );
+    let stops = fx
+        .state
+        .db
+        .whatsapp_list_business_stops(fx.community(), 50)
+        .await
+        .expect("business-stop list");
+    assert_eq!(stops.len(), 1);
+    assert_eq!(stops[0].business_id, business_id);
+    assert_eq!(stops[0].reason, "inbound reply received");
+
+    let sibling_e164 = format!("+{sibling}");
+    let direct_refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_SEND_REQUEST,
+            json!({
+                "v": 1,
+                "requestId": Uuid::new_v4().to_string(),
+                "to": sibling_e164.clone(),
+                "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
+            }),
+        )
+        .await,
+    );
+    assert!(
+        direct_refusal.contains("whole business"),
+        "{direct_refusal}"
+    );
+
+    let batch_refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH,
+            batch_for_business(Uuid::new_v4(), business_id, &[sibling_e164.as_str()]),
+        )
+        .await,
+    );
+    assert!(batch_refusal.contains("whole business"), "{batch_refusal}");
+
+    let queued = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: sibling.into(),
+        kind: "template".into(),
+        body: "Hi Thabo".into(),
+        template_name: Some("intro".into()),
+        template_language: Some("en".into()),
+        params: json!(["Thabo"]),
+        state: "queued".into(),
+        idempotency_key: format!("legacy-opt-out-claim:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &queued)
+        .await
+        .expect("insert stale sibling row");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                queued.id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(2),
+                base(),
+            )
+            .await
+            .expect("legacy collision claim result"),
+        "the final worker claim refuses a legacy row backed by an active contact opt-out"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn webhook_checks_the_signature_answers_the_challenge_and_dedupes() {
     let fx = fixture().await;
     let id = fx.connection_id().await;
@@ -1386,7 +1525,7 @@ async fn owner_can_approve_an_existing_agent_text_draft_after_an_ordinary_reply(
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
-async fn an_opt_out_business_stop_blocks_an_owner_reply_to_another_open_contact() {
+async fn a_later_opt_out_upgrades_a_legacy_reply_stop_and_blocks_every_sibling_fence() {
     let fx = fixture().await;
     let business_id = "business-opt-out-stop";
     let source = "27821230026";
@@ -1403,16 +1542,39 @@ async fn an_opt_out_business_stop_blocks_an_owner_reply_to_another_open_contact(
             .await
             .expect("link contact to business");
     }
+    let legacy_created_at = base() - Duration::days(1);
     sqlx::query(
-        "UPDATE whatsapp_contacts SET last_inbound_at = $3, outbound_since_inbound = 0 \
-         WHERE community_id = $1 AND wa_id = $2",
+        "INSERT INTO whatsapp_business_stops \
+         (community_id, business_id, source_wa_id, reason, matched_rule, created_at) \
+         VALUES ($1, $2, $3, 'inbound reply received', NULL, $4)",
     )
     .bind(fx.community().as_uuid())
-    .bind(other)
-    .bind(Utc::now() - Duration::minutes(1))
+    .bind(business_id)
+    .bind(source)
+    .bind(legacy_created_at)
     .execute(&fx.pool)
     .await
-    .expect("open the other contact's service window");
+    .expect("insert pre-opt-out legacy reply row");
+    let queued_before_opt_out = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: other.into(),
+        kind: "template".into(),
+        body: "Hi Thabo".into(),
+        template_name: Some("intro".into()),
+        template_language: Some("en".into()),
+        params: json!(["Thabo"]),
+        state: "queued".into(),
+        idempotency_key: format!("legacy-upgrade-queued:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &queued_before_opt_out)
+        .await
+        .expect("insert sibling row before opt-out");
 
     assert_eq!(
         fx.deliver(
@@ -1421,6 +1583,36 @@ async fn an_opt_out_business_stop_blocks_an_owner_reply_to_another_open_contact(
         )
         .await,
         StatusCode::OK
+    );
+    let upgraded: (String, String, DateTime<Utc>) = sqlx::query_as(
+        "SELECT source_wa_id, reason, created_at FROM whatsapp_business_stops \
+         WHERE community_id = $1 AND business_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(business_id)
+    .fetch_one(&fx.pool)
+    .await
+    .expect("upgraded business stop");
+    assert_eq!(upgraded.0, source);
+    assert_eq!(upgraded.1, "contact opted out");
+    assert_eq!(
+        upgraded.2, legacy_created_at,
+        "upgrading the legacy row preserves its original ledger timestamp"
+    );
+    let skipped = fx
+        .state
+        .db
+        .whatsapp_get_message(fx.community(), queued_before_opt_out.id)
+        .await
+        .expect("queued sibling row query")
+        .expect("queued sibling row exists");
+    assert_eq!(skipped.state, "skipped");
+    assert!(
+        skipped
+            .skip_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("whole business")),
+        "an opt-out upgrade skips already queued sibling work"
     );
     let stops = fx
         .state
@@ -1431,23 +1623,94 @@ async fn an_opt_out_business_stop_blocks_an_owner_reply_to_another_open_contact(
     assert_eq!(stops.len(), 1);
     assert_eq!(stops[0].business_id, business_id);
     assert_eq!(stops[0].reason, "contact opted out");
+    assert_eq!(stops[0].created_at, legacy_created_at);
 
-    // GUARD: an opt-out-caused business stop remains active even where the other contact has an
-    // otherwise open free-text window.
-    let refusal = rejection(
+    let other_contact = fx
+        .state
+        .db
+        .whatsapp_get_contact(fx.community(), other)
+        .await
+        .expect("sibling contact query")
+        .expect("sibling contact exists");
+    let contacts = crate::api::whatsapp::contacts_view(
+        &fx.state,
+        fx.community(),
+        std::slice::from_ref(&other_contact),
+        Utc::now(),
+    )
+    .await
+    .expect("contact view");
+    assert_eq!(contacts["contacts"][0]["businessOutreachStopped"], true);
+    assert_eq!(
+        contacts["contacts"][0]["businessStopReason"],
+        "contact opted out"
+    );
+
+    // GUARD: the upsert changes the legacy row to a durable opt-out stop. All later send
+    // fences must refuse the sibling, including preflight, batch planning, and atomic claim.
+    let other_e164 = format!("+{other}");
+    let direct_refusal = rejection(
         fx.command(
             &fx.owner,
             KIND_WHATSAPP_SEND_REQUEST,
             json!({
                 "v": 1,
                 "requestId": Uuid::new_v4().to_string(),
-                "to": "+27821230027",
-                "text": "Thank you for your reply.",
+                "to": other_e164.clone(),
+                "template": {"name": "intro", "language": "en", "params": ["Thabo"]},
             }),
         )
         .await,
     );
-    assert!(refusal.contains("whole business"), "{refusal}");
+    assert!(
+        direct_refusal.contains("whole business"),
+        "{direct_refusal}"
+    );
+
+    let batch_refusal = rejection(
+        fx.command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH,
+            batch_for_business(Uuid::new_v4(), business_id, &[other_e164.as_str()]),
+        )
+        .await,
+    );
+    assert!(batch_refusal.contains("whole business"), "{batch_refusal}");
+
+    let stale_sibling_row = buzz_db::whatsapp::NewOutboundMessage {
+        id: Uuid::new_v4(),
+        wa_id: other.into(),
+        kind: "template".into(),
+        body: "Hi Thabo".into(),
+        template_name: Some("intro".into()),
+        template_language: Some("en".into()),
+        params: json!(["Thabo"]),
+        state: "queued".into(),
+        idempotency_key: format!("legacy-upgrade-claim:{}", Uuid::new_v4()),
+        batch_id: None,
+        batch_idx: None,
+        new_chat: false,
+        sender_pubkey: fx.owner.public_key().to_bytes().to_vec(),
+    };
+    fx.state
+        .db
+        .whatsapp_insert_outbound(fx.community(), &stale_sibling_row)
+        .await
+        .expect("insert sibling row after opt-out");
+    assert!(
+        !fx.state
+            .db
+            .whatsapp_claim_message(
+                fx.community(),
+                stale_sibling_row.id,
+                Uuid::new_v4(),
+                base() + Duration::minutes(2),
+                base(),
+            )
+            .await
+            .expect("upgraded business claim result"),
+        "the final worker claim refuses a sibling after a legacy row is upgraded"
+    );
 }
 
 #[tokio::test]
