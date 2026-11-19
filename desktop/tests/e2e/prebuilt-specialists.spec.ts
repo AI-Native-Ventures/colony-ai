@@ -675,6 +675,29 @@ test.describe("prebuilt specialists in the map shell", () => {
     );
   });
 
+  test("the phone job spot control has a reachable touch target", async ({
+    page,
+  }) => {
+    await prepareSpecialistMap(page, specialistFixture(), {
+      width: 390,
+      height: 844,
+    });
+    await page.getByTestId("cofounder-map-phone-sales").click();
+    const spotToggle = page.getByTestId(
+      "cofounder-map-phone-job-spot-sales-follow-ups",
+    );
+    await expect(spotToggle).toHaveAccessibleName("Who does this?");
+    const box = await spotToggle.boundingBox();
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    expect(box?.x).toBeGreaterThanOrEqual(0);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(390);
+
+    await spotToggle.click();
+    await expect(
+      page.getByTestId("job-assignment-card-sales-follow-ups"),
+    ).toBeVisible();
+  });
+
   test("the job pill works by pointer and keyboard without covering map controls", async ({
     page,
   }) => {
