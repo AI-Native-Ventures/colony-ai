@@ -183,18 +183,29 @@ export type DiscoveryCampaignProvider = {
   ) => Promise<DiscoveryCampaign>;
   /** Describes whether the current short campaign can safely continue in place. */
   getContinuation: () => DiscoveryContinuation | null;
+  /** Describes whether one named campaign can safely continue in place. */
+  getContinuationFor: (campaignId: string) => DiscoveryContinuation | null;
   /** Continues the current campaign, optionally after a newly approved amount. */
   continueCampaign: (additionalBudgetUsd?: number) => Promise<void>;
+  /** Continues one named campaign without changing which campaign is visible. */
+  continueCampaignFor: (
+    campaignId: string,
+    additionalBudgetUsd?: number,
+  ) => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
   cancel: () => Promise<void>;
   retry: () => Promise<void>;
+  /** Restarts one paused or failed campaign without changing the visible tab. */
+  resumeCampaign: (campaignId: string) => Promise<void>;
+  retryCampaign: (campaignId: string) => Promise<void>;
 };
 
 declare global {
   interface Window {
     __BUZZ_E2E_W10_DISCOVERY_PROVIDER__?: DiscoveryCampaignProvider;
     __BUZZ_E2E_W10_FAIL_NEXT_RUN__?: boolean;
+    __BUZZ_E2E_W10_FAIL_NEXT_START__?: boolean;
   }
 }
 

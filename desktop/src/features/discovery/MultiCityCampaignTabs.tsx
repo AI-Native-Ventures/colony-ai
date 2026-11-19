@@ -22,6 +22,7 @@ export function multiCityTabId(
 }
 
 function statusLabel(status: ReturnType<typeof groupCityStatus>): string {
+  if (status === "starting") return "Starting";
   if (status === "waiting") return "Waiting";
   if (status === "not_started") return "Not started";
   if (status === "running") return "Searching";
@@ -71,6 +72,7 @@ export function MultiCityCampaignTabs({
   const progress = groupProgress(group, campaigns);
   const totalSearching = progress.searching;
   const allStatus = groupCampaignStatus(group, campaigns);
+  const allVisualStatus = totalSearching ? "running" : allStatus;
   const allStatusLabel =
     allStatus === "complete"
       ? "Done"
@@ -156,7 +158,7 @@ export function MultiCityCampaignTabs({
             <strong>All cities</strong>
             <span
               aria-hidden="true"
-              className={`c3mc-city-tab-status is-${allStatus}`}
+              className={`c3mc-city-tab-status is-${allVisualStatus}`}
             >
               {allStatusLabel}
             </span>
@@ -178,7 +180,7 @@ export function MultiCityCampaignTabs({
           return (
             <button
               aria-controls="multi-city-campaign-panel"
-              aria-label={`${shortPlaceName(city.label)}, ${statusLabel(status)}, ${found} of ${group.target} found`}
+              aria-label={`${city.label}, ${statusLabel(status)}, ${found} of ${group.target} found`}
               aria-selected={selected}
               className="c3mc-city-tab"
               id={multiCityTabId(group.groupId, city.cityId)}
@@ -191,11 +193,13 @@ export function MultiCityCampaignTabs({
               }}
               role="tab"
               tabIndex={selected ? 0 : -1}
+              title={city.label}
               type="button"
             >
               <span className="c3mc-city-tab-top">
                 <strong>
-                  <PinGlyph size={14} /> {shortPlaceName(city.label)}
+                  <PinGlyph size={14} />
+                  <span>{shortPlaceName(city.label)}</span>
                 </strong>
                 <span
                   aria-hidden="true"

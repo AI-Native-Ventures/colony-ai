@@ -50,12 +50,14 @@ import type { DiscoveryLocation } from "./discoveryLocation";
 import { useDiscoveryCampaign } from "./discoveryProvider";
 import {
   groupCampaignStatus,
+  groupCityStatus,
   groupProgress,
   groupSummaryCampaign,
   shortPlaceName,
   type MultiCityCampaignGroup,
 } from "./multiCityDiscovery";
 import { useMultiCityDiscovery } from "./useMultiCityDiscovery";
+import { takeOpenedMultiCityDiscoveryGroupView } from "./multiCityDiscoveryRuntime";
 import {
   DiscoveryTypeDetailsDialog,
   RelatedVerticalOptions,
@@ -125,6 +127,8 @@ export function CampaignScreen(context: CampaignContext) {
   const multiCity = useMultiCityDiscovery(provider);
   const [multiCityTab, setMultiCityTab] =
     React.useState<MultiCityCampaignTab>("all");
+  const [openedMultiCityGroupId, setOpenedMultiCityGroupId] =
+    React.useState<string | null>(() => takeOpenedMultiCityDiscoveryGroupView());
   const [query, setQuery] = React.useState(restored?.query ?? "");
   const [filter, setFilter] = React.useState<ProspectFilter>(
     restored?.filter ?? "all",
@@ -160,6 +164,12 @@ export function CampaignScreen(context: CampaignContext) {
   recordsRef.current = context.records;
 
   const campaignId = selectedCampaign?.id;
+  const selectedGroup = selectedCampaign
+    ? (multiCity.coordinator?.getGroupForCampaign(selectedCampaign.id) ?? null)
+    : null;
+  const openedGroup = openedMultiCityGroupId
+    ? (multiCity.coordinator?.getGroup(openedMultiCityGroupId) ?? null)
+    : null;
   const lastCampaignId = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     if (campaignId === undefined) return;
@@ -232,8 +242,10 @@ export function CampaignScreen(context: CampaignContext) {
   ]);
 
   React.useEffect(() => {
-    if (!provider || !selectedCampaign) void navigate({ to: "/discovery" });
-  }, [navigate, provider, selectedCampaign]);
+    if (!provider || (!selectedCampaign && !openedGroup)) {
+      void navigate({ to: "/discovery" });
+    }
+  }, [navigate, openedGroup, provider, selectedCampaign]);
 
   React.useEffect(() => {
     try {
@@ -258,11 +270,20 @@ export function CampaignScreen(context: CampaignContext) {
     };
   }, []);
 
-  if (!provider || !selectedCampaign) {
+  const selectedGroupId = selectedGroup?.groupId ?? null;
+  const openedGroupHasCampaign = Boolean(
+    openedGroup?.cities.some((city) => Boolean(city.campaignId)),
+  );
+  React.useEffect(() => {
+    if (openedGroupHasCampaign || selectedGroupId) {
+      setOpenedMultiCityGroupId(null);
+    }
+  }, [openedGroupHasCampaign, selectedGroupId]);
+
+  if (!provider || (!selectedCampaign && !openedGroup)) {
     return null;
   }
-  const group =
-    multiCity.coordinator?.getGroupForCampaign(selectedCampaign.id) ?? null;
+  const group = selectedGroup ?? openedGroup;
   const activeMultiCityTab =
     group &&
     (multiCityTab === "all" ||
@@ -280,10 +301,24 @@ export function CampaignScreen(context: CampaignContext) {
       ) ?? null)
     : null;
   const allCities = Boolean(group && activeMultiCityTab === "all");
-  const waitingCity = Boolean(group && activeCity && !activeCityCampaign);
+  const activeCityStatus = activeCity
+    ? groupCityStatus(activeCity, multiCity.campaigns)
+    : null;
+  const waitingCity = Boolean(
+    group &&
+      activeCity &&
+      (activeCityStatus === "waiting" ||
+        activeCityStatus === "starting" ||
+        activeCityStatus === "not_started"),
+  );
+  const failedCity = Boolean(group && activeCity && activeCityStatus === "failed");
+  const summaryCampaign = group
+    ? groupSummaryCampaign(group, multiCity.campaigns)
+    : null;
   const campaign = allCities
-    ? groupSummaryCampaign(group as MultiCityCampaignGroup, multiCity.campaigns)
-    : (activeCityCampaign ?? selectedCampaign);
+    ? summaryCampaign
+    : (activeCityCampaign ?? selectedCampaign ?? summaryCampaign);
+  if (!campaign) return null;
   const currentCampaign = campaign;
   const sourceCampaignId = allCities ? undefined : campaign.id;
   const campaignRunner = campaign.runBy;
@@ -477,6 +512,30 @@ export function CampaignScreen(context: CampaignContext) {
       await multiCity.coordinator.selectCity(group.groupId, tab);
     } catch (selectionError) {
       setError(errorMessage(selectionError));
+    }
+  }
+
+  async function retryMultiCity(groupId: string, cityId: string) {
+    if (!multiCity.coordinator) return;
+    try {
+      await multiCity.coordinator.retryCity(groupId, cityId);
+      requestAnimationFrame(() =>
+        document.getElementById(multiCityTabId(groupId, cityId))?.focus(),
+      );
+    } catch (retryError) {
+      setError(errorMessage(retryError));
+    }
+  }
+
+  async function retryFailedMultiCity(groupId: string) {
+    if (!multiCity.coordinator) return;
+    try {
+      await multiCity.coordinator.retryFailedCities(groupId);
+      requestAnimationFrame(() =>
+        document.getElementById(multiCityTabId(groupId, "all"))?.focus(),
+      );
+    } catch (retryError) {
+      setError(errorMessage(retryError));
     }
   }
 
@@ -719,17 +778,28 @@ export function CampaignScreen(context: CampaignContext) {
                 group={group as MultiCityCampaignGroup}
                 onRetry={
                   multiCity.coordinator
-                    ? () =>
-                        void multiCity.coordinator?.retryGroup(
-                          group?.groupId ?? "",
-                        )
+                    ? () => void retryFailedMultiCity(group?.groupId ?? "")
                     : null
                 }
               />
             ) : waitingCity && activeCity ? (
               <MultiCityWaitingCity
-                city={activeCity.label}
+                city={activeCity}
                 group={group as MultiCityCampaignGroup}
+              />
+            ) : failedCity && activeCity ? (
+              <MultiCityFailedCity
+                campaign={activeCityCampaign}
+                city={activeCity}
+                onRetry={
+                  multiCity.coordinator
+                    ? () =>
+                        void retryMultiCity(
+                          group?.groupId ?? "",
+                          activeCity.cityId,
+                        )
+                    : null
+                }
               />
             ) : (
               <>
@@ -770,7 +840,7 @@ export function CampaignScreen(context: CampaignContext) {
               </>
             )}
           </MultiCityContentPanel>
-          {!waitingCity ? (
+          {!waitingCity && !failedCity ? (
             <>
               <CampaignToolbar
                 exportDisabled={!visibleRows.length}
@@ -1032,6 +1102,9 @@ function MultiCityAllSummary({
     100,
     progress.target ? (progress.count / progress.target) * 100 : 0,
   );
+  const failedCities = group.cities.filter(
+    (city) => groupCityStatus(city, campaigns) === "failed",
+  ).length;
   const title = group.blockedReason
     ? "The remaining cities need attention"
     : progress.searching
@@ -1062,8 +1135,25 @@ function MultiCityAllSummary({
       {group.blockedReason ? (
         <div>
           <p>{group.blockedReason}</p>
+          {onRetry && failedCities === 0 ? (
+            <button
+              className="c3d-btn c3d-btn--outline c3d-btn--sm"
+              onClick={onRetry}
+              type="button"
+            >
+              Try again
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {failedCities > 0 ? (
+        <div>
+          <p>
+            {failedCities} cities could not start.
+          </p>
           {onRetry ? (
             <button
+              aria-label="Try again all failed cities"
               className="c3d-btn c3d-btn--outline c3d-btn--sm"
               onClick={onRetry}
               type="button"
@@ -1081,20 +1171,57 @@ function MultiCityWaitingCity({
   city,
   group,
 }: {
-  city: string;
+  city: import("./multiCityDiscovery").MultiCityGroupCity;
   group: MultiCityCampaignGroup;
 }) {
+  const starting = city.state === "starting";
   return (
     <section className="c3mc-waiting-city" data-testid="multi-city-waiting">
       <div>
-        <h2>{shortPlaceName(city)} is waiting</h2>
+        <h2>{shortPlaceName(city.label)} is {starting ? "starting" : "waiting"}</h2>
         <p>
-          {group.blockedReason
+          {starting && city.reason
+            ? city.reason
+            : group.blockedReason
             ? "This city has not started yet."
-            : "It starts after the current city finishes."}
+            : "It starts when one of the three city slots is free."}
         </p>
       </div>
       {group.blockedReason ? <p>{group.blockedReason}</p> : null}
+    </section>
+  );
+}
+
+function MultiCityFailedCity({
+  campaign,
+  city,
+  onRetry,
+}: {
+  campaign: import("./discoveryProvider").DiscoveryCampaign | null;
+  city: import("./multiCityDiscovery").MultiCityGroupCity;
+  onRetry: (() => void) | null;
+}) {
+  const reason = campaign?.failureReason ?? city.reason ?? "Discovery could not start this city.";
+  return (
+    <section className="c3mc-waiting-city" data-testid="multi-city-failed-city">
+      <div>
+        <h2>
+          {campaign
+            ? `${shortPlaceName(city.label)} stopped`
+            : `${shortPlaceName(city.label)} could not start`}
+        </h2>
+        <p>{reason}</p>
+      </div>
+      {onRetry ? (
+        <button
+          aria-label={`Try again ${shortPlaceName(city.label)}`}
+          className="c3d-btn c3d-btn--outline c3d-btn--sm"
+          onClick={onRetry}
+          type="button"
+        >
+          Try again
+        </button>
+      ) : null}
     </section>
   );
 }

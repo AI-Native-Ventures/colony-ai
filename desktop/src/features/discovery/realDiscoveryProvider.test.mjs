@@ -146,7 +146,7 @@ function harness(options = {}) {
   const deps = {
     storage,
     storageKey: "test-key",
-    nowSeconds: () => 1_700_000_000,
+    nowSeconds: options.nowSeconds ?? (() => 1_700_000_000),
     newId: () => {
       ids += 1;
       return `camp-${ids}`;
@@ -156,7 +156,10 @@ function harness(options = {}) {
       if (signal.aborted) throw abortError();
     },
     getOwnerPubkey: async () => context.pubkey,
-    resolveContext: async () => context,
+    resolveContext: async () =>
+      options.resolveContext
+        ? options.resolveContext(context, log)
+        : context,
     search: async (request, signal) => {
       log.searches.push(request);
       return options.search
@@ -1195,6 +1198,26 @@ test("a busy provider is retried with backoff, then the page goes through", asyn
   assert.deepEqual(log.sleeps, [...SEARCH_BACKOFF_MS]);
 });
 
+test("a relay rate limit waits at most six capped times before the exact plain failure", async () => {
+  let attempts = 0;
+  const { controller, log } = harness({
+    search: async () => {
+      attempts += 1;
+      throw new DiscoverySearchError(
+        "rate-limited: prospect search quota exceeded; retry in 120s",
+        { status: 429 },
+      );
+    },
+  });
+  await assert.rejects(
+    controller.start(INPUT),
+    /Colony is searching too fast for the server right now\. Try again in a minute\./,
+  );
+  assert.equal(attempts, 7);
+  assert.deepEqual(log.sleeps, Array(6).fill(65_000));
+  assert.equal(controller.getCampaigns().length, 0);
+});
+
 test("a final search failure fails the run with its reason, keeps results, and retry continues at the cursor", async () => {
   let broken = true;
   const credits =
@@ -1659,7 +1682,7 @@ test("a post that was mid-send when the app closed is not repeated", async () =>
   assert.equal(again.log.posts.length, 0);
 });
 
-test("starting another campaign pauses the active run, while selection only changes the view", async () => {
+test("starting another campaign keeps the first run live, while selection only changes the view", async () => {
   const never = deferred();
   const { controller } = harness({
     search: async (request) => {
@@ -1684,7 +1707,7 @@ test("starting another campaign pauses the active run, while selection only chan
   assert.equal(second.id, "camp-2");
   assert.equal(
     controller.getCampaigns().find((entry) => entry.id === "camp-1").status,
-    "paused",
+    "running",
   );
   await waitFor(
     () => controller.getCurrent().count === 20,
@@ -1706,6 +1729,50 @@ test("starting another campaign pauses the active run, while selection only chan
   assert.equal(
     controller.getCampaigns().find((entry) => entry.id === "camp-2").status,
     "paused",
+  );
+  assert.equal(
+    controller.getCampaigns().find((entry) => entry.id === "camp-1").status,
+    "running",
+    "pausing the selected campaign never pauses another live campaign",
+  );
+});
+
+test("simultaneous starts share one context read and retain each other's saved lead ids", async () => {
+  let contextReads = 0;
+  const contextReady = deferred();
+  const { controller, log, context } = harness({
+    resolveContext: async () => {
+      contextReads += 1;
+      return contextReady.promise;
+    },
+    search: async () => page(1, 1, null),
+  });
+  const first = controller.start({ ...INPUT, target: 1 });
+  const second = controller.start({
+    ...INPUT,
+    name: "Cape Town",
+    location: "Cape Town",
+    locationSelection: selectedLocation("Cape Town"),
+    target: 1,
+  });
+  const third = controller.start({
+    ...INPUT,
+    name: "Durban",
+    location: "Durban",
+    locationSelection: selectedLocation("Durban"),
+    target: 1,
+  });
+  await settle();
+  assert.equal(contextReads, 1, "the simultaneous start batch loads Sales once");
+  contextReady.resolve(context);
+  await Promise.all([first, second, third]);
+  await controller.whenIdle();
+  assert.equal(contextReads, 1);
+  assert.equal(log.publishes.length, 1);
+  assert.deepEqual(
+    new Set(log.publishes.map((changes) => changes.prospectId)).size,
+    1,
+    "the shared context and reservation fence never save one provider result twice",
   );
 });
 

@@ -22,6 +22,7 @@ const MAX_STORED_GROUPS = 500;
 export type MultiCityGroupCityState =
   | "waiting"
   | "starting"
+  | "continuing"
   | "not_started"
   | "failed";
 
@@ -32,6 +33,10 @@ export type MultiCityGroupCity = {
   campaignId: string | null;
   state: MultiCityGroupCityState;
   reason: string | null;
+  /** A requested retry of an existing failed campaign. */
+  retryRequested?: boolean;
+  /** Automatic Find more attempts already used for this city. */
+  automaticContinuations?: number;
 };
 
 /** A device-local grouping for otherwise normal relay Discovery campaigns. */
@@ -110,7 +115,9 @@ function parseCity(value: unknown): MultiCityGroupCity | null {
     !cityId ||
     !locationSelection ||
     !state ||
-    !["waiting", "starting", "not_started", "failed"].includes(state)
+    !["waiting", "starting", "continuing", "not_started", "failed"].includes(
+      state,
+    )
   ) {
     return null;
   }
@@ -121,6 +128,8 @@ function parseCity(value: unknown): MultiCityGroupCity | null {
     campaignId: string(city?.campaignId),
     state: state as MultiCityGroupCityState,
     reason: string(city?.reason),
+    retryRequested: Boolean(city?.retryRequested),
+    automaticContinuations: nonNegativeInt(city?.automaticContinuations),
   };
 }
 
@@ -313,6 +322,8 @@ export function createMultiCityCampaignGroup({
       campaignId: null,
       state: "waiting",
       reason: null,
+      retryRequested: false,
+      automaticContinuations: 0,
     })),
     target: input.target,
     criteria: input.criteria,
@@ -374,7 +385,9 @@ export function campaignsForGroup(
 export function groupCityStatus(
   city: MultiCityGroupCity,
   campaigns: readonly DiscoveryCampaign[],
-): DiscoveryRunStatus | "waiting" | "not_started" {
+): DiscoveryRunStatus | "waiting" | "starting" | "not_started" {
+  if (city.state === "continuing") return "running";
+  if (city.state === "starting") return "starting";
   const campaign = city.campaignId
     ? campaigns.find((entry) => entry.id === city.campaignId)
     : null;
@@ -389,7 +402,11 @@ export function groupCampaignStatus(
 ): DiscoveryRunStatus {
   const statuses = group.cities.map((city) => groupCityStatus(city, campaigns));
   if (statuses.includes("running")) return "running";
-  if (statuses.includes("paused") || statuses.includes("waiting"))
+  if (
+    statuses.includes("paused") ||
+    statuses.includes("waiting") ||
+    statuses.includes("starting")
+  )
     return "paused";
   if (group.blockedReason || statuses.includes("failed")) return "failed";
   if (statuses.includes("cancelled")) return "cancelled";
@@ -404,9 +421,14 @@ export function groupProgress(
   return {
     count: groupCampaigns.reduce((sum, campaign) => sum + campaign.count, 0),
     target: group.target * group.cities.length,
-    searching: groupCampaigns.filter(
-      (campaign) => campaign.status === "running",
-    ).length,
+    searching: group.cities.filter((city) => {
+      if (city.state === "starting" || city.state === "continuing") return true;
+      return (
+        city.campaignId !== null &&
+        campaigns.find((campaign) => campaign.id === city.campaignId)?.status ===
+          "running"
+      );
+    }).length,
   };
 }
 
