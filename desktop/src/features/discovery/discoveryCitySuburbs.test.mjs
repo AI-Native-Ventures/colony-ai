@@ -114,6 +114,7 @@ function harness(options = {}) {
   const storageMap = options.storageMap ?? new Map();
   const listed = listedFor(options.listed);
   const log = { searches: [], publishes: [] };
+  let now = 1_700_000_000;
   const context = {
     channelId: "sales-channel",
     communityId: "community-1",
@@ -131,12 +132,17 @@ function harness(options = {}) {
       },
     },
     storageKey: "test-key",
-    nowSeconds: () => 1_700_000_000,
+    nowSeconds: () => now,
     newId: () => {
       ids += 1;
       return `camp-${ids}`;
     },
-    sleep: async () => {},
+    // This scenario intentionally exceeds the shared 54-requests-per-minute
+    // limit. Advance its fake clock when the budget waits, as wall time does
+    // in production, so the controller can release the next request.
+    sleep: async (milliseconds) => {
+      now += milliseconds / 1_000;
+    },
     getOwnerPubkey: async () => OWNER,
     resolveContext: async () => context,
     search: async (request) => {

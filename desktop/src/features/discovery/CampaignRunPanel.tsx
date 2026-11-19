@@ -140,13 +140,23 @@ export function CampaignRunPanel({
                 </button>
               </>
             ) : campaign.status === "paused" ? (
-              <button
-                className="c3d-btn c3d-btn--ink c3d-btn--md"
-                onClick={() => onChangeRun("resume")}
-                type="button"
-              >
-                <Play aria-hidden size="0.9375rem" strokeWidth={2.6} /> Resume
-              </button>
+              <>
+                <button
+                  className="c3d-btn c3d-btn--ink c3d-btn--md"
+                  onClick={() => onChangeRun("resume")}
+                  type="button"
+                >
+                  <Play aria-hidden size="0.9375rem" strokeWidth={2.6} /> Resume
+                </button>
+                <button
+                  aria-label="Cancel search"
+                  className="c3d-btn c3d-btn--quiet c3d-btn--md"
+                  onClick={() => onChangeRun("cancel")}
+                  type="button"
+                >
+                  <CloseGlyph />
+                </button>
+              </>
             ) : campaign.status === "failed" ? (
               <button
                 className="c3d-btn c3d-btn--outline c3d-btn--md"

@@ -10,8 +10,6 @@
  * async results are fenced by generation; every loop is bounded.
  */
 
-import type { ProspectChanges } from "./businessRecordMutations";
-import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import {
   findCampaign,
   MAX_SEEN_PROVIDER_PLACE_IDS,
@@ -22,7 +20,6 @@ import {
   withTopFit,
   writeState,
   emptyState,
-  type StorageLike,
   type StoredCampaign,
   type StoredState,
 } from "./discoveryCampaignStore";
@@ -43,7 +40,6 @@ import {
 } from "./discoveryCampaignAreas";
 import { nextSearchFor } from "./discoveryCampaignSteps";
 import {
-  pageSearchWord,
   pageWordField,
   repeatPageReason,
   searchWordsForType,
@@ -51,10 +47,14 @@ import {
 import { advanceCoverage, coveredQueryIn } from "./discoveryCoverage";
 import { createFetchAhead } from "./discoveryFetchAhead";
 import { fitScore, leadNameKey, mapPlaceToProspect } from "./discoveryMapping";
+import { createDiscoveryRequestBudget } from "./discoveryRequestBudget";
+import {
+  DiscoveryRunRegistry,
+  type ActiveDiscoveryRun,
+} from "./discoveryRunRegistry";
 import {
   fetchCampaignPage,
   responseCursor,
-  type CampaignSearchSpec,
   type PreparedSearchPage,
 } from "./discoverySearchPage";
 import { matchDiscoveryTags } from "./discoveryTags";
@@ -66,196 +66,91 @@ import {
 import type {
   DiscoveryCampaign,
   DiscoveryCampaignInput,
-  DiscoveryCampaignProvider,
   DiscoveryCoverage,
-  DiscoveryEndReason,
   DiscoveryPageLog,
 } from "./discoveryProvider";
 import {
   SEARCH_PAGE_SIZE,
-  buildDiscoverySearchPlan,
   cursorHasPages,
-  discoveryCoverageKey,
   discoveryCoverageKeys,
-  isTransientSearchError,
   normalizePickedTags,
   QUERY_PLACE_CEILING,
   type DiscoveryPlace,
-  type DiscoverySearchRequest,
   type DiscoverySearchResponse,
 } from "./discoverySearch";
+import {
+  buildResultsMessage,
+  createSearchPageRunner,
+  createSharedAsyncLoader,
+  isAbortError,
+  plainDiscoveryReason,
+  requestedCoverageKey,
+  requestedTagIndex,
+} from "./discoveryRunSupport";
+import {
+  FIRST_START_ERROR,
+  MAX_RATE_LIMIT_WAIT_MS,
+  MAX_RATE_LIMIT_WAITS,
+  MAX_TARGET,
+  PUBLISH_BACKOFF_MS,
+  PUBLISH_CONCURRENCY,
+  SEARCH_BACKOFF_MS,
+  STOPPED_ERROR,
+  type DiscoveryContext,
+  type DiscoveryController,
+  type DiscoveryDeps,
+} from "./discoveryControllerContract";
+import { publishWithRetry } from "./discoveryProspectPublisher";
+import { markLastPageStop, type PageOutcome } from "./discoveryPageOutcome";
 
-/** The owner-facing campaign form permits targets from 100 through 500. */
-export const MIN_TARGET = 100;
-export const MAX_TARGET = 500;
-export const PUBLISH_CONCURRENCY = 6;
-export const PUBLISH_BACKOFF_MS = [400, 800, 1600] as const;
-export const SEARCH_BACKOFF_MS = [1_000, 3_000] as const;
 export { BUDGET_USD_PER_PROSPECT, buildEndNote, MAX_PAGES };
-
-export type DiscoveryContext = {
-  /** The private Sales channel that holds business records. */
-  channelId: string;
-  /** The relay's tenant community id; never the local community id. */
-  communityId: TenantCommunityId;
-  pubkey: string;
-  displayName: string;
-  /** Record ids already in Leads. The controller adds what it saves. */
-  existingProspectIds: Set<string>;
-  /**
-   * Names (see `leadNameKey`) of the leads that existed before this run. Leads
-   * are one per business name, so a place with one of these names is skipped.
-   */
-  existingNames: ReadonlySet<string>;
-};
-
-export type DiscoveryDeps = {
-  storage: StorageLike | null;
-  storageKey: string;
-  nowSeconds: () => number;
-  newId: () => string;
-  /** Resolves after `ms`, or rejects with an AbortError when `signal` fires. */
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
-  getOwnerPubkey: () => Promise<string>;
-  /** Looks up the Sales channel, the signed-in person and existing leads. */
-  resolveContext: () => Promise<DiscoveryContext>;
-  search: (
-    request: DiscoverySearchRequest,
-    signal: AbortSignal,
-  ) => Promise<DiscoverySearchResponse>;
-  prospectId: (place: DiscoveryPlace) => Promise<string>;
-  publishProspect: (input: {
-    context: DiscoveryContext;
-    changes: ProspectChanges;
-  }) => Promise<void>;
-  postToSales: (input: {
-    context: DiscoveryContext;
-    content: string;
-  }) => Promise<void>;
-  leadLink: (prospectId: string) => string;
-};
-
-export type DiscoveryController = DiscoveryCampaignProvider & {
-  /** Stops any run and drops listeners. The next community builds a new one. */
-  dispose: () => void;
-  /** Resolves when no run is in flight (tests). */
-  whenIdle: () => Promise<void>;
-};
-
-type ActiveRun = {
-  campaignId: string;
-  generation: number;
-  abort: AbortController;
-  done: Promise<void>;
-};
-
-function requestedCoverageKey(
-  campaign: Pick<
-    StoredCampaign,
-    "verticalId" | "location" | "locationSelection" | "pickedTags"
-  > &
-    Partial<Pick<StoredCampaign, "searchWords" | "wordIndex">>,
-  tagIndex: number | null,
-): string {
-  return discoveryCoverageKey({
-    verticalId: campaign.verticalId,
-    tag: tagIndex === null ? null : (campaign.pickedTags?.[tagIndex] ?? null),
-    word: pageSearchWord(campaign, tagIndex),
-    location: campaign.location,
-    locationSelection: campaign.locationSelection,
-  });
-}
-
-/**
- * The tag whose turn it is for the next page, from saved state alone. The cursor
- * and page count only move once a page is fully saved, so this names the tag
- * that the page being saved (even after a restart) was asked for.
- */
-function requestedTagIndex(campaign: CampaignSearchSpec): number | null {
-  const plan = buildDiscoverySearchPlan({
-    verticalName: campaign.verticalName,
-    location: campaign.location,
-    locationSelection: campaign.locationSelection,
-    skip: campaign.skip,
-    pickedTags: campaign.pickedTags,
-    tagCursors: campaign.tagCursors,
-    turn: campaign.pagesFetched ?? 0,
-    searchWords: campaign.searchWords,
-    wordIndex: campaign.wordIndex,
-  });
-  return plan.requests[0]?.tagIndex ?? null;
-}
-
-export const FIRST_START_ERROR =
-  "Pick a location from the list and choose 100 to 500 prospects.";
-export const STOPPED_ERROR = "The search was stopped before it began.";
-const GENERIC_STOP_REASON =
-  "The search stopped. Retry when the connection is available.";
-
-export function isAbortError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { name?: unknown }).name === "AbortError"
-  );
-}
-
-function plainReason(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-  return GENERIC_STOP_REASON;
-}
-
-function alreadyExists(error: unknown): boolean {
-  return error instanceof Error && /already exists/i.test(error.message);
-}
-
-function escapeLinkText(text: string): string {
-  return text
-    .replace(/[\\[\]\r\n]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** The Sales message for a finished run, or a short note for a stopped one. */
-export function buildResultsMessage(
-  campaign: Pick<
-    StoredCampaign,
-    "name" | "verticalName" | "location" | "count" | "topFits"
-  > &
-    Partial<Pick<StoredCampaign, "endNote">>,
-  kind: "final" | "stopped",
-  leadLink: (prospectId: string) => string,
-): string {
-  const label = campaign.name.replace(/"/g, "'");
-  const noun = campaign.count === 1 ? "prospect" : "prospects";
-  const headline =
-    kind === "final"
-      ? `Found ${campaign.count} ${noun} for "${label}" (${campaign.verticalName} · ${campaign.location}).`
-      : `The search "${label}" stopped after finding ${campaign.count} ${noun}.`;
-  const note = kind === "final" ? campaign.endNote?.trim() : null;
-  const head = note ? `${headline} ${note}` : headline;
-  if (campaign.topFits.length === 0) return head;
-  const lines = campaign.topFits.map(
-    (fit) => `- [${escapeLinkText(fit.name)}](${leadLink(fit.id)})`,
-  );
-  const lead = kind === "final" ? "Best fits:" : "Best fits so far:";
-  return [`${head} ${lead}`, ...lines].join("\n");
-}
-
+export { buildResultsMessage, isAbortError };
+export {
+  FIRST_START_ERROR,
+  MAX_RATE_LIMIT_WAIT_MS,
+  MAX_RATE_LIMIT_WAITS,
+  MAX_TARGET,
+  MIN_TARGET,
+  PUBLISH_BACKOFF_MS,
+  PUBLISH_CONCURRENCY,
+  SEARCH_BACKOFF_MS,
+  STOPPED_ERROR,
+} from "./discoveryControllerContract";
+export type {
+  DiscoveryContext,
+  DiscoveryController,
+  DiscoveryDeps,
+} from "./discoveryControllerContract";
 export function createDiscoveryController(
   deps: DiscoveryDeps,
 ): DiscoveryController {
   let state: StoredState = readState(deps.storage, deps.storageKey);
-  let generation = 0;
-  let active: ActiveRun | null = null;
   let disposed = false;
   let flushing = false;
-  const inflight = new Set<Promise<void>>();
+  let probeSequence = 0;
+  const startProbes = new Set<AbortController>();
+  const runs = new DiscoveryRunRegistry();
+  const requestBudget = createDiscoveryRequestBudget({
+    nowSeconds: deps.nowSeconds,
+    sleep: deps.sleep,
+  });
+  const resolveStartContext = createSharedAsyncLoader(deps.resolveContext);
+  const searchPage = createSearchPageRunner({
+    budget: requestBudget,
+    maxRateLimitWaitMs: MAX_RATE_LIMIT_WAIT_MS,
+    maxRateLimitWaits: MAX_RATE_LIMIT_WAITS,
+    search: deps.search,
+    sleep: deps.sleep,
+    transientBackoffMs: SEARCH_BACKOFF_MS,
+  });
   // Later approved pages are asked for while earlier ones are being saved.
-  const ahead = createFetchAhead(deps);
+  const ahead = createFetchAhead();
   const flushAttempted = new Set<string>();
+  /** Cross-run reservations close the gap between duplicate check and publish. */
+  const pendingProspectIds = new Set<string>();
+  const pendingLeadNames = new Set<string>();
+  const savedProspectIds = new Set<string>();
+  const savedLeadNames = new Set<string>();
   const listeners = new Set<(campaign: DiscoveryCampaign | null) => void>();
 
   // ---- state ---------------------------------------------------------------
@@ -291,72 +186,42 @@ export function createDiscoveryController(
       commit({ ...state, ownerPubkey: pubkey });
       return;
     }
-    stopActive("paused");
+    stopAllRuns("paused");
     ahead.stop();
+    pendingProspectIds.clear();
+    pendingLeadNames.clear();
+    savedProspectIds.clear();
+    savedLeadNames.clear();
     commit(emptyState(pubkey));
   }
 
-  function stopActive(status: "paused" | "cancelled"): StoredCampaign | null {
-    const run = active;
+  function stopRun(
+    campaignId: string,
+    status: "paused" | "cancelled",
+  ): StoredCampaign | null {
+    const run = runs.stop(campaignId);
+    requestBudget.unregisterCampaign(campaignId);
     if (!run) return null;
-    generation += 1;
-    run.abort.abort();
-    active = null;
     return patch(run.campaignId, (campaign) => ({ ...campaign, status }));
   }
 
-  // ---- search and save -----------------------------------------------------
-
-  async function searchPage(
-    run: ActiveRun,
-    request: DiscoverySearchRequest,
-  ): Promise<DiscoverySearchResponse> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        return await deps.search(request, run.abort.signal);
-      } catch (error) {
-        if (run.abort.signal.aborted || !isTransientSearchError(error)) {
-          throw error;
-        }
-        const delay = SEARCH_BACKOFF_MS[attempt];
-        if (delay === undefined) throw error;
-        await deps.sleep(delay, run.abort.signal);
-      }
-    }
-  }
-
-  type PublishOutcome = "created" | "duplicate";
-
-  async function publishWithRetry(
-    run: ActiveRun,
-    context: DiscoveryContext,
-    changes: ProspectChanges,
-  ): Promise<PublishOutcome> {
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        await deps.publishProspect({ context, changes });
-        return "created";
-      } catch (error) {
-        // The relay refuses a second create for the same record. On the first
-        // try that means someone else saved it first; after a retry it means
-        // our earlier try did land and only its acknowledgement was lost.
-        if (alreadyExists(error))
-          return attempt === 0 ? "duplicate" : "created";
-        const delay = PUBLISH_BACKOFF_MS[attempt];
-        if (delay === undefined || run.abort.signal.aborted) throw error;
-        await deps.sleep(delay, run.abort.signal);
-      }
+  function stopAllRuns(status: "paused" | "cancelled"): void {
+    for (const run of runs.stopAll()) {
+      requestBudget.unregisterCampaign(run.campaignId);
+      patch(run.campaignId, (campaign) => ({ ...campaign, status }));
     }
   }
 
   function recordSaved(
-    run: ActiveRun,
+    run: ActiveDiscoveryRun,
     context: DiscoveryContext,
     id: string,
     name: string,
     fit: number,
   ): void {
     context.existingProspectIds.add(id);
+    savedProspectIds.add(id);
+    savedLeadNames.add(leadNameKey(name));
     patch(run.campaignId, (campaign) =>
       campaign.prospectIds.includes(id)
         ? campaign
@@ -369,29 +234,13 @@ export function createDiscoveryController(
     );
   }
 
-  /** Each outcome records what this paid page actually added or skipped. */
-  type PageOutcome =
-    | {
-        ok: true;
-        /** Prospects actually persisted from this provider page. */
-        newProspectsSaved: number;
-        /** Results that were already in Leads when this page was processed. */
-        alreadyInLeads: number;
-        /** Ids that identify overlap with an earlier campaign page. */
-        providerPlaceIds: string[];
-        repeatedInCampaign: number;
-        /** Only a page made entirely of prior campaign ids is a provider loop. */
-        providerLooped: boolean;
-      }
-    | { ok: false; error: unknown };
-
   /**
    * Saves one page of places. Results that reach the relay are recorded on the
    * campaign even if the run was stopped meanwhile (they exist and belong to
    * the campaign); stopping only prevents starting further saves.
    */
   async function savePage(
-    run: ActiveRun,
+    run: ActiveDiscoveryRun,
     context: DiscoveryContext,
     response: DiscoverySearchResponse,
   ): Promise<PageOutcome> {
@@ -426,20 +275,35 @@ export function createDiscoveryController(
     const providerLooped =
       providerPlaceIds.length > 0 &&
       repeatedInCampaign === providerPlaceIds.length;
-    const fresh: Array<{ id: string; place: DiscoveryPlace }> = [];
+    const fresh: Array<{
+      id: string;
+      place: DiscoveryPlace;
+      reservationName: string;
+    }> = [];
+    const reservedIds = new Set<string>();
+    const reservedNames = new Set<string>();
     let alreadyInLeads = 0;
     for (const place of response.places) {
       const id = await deps.prospectId(place);
       if (own.has(id) || seen.has(id)) continue;
       seen.add(id);
+      const name = leadNameKey(place.name);
       if (
         context.existingProspectIds.has(id) ||
-        context.existingNames.has(leadNameKey(place.name))
+        context.existingNames.has(name) ||
+        savedProspectIds.has(id) ||
+        savedLeadNames.has(name) ||
+        pendingProspectIds.has(id) ||
+        pendingLeadNames.has(name)
       ) {
         alreadyInLeads += 1;
         continue;
       }
-      fresh.push({ id, place });
+      pendingProspectIds.add(id);
+      pendingLeadNames.add(name);
+      reservedIds.add(id);
+      reservedNames.add(name);
+      fresh.push({ id, place, reservationName: name });
     }
     const room = Math.max(0, campaign.target - campaign.count);
     const queue = fresh.slice(0, room);
@@ -453,7 +317,7 @@ export function createDiscoveryController(
     ) {
       const chunk = queue.slice(index, index + PUBLISH_CONCURRENCY);
       const settled = await Promise.allSettled(
-        chunk.map(async ({ id, place }) => {
+        chunk.map(async ({ id, place, reservationName }) => {
           const discoveryTags = matchDiscoveryTags(
             campaign.verticalId,
             campaign.pickedTags ?? [],
@@ -471,25 +335,50 @@ export function createDiscoveryController(
             id,
           );
           if (!changes) return null;
-          const outcome = await publishWithRetry(run, context, changes);
-          return { id, name: changes.displayName, outcome, place };
+          const outcome = await publishWithRetry(
+            run,
+            context,
+            changes,
+            deps,
+            PUBLISH_BACKOFF_MS,
+          );
+          return {
+            id,
+            name: changes.displayName,
+            reservationName,
+            nameKey: leadNameKey(changes.displayName),
+            outcome,
+            place,
+          };
         }),
       );
       for (const result of settled) {
         if (result.status === "rejected") {
           failure ??= result.reason;
         } else if (result.value) {
-          const { id, name, outcome, place } = result.value;
+          const { id, name, nameKey, outcome, place, reservationName } =
+            result.value;
+          pendingProspectIds.delete(id);
+          pendingLeadNames.delete(reservationName);
+          reservedIds.delete(id);
+          reservedNames.delete(reservationName);
           if (outcome === "created") {
             recordSaved(run, context, id, name, fitScore(place));
             newProspectsSaved += 1;
           } else {
             context.existingProspectIds.add(id);
+            savedProspectIds.add(id);
+            savedLeadNames.add(nameKey);
             alreadyInLeads += 1;
           }
         }
       }
     }
+    // A failed or stopped chunk keeps the durable page for retry. Its local
+    // reservation must be released first, otherwise that retry would skip its
+    // own unsaved business forever.
+    for (const id of reservedIds) pendingProspectIds.delete(id);
+    for (const name of reservedNames) pendingLeadNames.delete(name);
     if (alreadyInLeads > 0) {
       patch(run.campaignId, (existing) => ({
         ...existing,
@@ -511,8 +400,8 @@ export function createDiscoveryController(
 
   // ---- the run loop --------------------------------------------------------
 
-  function isLive(run: ActiveRun): boolean {
-    return !disposed && run.generation === generation;
+  function isLive(run: ActiveDiscoveryRun): boolean {
+    return !disposed && runs.isLive(run);
   }
 
   /**
@@ -520,7 +409,7 @@ export function createDiscoveryController(
    * it is saved (the run is over), but it is kept so Resume saves it instead
    * of searching again.
    */
-  function keepLatePage(run: ActiveRun, page: PreparedSearchPage) {
+  function keepLatePage(run: ActiveDiscoveryRun, page: PreparedSearchPage) {
     if (disposed) return;
     patch(run.campaignId, (existing) => ({
       ...existing,
@@ -529,17 +418,8 @@ export function createDiscoveryController(
     }));
   }
 
-  function markLastPageStop(
-    pageLog: DiscoveryPageLog[],
-    stopReason: DiscoveryEndReason,
-  ): DiscoveryPageLog[] {
-    const last = pageLog.at(-1);
-    if (!last) return pageLog;
-    return [...pageLog.slice(0, -1), { ...last, stopReason }];
-  }
-
   async function runLoop(
-    run: ActiveRun,
+    run: ActiveDiscoveryRun,
     context: DiscoveryContext,
     first: PreparedSearchPage | null,
   ): Promise<void> {
@@ -585,12 +465,26 @@ export function createDiscoveryController(
         }
         const searching = inSearchArea(campaign);
         ahead.drop(campaign.id, campaign.skip);
-        ahead.start(searching, pending !== null);
+        ahead.start(searching, pending !== null, (request, aheadSignal) =>
+          searchPage(
+            run.campaignId,
+            request,
+            aheadSignal,
+            run.abort.signal,
+            "ahead",
+          ),
+        );
         const page =
           pending ??
           (await ahead.pageAt(searching, run.abort.signal, () =>
             fetchCampaignPage(searching, run.abort.signal, (request) =>
-              searchPage(run, request),
+              searchPage(
+                run.campaignId,
+                request,
+                run.abort.signal,
+                run.abort.signal,
+                "in_turn",
+              ),
             ),
           ));
         pending = null;
@@ -713,8 +607,10 @@ export function createDiscoveryController(
     }
   }
 
-  async function finish(run: ActiveRun, context: DiscoveryContext) {
-    if (active === run) active = null;
+  async function finish(run: ActiveDiscoveryRun, context: DiscoveryContext) {
+    if (!runs.retire(run)) return;
+    requestBudget.unregisterCampaign(run.campaignId);
+    ahead.stop(run.campaignId);
     patch(run.campaignId, (campaign) => ({
       ...campaign,
       status: "complete",
@@ -729,12 +625,13 @@ export function createDiscoveryController(
   }
 
   async function fail(
-    run: ActiveRun,
+    run: ActiveDiscoveryRun,
     context: DiscoveryContext,
     error: unknown,
   ) {
-    if (active === run) active = null;
-    const reason = plainReason(error);
+    if (!runs.retire(run)) return;
+    requestBudget.unregisterCampaign(run.campaignId);
+    const reason = plainDiscoveryReason(error);
     patch(run.campaignId, (campaign) => ({
       ...campaign,
       status: "failed",
@@ -827,31 +724,23 @@ export function createDiscoveryController(
     campaignId: string,
     context: DiscoveryContext,
     first: PreparedSearchPage | null,
-  ): ActiveRun {
-    generation += 1;
-    const run: ActiveRun = {
-      campaignId,
-      generation,
-      abort: new AbortController(),
-      done: Promise.resolve(),
-    };
-    active = run;
+  ): ActiveDiscoveryRun {
+    const run = runs.begin(campaignId);
+    requestBudget.registerCampaign(campaignId);
     run.done = runLoop(run, context, first);
-    const tracked = run.done;
-    inflight.add(tracked);
-    const forget = () => {
-      inflight.delete(tracked);
-    };
-    tracked.then(forget, forget);
+    runs.track(run, run.done);
     return run;
   }
 
-  async function continueCurrent(additionalBudgetUsd?: number): Promise<void> {
-    const target = findCampaign(state, state.currentId);
+  async function continueCampaign(
+    campaignId: string,
+    additionalBudgetUsd?: number,
+  ): Promise<void> {
+    const target = findCampaign(state, campaignId);
     const continuation = target ? continuationFor(target) : null;
     if (!target || !continuation) return;
     if (continuation.state === "unavailable") {
-      throw new Error(continuation.message ?? GENERIC_STOP_REASON);
+      throw new Error(continuation.message ?? plainDiscoveryReason(undefined));
     }
     // Without an amount the page allowance grows by what the remaining target
     // needs. It is provider cost the owner is not charged for.
@@ -880,7 +769,6 @@ export function createDiscoveryController(
     ) {
       return;
     }
-    if (active && active.campaignId !== fresh.id) stopActive("paused");
     const cursorState =
       fresh.endReason === "provider_repeat"
         ? continuationCursors(fresh)
@@ -927,15 +815,17 @@ export function createDiscoveryController(
     void flushPendingPosts();
   }
 
-  async function resumeCurrent(from: "paused" | "failed"): Promise<void> {
-    const target = findCampaign(state, state.currentId);
+  async function resumeCampaign(
+    campaignId: string,
+    from: "paused" | "failed",
+  ): Promise<void> {
+    const target = findCampaign(state, campaignId);
     if (!target || target.status !== from) return;
     const context = await deps.resolveContext();
     if (disposed) return;
     ensureOwner(context.pubkey);
     const fresh = findCampaign(state, target.id);
     if (!fresh || fresh.status !== from) return;
-    if (active && active.campaignId !== fresh.id) stopActive("paused");
     patch(fresh.id, (campaign) => ({
       ...campaign,
       status: "running",
@@ -974,8 +864,18 @@ export function createDiscoveryController(
       const campaign = findCampaign(state, state.currentId);
       return campaign ? continuationFor(campaign) : null;
     },
-    continueCampaign: (additionalBudgetUsd) =>
-      continueCurrent(additionalBudgetUsd),
+    getContinuationFor: (campaignId) => {
+      const campaign = findCampaign(state, campaignId);
+      return campaign ? continuationFor(campaign) : null;
+    },
+    continueCampaign: (additionalBudgetUsd) => {
+      const campaignId = state.currentId;
+      return campaignId
+        ? continueCampaign(campaignId, additionalBudgetUsd)
+        : Promise.resolve();
+    },
+    continueCampaignFor: (campaignId, additionalBudgetUsd) =>
+      continueCampaign(campaignId, additionalBudgetUsd),
 
     async select(campaignId) {
       if (state.currentId === campaignId) return;
@@ -1009,7 +909,7 @@ export function createDiscoveryController(
       ) {
         throw new Error(FIRST_START_ERROR);
       }
-      const context = await deps.resolveContext();
+      const context = await resolveStartContext();
       if (disposed) throw new Error(STOPPED_ERROR);
       ensureOwner(context.pubkey);
 
@@ -1017,6 +917,9 @@ export function createDiscoveryController(
       // cannot search (not set up, no credits) fails here with its plain
       // words and leaves no campaign behind.
       const probe = new AbortController();
+      const probeId = `probe-${++probeSequence}`;
+      startProbes.add(probe);
+      requestBudget.registerCampaign(probeId);
       const pickedTags = normalizePickedTags(input.pickedTags);
       // Plain words Maps understands, and the whole named area. See
       // `discoveryCampaignWords.ts` for what the old request found.
@@ -1046,26 +949,38 @@ export function createDiscoveryController(
         ? initialTagCursors.some(cursorHasPages)
         : initialCoverage[0]?.terminalReason === null &&
           cursorHasPages(initialSkip);
-      const first = hasProviderPage
-        ? await fetchCampaignPage(
-            {
-              verticalId: input.verticalId,
-              verticalName: input.verticalName,
-              location,
-              locationSelection,
-              skip: initialSkip,
-              pickedTags,
-              tagCursors: initialTagCursors,
-              searchWords,
-              wordIndex: 0,
-            },
-            probe.signal,
-            deps.search,
-          )
-        : null;
+      let first: PreparedSearchPage | null = null;
+      try {
+        first = hasProviderPage
+          ? await fetchCampaignPage(
+              {
+                verticalId: input.verticalId,
+                verticalName: input.verticalName,
+                location,
+                locationSelection,
+                skip: initialSkip,
+                pickedTags,
+                tagCursors: initialTagCursors,
+                searchWords,
+                wordIndex: 0,
+              },
+              probe.signal,
+              (request) =>
+                searchPage(
+                  probeId,
+                  request,
+                  probe.signal,
+                  probe.signal,
+                  "in_turn",
+                ),
+            )
+          : null;
+      } finally {
+        startProbes.delete(probe);
+        requestBudget.unregisterCampaign(probeId);
+      }
       if (disposed) throw new Error(STOPPED_ERROR);
 
-      if (active) stopActive("paused");
       const campaign: StoredCampaign = {
         id: deps.newId(),
         name: input.name.trim() || `${input.verticalName} prospects`,
@@ -1139,12 +1054,24 @@ export function createDiscoveryController(
     async pause() {
       const target = findCampaign(state, state.currentId);
       if (target?.status !== "running") return;
-      if (active?.campaignId === target.id) stopActive("paused");
+      if (runs.isLiveFor(target.id)) stopRun(target.id, "paused");
       else patch(target.id, (campaign) => ({ ...campaign, status: "paused" }));
     },
 
-    resume: () => resumeCurrent("paused"),
-    retry: () => resumeCurrent("failed"),
+    resume: () => {
+      const campaignId = state.currentId;
+      return campaignId
+        ? resumeCampaign(campaignId, "paused")
+        : Promise.resolve();
+    },
+    retry: () => {
+      const campaignId = state.currentId;
+      return campaignId
+        ? resumeCampaign(campaignId, "failed")
+        : Promise.resolve();
+    },
+    resumeCampaign: (campaignId) => resumeCampaign(campaignId, "paused"),
+    retryCampaign: (campaignId) => resumeCampaign(campaignId, "failed"),
 
     async cancel() {
       const target = findCampaign(state, state.currentId);
@@ -1154,7 +1081,7 @@ export function createDiscoveryController(
       ) {
         return;
       }
-      if (active?.campaignId === target.id) stopActive("cancelled");
+      if (runs.isLiveFor(target.id)) stopRun(target.id, "cancelled");
       else
         patch(target.id, (campaign) => ({ ...campaign, status: "cancelled" }));
       ahead.stop(target.id); // A cancelled campaign is never resumed.
@@ -1162,17 +1089,19 @@ export function createDiscoveryController(
 
     dispose() {
       disposed = true;
-      generation += 1;
-      active?.abort.abort();
-      active = null;
+      for (const probe of startProbes) probe.abort();
+      startProbes.clear();
+      runs.stopAll();
+      requestBudget.dispose();
+      pendingProspectIds.clear();
+      pendingLeadNames.clear();
+      savedProspectIds.clear();
+      savedLeadNames.clear();
       listeners.clear();
       ahead.stop();
     },
 
-    whenIdle: async () => {
-      // A run may hand off to a fresh run (retry), so wait until none is left.
-      while (inflight.size > 0) await Promise.allSettled([...inflight]);
-    },
+    whenIdle: () => runs.whenIdle(),
   };
 
   // The saved list belongs to one identity; check it as soon as it is known.

@@ -25,6 +25,7 @@ import {
   type DiscoveryCampaign,
 } from "./discoveryProvider";
 import { useMultiCityDiscovery } from "./useMultiCityDiscovery";
+import { openMultiCityDiscoveryGroupView } from "./multiCityDiscoveryRuntime";
 import {
   countPeopleRoles,
   industryTaxonomy,
@@ -178,12 +179,9 @@ export function DiscoveryScreen() {
         ...baseInput,
         locations,
       });
+      openMultiCityDiscoveryGroupView(group.groupId);
       setCampaignDialogOpen(false);
-      await navigate({
-        to: group.cities.some((city) => Boolean(city.campaignId))
-          ? "/campaign"
-          : "/discovery/campaigns",
-      });
+      await navigate({ to: "/campaign" });
       return;
     }
     await provider.start(baseInput);
