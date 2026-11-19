@@ -10,6 +10,7 @@ import { LeadDetailScreen, LeadsScreen, PipelineScreen } from "./LeadScreens";
 import { useBusinessRecords } from "./useBusinessRecords";
 import { CampaignRelaySync } from "./CampaignRelaySync";
 import { QualificationRendererBridge } from "./qualificationRuntime";
+import { BusinessRecordTruncationNotice } from "./BusinessRecordTruncationNotice";
 import { MapOutreachDeskPipelineRoute } from "@/features/whatsapp-outreach/MapOutreachDesk";
 import { getDiscoveryCampaignProvider } from "./discoveryProvider";
 import {
@@ -157,6 +158,7 @@ function BusinessRecordsRoute({
   return (
     <>
       <QualificationRendererBridge context={context} />
+      <BusinessRecordTruncationNotice records={business.records} />
       {screen}
     </>
   );

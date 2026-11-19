@@ -42,7 +42,10 @@ import {
   resumePendingProspectUpdate,
   updateProspectsStage,
 } from "./bulkProspectUpdateRuntime";
-import type { PendingBulkProspectUpdate } from "./bulkProspectUpdate";
+import {
+  bulkProspectUpdateLimitMessage,
+  type PendingBulkProspectUpdate,
+} from "./bulkProspectUpdate";
 import {
   findWhatsAppContactForLead,
   getWhatsAppLeadStatus,
@@ -479,6 +482,11 @@ export function LeadsScreen(context: LeadContext) {
 
   async function updateSelectedStage(stage: ProspectStage) {
     if (!canWrite || selectionBusy || selectedRows.length === 0) return;
+    const limitMessage = bulkProspectUpdateLimitMessage(selectedRows.length);
+    if (limitMessage) {
+      setSelectionError(limitMessage);
+      return;
+    }
     setSelectionBusy(true);
     setSelectionError("");
     try {
@@ -501,6 +509,11 @@ export function LeadsScreen(context: LeadContext) {
 
   async function markSelectedLost() {
     if (!canWrite || selectionBusy || selectedRows.length === 0) return;
+    const limitMessage = bulkProspectUpdateLimitMessage(selectedRows.length);
+    if (limitMessage) {
+      setSelectionError(limitMessage);
+      return;
+    }
     setSelectionBusy(true);
     setSelectionError("");
     try {
