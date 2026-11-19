@@ -247,10 +247,7 @@ async fn assign_function_lead(fixture: &Fixture, lead: &Keys) {
     fixture
         .state
         .db
-        .ensure_user(
-            fixture.tenant.community(),
-            &lead.public_key().to_bytes(),
-        )
+        .ensure_user(fixture.tenant.community(), &lead.public_key().to_bytes())
         .await
         .expect("ensure function lead user");
     fixture
