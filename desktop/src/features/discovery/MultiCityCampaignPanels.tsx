@@ -92,7 +92,10 @@ export function MultiCityAllSummary({
       ) : null}
       {failedCities > 0 ? (
         <div>
-          <p>{failedCities} cities could not start.</p>
+          <p>
+            {failedCities} {failedCities === 1 ? "city" : "cities"} could not
+            start.
+          </p>
           {onRetry ? (
             <button
               aria-label="Try again all failed cities"

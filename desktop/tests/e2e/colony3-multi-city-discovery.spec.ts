@@ -578,7 +578,7 @@ test("a city that never started explains the reason and retries as a fresh campa
   await capture(page, "multi-city-addendum-b-failed-city.png");
   await page.getByRole("tab", { name: /All cities/ }).click();
   const allCities = page.getByTestId("multi-city-all-summary");
-  await expect(allCities).toContainText("1 cities could not start.");
+  await expect(allCities).toContainText("1 city could not start.");
   await expect(
     allCities.getByRole("button", { name: "Try again all failed cities" }),
   ).toBeVisible();
