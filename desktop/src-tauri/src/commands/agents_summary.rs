@@ -11,7 +11,7 @@ use crate::managed_agents::{
 ///
 /// One-shot command paths use this helper. The five-second list poll calls
 /// `build_managed_agent_summary` directly after loading stores once per poll.
-pub(super) fn summarize_from_disk(
+pub(crate) fn summarize_from_disk(
     app: &AppHandle,
     record: &ManagedAgentRecord,
     runtimes: &std::collections::HashMap<ManagedAgentRuntimeKey, ManagedAgentPairRuntime>,
