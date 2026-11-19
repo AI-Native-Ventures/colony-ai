@@ -41,7 +41,6 @@ const SCOUT_CHANNEL_ID = "fullmap-s4-scout";
 const NO_SCREEN_JOBS: readonly NoScreenJob[] = [
   { functionId: "sales", jobName: "Calls", side: "right" },
   { functionId: "finance", jobName: "Recurring plans", side: "right" },
-  { functionId: "customer_success", jobName: "Renewals", side: "left" },
   { functionId: "customer_success", jobName: "Upsell", side: "left" },
   { functionId: "customer_success", jobName: "Reviews", side: "left" },
   { functionId: "brand", jobName: "Website", side: "left" },
@@ -51,8 +50,8 @@ const NO_SCREEN_JOBS: readonly NoScreenJob[] = [
   { functionId: "brand", jobName: "Voice", side: "left" },
 ];
 const SALES_CALLS = NO_SCREEN_JOBS[0];
-const CUSTOMER_SUCCESS_RENEWALS = NO_SCREEN_JOBS[2];
-const BRAND_WEBSITE = NO_SCREEN_JOBS[5];
+const CUSTOMER_SUCCESS_UPSELL = NO_SCREEN_JOBS[2];
+const BRAND_WEBSITE = NO_SCREEN_JOBS[4];
 const MAP_WORKSPACES: readonly WorkspaceSeed[] = [
   {
     addedAt: "2026-11-15T00:00:00.000Z",
@@ -388,11 +387,11 @@ test.describe("full map canvas slice 4", () => {
     await page.getByTestId("fullmap-window-close").click();
     await expect(page.getByTestId(jobTestId(SALES_CALLS))).toBeFocused();
 
-    await openNoScreenJob(page, CUSTOMER_SUCCESS_RENEWALS, "keyboard");
+    await openNoScreenJob(page, CUSTOMER_SUCCESS_UPSELL, "keyboard");
     await expect(noScreenCard(page)).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(
-      page.getByTestId(jobTestId(CUSTOMER_SUCCESS_RENEWALS)),
+      page.getByTestId(jobTestId(CUSTOMER_SUCCESS_UPSELL)),
     ).toBeFocused();
 
     await openNoScreenJob(page, SALES_CALLS, "pointer");
@@ -409,8 +408,8 @@ test.describe("full map canvas slice 4", () => {
     await page.reload();
     await expectNoScreenCard(page, SALES_CALLS);
 
-    await page.goto(hashRoute(routeFor(CUSTOMER_SUCCESS_RENEWALS)));
-    await expectNoScreenCard(page, CUSTOMER_SUCCESS_RENEWALS);
+    await page.goto(hashRoute(routeFor(CUSTOMER_SUCCESS_UPSELL)));
+    await expectNoScreenCard(page, CUSTOMER_SUCCESS_UPSELL);
     await page.goto(hashRoute(routeFor(BRAND_WEBSITE)));
     await expectNoScreenCard(page, BRAND_WEBSITE);
     await expect(page.getByTestId("fullmap-window-peek")).toHaveCount(0);
@@ -426,7 +425,7 @@ test.describe("full map canvas slice 4", () => {
       top: 124,
       width: 1764,
     });
-    await page.goto(hashRoute(routeFor(CUSTOMER_SUCCESS_RENEWALS)));
+    await page.goto(hashRoute(routeFor(CUSTOMER_SUCCESS_UPSELL)));
     await waitForAnimations(page);
     expect(await page.evaluate(cardGeometry)).toMatchObject({
       bottom: 1151,
@@ -574,7 +573,7 @@ test.describe("full map canvas slice 4", () => {
         await captureCard(
           page,
           screenshotDir,
-          CUSTOMER_SUCCESS_RENEWALS,
+          CUSTOMER_SUCCESS_UPSELL,
           `no-screen-left-${theme}-${viewport.label}.png`,
         );
         await page.goto(hashRoute(routeFor(SALES_CALLS)));
@@ -608,7 +607,7 @@ test.describe("full map canvas slice 4", () => {
           await captureCard(
             page,
             screenshotDir,
-            CUSTOMER_SUCCESS_RENEWALS,
+            CUSTOMER_SUCCESS_UPSELL,
             "comparison-WalkCsRenew-app-1440x900.png",
           );
           await captureCard(

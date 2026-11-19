@@ -30,7 +30,7 @@ export function AgentsView({
   onOpenAgent: (pubkey: string) => void;
   onMessageAgent: (pubkey: string) => Promise<void>;
 }) {
-  const { goHireRoles } = useAppNavigation();
+  const { goCompanyMap } = useAppNavigation();
   const runtimeCatalogQuery = useAcpRuntimesQuery({ enabled: true });
   const archivedQuery = useArchivedIdentitiesQuery();
   const activeTurnsByChannel = useActiveAgentTurnsByChannel();
@@ -88,7 +88,7 @@ export function AgentsView({
             <div className="agents-c3 agents-c3-page">
               <AgentsDirectoryHeader
                 agentCount={directoryAgentCount}
-                onHire={() => void goHireRoles()}
+                onHire={() => void goCompanyMap()}
               />
               <KeyRescueCard />
               <AgentDirectory

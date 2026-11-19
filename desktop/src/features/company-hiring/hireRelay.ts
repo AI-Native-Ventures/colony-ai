@@ -46,6 +46,17 @@ async function fetchCompanyHireHead(
   return record;
 }
 
+/** Read a fresh signed hire head for flows that finish a hire in one dialog. */
+export async function fetchCurrentCompanyHireHead(
+  hireId: string,
+): Promise<CompanyHireHeadRecord | null> {
+  const relaySelf = await getRelaySelf();
+  if (!relaySelf) {
+    throw new Error("This relay does not advertise a signing identity.");
+  }
+  return fetchCompanyHireHead(hireId, relaySelf);
+}
+
 export function useCompanyHireHeadQuery(hireId: string | null) {
   const { activeCommunity } = useCommunities();
   const relayUrl = activeCommunity?.relayUrl ?? null;
@@ -55,11 +66,7 @@ export function useCompanyHireHeadQuery(hireId: string | null) {
     queryKey: companyHireHeadQueryKey(relayUrl, normalizedId ?? ""),
     queryFn: async () => {
       if (!normalizedId) throw new Error("The hire coordinate is missing.");
-      const relaySelf = await getRelaySelf();
-      if (!relaySelf) {
-        throw new Error("This relay does not advertise a signing identity.");
-      }
-      return fetchCompanyHireHead(normalizedId, relaySelf);
+      return fetchCurrentCompanyHireHead(normalizedId);
     },
     staleTime: 5_000,
     refetchInterval: HIRE_HEAD_REFETCH_INTERVAL_MS,

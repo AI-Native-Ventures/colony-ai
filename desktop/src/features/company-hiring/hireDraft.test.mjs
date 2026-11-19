@@ -25,9 +25,6 @@ function proposal() {
     runtimeId: "buzz-agent",
     providerId: "openai",
     modelId: "gpt-5.5",
-    channelIds: ["c1d4ba1a-e078-42ef-b896-00be34a94f11"],
-    respondTo: "owner-only",
-    effortLevel: "high",
     weeklyAllowance: "8.00",
   };
 }
@@ -54,6 +51,11 @@ afterEach(() => {
 test("hire draft keeps configured values and the attached employee across reload reads", () => {
   const draft = {
     proposal: proposal(),
+    localConfiguration: {
+      channelIds: ["c1d4ba1a-e078-42ef-b896-00be34a94f11"],
+      respondTo: "owner-only",
+      effortLevel: "high",
+    },
     avatarUrl:
       "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22/%3E",
     employeePubkey: EMPLOYEE_PUBKEY,
@@ -72,4 +74,24 @@ test("hire draft rejects malformed proposals and removes the stored value", () =
 
   assert.equal(readHireDraft(RELAY_URL, HIRE_ID), null);
   assert.equal(storage.getItem(key), null);
+});
+
+test("a legacy local setup is recovered without leaking fields to the relay", () => {
+  const legacy = {
+    proposal: {
+      ...proposal(),
+      channelIds: ["c1d4ba1a-e078-42ef-b896-00be34a94f11"],
+      respondTo: "owner-only",
+      effortLevel: "high",
+    },
+  };
+
+  assert.equal(writeHireDraft(RELAY_URL, legacy), true);
+  const restored = readHireDraft(RELAY_URL, HIRE_ID);
+  assert.equal(restored?.proposal.channelIds, undefined);
+  assert.deepEqual(restored?.localConfiguration, {
+    channelIds: ["c1d4ba1a-e078-42ef-b896-00be34a94f11"],
+    respondTo: "owner-only",
+    effortLevel: "high",
+  });
 });

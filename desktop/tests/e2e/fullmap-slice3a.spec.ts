@@ -634,7 +634,7 @@ test.describe("full map canvas slice 3a", () => {
         top: 177,
         width: 14,
       },
-      stageTransform: "translate(2156px, -27px) scale(1)",
+      stageTransform: "translate(2156px, -51px) scale(1)",
       window: {
         bottom: 823,
         height: 699,

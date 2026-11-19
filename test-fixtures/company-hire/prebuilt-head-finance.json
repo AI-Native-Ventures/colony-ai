@@ -1,0 +1,56 @@
+{
+  "create": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000001",
+    "action": "create",
+    "proposal": {
+      "hireId": "00000000-0000-4000-8000-000000000001",
+      "rolePack": {
+        "personaId": "persona-finance-head",
+        "title": "Head of Finance",
+        "job": "Head of Finance",
+        "skills": [
+          "Asks for money in and keeps the records.",
+          "Tells you every week what came in, what is owed and who is late.",
+          "Never pays anyone."
+        ],
+        "tools": [],
+        "workerMenu": ["codex"]
+      },
+      "displayName": "Head of Finance",
+      "title": "Head of Finance",
+      "managerPubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "introductionChannelId": "00000000-0000-4000-8000-000000000002",
+      "runtimeId": "codex",
+      "providerId": "openai",
+      "modelId": "gpt-6"
+    }
+  },
+  "slotHireSet": {
+    "schemaVersion": 1,
+    "op": "slot_hire_set",
+    "hireId": "00000000-0000-4000-8000-000000000001",
+    "function": "finance"
+  },
+  "approve": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000001",
+    "action": "approve",
+    "expectedHeadEventId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "attachEmployee": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000001",
+    "action": "attach_employee",
+    "expectedHeadEventId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "employeePubkey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "complete": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000001",
+    "action": "complete",
+    "expectedHeadEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "employeePubkey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "introductionEventId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

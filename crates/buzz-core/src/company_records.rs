@@ -2723,6 +2723,44 @@ mod tests {
     const PK_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const EV: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields, rename_all = "camelCase")]
+    struct PrebuiltHeadWireFixture {
+        create: HireAction,
+        slot_hire_set: crate::company_access::AccessAction,
+        approve: HireAction,
+        attach_employee: HireAction,
+        complete: HireAction,
+    }
+
+    #[test]
+    fn prebuilt_head_finance_wire_fixture_validates_with_the_relay_types() {
+        let fixture: PrebuiltHeadWireFixture = serde_json::from_str(include_str!(
+            "../../../test-fixtures/company-hire/prebuilt-head-finance.json"
+        ))
+        .expect("the checked-in prebuilt hire fixture must deserialize");
+
+        let proposal = fixture
+            .create
+            .proposal
+            .as_ref()
+            .expect("the create fixture must carry its proposal");
+        assert_eq!(proposal.role_pack.job, "Head of Finance");
+        assert!(validate_hire_proposal(proposal).is_ok());
+        assert!(validate_hire_action(&fixture.create).is_ok());
+        assert!(crate::company_access::validate_access_action(&fixture.slot_hire_set).is_ok());
+        assert_eq!(
+            fixture
+                .slot_hire_set
+                .d_tag()
+                .expect("the slot intent fixture must have a d-tag"),
+            "company:slot-hire:00000000-0000-4000-8000-000000000001"
+        );
+        assert!(validate_hire_action(&fixture.approve).is_ok());
+        assert!(validate_hire_action(&fixture.attach_employee).is_ok());
+        assert!(validate_hire_action(&fixture.complete).is_ok());
+    }
+
     fn goal(id: u128) -> GoalRecord {
         GoalRecord {
             schema_version: 1,

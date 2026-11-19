@@ -53,6 +53,7 @@ export function MapDoer({
   member,
   name,
   avatarUrl,
+  fallbackInstance,
   pubkey,
   scout = false,
   owner = false,
@@ -61,6 +62,7 @@ export function MapDoer({
   member?: TeamMember;
   name?: string;
   avatarUrl?: string | null;
+  fallbackInstance?: string | null;
   pubkey?: string;
   scout?: boolean;
   owner?: boolean;
@@ -91,10 +93,10 @@ export function MapDoer({
     return member.kind === "employee" ? (
       <EmployeeAvatar
         className={className}
-        instance={member.managedAgent?.avatarUrl}
+        instance={member.managedAgent?.avatarUrl ?? fallbackInstance}
         name={display}
         personaId={member.managedAgent?.personaId}
-        profile={avatarUrl}
+        profile={fallbackInstance ? null : avatarUrl}
         pubkey={member.pubkey}
       />
     ) : (

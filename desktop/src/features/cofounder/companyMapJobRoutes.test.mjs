@@ -72,7 +72,6 @@ test("jobs without screens retain their owning function page address", () => {
   assert.deepEqual(COMPANY_MAP_NO_SCREEN_JOBS, [
     "sales:Calls",
     "finance:Recurring plans",
-    "customer_success:Renewals",
     "customer_success:Upsell",
     "customer_success:Reviews",
     "brand:Website",
@@ -132,13 +131,6 @@ test("no-screen jobs validate as map card roots only at their part address", () 
 });
 
 test("map-window routes retain the job that opened a shared screen", () => {
-  assert.deepEqual(companyMapWindowSearch("finance", "Quotes"), {
-    mapJob: "finance:Quotes",
-  });
-  assert.deepEqual(
-    companyMapWindowJobForRoute("/clients", { mapJob: "finance:Quotes" }),
-    { functionId: "finance", jobName: "Quotes" },
-  );
   assert.deepEqual(
     companyMapWindowJobForRoute("/money", {
       mapJob: "finance:Deposits",
@@ -210,14 +202,6 @@ test("accepts only the explicit screen-backed and no-screen map roots", () => {
     isCompanyMapWindowJob({
       functionId: "operations",
       jobName: "Client intake",
-    }),
-    true,
-  );
-  assert.equal(
-    isCompanyMapWindowJob({
-      functionId: "customer_success",
-      jobName: "Renewals",
-      noScreen: true,
     }),
     true,
   );

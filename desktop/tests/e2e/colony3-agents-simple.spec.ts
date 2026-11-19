@@ -139,7 +139,7 @@ function decodeAvatarSource(source: string) {
     : decodeURIComponent(source);
 }
 
-test("simple Agents list and profile keep the same hire path and owner-safe AI", async ({
+test("simple Agents list and profile send new hires to the map and keep owner-safe AI", async ({
   page,
 }) => {
   await openAgents(page, "/#/agents?rows=10");
@@ -202,12 +202,12 @@ test("simple Agents list and profile keep the same hire path and owner-safe AI",
   await page.goto("/#/agents?rows=10");
   await expect(page.getByTestId("agent-hire-button")).toBeVisible();
   await page.getByTestId("agent-hire-button").click();
-  await expect(page.getByTestId("hire-roles")).toBeVisible();
+  await expect(page).toHaveURL(/#\/company\/map$/);
 
   await page.goto("/#/team");
   await expect(page.getByTestId("company-team-screen")).toBeVisible();
   await page.getByTestId("team-hire-button").click();
-  await expect(page.getByTestId("hire-roles")).toBeVisible();
+  await expect(page).toHaveURL(/#\/company\/map$/);
 });
 
 test("Scout's live AI appears in the Agents directory", async ({ page }) => {
