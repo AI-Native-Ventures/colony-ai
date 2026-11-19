@@ -59,6 +59,7 @@ pub(super) async fn handle(
 
     let community_id = tenant.community();
     let actor_pubkey = auth.pubkey().to_hex();
+    let action_event_id = event.id.to_hex();
     let actor = state
         .db
         .get_relay_member(community_id, &actor_pubkey)
@@ -367,6 +368,26 @@ pub(super) async fn handle(
         }
     };
 
+    let completed_manager = if action.action == HireActionKind::Complete {
+        match next.proposal.manager_pubkey.as_deref() {
+            Some(fallback_manager) => {
+                match super::company_jobs::manager_for_job_hire(
+                    state,
+                    community_id,
+                    action.hire_id,
+                    fallback_manager,
+                )
+                .await?
+                {
+                    Some(manager) => Some(manager),
+                    None => next.proposal.manager_pubkey.clone(),
+                }
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
     let employee_action = if action.action == HireActionKind::Complete {
         Some(MemberPositionAction {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -377,7 +398,7 @@ pub(super) async fn handle(
             action: MemberPositionActionKind::SetPosition,
             expected_head_event_id: None,
             title: Some(next.proposal.title.clone()),
-            manager_pubkey: Some(next.proposal.manager_pubkey.clone()),
+            manager_pubkey: Some(completed_manager.clone()),
             reason: None,
         })
     } else {
@@ -390,14 +411,14 @@ pub(super) async fn handle(
                 tenant,
                 state,
                 employee_action,
-                &event.id.to_hex(),
+                &action_event_id,
             )
             .await?,
         ),
         None => None,
     };
 
-    next.source_action_event_id = event.id.to_hex();
+    next.source_action_event_id = action_event_id.clone();
     let head_event = relay_hire_head_event(&next, &d_tag, current_stored.as_ref(), state)?;
     let (stored_action, inserted) =
         buzz_db::event::insert_event_in_transaction(&mut tx, community_id, &event, None)
@@ -464,6 +485,49 @@ pub(super) async fn handle(
         }
         _ => None,
     };
+    // A specialist intent uses the same completion transaction as the hire and
+    // member position, so a completed employee cannot lose its job assignment.
+    let job_head = match (action.action, action.employee_pubkey.as_deref()) {
+        (HireActionKind::Complete, Some(employee)) => {
+            super::company_jobs::assign_job_for_hire_in_tx(
+                &mut tx,
+                state,
+                community_id,
+                action.hire_id,
+                employee,
+                &actor_pubkey,
+            )
+            .await?
+        }
+        _ => None,
+    };
+    // A later head hire takes over the active specialists in its part inside
+    // this same completion transaction.
+    let reparented_positions = match (
+        action.action,
+        action.employee_pubkey.as_deref(),
+        slot_head.as_ref(),
+    ) {
+        (HireActionKind::Complete, Some(employee), Some(_)) => {
+            match super::company_access::current_slot_hire(state, community_id, action.hire_id)
+                .await?
+            {
+                Some(intent) => {
+                    super::company_jobs::reparent_job_specialists_for_function_in_tx(
+                        &mut tx,
+                        tenant,
+                        state,
+                        intent.function,
+                        employee,
+                        &action_event_id,
+                    )
+                    .await?
+                }
+                None => Vec::new(),
+            }
+        }
+        _ => Vec::new(),
+    };
     tx.commit().await.map_err(internal)?;
 
     super::event::dispatch_persistent_event(
@@ -495,6 +559,17 @@ pub(super) async fn handle(
         )
         .await;
     }
+    for position in &reparented_positions {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            position,
+            buzz_core::kind::KIND_MEMBER_POSITION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
+    }
     if let Some(records) = hire_records {
         dispatch_hire_records(tenant, state, records, &actor_pubkey).await;
     }
@@ -504,6 +579,17 @@ pub(super) async fn handle(
             state,
             &slot_head,
             buzz_core::kind::KIND_COMPANY_FUNCTION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
+    }
+    if let Some(job_head) = job_head {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            &job_head,
+            buzz_core::kind::KIND_COMPANY_JOB_HEAD,
             &state.relay_keypair.public_key().to_hex(),
             None,
         )

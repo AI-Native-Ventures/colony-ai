@@ -15,6 +15,10 @@ import { useChannelsQuery } from "@/features/channels/hooks";
 import { FUNCTION_DETAILS, FUNCTION_DESCRIPTIONS } from "../functions";
 import { companyMapJobDoer } from "../companyMapAssignments";
 import { useCofounderSettingsQuery, useFunctionSlotsQuery } from "../hooks";
+import {
+  useCompanyJobHeadsQuery,
+  useJobAssignmentCapability,
+} from "../jobAssignments";
 import type { FunctionId, FunctionSlotView } from "../cofounderRecords";
 import { numbersActions } from "../numbersActions";
 import { useFunctionNumbers, useNumbersAction } from "../numbersHooks";
@@ -24,7 +28,9 @@ import { WorkerList } from "./WorkerList";
 import { OperationsPlaybookScreen } from "./OperationsPlaybookScreen";
 import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
 import { prebuiltHeadForFunction } from "../prebuiltAgents";
+import { prebuiltJobId, prebuiltSpecialistForJobName } from "../prebuiltAgents";
 import { prebuiltAgentAvatarDataUrl } from "../prebuiltAgentAvatar";
+import { JobAssignmentAvatar } from "./JobAssignmentSpot";
 import { companyMapScoutChannelId } from "../companyMapScout";
 
 type ProfileLookup = Record<
@@ -200,11 +206,19 @@ function SubFunctionsCard({
   functionId,
   slot,
   leadName,
+  members,
 }: {
   functionId: FunctionId;
   slot: FunctionSlotView;
   leadName: string | null;
+  members: TeamMember[];
 }) {
+  const { activeCommunity } = useCommunities();
+  const capabilityQuery = useJobAssignmentCapability();
+  const jobHeadsQuery = useCompanyJobHeadsQuery(
+    activeCommunity?.id ?? null,
+    capabilityQuery.data === true,
+  );
   return (
     <section
       aria-labelledby="function-subfunctions-title"
@@ -215,19 +229,47 @@ function SubFunctionsCard({
       </h2>
       <ul className="mt-3 divide-y divide-border">
         {FUNCTION_DETAILS[functionId].subFunctions.map((name) => {
-          const doer = companyMapJobDoer(slot);
+          const agent = prebuiltSpecialistForJobName(functionId, name);
+          const jobId = agent ? prebuiltJobId(agent) : null;
+          const jobHead = jobId
+            ? (jobHeadsQuery.data?.find(
+                (candidate) =>
+                  candidate.functionId === functionId &&
+                  candidate.jobId === jobId,
+              ) ?? null)
+            : null;
+          const doer = companyMapJobDoer(
+            slot,
+            jobHead?.state === "filled" ? jobHead.assigneePubkey : null,
+          );
+          const specialist =
+            doer.kind === "specialist"
+              ? (members.find(
+                  (member) =>
+                    member.pubkey.toLowerCase() === doer.pubkey.toLowerCase(),
+                ) ?? null)
+              : null;
           const status =
-            doer.kind === "scout"
-              ? "Scout covers"
-              : slot.state === "filled"
-                ? `Led by ${leadName ?? "the assigned lead"}`
-                : "Waits for a lead";
+            doer.kind === "specialist"
+              ? `${specialist ? memberName(specialist, {}) : "Specialist"} works here`
+              : doer.kind === "scout"
+                ? "Scout covers"
+                : slot.state === "filled"
+                  ? `Led by ${leadName ?? "the assigned lead"}`
+                  : "Waits for a lead";
           return (
             <li
               className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
               key={name}
             >
-              <span className="text-sm font-bold">{name}</span>
+              <span className="flex min-w-0 items-center gap-2 text-sm font-bold">
+                <JobAssignmentAvatar
+                  className="size-7 shrink-0 rounded-full"
+                  functionId={functionId}
+                  jobName={name}
+                />
+                {name}
+              </span>
               <span className="text-sm text-muted-foreground">{status}</span>
             </li>
           );
@@ -592,6 +634,7 @@ export function FunctionScreen({
             <SubFunctionsCard
               functionId={functionId}
               leadName={leadName}
+              members={members}
               slot={slot}
             />
           </div>

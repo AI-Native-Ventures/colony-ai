@@ -28,13 +28,51 @@ const source = prebuiltAgentSource as PrebuiltAgentSource;
 /** The approved shared rules that every prebuilt agent receives verbatim. */
 export const PREBUILT_AGENT_RULES: readonly string[] = source.rules;
 
-/** All approved head and specialist records. Specialist hiring is not exposed yet. */
+/** All approved head and specialist records. */
 export const PREBUILT_AGENTS: readonly PrebuiltAgent[] = source.agents;
 
 /** The five map-hire records, one for each part of the company. */
 export const PREBUILT_HEADS: readonly PrebuiltAgent[] = PREBUILT_AGENTS.filter(
   (agent) => agent.job === null,
 );
+
+/** Every approved ready-made job specialist. */
+export const PREBUILT_SPECIALISTS: readonly PrebuiltAgent[] =
+  PREBUILT_AGENTS.filter((agent) => agent.job !== null);
+
+/**
+ * A specialist id is the approved durable job id with the `prebuilt-` prefix
+ * removed. It is intentionally independent from the job's display copy.
+ */
+export function prebuiltJobId(agent: PrebuiltAgent): string | null {
+  if (!agent.job || !agent.id.startsWith("prebuilt-")) return null;
+  const jobId = agent.id.slice("prebuilt-".length);
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(jobId) ? jobId : null;
+}
+
+/** Finds the one approved specialist for a stable job coordinate. */
+export function prebuiltSpecialistForJob(
+  functionId: FunctionId,
+  jobId: string,
+): PrebuiltAgent | null {
+  return (
+    PREBUILT_SPECIALISTS.find(
+      (agent) => agent.part === functionId && prebuiltJobId(agent) === jobId,
+    ) ?? null
+  );
+}
+
+/** Resolves a map display job to its approved specialist without persisting copy. */
+export function prebuiltSpecialistForJobName(
+  functionId: FunctionId,
+  jobName: string,
+): PrebuiltAgent | null {
+  return (
+    PREBUILT_SPECIALISTS.find(
+      (agent) => agent.part === functionId && agent.job === jobName,
+    ) ?? null
+  );
+}
 
 export function prebuiltHeadForFunction(
   functionId: FunctionId,

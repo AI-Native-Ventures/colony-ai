@@ -99,6 +99,8 @@ pub enum CompanyCommand {
     CofounderAction(crate::company_cofounder::CofounderAction),
     /// Company function slot change (kind 47061).
     FunctionAction(crate::company_functions::FunctionAction),
+    /// Company job assignment change (kind 47071).
+    JobAction(crate::company_jobs::JobAction),
     /// Access list, capability gap or slot hire write (kind 47066).
     AccessAction(crate::company_access::AccessAction),
 }
@@ -1611,6 +1613,10 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_functions::FunctionAction>(content)
                 .map(CompanyCommand::FunctionAction)
         }
+        crate::kind::KIND_COMPANY_JOB_ACTION => {
+            serde_json::from_str::<crate::company_jobs::JobAction>(content)
+                .map(CompanyCommand::JobAction)
+        }
         crate::kind::KIND_COMPANY_ACCESS_ACTION => {
             serde_json::from_str::<crate::company_access::AccessAction>(content)
                 .map(CompanyCommand::AccessAction)
@@ -1640,6 +1646,7 @@ pub fn parse_company_command(
         CompanyCommand::LessonAction(value) => value.schema_version,
         CompanyCommand::CofounderAction(value) => value.schema_version,
         CompanyCommand::FunctionAction(value) => value.schema_version,
+        CompanyCommand::JobAction(value) => value.schema_version,
         CompanyCommand::AccessAction(value) => value.schema_version,
         CompanyCommand::EmployeeAllowanceAction(value) => value.schema_version,
         CompanyCommand::AiSpendRecordAction(value) => value.schema_version,

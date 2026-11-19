@@ -924,6 +924,7 @@ pub fn run() {
             pick_workspace_repos_dir,
             get_active_workspace,
             fetch_workspace_icon,
+            relay_supports_extension,
             fetch_join_policy,
             set_prevent_sleep_active,
             get_agent_memory,

@@ -9,6 +9,7 @@ use buzz_core::company_cofounder::{
     validate_cofounder_action, CofounderAction, CofounderSettings, COFOUNDER_D_TAG,
 };
 use buzz_core::company_functions::{function_d_tag, validate_function_action, FunctionAction};
+use buzz_core::company_jobs::{validate_job_action, JobAction};
 use buzz_core::company_records::{
     goal_d_tag, secret_binding_d_tag, tool_permission_d_tag, validate_goal_action,
     validate_secret_binding_action, validate_tool_permission_action, COMPANY_RECORD_SCHEMA_VERSION,
@@ -25,7 +26,7 @@ use buzz_core::factory_run_records::{
 };
 use buzz_core::kind::{
     KIND_COFOUNDER_ACTION, KIND_COMPANY_ACCESS_ACTION, KIND_COMPANY_FUNCTION_ACTION,
-    KIND_FACTORY_RUN_ACTION, KIND_GOAL_ACTION, KIND_SECRET_BINDING_ACTION,
+    KIND_COMPANY_JOB_ACTION, KIND_FACTORY_RUN_ACTION, KIND_GOAL_ACTION, KIND_SECRET_BINDING_ACTION,
     KIND_TOOL_PERMISSION_ACTION,
 };
 use nostr::{EventBuilder, Kind, Tag};
@@ -65,6 +66,21 @@ pub fn build_function_action(action: &FunctionAction) -> Result<EventBuilder, Sd
     let tag = Tag::parse(["d", d_tag.as_str()])
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
     Ok(EventBuilder::new(Kind::Custom(KIND_COMPANY_FUNCTION_ACTION as u16), content).tag(tag))
+}
+
+/// Build a member-signed per-job specialist action with its exact coordinate.
+pub fn build_job_action(action: &JobAction) -> Result<EventBuilder, SdkError> {
+    validate_job_action(action)
+        .map_err(|error| SdkError::InvalidInput(format!("job action is invalid: {error}")))?;
+    let content = serde_json::to_string(action).map_err(|error| {
+        SdkError::InvalidInput(format!("job action serialization failed: {error}"))
+    })?;
+    let d_tag = action
+        .d_tag()
+        .map_err(|error| SdkError::InvalidInput(format!("job action is invalid: {error}")))?;
+    let tag = Tag::parse(["d", d_tag.as_str()])
+        .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+    Ok(EventBuilder::new(Kind::Custom(KIND_COMPANY_JOB_ACTION as u16), content).tag(tag))
 }
 
 /// Build a member-signed access list, capability gap or slot hire action.

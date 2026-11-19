@@ -6,6 +6,7 @@ import {
 
 import type { AccessActionInput } from "./accessRecords";
 import type { FunctionId } from "./cofounderRecords";
+import type { CompanyJobActionInput } from "./jobAssignments";
 import { FUNCTION_DETAILS } from "./functions";
 import { prebuiltBuiltInRole } from "./prebuiltAgents";
 import type { PrebuiltAgent } from "./prebuiltAgents";
@@ -38,7 +39,9 @@ export function buildPrebuiltHireProposal({
       workerMenu: [...role.workerMenu],
     },
     displayName: agent.name,
-    title: agent.name,
+    // Team rows name the job, while the persona and hire dialog keep the
+    // approved specialist name. For heads these are intentionally identical.
+    title: role.job,
     ...(managerPubkey ? { managerPubkey } : {}),
     introductionChannelId,
     runtimeId: choice.runtimeId,
@@ -70,6 +73,25 @@ export function buildPrebuiltSlotHireSetAction({
   return {
     op: "slot_hire_set",
     functionId,
+    hireId,
+    expectedHeadEventId: null,
+  };
+}
+
+/** Builds the specialist job intent before the normal hire is approved. */
+export function buildPrebuiltJobHireSetAction({
+  functionId,
+  hireId,
+  jobId,
+}: {
+  functionId: FunctionId;
+  hireId: string;
+  jobId: string;
+}): Extract<CompanyJobActionInput, { action: "hire_set" }> {
+  return {
+    action: "hire_set",
+    functionId,
+    jobId,
     hireId,
     expectedHeadEventId: null,
   };

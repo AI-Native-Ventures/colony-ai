@@ -4,9 +4,12 @@ import type { PrebuiltAgent } from "./prebuiltAgents";
 
 /** The stable Colony ant artwork for a pre-built agent across every surface. */
 export function prebuiltAgentAvatarDataUrl(
-  agent: Pick<PrebuiltAgent, "name">,
+  agent: Pick<PrebuiltAgent, "name"> & Partial<Pick<PrebuiltAgent, "part">>,
 ): string {
-  const base64Url = agentAntAvatarDataUrl(agent.name);
+  // Prebuilt specialists are named for a job, not their function. Use their
+  // function when it is available so their durable avatar is a coloured Colony
+  // ant instead of the neutral fallback that job names would otherwise choose.
+  const base64Url = agentAntAvatarDataUrl(agent.part ?? agent.name);
   const base64Svg = base64Url.split(",", 2)[1];
   if (!base64Svg) return base64Url;
 

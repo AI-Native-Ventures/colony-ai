@@ -182,6 +182,16 @@ pub(super) async fn handle(
         serde_json::to_string(&head).map_err(internal)?,
         current_stored.as_ref(),
     )?;
+    // Keep every specialist in this part under the head the owner just chose,
+    // or under Scout when the owner clears that head. This stays in the same
+    // transaction as the slot write, so a committed slot never leaves a
+    // specialist reporting to a former head.
+    let specialist_manager = match action.kind {
+        FunctionActionKind::AssignLead => action.lead_pubkey.clone(),
+        FunctionActionKind::CoverByScout | FunctionActionKind::Clear => {
+            scout_manager_for_specialists(state, community_id, None).await?
+        }
+    };
     let (stored_action, inserted) =
         buzz_db::event::insert_event_in_transaction(&mut tx, community_id, &event, None)
             .await
@@ -212,6 +222,20 @@ pub(super) async fn handle(
             "function slot changed before the action could commit; refresh and retry",
         ));
     }
+    let reparented_positions = match specialist_manager.as_deref() {
+        Some(manager) => {
+            super::company_jobs::reparent_job_specialists_for_function_in_tx(
+                &mut tx,
+                tenant,
+                state,
+                action.function,
+                manager,
+                &event.id.to_hex(),
+            )
+            .await?
+        }
+        None => Vec::new(),
+    };
     tx.commit().await.map_err(internal)?;
 
     super::event::dispatch_persistent_event(
@@ -232,6 +256,17 @@ pub(super) async fn handle(
         None,
     )
     .await;
+    for position in &reparented_positions {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            position,
+            buzz_core::kind::KIND_MEMBER_POSITION_HEAD,
+            &state.relay_keypair.public_key().to_hex(),
+            None,
+        )
+        .await;
+    }
     Ok(IngestResult {
         event_id: event.id.to_hex(),
         accepted: true,
@@ -416,18 +451,39 @@ async fn empty_slot_in_tx(
     Ok(Some(replaced.event))
 }
 
+/// Relay records changed while clearing a departing lead from function slots.
+pub(super) struct ClearedFunctionSlots {
+    /// Function slot heads that now have no lead.
+    pub slot_heads: Vec<StoredEvent>,
+    /// Job assignment heads emptied for the departing employee.
+    pub job_heads: Vec<StoredEvent>,
+    /// Specialists moved to the departing head's prior manager.
+    pub reparented_positions: Vec<StoredEvent>,
+}
+
 /// Empties every slot led by `lead` inside `tx`, so a pause, termination or
 /// removal commits together with the cleared slots or not at all.
-///
-/// Returns the new heads for the caller to dispatch after commit.
 pub(super) async fn clear_slots_led_by_in_tx(
     tx: &mut Transaction<'_, Postgres>,
-    state: &AppState,
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
     community_id: CommunityId,
     lead: &str,
     actor_pubkey: &str,
-) -> Result<Vec<StoredEvent>, IngestError> {
+    source_action_event_id: &str,
+) -> Result<ClearedFunctionSlots, IngestError> {
     let mut cleared = Vec::new();
+    let mut reparented_positions = Vec::new();
+    // A departing employee may be a specialist without leading a part. Keep
+    // this write in the caller's transaction, alongside any cleared slots.
+    let job_heads = super::company_jobs::clear_job_assignments_by_in_tx(
+        tx,
+        state,
+        community_id,
+        lead,
+        actor_pubkey,
+    )
+    .await?;
     for function in CompanyFunction::ALL {
         let Some(stored) = current_function_head(state, community_id, function).await? else {
             continue;
@@ -437,6 +493,8 @@ pub(super) async fn clear_slots_led_by_in_tx(
         if head.state != SlotState::Filled || head.lead_pubkey.as_deref() != Some(lead) {
             continue;
         }
+        let fallback_manager =
+            fallback_manager_for_departing_lead(state, community_id, lead).await?;
         match empty_slot_in_tx(
             tx,
             state,
@@ -447,7 +505,22 @@ pub(super) async fn clear_slots_led_by_in_tx(
         )
         .await?
         {
-            Some(event) => cleared.push(event),
+            Some(event) => {
+                cleared.push(event);
+                if let Some(manager) = fallback_manager.as_deref() {
+                    let positions =
+                        super::company_jobs::reparent_job_specialists_for_function_in_tx(
+                            tx,
+                            tenant,
+                            state,
+                            function,
+                            manager,
+                            source_action_event_id,
+                        )
+                        .await?;
+                    reparented_positions.extend(positions);
+                }
+            }
             None => {
                 return Err(conflict(
                     "function slot changed while clearing it; refresh and retry",
@@ -455,7 +528,42 @@ pub(super) async fn clear_slots_led_by_in_tx(
             }
         }
     }
-    Ok(cleared)
+    Ok(ClearedFunctionSlots {
+        slot_heads: cleared,
+        job_heads,
+        reparented_positions,
+    })
+}
+
+/// Finds Scout when a part has no active head, excluding a departing Scout.
+async fn scout_manager_for_specialists(
+    state: &Arc<AppState>,
+    community_id: CommunityId,
+    departing_lead: Option<&str>,
+) -> Result<Option<String>, IngestError> {
+    let scout = match super::company_cofounder_lead::find_lead(state, community_id)
+        .await
+        .map_err(internal)?
+    {
+        super::company_cofounder_lead::Lead::Found(manager) => manager,
+        super::company_cofounder_lead::Lead::Missing
+        | super::company_cofounder_lead::Lead::Several => return Ok(None),
+    };
+    if departing_lead != Some(scout.as_str()) && lead_is_active(state, community_id, &scout).await?
+    {
+        Ok(Some(scout))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Finds the manager who takes specialists when their head leaves.
+async fn fallback_manager_for_departing_lead(
+    state: &Arc<AppState>,
+    community_id: CommunityId,
+    lead: &str,
+) -> Result<Option<String>, IngestError> {
+    scout_manager_for_specialists(state, community_id, Some(lead)).await
 }
 
 /// Empties every slot whose lead is no longer active (paused, terminated,
@@ -483,6 +591,7 @@ pub(crate) async fn reconcile_function_slots(
         if head.state != SlotState::Filled || lead_is_active(state, community_id, lead).await? {
             continue;
         }
+        let source_action_event_id = stored.event.id.to_hex();
         let mut tx = state
             .db
             .begin_event_write_transaction()
@@ -494,32 +603,58 @@ pub(crate) async fn reconcile_function_slots(
             .map_err(|error| {
                 IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
             })?;
-        let cleared = empty_slot_in_tx(
+        let cleared = clear_slots_led_by_in_tx(
             &mut tx,
+            tenant,
             state,
             community_id,
-            function,
-            &stored.event.id.to_bytes(),
+            lead,
             actor_pubkey,
+            &source_action_event_id,
         )
         .await?;
-        match cleared {
-            Some(event) => {
+        match cleared.slot_heads.is_empty() {
+            false => {
                 tx.commit().await.map_err(internal)?;
-                super::event::dispatch_persistent_event(
-                    tenant,
-                    state,
-                    &event,
-                    KIND_COMPANY_FUNCTION_HEAD,
-                    &state.relay_keypair.public_key().to_hex(),
-                    None,
-                )
-                .await;
+                for slot in &cleared.slot_heads {
+                    super::event::dispatch_persistent_event(
+                        tenant,
+                        state,
+                        slot,
+                        KIND_COMPANY_FUNCTION_HEAD,
+                        &state.relay_keypair.public_key().to_hex(),
+                        None,
+                    )
+                    .await;
+                }
+                for job in &cleared.job_heads {
+                    super::event::dispatch_persistent_event(
+                        tenant,
+                        state,
+                        job,
+                        buzz_core::kind::KIND_COMPANY_JOB_HEAD,
+                        &state.relay_keypair.public_key().to_hex(),
+                        None,
+                    )
+                    .await;
+                }
+                for position in &cleared.reparented_positions {
+                    super::event::dispatch_persistent_event(
+                        tenant,
+                        state,
+                        position,
+                        buzz_core::kind::KIND_MEMBER_POSITION_HEAD,
+                        &state.relay_keypair.public_key().to_hex(),
+                        None,
+                    )
+                    .await;
+                }
             }
             // Someone else changed the slot first; the next call looks again.
-            None => tx.rollback().await.map_err(internal)?,
+            true => tx.rollback().await.map_err(internal)?,
         }
     }
+    super::company_jobs::reconcile_job_assignments(tenant, state, actor_pubkey).await?;
     Ok(())
 }
 

@@ -252,7 +252,7 @@ export function CompanyMapPartCard({
     slot.state === "filled" && leadName
       ? isPrebuiltLead
         ? `${leadName} is your ${lead?.position?.head.title ?? head?.name}. ${leadName} does every job here that has no specialist of its own.`
-        : `${leadName} runs ${detail.name}.`
+        : `${leadName} runs ${detail.name}. ${leadName} does every job here that has no specialist of its own.`
       : `Scout runs ${detail.name} for now.`;
 
   if (recentHire && head) {

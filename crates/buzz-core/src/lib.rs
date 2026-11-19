@@ -27,6 +27,8 @@ pub mod company_duties;
 pub mod company_employee_history;
 /// Company function slots (Sales, Operations, Customer Success, Finance, Brand).
 pub mod company_functions;
+/// Signed per-job specialist assignments and hire intents.
+pub mod company_jobs;
 /// Typed employee lessons and evidence validation.
 pub mod company_lessons;
 /// Typed content and validation for company member positions.

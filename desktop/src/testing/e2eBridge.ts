@@ -19,7 +19,11 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
-import { KIND_COFOUNDER_LEAD_HEAD } from "@/shared/constants/kinds";
+import {
+  KIND_COFOUNDER_LEAD_HEAD,
+  KIND_COMPANY_JOB_ACTION,
+  KIND_COMPANY_JOB_HEAD,
+} from "@/shared/constants/kinds";
 import {
   KIND_COMPANY_ACCESS_ACTION,
   KIND_COMPANY_ACCESS_HEAD,
@@ -275,6 +279,8 @@ export type MockManagedAgentSeed = {
   name: string;
   about?: string | null;
   avatarUrl?: string | null;
+  /** Generate a shipped coloured ant when a fixture does not supply an image. */
+  avatarRole?: string | null;
   personaId?: string | null;
   sessionPolicy?: "channel" | "thread";
   provider?: string | null;
@@ -440,6 +446,25 @@ export type MockCompanyFunctionHead = {
   state: "empty" | "covered_by_scout" | "filled";
   leadPubkey?: string | null;
   updatedByPubkey?: string;
+  updatedAt?: number;
+};
+
+/** A relay-signed specialist assignment head used by map-shell E2E fixtures. */
+export type MockCompanyJobHead = {
+  function: MockCompanyFunctionHead["function"];
+  jobId: string;
+  state: "empty" | "filled";
+  assigneePubkey?: string | null;
+  updatedByPubkey?: string;
+  updatedAt?: number;
+};
+
+/** A pending specialist destination which the hire completion consumes. */
+export type MockCompanyJobHireIntent = {
+  hireId: string;
+  function: MockCompanyFunctionHead["function"];
+  jobId: string;
+  setByPubkey?: string;
   updatedAt?: number;
 };
 
@@ -1127,6 +1152,10 @@ type E2eConfig = {
     companyHireRelayPrivateKeyHex?: string;
     /** Reject successive hire action publishes in order, then accept them. */
     companyHireActionErrors?: string[];
+    /** Relay-signed current specialist-job assignment heads. */
+    companyJobHeads?: MockCompanyJobHead[];
+    /** Pending specialist-job destinations, keyed by their hire id. */
+    companyJobHireIntents?: MockCompanyJobHireIntent[];
     /** Relay-signed member-position heads for Company Team E2E coverage. */
     companyMemberPositionEvents?: RelayEvent[];
     /** Relay-signed member-position actions for Company Team history coverage. */
@@ -1172,6 +1201,8 @@ type E2eConfig = {
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
+    /** NIP-11 extensions exposed by the mock relay to capability-gated UI. */
+    relayExtensions?: string[];
     /** Delay EOSE for membership snapshots after delivering the event. */
     relayMembershipEoseDelayMs?: number;
     relayRole?: "owner" | "admin" | "member" | null;
@@ -3530,6 +3561,13 @@ function applyMockAgentConfigSurfaceOverride(
   };
 }
 
+function mockManagedAgentAvatarUrl(seed: MockManagedAgentSeed) {
+  return (
+    seed.avatarUrl ??
+    (seed.avatarRole ? agentAntAvatarDataUrl(seed.avatarRole) : null)
+  );
+}
+
 function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
   const now = new Date().toISOString();
   const status = seed.status ?? "stopped";
@@ -3572,7 +3610,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     max_turn_duration_seconds: null,
     parallelism: 1,
     system_prompt: seed.systemPrompt ?? null,
-    avatar_url: seed.avatarUrl ?? null,
+    avatar_url: mockManagedAgentAvatarUrl(seed),
     model: seed.model ?? null,
     running_runtime_id:
       status === "running"
@@ -3662,7 +3700,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
     mockProfiles.set(seed.pubkey, {
       pubkey: seed.pubkey,
       display_name: seed.name,
-      avatar_url: null,
+      avatar_url: mockManagedAgentAvatarUrl(seed),
       about: seed.about ?? null,
       nip05_handle: null,
       owner_pubkey: MOCK_IDENTITY_PUBKEY,
@@ -7738,6 +7776,295 @@ function acceptMockCompanyFunctionAction(
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
+function isMockCompanyFunction(
+  value: unknown,
+): value is MockCompanyFunctionHead["function"] {
+  return (
+    value === "sales" ||
+    value === "operations" ||
+    value === "customer_success" ||
+    value === "finance" ||
+    value === "brand"
+  );
+}
+
+function isMockCompanyJobId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 40 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value)
+  );
+}
+
+function isMockCompanyHireId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/iu.test(value)
+  );
+}
+
+function mockCompanyJobDTag(
+  functionId: MockCompanyFunctionHead["function"],
+  jobId: string,
+) {
+  return `company:job:${functionId}:${jobId}`;
+}
+
+function mockCompanyJobHireDTag(hireId: string) {
+  return `company:job-hire:${hireId.toLowerCase()}`;
+}
+
+/**
+ * Builds both job assignment and pending-hire heads. The real relay uses one
+ * replaceable kind and separates these additive records by their d tags.
+ */
+function filterMockCompanyJobHeads(filter: MockFilter): RelayEvent[] {
+  const mock = getConfig()?.mock;
+  const relayPubkey = mockCompanyRecordSigner().pubkey;
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const now = Math.floor(Date.now() / 1_000);
+  const assignments = (mock?.companyJobHeads ?? []).map((seed) => {
+    const updatedAt = seed.updatedAt ?? now;
+    seed.updatedAt = updatedAt;
+    const updatedByPubkey = seed.updatedByPubkey ?? relayPubkey;
+    seed.updatedByPubkey = updatedByPubkey;
+    return createSignedMockCompanyHead(
+      KIND_COMPANY_JOB_HEAD,
+      {
+        schemaVersion: 1,
+        function: seed.function,
+        jobId: seed.jobId,
+        state: seed.state,
+        ...(seed.state === "filled" && seed.assigneePubkey
+          ? { assigneePubkey: seed.assigneePubkey }
+          : {}),
+        updatedByPubkey,
+        updatedAt,
+      },
+      mockCompanyJobDTag(seed.function, seed.jobId),
+      updatedAt,
+    );
+  });
+  const intents = (mock?.companyJobHireIntents ?? []).map((seed) => {
+    const updatedAt = seed.updatedAt ?? now;
+    seed.updatedAt = updatedAt;
+    const setByPubkey = seed.setByPubkey ?? relayPubkey;
+    seed.setByPubkey = setByPubkey;
+    return createSignedMockCompanyHead(
+      KIND_COMPANY_JOB_HEAD,
+      {
+        schemaVersion: 1,
+        hireId: seed.hireId.toLowerCase(),
+        function: seed.function,
+        jobId: seed.jobId,
+        setByPubkey,
+        updatedAt,
+      },
+      mockCompanyJobHireDTag(seed.hireId),
+      updatedAt,
+    );
+  });
+  return [...assignments, ...intents]
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .filter((event) => !filter.ids || filter.ids.includes(event.id))
+    .filter(
+      (event) => filter.since === undefined || event.created_at >= filter.since,
+    )
+    .filter(
+      (event) => filter.until === undefined || event.created_at <= filter.until,
+    )
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+/** Mirrors the relay's small, capability-gated per-job command surface. */
+function acceptMockCompanyJobAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const mock = config?.mock;
+  if (!mock || !verifyEvent(event)) {
+    reject("invalid: job action signature or mock relay is invalid.");
+    return;
+  }
+  if (!mock.relayExtensions?.includes("colony-job-assignments")) {
+    reject("restricted: this relay does not support job assignments.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject("restricted: only the owner or an admin can assign company jobs.");
+    return;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (dTags.length !== 1 || event.tags.length !== 1) {
+    reject("invalid: job action needs one d tag and no other tags.");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      reject("invalid: job action must be an object.");
+      return;
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    reject("invalid: job action is not JSON.");
+    return;
+  }
+  const allowedKeys = new Set([
+    "schemaVersion",
+    "action",
+    "function",
+    "jobId",
+    "assigneePubkey",
+    "hireId",
+    "expectedHeadEventId",
+  ]);
+  if (
+    action.schemaVersion !== 1 ||
+    Object.keys(action).some((key) => !allowedKeys.has(key)) ||
+    !isMockCompanyFunction(action.function) ||
+    !isMockCompanyJobId(action.jobId)
+  ) {
+    reject("invalid: job action has an unsupported shape.");
+    return;
+  }
+  const expectedHeadEventId = action.expectedHeadEventId;
+  if (
+    expectedHeadEventId !== undefined &&
+    (typeof expectedHeadEventId !== "string" ||
+      !/^[0-9a-f]{64}$/iu.test(expectedHeadEventId))
+  ) {
+    reject("invalid: expectedHeadEventId must be a 64-character event id.");
+    return;
+  }
+
+  const kind = action.action;
+  const functionId = action.function;
+  const jobId = action.jobId;
+  const rawHireId = action.hireId;
+  const hireId = isMockCompanyHireId(rawHireId) ? rawHireId : null;
+  const dTag =
+    kind === "hire_set" && hireId
+      ? mockCompanyJobHireDTag(hireId)
+      : mockCompanyJobDTag(functionId, jobId);
+  if (dTags[0]?.[1] !== dTag) {
+    reject("invalid: job action d tag does not match its command.");
+    return;
+  }
+  if (
+    (kind === "assign" &&
+      (typeof action.assigneePubkey !== "string" ||
+        !/^[0-9a-f]{64}$/iu.test(action.assigneePubkey) ||
+        rawHireId !== undefined)) ||
+    (kind === "clear" &&
+      (action.assigneePubkey !== undefined || rawHireId !== undefined)) ||
+    (kind === "hire_set" && (!hireId || action.assigneePubkey !== undefined)) ||
+    (kind !== "assign" && kind !== "clear" && kind !== "hire_set")
+  ) {
+    reject("invalid: job action has invalid fields for its command.");
+    return;
+  }
+
+  const current = filterMockCompanyJobHeads({
+    kinds: [KIND_COMPANY_JOB_HEAD],
+    "#d": [dTag],
+    limit: 2,
+  })[0];
+  if (
+    (current && expectedHeadEventId !== current.id) ||
+    (!current && expectedHeadEventId !== undefined)
+  ) {
+    reject("conflict: job assignment changed; refresh and try again.");
+    return;
+  }
+  if (kind === "hire_set") {
+    if (!hireId) {
+      reject("invalid: job action needs a hire id.");
+      return;
+    }
+    const hire = filterMockCompanyHireHeads({
+      kinds: [KIND_HIRE_HEAD],
+      "#d": [`company:hire:${hireId.toLowerCase()}`],
+      limit: 2,
+    })[0];
+    let status: unknown;
+    try {
+      status = hire
+        ? (JSON.parse(hire.content) as { status?: unknown }).status
+        : null;
+    } catch {
+      status = null;
+    }
+    if (!hire || (status !== "proposed" && status !== "awaiting_founder")) {
+      reject("conflict: the job can only be chosen while the hire is waiting.");
+      return;
+    }
+  }
+
+  const updatedAt = Math.max(
+    Math.floor(Date.now() / 1_000),
+    (current?.created_at ?? 0) + 1,
+  );
+  if (kind === "hire_set") {
+    if (!hireId) {
+      reject("invalid: job action needs a hire id.");
+      return;
+    }
+    if (!mock.companyJobHireIntents) mock.companyJobHireIntents = [];
+    const intents = mock.companyJobHireIntents;
+    const index = intents.findIndex(
+      (candidate) => candidate.hireId.toLowerCase() === hireId.toLowerCase(),
+    );
+    const next: MockCompanyJobHireIntent = {
+      hireId: hireId.toLowerCase(),
+      function: functionId,
+      jobId,
+      setByPubkey: event.pubkey,
+      updatedAt,
+    };
+    if (index >= 0) intents.splice(index, 1, next);
+    else intents.push(next);
+  } else {
+    if (!mock.companyJobHeads) mock.companyJobHeads = [];
+    const heads = mock.companyJobHeads;
+    const index = heads.findIndex(
+      (candidate) =>
+        candidate.function === functionId && candidate.jobId === jobId,
+    );
+    const next: MockCompanyJobHead = {
+      function: functionId,
+      jobId,
+      state: kind === "assign" ? "filled" : "empty",
+      ...(kind === "assign"
+        ? { assigneePubkey: action.assigneePubkey as string }
+        : {}),
+      updatedByPubkey: event.pubkey,
+      updatedAt,
+    };
+    if (index >= 0) heads.splice(index, 1, next);
+    else heads.push(next);
+  }
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
 function filterMockCompanyWorkerRuns(filter: MockFilter): RelayEvent[] {
   const runs = getConfig()?.mock?.companyWorkerRuns ?? [];
   const relayPubkey = mockCompanyRecordSigner().pubkey;
@@ -9435,6 +9762,23 @@ function acceptMockMemberPositionAction(
     if (index >= 0) mockCompanyMemberPositionEvents.splice(index, 1);
   }
   mockCompanyMemberPositionEvents.push(nextEvent);
+  if (status === "paused" || status === "terminated") {
+    const assignments = config?.mock?.companyJobHeads;
+    if (assignments) {
+      const updatedAt = Math.floor(Date.now() / 1_000);
+      for (const assignment of assignments) {
+        if (
+          assignment.state === "filled" &&
+          assignment.assigneePubkey?.toLowerCase() === memberPubkey
+        ) {
+          assignment.state = "empty";
+          assignment.assigneePubkey = null;
+          assignment.updatedByPubkey = event.pubkey;
+          assignment.updatedAt = updatedAt;
+        }
+      }
+    }
+  }
   window.localStorage.setItem(
     MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
     JSON.stringify(mockCompanyMemberPositionEvents),
@@ -10483,26 +10827,67 @@ function acceptMockHireAction(
     }
   }
   mockCompanyHireHeads.push(nextHead);
-  if (
-    action.action === "complete" &&
-    typeof action.employeePubkey === "string" &&
-    config?.mock?.companyAccessRecords
-  ) {
-    const slot = config.mock.companyAccessRecords.find(
+  const companyMock = config?.mock;
+  const completedEmployeePubkey =
+    action.action === "complete" && typeof action.employeePubkey === "string"
+      ? action.employeePubkey
+      : null;
+  const positionEvents: RelayEvent[] = [];
+  const replaceEmployeePosition = ({
+    managerPubkey,
+    pubkey,
+    title,
+  }: {
+    managerPubkey?: string;
+    pubkey: string;
+    title: string;
+  }) => {
+    const coordinate = `company:member:${pubkey.toLowerCase()}`;
+    const currentPosition = mockCompanyMemberPositionEvents.find((candidate) =>
+      candidate.tags.some((tag) => tag[0] === "d" && tag[1] === coordinate),
+    );
+    const positionEvent = finalizeEvent(
+      {
+        kind: KIND_MEMBER_POSITION_HEAD,
+        created_at: Math.max(
+          Math.floor(Date.now() / 1_000),
+          (currentPosition?.created_at ?? 0) + 1,
+        ),
+        tags: [["d", coordinate]],
+        content: JSON.stringify({
+          schemaVersion: 1,
+          pubkey: pubkey.toLowerCase(),
+          title,
+          ...(managerPubkey ? { managerPubkey } : {}),
+          kind: "employee",
+          status: "active",
+          sourceActionEventId: event.id,
+          updatedAt: new Date().toISOString(),
+        }),
+      },
+      relaySecret,
+    );
+    if (currentPosition) {
+      const index = mockCompanyMemberPositionEvents.findIndex(
+        (candidate) => candidate.id === currentPosition.id,
+      );
+      if (index >= 0) mockCompanyMemberPositionEvents.splice(index, 1);
+    }
+    mockCompanyMemberPositionEvents.push(positionEvent);
+    positionEvents.push(positionEvent);
+  };
+
+  let completedSlotFunction: MockCompanyFunctionHead["function"] | null = null;
+  if (completedEmployeePubkey && companyMock?.companyAccessRecords) {
+    const slot = companyMock.companyAccessRecords.find(
       (record) => record.dTag === `company:slot-hire:${hireId}`,
     );
     const functionId = slot?.content.function;
-    if (
-      functionId === "sales" ||
-      functionId === "operations" ||
-      functionId === "customer_success" ||
-      functionId === "finance" ||
-      functionId === "brand"
-    ) {
-      if (!config.mock.companyFunctionHeads) {
-        config.mock.companyFunctionHeads = [];
-      }
-      const existing = config.mock.companyFunctionHeads.find(
+    if (isMockCompanyFunction(functionId)) {
+      if (!companyMock.companyFunctionHeads)
+        companyMock.companyFunctionHeads = [];
+      const heads = companyMock.companyFunctionHeads;
+      const existing = heads.find(
         (candidate) => candidate.function === functionId,
       );
       if (existing?.state !== "filled") {
@@ -10511,12 +10896,110 @@ function acceptMockHireAction(
           state: "empty",
         };
         next.state = "filled";
-        next.leadPubkey = action.employeePubkey;
+        next.leadPubkey = completedEmployeePubkey;
         next.updatedByPubkey = event.pubkey;
         next.updatedAt = Math.floor(Date.now() / 1_000);
-        if (!existing) config.mock.companyFunctionHeads.push(next);
+        if (!existing) heads.push(next);
+        completedSlotFunction = functionId;
       }
     }
+  }
+
+  if (completedEmployeePubkey && companyMock) {
+    const proposal =
+      head.proposal &&
+      typeof head.proposal === "object" &&
+      !Array.isArray(head.proposal)
+        ? (head.proposal as Record<string, unknown>)
+        : {};
+    const jobIntent = companyMock.companyJobHireIntents?.find(
+      (candidate) => candidate.hireId.toLowerCase() === hireId.toLowerCase(),
+    );
+    if (jobIntent) {
+      if (!companyMock.companyJobHeads) companyMock.companyJobHeads = [];
+      const assignments = companyMock.companyJobHeads;
+      const index = assignments.findIndex(
+        (candidate) =>
+          candidate.function === jobIntent.function &&
+          candidate.jobId === jobIntent.jobId,
+      );
+      const assignment: MockCompanyJobHead = {
+        function: jobIntent.function,
+        jobId: jobIntent.jobId,
+        state: "filled",
+        assigneePubkey: completedEmployeePubkey,
+        updatedByPubkey: event.pubkey,
+        updatedAt: Math.floor(Date.now() / 1_000),
+      };
+      if (index >= 0) assignments.splice(index, 1, assignment);
+      else assignments.push(assignment);
+      const functionHead = companyMock.companyFunctionHeads?.find(
+        (candidate) => candidate.function === jobIntent.function,
+      );
+      const managerPubkey =
+        functionHead?.state === "filled" && functionHead.leadPubkey
+          ? functionHead.leadPubkey
+          : typeof proposal.managerPubkey === "string"
+            ? proposal.managerPubkey
+            : undefined;
+      replaceEmployeePosition({
+        managerPubkey,
+        pubkey: completedEmployeePubkey,
+        title:
+          typeof proposal.title === "string"
+            ? proposal.title
+            : `${jobIntent.jobId} specialist`,
+      });
+    }
+  }
+
+  if (
+    completedSlotFunction &&
+    completedEmployeePubkey &&
+    companyMock?.companyJobHeads
+  ) {
+    for (const assignment of companyMock.companyJobHeads) {
+      if (
+        assignment.function !== completedSlotFunction ||
+        assignment.state !== "filled" ||
+        !assignment.assigneePubkey ||
+        assignment.assigneePubkey.toLowerCase() ===
+          completedEmployeePubkey.toLowerCase()
+      ) {
+        continue;
+      }
+      const position = mockCompanyMemberPositionEvents.find((candidate) =>
+        candidate.tags.some(
+          (tag) =>
+            tag[0] === "d" &&
+            tag[1] ===
+              `company:member:${assignment.assigneePubkey?.toLowerCase()}`,
+        ),
+      );
+      let title = `${assignment.jobId} specialist`;
+      try {
+        const content = position
+          ? (JSON.parse(position.content) as { title?: unknown })
+          : null;
+        if (typeof content?.title === "string") title = content.title;
+      } catch {
+        // A malformed mock position should not prevent the hire head fixture
+        // from exercising the relay-owned job assignment path.
+      }
+      replaceEmployeePosition({
+        managerPubkey: completedEmployeePubkey,
+        pubkey: assignment.assigneePubkey,
+        title,
+      });
+    }
+  }
+  if (positionEvents.length > 0) {
+    window.localStorage.setItem(
+      MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
+      JSON.stringify(mockCompanyMemberPositionEvents),
+    );
+    for (const positionEvent of positionEvents)
+      emitMockGlobalEvent(positionEvent);
   }
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
@@ -20589,6 +21072,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_COMPANY_JOB_HEAD)) {
+      for (const event of filterMockCompanyJobHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_COMPANY_ACCESS_HEAD)) {
       for (const event of filterMockCompanyAccessHeads(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -20909,6 +21400,10 @@ function sendToMockSocket(args: {
     }
     if (event.kind === KIND_COMPANY_FUNCTION_ACTION) {
       acceptMockCompanyFunctionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_COMPANY_JOB_ACTION) {
+      acceptMockCompanyJobAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_COMPANY_ACCESS_ACTION) {
@@ -24187,6 +24682,13 @@ export function maybeInstallE2eTauriMocks() {
         return getRelayHttpUrl(activeConfig);
       case "relay_requires_membership":
         return activeConfig?.mock?.relayRequiresMembership ?? false;
+      case "relay_supports_extension": {
+        const extension = (payload as { extension?: unknown }).extension;
+        return (
+          typeof extension === "string" &&
+          (activeConfig?.mock?.relayExtensions ?? []).includes(extension)
+        );
+      }
       case "discover_acp_providers":
         return handleDiscoverAcpRuntimes(activeConfig);
       case "save_custom_harness":

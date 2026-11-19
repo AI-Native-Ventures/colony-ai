@@ -67,6 +67,51 @@ struct RelayInfoIcon {
     icon: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct RelayInfoExtensions {
+    #[serde(default)]
+    supported_extensions: Vec<String>,
+}
+
+/// Returns whether the active relay explicitly advertises `extension` in NIP-11.
+///
+/// An unreachable or older relay is a safe negative result. The desktop uses
+/// that distinction to avoid publishing records an old relay cannot broker.
+#[tauri::command]
+pub async fn relay_supports_extension(
+    extension: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let extension = extension.trim();
+    if extension.is_empty() {
+        return Ok(false);
+    }
+    let relay_url = relay::relay_ws_url_with_override(&state);
+    let http_url = relay::relay_http_base_url(&relay_url);
+    let Ok(response) = state
+        .http_client
+        .get(&http_url)
+        .header("Accept", "application/nostr+json")
+        .send()
+        .await
+    else {
+        return Ok(false);
+    };
+    if !response.status().is_success() {
+        return Ok(false);
+    }
+    let document = match response.json::<RelayInfoExtensions>().await {
+        Ok(document) => document,
+        Err(_) => RelayInfoExtensions {
+            supported_extensions: Vec::new(),
+        },
+    };
+    Ok(document
+        .supported_extensions
+        .iter()
+        .any(|candidate| candidate == extension))
+}
+
 /// Fetch a relay's workspace icon from its NIP-11 relay information document.
 ///
 /// Works for any workspace (active or not) with a plain unauthenticated HTTP

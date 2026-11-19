@@ -840,6 +840,10 @@ pub const KIND_COFOUNDER_LEAD_HEAD: u32 = 30680;
 pub const KIND_QUALIFY_OBSERVATION_HEAD: u32 = 30681;
 /// Member or agent qualification observation write, brokered by the business relay.
 pub const KIND_QUALIFY_OBSERVATION_ACTION: u32 = 47070;
+/// Relay-authored company job assignment or hire-intent head (community-wide).
+pub const KIND_COMPANY_JOB_HEAD: u32 = 30682;
+/// Member company job assignment or hire-intent write, brokered and community-wide.
+pub const KIND_COMPANY_JOB_ACTION: u32 = 47071;
 
 // Money rails payment kinds. 30680 is the co-founder lead head, 30681 and 47070 belong to
 // qualification, and 30684, 30685, 47075 and 47076 belong to outreach lists, so these four sit after them. Only the payment
@@ -855,8 +859,8 @@ pub const KIND_MONEY_CONNECTION_HEAD: u32 = 30687;
 pub const KIND_MONEY_CONNECTION_ACTION: u32 = 47078;
 
 // Outreach lists and shared Discovery campaigns (Sales channel scope, business broker).
-// Contract: docs/outreach-lists-contract.md. 30682 to 30683 and 47071 to 47074 stay free;
-// money rails owns 30686, 30687, 47077 and 47078.
+// Contract: docs/outreach-lists-contract.md. Company jobs own 30682 and 47071;
+// 30683, 47072 to 47074 stay free; money rails owns 30686, 30687, 47077 and 47078.
 /// Relay-authored outreach list head (business channel, one per list; `d` = the list's coordinate).
 pub const KIND_OUTREACH_LIST_HEAD: u32 = 30684;
 /// Member or agent outreach list change (create, rename, add or remove leads, archive), brokered.
@@ -923,6 +927,7 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_LESSON_HEAD,
     KIND_COFOUNDER_HEAD,
     KIND_COMPANY_FUNCTION_HEAD,
+    KIND_COMPANY_JOB_HEAD,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
     KIND_GOAL_ACTION,
@@ -942,6 +947,7 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_LESSON_ACTION,
     KIND_COFOUNDER_ACTION,
     KIND_COMPANY_FUNCTION_ACTION,
+    KIND_COMPANY_JOB_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
     KIND_AI_SPEND_RECORD_ACTION,
     KIND_WORKER_RUN_HEAD,
@@ -984,6 +990,7 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_LESSON_ACTION
             | KIND_COFOUNDER_ACTION
             | KIND_COMPANY_FUNCTION_ACTION
+            | KIND_COMPANY_JOB_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_ACTION
@@ -1022,9 +1029,11 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_LESSON_HEAD
             | KIND_COFOUNDER_HEAD
             | KIND_COMPANY_FUNCTION_HEAD
+            | KIND_COMPANY_JOB_HEAD
             | KIND_LESSON_ACTION
             | KIND_COFOUNDER_ACTION
             | KIND_COMPANY_FUNCTION_ACTION
+            | KIND_COMPANY_JOB_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_HEAD
@@ -1358,6 +1367,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_LESSON_HEAD,
     KIND_COFOUNDER_HEAD,
     KIND_COMPANY_FUNCTION_HEAD,
+    KIND_COMPANY_JOB_HEAD,
     KIND_FACTORY_RUN_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
@@ -1376,6 +1386,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_LESSON_ACTION,
     KIND_COFOUNDER_ACTION,
     KIND_COMPANY_FUNCTION_ACTION,
+    KIND_COMPANY_JOB_ACTION,
     KIND_WORKER_RUN_HEAD,
     KIND_WORKER_RUN_ACTION,
     KIND_COMPANY_ACCESS_HEAD,
@@ -1500,6 +1511,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_LESSON_ACTION
             | KIND_COFOUNDER_ACTION
             | KIND_COMPANY_FUNCTION_ACTION
+            | KIND_COMPANY_JOB_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
             | KIND_WORKER_RUN_ACTION
@@ -1564,6 +1576,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_LESSON_HEAD
             | KIND_COFOUNDER_HEAD
             | KIND_COMPANY_FUNCTION_HEAD
+            | KIND_COMPANY_JOB_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_AI_SPEND_RECORD_HEAD
             | KIND_WORKER_RUN_HEAD
@@ -1622,6 +1635,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); 
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_HEAD)); // 30670 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_FUNCTION_HEAD)); // 30671 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_COMPANY_JOB_HEAD)); // 30682 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKER_RUN_HEAD)); // 30672 ∈ 30000–39999
@@ -1774,6 +1788,7 @@ mod tests {
             (KIND_LESSON_HEAD, KIND_LESSON_ACTION),
             (KIND_COFOUNDER_HEAD, KIND_COFOUNDER_ACTION),
             (KIND_COMPANY_FUNCTION_HEAD, KIND_COMPANY_FUNCTION_ACTION),
+            (KIND_COMPANY_JOB_HEAD, KIND_COMPANY_JOB_ACTION),
             (KIND_COMPANY_ACCESS_HEAD, KIND_COMPANY_ACCESS_ACTION),
             (KIND_BRIEF_HEAD, KIND_BRIEF_ACTION),
             (KIND_ONBOARDING_HEAD, KIND_ONBOARDING_ACTION),
