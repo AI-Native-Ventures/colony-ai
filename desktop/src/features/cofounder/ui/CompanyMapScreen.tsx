@@ -3,6 +3,7 @@ import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
@@ -50,7 +51,8 @@ export function CompanyMapScreen({
   const membershipQuery = useMyRelayMembershipQuery();
   const needsYouSummary = useNeedsYouSummary();
   const workerRunsQuery = useWorkerRunsQuery(null, { all: true });
-  const enabled = settingsQuery.data?.settings.enabled === true;
+  const mapShellEnabled = useMapShellEnabled();
+  const enabled = settingsQuery.data?.settings.enabled ?? mapShellEnabled;
   const whatsappStatus = useWhatsAppStatusQuery(enabled);
   const playbooksQuery = usePlaybooksQuery(Boolean(activeCommunity));
   const channelsQuery = useChannelsQuery({ enabled: Boolean(activeCommunity) });
@@ -132,7 +134,7 @@ export function CompanyMapScreen({
     });
   }, [scoutPubkey, slots, workerRunsQuery.data]);
 
-  if (settingsQuery.isLoading || teamQuery.isLoading) {
+  if ((settingsQuery.isLoading && !mapShellEnabled) || teamQuery.isLoading) {
     return (
       <TeamPage testId="cofounder-company-map" title="Company map">
         <p aria-live="polite" className="text-sm text-muted-foreground">
@@ -141,7 +143,7 @@ export function CompanyMapScreen({
       </TeamPage>
     );
   }
-  if (settingsQuery.isError || teamQuery.isError) {
+  if ((settingsQuery.isError && !mapShellEnabled) || teamQuery.isError) {
     return (
       <TeamPage testId="cofounder-company-map" title="Company map">
         <div role="alert" className="space-y-3">

@@ -1182,6 +1182,10 @@ type E2eConfig = {
     }>;
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
+    /** Reject successive co-founder settings reads in order, then answer. */
+    cofounderSettingsReadErrors?: string[];
+    /** Hold successive co-founder settings reads for this long (ms), then answer. */
+    cofounderSettingsReadDelaysMs?: number[];
     /** Relay-signed kind 30680 wake status used by Scout setup E2E coverage. */
     companyLeadStatus?: MockCofounderLeadStatus | null;
     companyFunctionHeads?: MockCompanyFunctionHead[];
@@ -20540,10 +20544,21 @@ function sendToMockSocket(args: {
     }
 
     if (filter.kinds?.includes(KIND_COFOUNDER_HEAD)) {
-      for (const event of filterMockCofounderHeads(filter)) {
-        sendWsText(socket.handler, ["EVENT", subId, event]);
-      }
-      sendWsText(socket.handler, ["EOSE", subId]);
+      const readError = getConfig()?.mock?.cofounderSettingsReadErrors?.shift();
+      const readDelayMs =
+        getConfig()?.mock?.cofounderSettingsReadDelaysMs?.shift() ?? 0;
+      const answer = () => {
+        if (readError) {
+          sendWsText(socket.handler, ["CLOSED", subId, readError]);
+          return;
+        }
+        for (const event of filterMockCofounderHeads(filter)) {
+          sendWsText(socket.handler, ["EVENT", subId, event]);
+        }
+        sendWsText(socket.handler, ["EOSE", subId]);
+      };
+      if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
+      else answer();
       return;
     }
 

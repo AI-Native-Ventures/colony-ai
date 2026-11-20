@@ -11,7 +11,7 @@
       "id": "map_home",
       "name": "Map home",
       "description": "Preview the company-map home and top bar",
-      "defaultEnabled": false,
+      "defaultEnabled": true,
       "platforms": ["desktop"]
     }
   ]

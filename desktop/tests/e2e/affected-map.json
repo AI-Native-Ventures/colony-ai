@@ -51,6 +51,7 @@
       "fullmap-slice3b.spec.ts",
       "fullmap-slice4.spec.ts",
       "map-panzoom.spec.ts",
+      "map-home-launch.spec.ts",
       "map-shell.spec.ts",
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
@@ -151,6 +152,7 @@
     {
       "paths": ["desktop/src/features/map-shell/**"],
       "specs": [
+        "map-home-launch.spec.ts",
         "map-shell.spec.ts",
         "map-channels-menu.spec.ts",
         "fullmap-slice1.spec.ts",
