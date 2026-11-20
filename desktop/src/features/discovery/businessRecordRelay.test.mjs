@@ -122,19 +122,30 @@ function relayPage(events, filter) {
 
 function loader(recordsByKind, options = {}) {
   const calls = [];
+  const admissions = [];
   const attempts = new Map();
+  const fetchPage = async (filter) => {
+    calls.push(filter);
+    const kind = filter.kinds[0];
+    const attempt = (attempts.get(kind) ?? 0) + 1;
+    attempts.set(kind, attempt);
+    const error = options.errorFor?.(kind, attempt);
+    if (error) throw error;
+    return relayPage(recordsByKind.get(kind) ?? [], filter);
+  };
   return {
     calls,
+    admissions,
     attempts,
     dependencies: {
       fetchEvents: async (filter) => {
-        calls.push(filter);
-        const kind = filter.kinds[0];
-        const attempt = (attempts.get(kind) ?? 0) + 1;
-        attempts.set(kind, attempt);
-        const error = options.errorFor?.(kind, attempt);
-        if (error) throw error;
-        return relayPage(recordsByKind.get(kind) ?? [], filter);
+        admissions.push([filter]);
+        return fetchPage(filter);
+      },
+      fetchEventsForFilters: async (filters) => {
+        admissions.push([...filters]);
+        const pages = await Promise.all(filters.map(fetchPage));
+        return pages.flat();
       },
       getChannelMembers: async () => [{ pubkey: SELF, role: "owner" }],
       getRelaySelf: async () => SELF,
@@ -172,6 +183,54 @@ test("loadBusinessRecords returns every one of 1,300 prospect heads", async () =
   assert.equal(prospectCalls[0].limit, BUSINESS_RECORD_PAGE_SIZE);
   assert.equal(prospectCalls[0].until, undefined);
   assert.equal(prospectCalls[1].until, prospects[499].created_at);
+});
+
+test("2,001 prospect heads use two first-page batches and four continuations", async () => {
+  const prospects = Array.from({ length: 2_001 }, (_, index) =>
+    prospectEvent(index),
+  );
+  const { admissions, result } = await load(
+    new Map([[KIND_PROSPECT_HEAD, prospects]]),
+  );
+
+  assert.equal(result.prospects.length, 2_001);
+  assert.equal(result.truncated.prospects, undefined);
+  assert.deepEqual(
+    admissions.map((filters) => filters.length),
+    [6, 3, 1, 1, 1, 1],
+  );
+  assert.deepEqual(
+    admissions.slice(0, 2).map((filters) =>
+      filters.map((filter) => filter.kinds[0]),
+    ),
+    [
+      [
+        KIND_SERVICE_HEAD,
+        KIND_PROSPECT_HEAD,
+        KIND_PROPOSAL_HEAD,
+        KIND_PROPOSAL_VERSION,
+        KIND_PROPOSAL_ACCEPTANCE,
+        KIND_PROPOSAL_CONVERSION_RECEIPT,
+      ],
+      [
+        KIND_OUTREACH_LIST_HEAD,
+        KIND_DISCOVERY_CAMPAIGN_HEAD,
+        KIND_QUALIFY_OBSERVATION_HEAD,
+      ],
+    ],
+  );
+  for (const filter of admissions.flat()) {
+    assert.equal(filter.limit, BUSINESS_RECORD_PAGE_SIZE);
+    assert.equal(filter.kinds.length, 1);
+    assert.deepEqual(filter["#h"], [CHANNEL]);
+  }
+  for (const filter of admissions[1]) {
+    assert.deepEqual(filter.authors, [SELF]);
+  }
+  for (const [filter] of admissions.slice(2)) {
+    assert.equal(filter.kinds[0], KIND_PROSPECT_HEAD);
+    assert.equal(typeof filter.until, "number");
+  }
 });
 
 test("inclusive page edges retain same-second heads exactly once", async () => {

@@ -98,6 +98,10 @@ export type BusinessRecordLoadCounts = Record<BusinessRecordCollection, number>;
 
 export type BusinessRecordLoadDependencies = {
   fetchEvents?: (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>;
+  /** Fetches independently limited filters through one paced Nostr REQ. */
+  fetchEventsForFilters?: (
+    filters: readonly RelaySubscriptionFilter[],
+  ) => Promise<RelayEvent[]>;
   getChannelMembers?: typeof getChannelMembers;
   getRelaySelf?: typeof getRelaySelf;
   /** Used by retries so an abandoned query never waits in the background. */
@@ -109,6 +113,19 @@ type PagedRecordEvents = {
   events: RelayEvent[];
   truncated: boolean;
 };
+
+type RecordPageInput = {
+  kind: number;
+  authors?: string[];
+};
+
+type RecordPageDependencies = Required<
+  Pick<
+    BusinessRecordLoadDependencies,
+    "fetchEvents" | "fetchEventsForFilters" | "sleep"
+  >
+> &
+  Pick<BusinessRecordLoadDependencies, "signal">;
 
 function channelIdOf(event: { tags: string[][] }): string | null {
   return event.tags.find((tag) => tag[0] === "h")?.[1] ?? null;
@@ -206,10 +223,7 @@ function isRetryablePageError(error: unknown): boolean {
 
 async function fetchRecordPage(
   filter: RelaySubscriptionFilter,
-  dependencies: Required<
-    Pick<BusinessRecordLoadDependencies, "fetchEvents" | "sleep">
-  > &
-    Pick<BusinessRecordLoadDependencies, "signal">,
+  dependencies: RecordPageDependencies,
 ): Promise<RelayEvent[]> {
   for (
     let attempt = 0;
@@ -228,30 +242,63 @@ async function fetchRecordPage(
   throw new Error("Business record paging exhausted unexpectedly.");
 }
 
-async function fetchAllRecordPages(input: {
-  channelId: string;
-  kind: number;
-  authors?: string[];
-  dependencies: Required<
-    Pick<BusinessRecordLoadDependencies, "fetchEvents" | "sleep">
-  > &
-    Pick<BusinessRecordLoadDependencies, "signal">;
-}): Promise<PagedRecordEvents> {
+async function fetchRecordPageBatch(
+  filters: readonly RelaySubscriptionFilter[],
+  dependencies: RecordPageDependencies,
+): Promise<RelayEvent[]> {
+  for (
+    let attempt = 0;
+    attempt <= BUSINESS_RECORD_RETRY_DELAYS_MS.length;
+    attempt += 1
+  ) {
+    throwIfAborted(dependencies.signal);
+    try {
+      return await dependencies.fetchEventsForFilters(filters);
+    } catch (error) {
+      const delay = BUSINESS_RECORD_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isRetryablePageError(error)) throw error;
+      await dependencies.sleep(delay, dependencies.signal);
+    }
+  }
+  throw new Error("Business record batch paging exhausted unexpectedly.");
+}
+
+function recordPageFilter(
+  channelId: string,
+  input: RecordPageInput,
+  until: number | undefined,
+): RelaySubscriptionFilter {
+  return {
+    kinds: [input.kind],
+    limit: BUSINESS_RECORD_PAGE_SIZE,
+    "#h": [channelId],
+    ...(input.authors ? { authors: input.authors } : {}),
+    ...(until === undefined ? {} : { until }),
+  };
+}
+
+async function fetchAllRecordPages(
+  input: {
+    channelId: string;
+    kind: number;
+    authors?: string[];
+  },
+  initialPageEvents: RelayEvent[],
+  dependencies: RecordPageDependencies,
+): Promise<PagedRecordEvents> {
   const events: RelayEvent[] = [];
   const seenIds = new Set<string>();
   let until: number | undefined;
 
   for (let page = 0; page < MAX_BUSINESS_RECORD_PAGES; page += 1) {
-    const pageEvents = await fetchRecordPage(
-      {
-        kinds: [input.kind],
-        limit: BUSINESS_RECORD_PAGE_SIZE,
-        "#h": [input.channelId],
-        ...(input.authors ? { authors: input.authors } : {}),
-        ...(until === undefined ? {} : { until }),
-      },
-      input.dependencies,
-    );
+    throwIfAborted(dependencies.signal);
+    const pageEvents =
+      page === 0
+        ? initialPageEvents
+        : await fetchRecordPage(
+            recordPageFilter(input.channelId, input, until),
+            dependencies,
+          );
     const added = pageEvents.filter((event) => {
       if (seenIds.has(event.id)) return false;
       seenIds.add(event.id);
@@ -309,15 +356,66 @@ export async function loadBusinessRecords(
   currentPubkey: string,
   inputDependencies: BusinessRecordLoadDependencies = {},
 ): Promise<BusinessRecords> {
-  const dependencies = {
-    fetchEvents:
-      inputDependencies.fetchEvents ??
-      relayClient.fetchEvents.bind(relayClient),
-    getChannelMembers: inputDependencies.getChannelMembers ?? getChannelMembers,
-    getRelaySelf: inputDependencies.getRelaySelf ?? getRelaySelf,
+  const fetchEvents =
+    inputDependencies.fetchEvents ?? relayClient.fetchEvents.bind(relayClient);
+  const dependencies: RecordPageDependencies = {
+    fetchEvents,
+    fetchEventsForFilters:
+      inputDependencies.fetchEventsForFilters ??
+      (inputDependencies.fetchEvents
+        ? async (filters) => {
+            const pages = await Promise.all(
+              filters.map((filter) => fetchEvents(filter)),
+            );
+            return pages.flat();
+          }
+        : relayClient.fetchEventsForFilters.bind(relayClient)),
     sleep: inputDependencies.sleep ?? abortableSleep,
     signal: inputDependencies.signal,
   };
+  const getChannelMembersForLoad =
+    inputDependencies.getChannelMembers ?? getChannelMembers;
+  const getRelaySelfForLoad = inputDependencies.getRelaySelf ?? getRelaySelf;
+  const primaryRecordInputs: readonly RecordPageInput[] = [
+    { kind: KIND_SERVICE_HEAD },
+    { kind: KIND_PROSPECT_HEAD },
+    { kind: KIND_PROPOSAL_HEAD },
+    { kind: KIND_PROPOSAL_VERSION },
+    { kind: KIND_PROPOSAL_ACCEPTANCE },
+    { kind: KIND_PROPOSAL_CONVERSION_RECEIPT },
+  ];
+
+  throwIfAborted(dependencies.signal);
+  const [
+    primaryPageEvents,
+    relaySelf,
+    members,
+  ] = await Promise.all([
+    fetchRecordPageBatch(
+      primaryRecordInputs.map((input) =>
+        recordPageFilter(channelId, input, undefined),
+      ),
+      dependencies,
+    ),
+    getRelaySelfForLoad(),
+    getChannelMembersForLoad(channelId),
+  ]);
+  if (!relaySelf) {
+    throw new Error("This relay does not advertise a signing identity.");
+  }
+  const relaySignedRecordInputs: readonly RecordPageInput[] = [
+    { kind: KIND_OUTREACH_LIST_HEAD, authors: [relaySelf] },
+    { kind: KIND_DISCOVERY_CAMPAIGN_HEAD, authors: [relaySelf] },
+    { kind: KIND_QUALIFY_OBSERVATION_HEAD, authors: [relaySelf] },
+  ];
+  const relaySignedPageEvents = await fetchRecordPageBatch(
+    relaySignedRecordInputs.map((input) =>
+      recordPageFilter(channelId, input, undefined),
+    ),
+    dependencies,
+  );
+  const initialEventsForKind = (events: RelayEvent[], kind: number) =>
+    events.filter((event) => event.kind === kind);
   const [
     servicesPage,
     prospectsPage,
@@ -325,66 +423,70 @@ export async function loadBusinessRecords(
     proposalVersionsPage,
     acceptancesPage,
     receiptsPage,
-    relaySelf,
-    members,
+    outreachListsPage,
+    discoveryCampaignsPage,
+    qualificationsPage,
   ] = await Promise.all([
-    fetchAllRecordPages({
-      channelId,
-      kind: KIND_SERVICE_HEAD,
+    fetchAllRecordPages(
+      { channelId, kind: KIND_SERVICE_HEAD },
+      initialEventsForKind(primaryPageEvents, KIND_SERVICE_HEAD),
       dependencies,
-    }),
-    fetchAllRecordPages({
-      channelId,
-      kind: KIND_PROSPECT_HEAD,
+    ),
+    fetchAllRecordPages(
+      { channelId, kind: KIND_PROSPECT_HEAD },
+      initialEventsForKind(primaryPageEvents, KIND_PROSPECT_HEAD),
       dependencies,
-    }),
-    fetchAllRecordPages({
-      channelId,
-      kind: KIND_PROPOSAL_HEAD,
+    ),
+    fetchAllRecordPages(
+      { channelId, kind: KIND_PROPOSAL_HEAD },
+      initialEventsForKind(primaryPageEvents, KIND_PROPOSAL_HEAD),
       dependencies,
-    }),
-    fetchAllRecordPages({
-      channelId,
-      kind: KIND_PROPOSAL_VERSION,
+    ),
+    fetchAllRecordPages(
+      { channelId, kind: KIND_PROPOSAL_VERSION },
+      initialEventsForKind(primaryPageEvents, KIND_PROPOSAL_VERSION),
       dependencies,
-    }),
-    fetchAllRecordPages({
-      channelId,
-      kind: KIND_PROPOSAL_ACCEPTANCE,
+    ),
+    fetchAllRecordPages(
+      { channelId, kind: KIND_PROPOSAL_ACCEPTANCE },
+      initialEventsForKind(primaryPageEvents, KIND_PROPOSAL_ACCEPTANCE),
       dependencies,
-    }),
-    fetchAllRecordPages({
-      channelId,
-      kind: KIND_PROPOSAL_CONVERSION_RECEIPT,
+    ),
+    fetchAllRecordPages(
+      { channelId, kind: KIND_PROPOSAL_CONVERSION_RECEIPT },
+      initialEventsForKind(primaryPageEvents, KIND_PROPOSAL_CONVERSION_RECEIPT),
       dependencies,
-    }),
-    dependencies.getRelaySelf(),
-    dependencies.getChannelMembers(channelId),
-  ]);
-  if (!relaySelf) {
-    throw new Error("This relay does not advertise a signing identity.");
-  }
-  const [outreachListsPage, discoveryCampaignsPage, qualificationsPage] =
-    await Promise.all([
-      fetchAllRecordPages({
-        channelId,
-        kind: KIND_OUTREACH_LIST_HEAD,
-        authors: [relaySelf],
-        dependencies,
-      }),
-      fetchAllRecordPages({
+    ),
+    fetchAllRecordPages(
+      { channelId, kind: KIND_OUTREACH_LIST_HEAD, authors: [relaySelf] },
+      initialEventsForKind(relaySignedPageEvents, KIND_OUTREACH_LIST_HEAD),
+      dependencies,
+    ),
+    fetchAllRecordPages(
+      {
         channelId,
         kind: KIND_DISCOVERY_CAMPAIGN_HEAD,
         authors: [relaySelf],
-        dependencies,
-      }),
-      fetchAllRecordPages({
+      },
+      initialEventsForKind(
+        relaySignedPageEvents,
+        KIND_DISCOVERY_CAMPAIGN_HEAD,
+      ),
+      dependencies,
+    ),
+    fetchAllRecordPages(
+      {
         channelId,
         kind: KIND_QUALIFY_OBSERVATION_HEAD,
         authors: [relaySelf],
-        dependencies,
-      }),
-    ]);
+      },
+      initialEventsForKind(
+        relaySignedPageEvents,
+        KIND_QUALIFY_OBSERVATION_HEAD,
+      ),
+      dependencies,
+    ),
+  ]);
   const pagedRecords = {
     services: servicesPage,
     prospects: prospectsPage,

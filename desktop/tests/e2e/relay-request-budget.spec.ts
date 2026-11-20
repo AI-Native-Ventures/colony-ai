@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
+import { KIND_PROSPECT_HEAD } from "../../src/features/discovery/businessRecordContract";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { openSidebarGroup } from "../helpers/sidebarGroups";
 
@@ -65,6 +66,24 @@ function businessRecordBatchSize(frame: unknown[]): number | null {
     );
   });
   return isBusinessRecordFilter ? filters.length : null;
+}
+
+function isBusinessRecordProspectContinuation(frame: unknown[]): boolean {
+  if (frame[0] !== "REQ") return false;
+  const filters = frame.slice(2);
+  if (filters.length !== 1) return false;
+  const [filter] = filters;
+  if (!filter || typeof filter !== "object") return false;
+  const record = filter as Record<string, unknown>;
+  return (
+    Array.isArray(record.kinds) &&
+    record.kinds.length === 1 &&
+    record.kinds[0] === KIND_PROSPECT_HEAD &&
+    record.limit === 500 &&
+    Array.isArray(record["#h"]) &&
+    record["#h"].length === 1 &&
+    typeof record.until === "number"
+  );
 }
 
 async function captureWindow(
@@ -342,10 +361,14 @@ test("2,001-prospect Leads startup stays below the shared relay budget", async (
       return count === null ? [] : [count];
     })
     .sort((left, right) => left - right);
+  const prospectContinuationRequests = samples.filter(({ frame }) =>
+    isBusinessRecordProspectContinuation(frame),
+  ).length;
 
   console.log(
-    `[relay-request-budget] ${JSON.stringify({ ownerWindow, businessBatchSizes })}`,
+    `[relay-request-budget] ${JSON.stringify({ ownerWindow, businessBatchSizes, prospectContinuationRequests })}`,
   );
   expect(ownerWindow.total).toBeLessThanOrEqual(40);
   expect(businessBatchSizes).toEqual([3, 6]);
+  expect(prospectContinuationRequests).toBe(4);
 });
