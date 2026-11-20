@@ -16,11 +16,11 @@ const MAP_SHELL_LAUNCH_TIMEOUT_MS = 8_000;
 
 function useMapShellLaunchTimeoutFallback({
   hasRememberedCofounderSetting,
-  isCofounderSettingsPending,
+  hasResolvedCofounderSetting,
   launchKey,
 }: {
   hasRememberedCofounderSetting: boolean;
-  isCofounderSettingsPending: boolean;
+  hasResolvedCofounderSetting: boolean;
   launchKey: string | null;
 }): boolean {
   const [timedOutLaunchKey, setTimedOutLaunchKey] = useState<string | null>(
@@ -28,8 +28,8 @@ function useMapShellLaunchTimeoutFallback({
   );
   const shouldWait =
     launchKey !== null &&
-    isCofounderSettingsPending &&
-    !hasRememberedCofounderSetting;
+    !hasRememberedCofounderSetting &&
+    !hasResolvedCofounderSetting;
 
   useEffect(() => {
     if (!shouldWait || !launchKey) {
@@ -61,6 +61,7 @@ export function useMapShellLaunchState(): MapShellLaunchState {
     mapHomeEnabled ? communityId : null,
   );
   const cofounderEnabled = settings.data?.settings.enabled;
+  const cofounderSettingsFailed = settings.isError || settings.failureCount > 0;
   const rememberedCofounderEnabled = scope
     ? readRememberedMapShellEnabled(scope)
     : null;
@@ -68,7 +69,8 @@ export function useMapShellLaunchState(): MapShellLaunchState {
     mapHomeEnabled && scope ? mapShellCofounderEnabledStorageKey(scope) : null;
   const cofounderSettingsTimedOut = useMapShellLaunchTimeoutFallback({
     hasRememberedCofounderSetting: rememberedCofounderEnabled !== null,
-    isCofounderSettingsPending: settings.isPending,
+    hasResolvedCofounderSetting:
+      typeof cofounderEnabled === "boolean" || cofounderSettingsFailed,
     launchKey,
   });
 
@@ -81,7 +83,7 @@ export function useMapShellLaunchState(): MapShellLaunchState {
 
   return resolveMapShellLaunchState({
     cofounderEnabled,
-    cofounderSettingsError: settings.isError,
+    cofounderSettingsError: cofounderSettingsFailed,
     cofounderSettingsTimedOut,
     mapHomeEnabled,
     rememberedCofounderEnabled,
