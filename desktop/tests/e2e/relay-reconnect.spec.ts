@@ -591,6 +591,55 @@ test("sub-2s degraded flap invalidates relay queries on recovery", async ({
     .toBeGreaterThan(0);
 });
 
+test("an active rate-limit gate leaves healthy relay pages untouched", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("channel-general")).toBeVisible();
+
+  await page.evaluate(() => {
+    const queryClient = window.__BUZZ_E2E_QUERY_CLIENT__ as
+      | {
+          invalidateQueries: (...args: unknown[]) => unknown;
+          __rateLimitRecoveryInvalidations?: number;
+        }
+      | undefined;
+    if (!queryClient)
+      throw new Error("E2E query client seam is not installed.");
+    const original = queryClient.invalidateQueries.bind(queryClient);
+    queryClient.__rateLimitRecoveryInvalidations = 0;
+    queryClient.invalidateQueries = (...args: unknown[]) => {
+      queryClient.__rateLimitRecoveryInvalidations =
+        (queryClient.__rateLimitRecoveryInvalidations ?? 0) + 1;
+      return original(...args);
+    };
+  });
+
+  await activateRelayRateLimit(page, 1);
+  expect(
+    await page.evaluate(() =>
+      window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.(),
+    ),
+  ).toBe("connected");
+
+  await page.waitForTimeout(1_500);
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          window.__BUZZ_E2E_QUERY_CLIENT__ as unknown as {
+            __rateLimitRecoveryInvalidations?: number;
+          }
+        )?.__rateLimitRecoveryInvalidations ?? 0,
+    ),
+  ).toBe(0);
+  expect(
+    await page.evaluate(() =>
+      window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.(),
+    ),
+  ).toBe("connected");
+});
+
 test("transient AUTH rejection reconnects and restores live traffic", async ({
   page,
 }) => {

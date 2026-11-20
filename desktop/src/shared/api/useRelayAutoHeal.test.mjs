@@ -10,7 +10,10 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
-import { RelayAutoHealScheduler } from "./useRelayAutoHeal.ts";
+import {
+  RelayAutoHealScheduler,
+  RelayRateLimitRecoveryScheduler,
+} from "./useRelayAutoHeal.ts";
 
 function makeScheduler({ minIntervalMs = 100, now: initialNow = 0 } = {}) {
   const heals = [];
@@ -41,6 +44,21 @@ function makeScheduler({ minIntervalMs = 100, now: initialNow = 0 } = {}) {
       nowMs = ms;
     },
     fireTimer: (id) => timers.find((t) => t.id === id)?.fn(),
+  };
+}
+
+function recoveryQuery({
+  hash,
+  key = ["channels"],
+  status = "error",
+  fetchStatus = "idle",
+  active = true,
+}) {
+  return {
+    queryHash: hash,
+    queryKey: key,
+    state: { status, fetchStatus },
+    isActive: () => active,
   };
 }
 
@@ -164,4 +182,43 @@ test("dispose cancels pending deferred heal", () => {
 test("dispose with no pending timer is a no-op", () => {
   const { sched } = makeScheduler();
   assert.doesNotThrow(() => sched.dispose());
+});
+
+// ── Rate-limit recovery selection ───────────────────────────────────────────
+
+test("rate-limit recovery leaves healthy queries alone", () => {
+  const scheduler = new RelayRateLimitRecoveryScheduler();
+  const healthy = recoveryQuery({ hash: "healthy", status: "success" });
+  const failed = recoveryQuery({ hash: "failed" });
+
+  assert.deepEqual(
+    [...scheduler.takeErroredActiveQueryHashes([healthy, failed])],
+    ["failed"],
+    "only the active errored relay query may be invalidated on recovery",
+  );
+});
+
+test("a second immediate rate limit cannot create an automatic retry loop", () => {
+  const scheduler = new RelayRateLimitRecoveryScheduler();
+  const failed = recoveryQuery({ hash: "still-rate-limited" });
+
+  assert.deepEqual(
+    [...scheduler.takeErroredActiveQueryHashes([failed])],
+    ["still-rate-limited"],
+    "the first recovery is allowed one paced retry",
+  );
+  assert.deepEqual(
+    [...scheduler.takeErroredActiveQueryHashes([failed])],
+    [],
+    "a retry that immediately re-hits the limit cannot schedule itself forever",
+  );
+
+  scheduler.observeQuery(
+    recoveryQuery({ hash: "still-rate-limited", status: "success" }),
+  );
+  assert.deepEqual(
+    [...scheduler.takeErroredActiveQueryHashes([failed])],
+    ["still-rate-limited"],
+    "a successful query is eligible for a later independent failure",
+  );
 });

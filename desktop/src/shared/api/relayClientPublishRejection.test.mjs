@@ -229,6 +229,58 @@ test("a rate-limited OK rejection arms the rate-limit gate", async () => {
   );
 });
 
+test("a rate-limited first-event read recovers through RelayClient without remount", async () => {
+  reset();
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    const client = connectedClient();
+    const filter = { kinds: [13_534], limit: 1 };
+    const read = client.fetchFirstEvent(filter);
+
+    await flushUntil(() => requestFrames().length === 1);
+    const [, firstSubId] = JSON.parse(requestFrames()[0].message.data);
+    await deliver(client, [
+      "CLOSED",
+      firstSubId,
+      "rate-limited: quota exceeded; retry in 3s",
+    ]);
+
+    assert.equal(isRateLimited(), true, "the CLOSED must arm shared backoff");
+    assert.equal(requestFrames().length, 1, "do not retry before the hint");
+
+    await advanceTimersBy(3_000);
+    await flushUntil(() => requestFrames().length === 2);
+    const [, retrySubId] = JSON.parse(requestFrames()[1].message.data);
+    assert.notEqual(
+      retrySubId,
+      firstSubId,
+      "retry must replace the closed REQ",
+    );
+
+    const event = {
+      id: "f".repeat(64),
+      pubkey: "a".repeat(64),
+      kind: 13_534,
+      content: "membership",
+      created_at: 1,
+      tags: [],
+      sig: "b".repeat(128),
+    };
+    await deliver(client, ["EVENT", retrySubId, event]);
+
+    assert.deepEqual(await read, event);
+    assert.equal(client.wsId, 7, "the read recovers on the existing socket");
+    assert.equal(
+      client.connectionGeneration,
+      0,
+      "the read must not require a reload or reconnect",
+    );
+  } finally {
+    Math.random = originalRandom;
+  }
+});
+
 test("an ordinary OK rejection does not arm the gate", async () => {
   resetRateLimitGate();
   pendingTimers.clear();
@@ -476,14 +528,51 @@ test("initial live subscriptions use an immediate burst before production pacing
 
   assert.deepEqual(
     sendTimes,
-    [0, 0, 0, 0, 0, 0, 0, 0, 125, 250],
-    "the first eight startup REQs are immediate, then paced at 8/s",
+    [0, 0, 0, 0, 0, 143, 286, 429, 572, 715],
+    "the first five startup REQs are immediate, then one is admitted every 143 ms",
   );
   for (const { message } of requestFrames()) {
     const [, subId] = JSON.parse(message.data);
     await deliver(client, ["EOSE", subId]);
   }
   await Promise.all(subscriptions);
+});
+
+test("several independently limited history filters share one production REQ", async () => {
+  reset();
+  const client = connectedClient();
+  const filters = [
+    { kinds: [47_000], limit: 500, "#h": ["sales"] },
+    { kinds: [47_034], limit: 500, "#h": ["sales"] },
+    { kinds: [47_075], limit: 500, "#h": ["sales"] },
+  ];
+  const read = client.fetchEventsForFilters(filters);
+
+  await flushUntil(() => requestFrames().length === 1);
+  const frame = JSON.parse(requestFrames()[0].message.data);
+  assert.deepEqual(
+    frame.slice(2),
+    filters,
+    "one wire REQ must preserve each record family's own filter and limit",
+  );
+
+  await deliver(client, ["EOSE", frame[1]]);
+  assert.deepEqual(await read, []);
+});
+
+test("a batched history read rejects more filters than the relay accepts", async () => {
+  reset();
+  const client = connectedClient();
+  const filters = Array.from({ length: 11 }, (_, kind) => ({
+    kinds: [47_000 + kind],
+    limit: 1,
+  }));
+
+  await assert.rejects(
+    client.fetchEventsForFilters(filters),
+    /at most 10 filters/u,
+  );
+  assert.equal(requestFrames().length, 0);
 });
 
 test("synthetic E2E relay does not spend a real relay quota budget", async () => {
@@ -567,12 +656,12 @@ test("saved business records are not paced as chat messages", async () => {
   await Promise.all(records);
 
   assert.ok(
-    recordTimes.at(-1) <= 12_000,
-    `100 saved records took ${recordTimes.at(-1)} ms; message pacing would take about 115,000 ms`,
+    recordTimes.at(-1) <= 13_585,
+    `100 saved records took ${recordTimes.at(-1)} ms; the shared budget admits the last by 13,585 ms`,
   );
   assert.ok(
-    countInWindow(recordTimes, 5_000) <= 48,
-    "stay under the relay's shared budget of 50 operations per five seconds",
+    countInWindow(recordTimes, 5_000) <= 40,
+    "stay within the desktop's shared 40-operation five-second budget",
   );
   assert.ok(
     countInWindow(recordTimes, 60_000) <= 600,
@@ -656,7 +745,10 @@ test("a relay that refuses a record command for its rate gets message pacing fro
     );
     await advanceTimersUntil(() => freshTimes.length === fresh.length, 5_000);
     await Promise.all(fresh);
-    assert.ok(freshTimes.at(-1) <= 2_000);
+    assert.ok(
+      freshTimes.at(-1) <= 2_145,
+      "fresh record commands use the five-token, 143 ms shared operation budget",
+    );
   } finally {
     Math.random = originalRandom;
   }

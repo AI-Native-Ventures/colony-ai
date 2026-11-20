@@ -72,7 +72,7 @@ test.describe("community rail", () => {
     await page.addInitScript((overridesKey) => {
       window.localStorage.setItem(
         overridesKey,
-        JSON.stringify({ workspaceRail: false }),
+        JSON.stringify({ map_home: false, workspaceRail: false }),
       );
     }, FEATURE_OVERRIDES_STORAGE_KEY);
     await page.goto("/");

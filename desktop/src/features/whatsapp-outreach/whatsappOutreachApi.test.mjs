@@ -460,6 +460,33 @@ test("loading contacts follows nextCursor and joins the pages in order", async (
   assert.equal(relay.bodies[2].before, "c2");
 });
 
+test("an owner-scale 500-contact load makes three bounded WhatsApp reads", async () => {
+  const contacts = Array.from({ length: 500 }, (_, index) =>
+    rawContact(`2782${String(index).padStart(7, "0")}`),
+  );
+  const relay = scriptedRelay(
+    { contacts: contacts.slice(0, 200), nextCursor: "page-2" },
+    { contacts: contacts.slice(200, 400), nextCursor: "page-3" },
+    { contacts: contacts.slice(400), nextCursor: null },
+  );
+
+  const loaded = await loadWhatsAppContacts(
+    "wss://relay.example",
+    relay.dependencies,
+  );
+
+  assert.equal(loaded.length, 500);
+  assert.equal(relay.bodies.length, 3);
+  assert.deepEqual(
+    relay.bodies.map(({ what, limit, before }) => ({ what, limit, before })),
+    [
+      { what: "contacts", limit: 200, before: undefined },
+      { what: "contacts", limit: 200, before: "page-2" },
+      { what: "contacts", limit: 200, before: "page-3" },
+    ],
+  );
+});
+
 test("an older relay without nextCursor is one request, as before", async () => {
   const relay = scriptedRelay({ contacts: [rawContact("27820000001")] });
   const contacts = await loadWhatsAppContacts(
