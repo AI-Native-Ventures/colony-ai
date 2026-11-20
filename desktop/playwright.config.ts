@@ -178,6 +178,7 @@ export default defineConfig({
         "**/sidebar-full-app.spec.ts",
         "**/workspace-header-icon.spec.ts",
         "**/workspace-switcher.spec.ts",
+        "**/map-home-launch.spec.ts",
         "**/map-shell.spec.ts",
         "**/map-channels-menu.spec.ts",
         "**/sidebar-reference-fixture.spec.ts",

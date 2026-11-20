@@ -16,3 +16,10 @@ test("cut experiments are not offered in the preview features manifest", () => {
     assert.ok(!ids.includes(cut), `${cut} must not be a preview feature`);
   }
 });
+
+test("map home is enabled by default on desktop", () => {
+  const mapHome = manifest.features.find(({ id }) => id === "map_home");
+
+  assert.equal(mapHome?.defaultEnabled, true);
+  assert.deepEqual(mapHome?.platforms, ["desktop"]);
+});
