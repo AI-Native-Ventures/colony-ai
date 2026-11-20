@@ -4,6 +4,7 @@ import { signRelayEvent } from "@/shared/api/tauri";
 import { getRelaySelf } from "@/features/moderation/lib/relaySelf";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 import type { Channel, RelayEvent } from "@/shared/api/types";
+import type { RelaySubscriptionFilter } from "@/shared/api/relayClientShared";
 import {
   BUSINESS_SCOPE_KINDS,
   businessDTag,
@@ -46,6 +47,10 @@ export type BusinessRole = "owner" | "admin" | "member" | "guest" | "bot";
 export type BusinessRecords = {
   channelId: string;
   role: BusinessRole | null;
+  /** Kinds stopped at the bounded page ceiling. */
+  truncated: BusinessRecordTruncation;
+  /** Unique relay events loaded for each record kind before parsing heads. */
+  loaded: BusinessRecordLoadCounts;
   services: Array<{ eventId: string; record: ServiceHead; dTag: string }>;
   prospects: Array<{ eventId: string; record: ProspectHead; dTag: string }>;
   proposals: Array<{
@@ -66,20 +71,44 @@ export type BusinessRecords = {
 const QUERY_LIMIT = 500;
 const SCOPE_CHUNK_SIZE = 128;
 
-const PRIMARY_RECORD_KINDS = [
-  KIND_SERVICE_HEAD,
-  KIND_PROSPECT_HEAD,
-  KIND_PROPOSAL_HEAD,
-  KIND_PROPOSAL_VERSION,
-  KIND_PROPOSAL_ACCEPTANCE,
-  KIND_PROPOSAL_CONVERSION_RECEIPT,
+export const BUSINESS_RECORD_PAGE_SIZE = QUERY_LIMIT;
+export const MAX_BUSINESS_RECORD_PAGES = 40;
+export const BUSINESS_RECORD_RETRY_DELAYS_MS = [150, 400] as const;
+
+const BUSINESS_RECORD_COLLECTIONS = [
+  "services",
+  "prospects",
+  "proposalHeads",
+  "proposalVersions",
+  "proposalAcceptances",
+  "proposalReceipts",
+  "outreachLists",
+  "discoveryCampaigns",
+  "qualificationObservations",
 ] as const;
 
-const RELAY_SIGNED_RECORD_KINDS = [
-  KIND_OUTREACH_LIST_HEAD,
-  KIND_DISCOVERY_CAMPAIGN_HEAD,
-  KIND_QUALIFY_OBSERVATION_HEAD,
-] as const;
+export type BusinessRecordCollection =
+  (typeof BUSINESS_RECORD_COLLECTIONS)[number];
+
+export type BusinessRecordTruncation = Partial<
+  Record<BusinessRecordCollection, true>
+>;
+
+export type BusinessRecordLoadCounts = Record<BusinessRecordCollection, number>;
+
+export type BusinessRecordLoadDependencies = {
+  fetchEvents?: (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>;
+  getChannelMembers?: typeof getChannelMembers;
+  getRelaySelf?: typeof getRelaySelf;
+  /** Used by retries so an abandoned query never waits in the background. */
+  sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
+  signal?: AbortSignal;
+};
+
+type PagedRecordEvents = {
+  events: RelayEvent[];
+  truncated: boolean;
+};
 
 function channelIdOf(event: { tags: string[][] }): string | null {
   return event.tags.find((tag) => tag[0] === "h")?.[1] ?? null;
@@ -135,66 +164,247 @@ export async function resolveBusinessChannel(
   return pickSalesStream(salesStreamsOf(channels))?.id ?? null;
 }
 
+function abortedLoadError(): Error {
+  const error = new Error("Business record loading was cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw abortedLoadError();
+}
+
+function abortableSleep(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortedLoadError());
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortedLoadError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function isRetryablePageError(error: unknown): boolean {
+  if (error instanceof Error && error.name === "AbortError") return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /timed out|timeout|connection|socket|network|websocket|closed|disconnected|unavailable/i.test(
+    message,
+  );
+}
+
+async function fetchRecordPage(
+  filter: RelaySubscriptionFilter,
+  dependencies: Required<
+    Pick<BusinessRecordLoadDependencies, "fetchEvents" | "sleep">
+  > &
+    Pick<BusinessRecordLoadDependencies, "signal">,
+): Promise<RelayEvent[]> {
+  for (
+    let attempt = 0;
+    attempt <= BUSINESS_RECORD_RETRY_DELAYS_MS.length;
+    attempt += 1
+  ) {
+    throwIfAborted(dependencies.signal);
+    try {
+      return await dependencies.fetchEvents(filter);
+    } catch (error) {
+      const delay = BUSINESS_RECORD_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isRetryablePageError(error)) throw error;
+      await dependencies.sleep(delay, dependencies.signal);
+    }
+  }
+  throw new Error("Business record paging exhausted unexpectedly.");
+}
+
+async function fetchAllRecordPages(input: {
+  channelId: string;
+  kind: number;
+  authors?: string[];
+  dependencies: Required<
+    Pick<BusinessRecordLoadDependencies, "fetchEvents" | "sleep">
+  > &
+    Pick<BusinessRecordLoadDependencies, "signal">;
+}): Promise<PagedRecordEvents> {
+  const events: RelayEvent[] = [];
+  const seenIds = new Set<string>();
+  let until: number | undefined;
+
+  for (let page = 0; page < MAX_BUSINESS_RECORD_PAGES; page += 1) {
+    const pageEvents = await fetchRecordPage(
+      {
+        kinds: [input.kind],
+        limit: BUSINESS_RECORD_PAGE_SIZE,
+        "#h": [input.channelId],
+        ...(input.authors ? { authors: input.authors } : {}),
+        ...(until === undefined ? {} : { until }),
+      },
+      input.dependencies,
+    );
+    const added = pageEvents.filter((event) => {
+      if (seenIds.has(event.id)) return false;
+      seenIds.add(event.id);
+      events.push(event);
+      return true;
+    });
+    const oldestCreatedAt = pageEvents.reduce<number | null>(
+      (oldest, event) =>
+        oldest === null || event.created_at < oldest
+          ? event.created_at
+          : oldest,
+      null,
+    );
+
+    if (pageEvents.length < BUSINESS_RECORD_PAGE_SIZE) {
+      return { events, truncated: false };
+    }
+    // A full inclusive boundary page without a new id cannot safely advance
+    // without skipping records that share its timestamp. Surface the partial
+    // result instead of presenting it as a complete history.
+    if (added.length === 0) return { events, truncated: true };
+    if (page === MAX_BUSINESS_RECORD_PAGES - 1) {
+      return { events, truncated: true };
+    }
+    if (oldestCreatedAt === null) return { events, truncated: false };
+    until = oldestCreatedAt;
+  }
+  return { events, truncated: false };
+}
+
+function loadCounts(
+  input: Record<BusinessRecordCollection, PagedRecordEvents>,
+) {
+  return Object.fromEntries(
+    BUSINESS_RECORD_COLLECTIONS.map((collection) => [
+      collection,
+      input[collection].events.length,
+    ]),
+  ) as BusinessRecordLoadCounts;
+}
+
+function truncation(
+  input: Record<BusinessRecordCollection, PagedRecordEvents>,
+) {
+  return Object.fromEntries(
+    BUSINESS_RECORD_COLLECTIONS.filter(
+      (collection) => input[collection].truncated,
+    ).map((collection) => [collection, true]),
+  ) as BusinessRecordTruncation;
+}
+
 export async function loadBusinessRecords(
   channelId: string,
   communityId: TenantCommunityId,
   currentPubkey: string,
+  inputDependencies: BusinessRecordLoadDependencies = {},
 ): Promise<BusinessRecords> {
-  const [primaryEvents, relaySelf, members] = await Promise.all([
-    // One REQ can carry several filters. Keeping one filter per kind preserves
-    // the existing 500-event ceiling for every record family while reducing a
-    // dense Sales screen from six admissions to one.
-    relayClient.fetchEventsForFilters(
-      PRIMARY_RECORD_KINDS.map((kind) => ({
-        kinds: [kind],
-        limit: QUERY_LIMIT,
-        "#h": [channelId],
-      })),
-    ),
-    getRelaySelf(),
-    getChannelMembers(channelId),
+  const dependencies = {
+    fetchEvents:
+      inputDependencies.fetchEvents ??
+      relayClient.fetchEvents.bind(relayClient),
+    getChannelMembers: inputDependencies.getChannelMembers ?? getChannelMembers,
+    getRelaySelf: inputDependencies.getRelaySelf ?? getRelaySelf,
+    sleep: inputDependencies.sleep ?? abortableSleep,
+    signal: inputDependencies.signal,
+  };
+  const [
+    servicesPage,
+    prospectsPage,
+    proposalHeadsPage,
+    proposalVersionsPage,
+    acceptancesPage,
+    receiptsPage,
+    relaySelf,
+    members,
+  ] = await Promise.all([
+    fetchAllRecordPages({
+      channelId,
+      kind: KIND_SERVICE_HEAD,
+      dependencies,
+    }),
+    fetchAllRecordPages({
+      channelId,
+      kind: KIND_PROSPECT_HEAD,
+      dependencies,
+    }),
+    fetchAllRecordPages({
+      channelId,
+      kind: KIND_PROPOSAL_HEAD,
+      dependencies,
+    }),
+    fetchAllRecordPages({
+      channelId,
+      kind: KIND_PROPOSAL_VERSION,
+      dependencies,
+    }),
+    fetchAllRecordPages({
+      channelId,
+      kind: KIND_PROPOSAL_ACCEPTANCE,
+      dependencies,
+    }),
+    fetchAllRecordPages({
+      channelId,
+      kind: KIND_PROPOSAL_CONVERSION_RECEIPT,
+      dependencies,
+    }),
+    dependencies.getRelaySelf(),
+    dependencies.getChannelMembers(channelId),
   ]);
   if (!relaySelf) {
     throw new Error("This relay does not advertise a signing identity.");
   }
-  // Relay-signed records are a second filter batch because the relay identity
-  // is learned alongside the primary records. This replaces three admissions
-  // without relaxing author scoping or any per-kind result limit.
-  const relaySignedEvents = await relayClient.fetchEventsForFilters(
-    RELAY_SIGNED_RECORD_KINDS.map((kind) => ({
-      kinds: [kind],
-      authors: [relaySelf],
-      limit: QUERY_LIMIT,
-      "#h": [channelId],
-    })),
-  );
-  const serviceEvents = primaryEvents.filter(
-    (event) => event.kind === KIND_SERVICE_HEAD,
-  );
-  const prospectEvents = primaryEvents.filter(
-    (event) => event.kind === KIND_PROSPECT_HEAD,
-  );
-  const proposalHeadEvents = primaryEvents.filter(
-    (event) => event.kind === KIND_PROPOSAL_HEAD,
-  );
-  const proposalVersionEvents = primaryEvents.filter(
-    (event) => event.kind === KIND_PROPOSAL_VERSION,
-  );
-  const acceptanceEvents = primaryEvents.filter(
-    (event) => event.kind === KIND_PROPOSAL_ACCEPTANCE,
-  );
-  const receiptEvents = primaryEvents.filter(
-    (event) => event.kind === KIND_PROPOSAL_CONVERSION_RECEIPT,
-  );
-  const outreachListEvents = relaySignedEvents.filter(
-    (event) => event.kind === KIND_OUTREACH_LIST_HEAD,
-  );
-  const discoveryCampaignEvents = relaySignedEvents.filter(
-    (event) => event.kind === KIND_DISCOVERY_CAMPAIGN_HEAD,
-  );
-  const qualificationEvents = relaySignedEvents.filter(
-    (event) => event.kind === KIND_QUALIFY_OBSERVATION_HEAD,
-  );
+  const [outreachListsPage, discoveryCampaignsPage, qualificationsPage] =
+    await Promise.all([
+      fetchAllRecordPages({
+        channelId,
+        kind: KIND_OUTREACH_LIST_HEAD,
+        authors: [relaySelf],
+        dependencies,
+      }),
+      fetchAllRecordPages({
+        channelId,
+        kind: KIND_DISCOVERY_CAMPAIGN_HEAD,
+        authors: [relaySelf],
+        dependencies,
+      }),
+      fetchAllRecordPages({
+        channelId,
+        kind: KIND_QUALIFY_OBSERVATION_HEAD,
+        authors: [relaySelf],
+        dependencies,
+      }),
+    ]);
+  const pagedRecords = {
+    services: servicesPage,
+    prospects: prospectsPage,
+    proposalHeads: proposalHeadsPage,
+    proposalVersions: proposalVersionsPage,
+    proposalAcceptances: acceptancesPage,
+    proposalReceipts: receiptsPage,
+    outreachLists: outreachListsPage,
+    discoveryCampaigns: discoveryCampaignsPage,
+    qualificationObservations: qualificationsPage,
+  };
+  const serviceEvents = servicesPage.events;
+  const prospectEvents = prospectsPage.events;
+  const proposalHeadEvents = proposalHeadsPage.events;
+  const proposalVersionEvents = proposalVersionsPage.events;
+  const acceptanceEvents = acceptancesPage.events;
+  const receiptEvents = receiptsPage.events;
+  const outreachListEvents = outreachListsPage.events;
+  const discoveryCampaignEvents = discoveryCampaignsPage.events;
+  const qualificationEvents = qualificationsPage.events;
   const role = members.find(
     (member) =>
       member.pubkey.toLocaleLowerCase() === currentPubkey.toLocaleLowerCase(),
@@ -297,6 +507,8 @@ export async function loadBusinessRecords(
   return {
     channelId,
     role: role ?? null,
+    truncated: truncation(pagedRecords),
+    loaded: loadCounts(pagedRecords),
     services,
     prospects,
     proposals,

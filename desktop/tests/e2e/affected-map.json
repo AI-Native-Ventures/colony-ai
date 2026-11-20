@@ -51,6 +51,7 @@
       "fullmap-slice3b.spec.ts",
       "fullmap-slice4.spec.ts",
       "map-panzoom.spec.ts",
+      "map-home-launch.spec.ts",
       "map-shell.spec.ts",
       "edit-agent.spec.ts",
       "agent-runtime-switch.spec.ts",
@@ -151,6 +152,7 @@
     {
       "paths": ["desktop/src/features/map-shell/**"],
       "specs": [
+        "map-home-launch.spec.ts",
         "map-shell.spec.ts",
         "map-channels-menu.spec.ts",
         "fullmap-slice1.spec.ts",
@@ -318,6 +320,7 @@
         "colony3-discovery-continue.spec.ts",
         "colony3-discovery-run.spec.ts",
         "colony3-discovery-leads-proof.spec.ts",
+        "colony3-all-prospects.spec.ts",
         "colony3-lead-reference.spec.ts",
         "colony3-sales-setup.spec.ts",
         "colony3-scout-dupes.spec.ts",

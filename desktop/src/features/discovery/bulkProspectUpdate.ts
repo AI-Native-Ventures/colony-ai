@@ -38,7 +38,13 @@ export type BulkProspectUpdateDependencies = {
 };
 
 const STORAGE_PREFIX = "colony.bulkProspectUpdate.v1:";
-const MAX_PROSPECTS = 500;
+export const MAX_BULK_PROSPECT_UPDATE_LEADS = 500;
+
+export function bulkProspectUpdateLimitMessage(count: number): string | null {
+  return count > MAX_BULK_PROSPECT_UPDATE_LEADS
+    ? `You selected ${count}. A stage change can update ${MAX_BULK_PROSPECT_UPDATE_LEADS} leads at most.`
+    : null;
+}
 
 export function bulkProspectUpdateStorageKey(
   channelId: string,
@@ -74,7 +80,7 @@ function isPendingBulkProspectUpdate(
     isTarget(pending.target) &&
     Array.isArray(pending.prospectIds) &&
     pending.prospectIds.length > 0 &&
-    pending.prospectIds.length <= MAX_PROSPECTS &&
+    pending.prospectIds.length <= MAX_BULK_PROSPECT_UPDATE_LEADS &&
     pending.prospectIds.every(
       (id) => typeof id === "string" && id.length > 0 && id.length <= 128,
     ) &&
@@ -187,11 +193,12 @@ export async function applyBulkProspectUpdate(
   dependencies: BulkProspectUpdateDependencies,
 ): Promise<void> {
   const ids = [...new Set(input.prospectIds)];
+  const limitMessage = bulkProspectUpdateLimitMessage(ids.length);
+  if (limitMessage) throw new Error(limitMessage);
   if (
     !input.channelId ||
     !input.communityId ||
     ids.length === 0 ||
-    ids.length > MAX_PROSPECTS ||
     ids.some((id) => !id || id.length > 128) ||
     !isTarget(input.target)
   ) {

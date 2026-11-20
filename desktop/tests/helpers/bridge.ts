@@ -681,6 +681,10 @@ type MockBridgeOptions = {
   }>;
   /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
   cofounderSettings?: MockCofounderSettings;
+  /** Reject successive co-founder settings reads in order, then answer. */
+  cofounderSettingsReadErrors?: string[];
+  /** Hold successive co-founder settings reads for this long (ms), then answer. */
+  cofounderSettingsReadDelaysMs?: number[];
   companyLeadStatus?: MockCofounderLeadStatus | null;
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
@@ -1145,11 +1149,14 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity?.pubkey,
     );
   }
-  // Seed preview-feature overrides for E2E by default. Manifest-default-off
-  // features remain off unless a spec explicitly enables them. Specs that
-  // exercise the Experiments toggle UI itself pass `seedPreviewFeatures: false`.
+  // Most existing E2E specs exercise the legacy shell. Keep that intent
+  // explicit even though map_home now follows the production default. Specs
+  // that exercise manifest defaults pass `seedPreviewFeatures: false`.
   if (options.seedPreviewFeatures !== false) {
-    await seedPreviewFeaturesEnabled(page, options.previewFeatureOverrides);
+    await seedPreviewFeaturesEnabled(page, {
+      map_home: false,
+      ...options.previewFeatureOverrides,
+    });
   }
 
   await page.addInitScript(

@@ -22,11 +22,12 @@ export function multiCityTabId(
 }
 
 function statusLabel(status: ReturnType<typeof groupCityStatus>): string {
+  if (status === "starting") return "Starting";
   if (status === "waiting") return "Waiting";
   if (status === "not_started") return "Not started";
   if (status === "running") return "Searching";
   if (status === "complete") return "Done";
-  if (status === "cancelled") return "Cancelled";
+  if (status === "cancelled") return "Stopped";
   if (status === "failed") return "Failed";
   return "Paused";
 }
@@ -52,6 +53,28 @@ function CityTabProgress({ found, target }: { found: number; target: number }) {
   );
 }
 
+function CityTabStatus({
+  label,
+  status,
+  title = label,
+}: {
+  label: string;
+  status: ReturnType<typeof groupCityStatus>;
+  title?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`c3mc-city-tab-status is-${status}`}
+      title={title}
+    >
+      <span className="c3mc-city-tab-status-label" data-city-tab-text="status">
+        {label}
+      </span>
+    </span>
+  );
+}
+
 /** The local group header and keyboard-operable city tabs. */
 export function MultiCityCampaignTabs({
   campaigns,
@@ -71,12 +94,16 @@ export function MultiCityCampaignTabs({
   const progress = groupProgress(group, campaigns);
   const totalSearching = progress.searching;
   const allStatus = groupCampaignStatus(group, campaigns);
+  const allVisualStatus = totalSearching ? "running" : allStatus;
   const allStatusLabel =
     allStatus === "complete"
       ? "Done"
       : totalSearching
-        ? `${totalSearching} of ${group.cities.length} searching`
+        ? `${totalSearching} searching`
         : statusLabel(allStatus);
+  const allStatusTitle = totalSearching
+    ? `${totalSearching} of ${group.cities.length} cities searching`
+    : allStatusLabel;
 
   function choose(tab: MultiCityCampaignTab) {
     onSelect(tab);
@@ -152,18 +179,19 @@ export function MultiCityCampaignTabs({
           tabIndex={selectedTab === "all" ? 0 : -1}
           type="button"
         >
-          <span className="c3mc-city-tab-top">
-            <strong>All cities</strong>
-            <span
-              aria-hidden="true"
-              className={`c3mc-city-tab-status is-${allStatus}`}
-            >
-              {allStatusLabel}
-            </span>
+          <span className="c3mc-city-tab-name">
+            <strong data-city-tab-text="name">All cities</strong>
           </span>
-          <span className="c3mc-city-tab-count">
-            <strong>{progress.count}</strong>
-            <span>of {progress.target} found</span>
+          <span className="c3mc-city-tab-meta">
+            <span className="c3mc-city-tab-count" data-city-tab-text="count">
+              <strong>{progress.count}</strong>
+              <span>of {progress.target} found</span>
+            </span>
+            <CityTabStatus
+              label={allStatusLabel}
+              status={allVisualStatus}
+              title={allStatusTitle}
+            />
           </span>
           <CityTabProgress found={progress.count} target={progress.target} />
         </button>
@@ -178,7 +206,7 @@ export function MultiCityCampaignTabs({
           return (
             <button
               aria-controls="multi-city-campaign-panel"
-              aria-label={`${shortPlaceName(city.label)}, ${statusLabel(status)}, ${found} of ${group.target} found`}
+              aria-label={`${city.label}, ${statusLabel(status)}, ${found} of ${group.target} found`}
               aria-selected={selected}
               className="c3mc-city-tab"
               id={multiCityTabId(group.groupId, city.cityId)}
@@ -191,22 +219,24 @@ export function MultiCityCampaignTabs({
               }}
               role="tab"
               tabIndex={selected ? 0 : -1}
+              title={city.label}
               type="button"
             >
-              <span className="c3mc-city-tab-top">
-                <strong>
-                  <PinGlyph size={14} /> {shortPlaceName(city.label)}
+              <span className="c3mc-city-tab-name">
+                <strong data-city-tab-text="name">
+                  <PinGlyph size={14} />
+                  <span>{shortPlaceName(city.label)}</span>
                 </strong>
-                <span
-                  aria-hidden="true"
-                  className={`c3mc-city-tab-status is-${status}`}
-                >
-                  {label}
-                </span>
               </span>
-              <span className="c3mc-city-tab-count">
-                <strong>{found}</strong>
-                <span>of {group.target} found</span>
+              <span className="c3mc-city-tab-meta">
+                <span
+                  className="c3mc-city-tab-count"
+                  data-city-tab-text="count"
+                >
+                  <strong>{found}</strong>
+                  <span>of {group.target} found</span>
+                </span>
+                <CityTabStatus label={label} status={status} />
               </span>
               <CityTabProgress found={found} target={group.target} />
             </button>

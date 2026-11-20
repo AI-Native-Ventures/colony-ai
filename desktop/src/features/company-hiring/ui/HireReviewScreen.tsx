@@ -437,6 +437,7 @@ export function HireReviewScreen({
         agentArgs: [],
         mcpCommand: runtime.mcpCommand ?? "",
         model: selectedProposal.modelId,
+        modelOverride: selectedProposal.modelId,
         provider: selectedProposal.providerId,
         effortLevel: selectedLocalConfiguration.effortLevel,
         avatarUrl: draft?.avatarUrl,

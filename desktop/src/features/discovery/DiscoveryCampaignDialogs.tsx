@@ -470,8 +470,9 @@ export function DiscoveryCampaignDialog({
               {multiCity ? (
                 <>
                   <p className="c3mc-campaign-queue-hint">
-                    One campaign per city. Colony searches them one after
-                    another, so you can close this and come back.
+                    {selectedCityCount <= 3
+                      ? "One campaign per city. Colony searches them at the same time, so you can close this and come back."
+                      : "One campaign per city. Colony searches 3 at a time, so you can close this and come back."}
                   </p>
                   <div className="c3mc-campaign-target-row">
                     {targetField}
@@ -672,7 +673,9 @@ export function DiscoveryCampaignDialog({
               <RunnerAvatar runner={runner} size={28} />
               <span>
                 {multiCity
-                  ? `${runner.name} runs the ${selectedCityCount} searches one after another in the background and reports back in #Sales.`
+                  ? selectedCityCount <= 3
+                    ? `${runner.name} runs the ${selectedCityCount} searches at the same time in the background and reports back in #Sales.`
+                    : `${runner.name} runs the ${selectedCityCount} searches 3 at a time in the background and reports back in #Sales.`
                   : `${runner.name} runs the search in the background and reports back in #Sales.`}
               </span>
             </div>

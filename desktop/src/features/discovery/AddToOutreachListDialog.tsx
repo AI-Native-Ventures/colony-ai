@@ -13,6 +13,8 @@ import { publishOutreachListAction } from "./businessRecordMutations";
 import {
   buildOutreachListCreateAction,
   buildOutreachListMutation,
+  MAX_OUTREACH_LIST_LEADS,
+  outreachListLimitMessage,
 } from "./outreachRecords";
 import { errorMessage } from "./BusinessCommon";
 
@@ -65,6 +67,18 @@ export function AddToOutreachListDialog({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const canWrite = canEdit(context.role);
+  const uniqueLeadIds = [...new Set(leadIds)];
+  const targetList = lists.find(({ record }) => record.listId === target);
+  const targetLeadCount = new Set([
+    ...(targetList?.record.members.map(({ leadId }) => leadId) ?? []),
+    ...uniqueLeadIds,
+  ]).size;
+  const selectionLimitMessage = outreachListLimitMessage(uniqueLeadIds.length);
+  const listLimitMessage =
+    selectionLimitMessage ??
+    (targetLeadCount > MAX_OUTREACH_LIST_LEADS
+      ? `This list would have ${targetLeadCount} leads. A list holds ${MAX_OUTREACH_LIST_LEADS} at most.`
+      : null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -75,7 +89,13 @@ export function AddToOutreachListDialog({
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canWrite || !context.currentPubkey || leadIds.length === 0 || busy) {
+    if (
+      !canWrite ||
+      !context.currentPubkey ||
+      uniqueLeadIds.length === 0 ||
+      busy ||
+      listLimitMessage
+    ) {
       return;
     }
     setBusy(true);
@@ -89,7 +109,7 @@ export function AddToOutreachListDialog({
           source: sourceCampaignId
             ? { kind: "campaign", campaignId: sourceCampaignId }
             : { kind: "manual" },
-          leadIds: [...leadIds],
+          leadIds: uniqueLeadIds,
         });
         await publishOutreachListAction({
           channelId: context.channelId,
@@ -103,7 +123,7 @@ export function AddToOutreachListDialog({
           listId: list.record.listId,
           expectedHeadEventId: list.eventId,
           op: "add_members",
-          leadIds: [...leadIds],
+          leadIds: uniqueLeadIds,
         });
         await publishOutreachListAction({
           channelId: context.channelId,
@@ -208,6 +228,11 @@ export function AddToOutreachListDialog({
               {error}
             </p>
           ) : null}
+          {listLimitMessage ? (
+            <p className="c3l-outreach-error" role="alert">
+              {listLimitMessage}
+            </p>
+          ) : null}
           <div className="c3l-outreach-dialog-actions">
             <button
               className="c3l-btn c3l-btn-outline c3l-btn-small"
@@ -219,7 +244,12 @@ export function AddToOutreachListDialog({
             </button>
             <button
               className="c3l-btn c3l-btn-primary c3l-btn-small"
-              disabled={busy || !canWrite || leadIds.length === 0}
+              disabled={
+                busy ||
+                !canWrite ||
+                uniqueLeadIds.length === 0 ||
+                listLimitMessage !== null
+              }
               type="submit"
             >
               {busy

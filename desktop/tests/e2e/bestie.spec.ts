@@ -14,7 +14,7 @@ async function enableBestie(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem(
       "buzz-feature-overrides-v1",
-      JSON.stringify({ bestie: true }),
+      JSON.stringify({ bestie: true, map_home: false }),
     );
   });
 }

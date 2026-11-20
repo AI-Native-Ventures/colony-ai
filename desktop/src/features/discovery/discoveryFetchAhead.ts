@@ -27,15 +27,17 @@ import {
 
 /** Provider pages asked for ahead of the one a run is saving. */
 export const PREFETCH_PAGES = 5;
-/**
- * Pages asked ahead per minute. The relay allows a member 20 searches a
- * minute; the rest is left for pages asked for in turn and for retries.
- */
-export const PREFETCH_REQUESTS_PER_MINUTE = 10;
 
 export type FetchAhead = {
   /** Starts the requests this campaign is allowed to make ahead. */
-  start: (campaign: StoredCampaign, pageInHand: boolean) => void;
+  start: (
+    campaign: StoredCampaign,
+    pageInHand: boolean,
+    search: (
+      request: DiscoverySearchRequest,
+      signal: AbortSignal,
+    ) => Promise<DiscoverySearchResponse>,
+  ) => void;
   /** The page at the campaign's cursor: the one asked ahead, else `inTurn()`. */
   pageAt: (
     campaign: StoredCampaign,
@@ -91,27 +93,12 @@ export function providerPagesForward(
   );
 }
 
-export function createFetchAhead(deps: {
-  nowSeconds: () => number;
-  search: (
-    request: DiscoverySearchRequest,
-    signal: AbortSignal,
-  ) => Promise<DiscoverySearchResponse>;
-}): FetchAhead {
+export function createFetchAhead(): FetchAhead {
   /** Pages asked ahead, by campaign and offset, until a run saves them. */
   const pages = new Map<string, Promise<PreparedSearchPage>>();
   /** One stop switch per campaign. A pause does not use it: see `start`. */
   const aborts = new Map<string, AbortController>();
-  /** Unix seconds of the requests made ahead in the last minute. */
-  const starts: number[] = [];
-
   const keyOf = (campaignId: string, skip: number) => `${campaignId}:${skip}`;
-
-  function requestsLeft(): number {
-    const now = deps.nowSeconds();
-    while (starts.length > 0 && now - (starts[0] ?? now) >= 60) starts.shift();
-    return PREFETCH_REQUESTS_PER_MINUTE - starts.length;
-  }
 
   function drop(campaignId: string, belowSkip?: number): void {
     const prefix = `${campaignId}:`;
@@ -137,9 +124,9 @@ export function createFetchAhead(deps: {
 
   /**
    * Bounds: the approved budget, the page cap, the provider ceiling,
-   * `PREFETCH_PAGES` and the per-minute limit. Nothing is asked ahead before
-   * the provider has shown that it pages forward. Tagged campaigns ask one
-   * tag per turn and are left as they are.
+   * `PREFETCH_PAGES`, and the controller's shared request budget. Nothing is
+   * asked ahead before the provider has shown that it pages forward. Tagged
+   * campaigns ask one tag per turn and are left as they are.
    *
    * A request ahead is not retried here: a failure is forgotten and the page
    * is asked for again, with the usual backoff, when its turn comes. A pause
@@ -148,7 +135,14 @@ export function createFetchAhead(deps: {
    * session do not buy it again. A page past the end of the provider's
    * results comes back empty and costs nothing.
    */
-  function start(campaign: StoredCampaign, pageInHand: boolean): void {
+  function start(
+    campaign: StoredCampaign,
+    pageInHand: boolean,
+    search: (
+      request: DiscoverySearchRequest,
+      signal: AbortSignal,
+    ) => Promise<DiscoverySearchResponse>,
+  ): void {
     if ((campaign.pickedTags ?? []).length > 0) return;
     if (!providerPagesForward(campaign)) return;
     const affordable = Math.floor(
@@ -165,8 +159,6 @@ export function createFetchAhead(deps: {
       if (!cursorHasPages(skip)) return;
       const key = keyOf(campaign.id, skip);
       if (pages.has(key)) continue;
-      if (requestsLeft() <= 0) return;
-      starts.push(deps.nowSeconds());
       let abort = aborts.get(campaign.id);
       if (!abort) {
         abort = new AbortController();
@@ -174,7 +166,7 @@ export function createFetchAhead(deps: {
       }
       const signal = abort.signal;
       const request = fetchCampaignPage({ ...campaign, skip }, signal, (ask) =>
-        deps.search(ask, signal),
+        search(ask, signal),
       );
       pages.set(key, request);
       request.catch(() => {

@@ -158,6 +158,30 @@ test("storage must persist the journal before the first relay write", async () =
   assert.deepEqual(state.published, []);
 });
 
+test("an over-500 stage change stops before creating a journal or relay write", async () => {
+  const state = harness();
+  const tooManyProspectIds = Array.from(
+    { length: 501 },
+    (_, index) => `lead-${index}`,
+  );
+
+  await assert.rejects(
+    applyBulkProspectUpdate(
+      { ...input, prospectIds: tooManyProspectIds },
+      state.dependencies,
+    ),
+    /You selected 501\. A stage change can update 500 leads at most\./,
+  );
+
+  assert.deepEqual(state.published, []);
+  assert.equal(
+    state.storage.getItem(
+      bulkProspectUpdateStorageKey(input.channelId, input.communityId),
+    ),
+    null,
+  );
+});
+
 test("stage update publishes when the stage matches but the lead is still unreviewed", async () => {
   const state = harness();
   const lead = state.heads.get("lead-a");

@@ -9,7 +9,11 @@ import { RouteOriginProvider } from "@/app/navigation/RouteOriginContext";
  */
 export function AppShellFrame({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+  pendingContent,
+}: Readonly<{
+  children: React.ReactNode;
+  pendingContent?: React.ReactNode;
+}>) {
   return (
     <div
       className="buzz-huddle-shell relative h-dvh overflow-hidden overscroll-none"
@@ -17,7 +21,7 @@ export function AppShellFrame({
       data-huddle-window={false}
     >
       <div className="buzz-huddle-app-surface z-10 flex min-h-0 flex-row overflow-hidden bg-background">
-        <RouteOriginProvider>{children}</RouteOriginProvider>
+        <RouteOriginProvider>{pendingContent ?? children}</RouteOriginProvider>
       </div>
     </div>
   );
