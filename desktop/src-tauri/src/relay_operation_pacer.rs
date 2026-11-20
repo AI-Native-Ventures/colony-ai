@@ -13,14 +13,14 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-/// Five operations per second plus a four-operation opening burst permits at
-/// most 29 operations in any five-second interval. The relay allows 50, so
-/// this leaves meaningful headroom for independently initiated owner work.
-pub(crate) const RELAY_OPERATION_INTERVAL: Duration = Duration::from_millis(200);
+/// A five-operation opening burst plus one token every 143 ms permits at most
+/// 40 operations in any five-second interval. The relay allows 50, so this
+/// reserves ten frames for independently initiated owner work.
+pub(crate) const RELAY_OPERATION_INTERVAL: Duration = Duration::from_millis(143);
 /// Maximum number of admitted operations in one five-second window.
-pub(crate) const MAX_RELAY_OPERATIONS_PER_FIVE_SECONDS: usize = 29;
+pub(crate) const MAX_RELAY_OPERATIONS_PER_FIVE_SECONDS: usize = 40;
 /// Number of operations that may start immediately on a fresh relay scope.
-pub(crate) const RELAY_OPERATION_BURST_CAPACITY: usize = 4;
+pub(crate) const RELAY_OPERATION_BURST_CAPACITY: usize = 5;
 const MAX_QUEUED_RELAY_OPERATIONS: usize = 256;
 const MAX_RELAY_OPERATION_SCOPES: usize = 32;
 const SHARED_RELAY_OPERATION_SCOPE: &str = "__shared__";
