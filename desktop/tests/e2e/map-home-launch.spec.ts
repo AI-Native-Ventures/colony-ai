@@ -146,6 +146,49 @@ test("cached enabled co-founder mode keeps the map after settings reads fail", a
   expect((await launchSurfaceObservations(page)).legacy).toEqual([]);
 });
 
+test("first co-founder settings failure falls back to the legacy shell", async ({
+  page,
+}) => {
+  await watchLaunchSurfaces(page);
+  await installMockBridge(
+    page,
+    {
+      ...fixture({ enabled: true }),
+      cofounderSettingsReadDelaysMs: [200],
+      cofounderSettingsReadErrors: [
+        "intentional first co-founder settings read failure",
+        "intentional retry co-founder settings read failure",
+      ],
+    },
+    { seedPreviewFeatures: false },
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/#/");
+
+  await expect(page.getByTestId("map-shell-launch-frame")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const config = (
+          window as Window & {
+            __BUZZ_E2E__?: {
+              mock?: { cofounderSettingsReadErrors?: string[] };
+            };
+          }
+        ).__BUZZ_E2E__;
+        return config?.mock?.cofounderSettingsReadErrors?.length ?? -1;
+      }),
+    )
+    .toBe(0);
+  await expect(page.getByTestId("map-shell-launch-frame")).toHaveCount(0);
+  await expect(page.getByTestId("map-shell-bar")).toHaveCount(0);
+  await expect(page.getByTestId("cofounder-company-map")).toHaveCount(0);
+  expect((await launchSurfaceObservations(page)).map).toEqual([]);
+});
+
 test("co-founder mode off settles on the legacy shell without mounting the map", async ({
   page,
 }) => {

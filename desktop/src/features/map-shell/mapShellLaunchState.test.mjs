@@ -72,6 +72,8 @@ test("map-shell launch state lets direct relay data replace cached data", () => 
   assert.equal(
     resolveMapShellLaunchState({
       cofounderEnabled: false,
+      cofounderSettingsError: false,
+      cofounderSettingsTimedOut: false,
       mapHomeEnabled: true,
       rememberedCofounderEnabled: true,
     }),
@@ -80,6 +82,8 @@ test("map-shell launch state lets direct relay data replace cached data", () => 
   assert.equal(
     resolveMapShellLaunchState({
       cofounderEnabled: true,
+      cofounderSettingsError: true,
+      cofounderSettingsTimedOut: false,
       mapHomeEnabled: true,
       rememberedCofounderEnabled: false,
     }),
@@ -91,6 +95,8 @@ test("map-shell launch state uses cache only while the relay result is unknown",
   assert.equal(
     resolveMapShellLaunchState({
       cofounderEnabled: undefined,
+      cofounderSettingsError: false,
+      cofounderSettingsTimedOut: false,
       mapHomeEnabled: true,
       rememberedCofounderEnabled: true,
     }),
@@ -99,6 +105,8 @@ test("map-shell launch state uses cache only while the relay result is unknown",
   assert.equal(
     resolveMapShellLaunchState({
       cofounderEnabled: undefined,
+      cofounderSettingsError: false,
+      cofounderSettingsTimedOut: false,
       mapHomeEnabled: true,
       rememberedCofounderEnabled: false,
     }),
@@ -107,6 +115,8 @@ test("map-shell launch state uses cache only while the relay result is unknown",
   assert.equal(
     resolveMapShellLaunchState({
       cofounderEnabled: undefined,
+      cofounderSettingsError: false,
+      cofounderSettingsTimedOut: false,
       mapHomeEnabled: true,
       rememberedCofounderEnabled: null,
     }),
@@ -115,8 +125,36 @@ test("map-shell launch state uses cache only while the relay result is unknown",
   assert.equal(
     resolveMapShellLaunchState({
       cofounderEnabled: undefined,
+      cofounderSettingsError: false,
+      cofounderSettingsTimedOut: false,
       mapHomeEnabled: false,
       rememberedCofounderEnabled: true,
+    }),
+    "legacy",
+  );
+});
+
+test("map-shell launch state falls back after the first settings read errors", () => {
+  assert.equal(
+    resolveMapShellLaunchState({
+      cofounderEnabled: undefined,
+      cofounderSettingsError: true,
+      cofounderSettingsTimedOut: false,
+      mapHomeEnabled: true,
+      rememberedCofounderEnabled: null,
+    }),
+    "legacy",
+  );
+});
+
+test("map-shell launch state falls back after the first settings read times out", () => {
+  assert.equal(
+    resolveMapShellLaunchState({
+      cofounderEnabled: undefined,
+      cofounderSettingsError: false,
+      cofounderSettingsTimedOut: true,
+      mapHomeEnabled: true,
+      rememberedCofounderEnabled: null,
     }),
     "legacy",
   );

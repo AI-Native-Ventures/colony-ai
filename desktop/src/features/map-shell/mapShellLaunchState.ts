@@ -77,10 +77,14 @@ export function writeRememberedMapShellEnabled(
 
 export function resolveMapShellLaunchState({
   cofounderEnabled,
+  cofounderSettingsError,
+  cofounderSettingsTimedOut,
   mapHomeEnabled,
   rememberedCofounderEnabled,
 }: {
   cofounderEnabled: boolean | undefined;
+  cofounderSettingsError: boolean;
+  cofounderSettingsTimedOut: boolean;
   mapHomeEnabled: boolean;
   rememberedCofounderEnabled: boolean | null;
 }): MapShellLaunchState {
@@ -91,5 +95,6 @@ export function resolveMapShellLaunchState({
   if (rememberedCofounderEnabled !== null) {
     return rememberedCofounderEnabled ? "map" : "legacy";
   }
+  if (cofounderSettingsError || cofounderSettingsTimedOut) return "legacy";
   return "loading";
 }
