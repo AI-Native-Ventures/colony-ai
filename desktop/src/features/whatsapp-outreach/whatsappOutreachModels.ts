@@ -40,7 +40,12 @@ export type WhatsAppOutreachStatus =
   | "opted_out";
 export type WhatsAppDirection = "in" | "out";
 export type WhatsAppOutboundState = "sent" | "delivered" | "read" | "failed";
-export type WhatsAppMessageKind = "text" | "template" | "media" | "button";
+export type WhatsAppMessageKind =
+  | "text"
+  | "template"
+  | "media"
+  | "button"
+  | "other";
 export type WhatsAppMessageState =
   | "draft"
   | "rejected"
@@ -659,6 +664,7 @@ const MESSAGE_KINDS = new Set<WhatsAppMessageKind>([
   "template",
   "media",
   "button",
+  "other",
 ]);
 const MESSAGE_STATES = new Set<WhatsAppMessageState>([
   "draft",
@@ -793,9 +799,12 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
       "The relay returned an invalid WhatsApp message direction.",
     );
   }
-  if (!MESSAGE_KINDS.has(kind as WhatsAppMessageKind)) {
-    throw new Error("The relay returned an invalid WhatsApp message kind.");
-  }
+  // The relay stores "other" for a location, a contact card and any type WhatsApp does not
+  // describe. A kind this build does not know yet is shown the same way, so one message can
+  // never stop the whole chat from opening.
+  const knownKind = MESSAGE_KINDS.has(kind as WhatsAppMessageKind)
+    ? (kind as WhatsAppMessageKind)
+    : "other";
   const state = parseWhatsAppMessageState(
     message.state,
     direction as WhatsAppDirection,
@@ -805,7 +814,7 @@ export function parseWhatsAppMessage(value: unknown): WhatsAppMessage {
     id: stringValue(message.id, "message id"),
     waId: stringValue(message.waId, "message contact id"),
     direction: direction as WhatsAppDirection,
-    kind: kind as WhatsAppMessageKind,
+    kind: knownKind,
     text: stringValue(message.text, "message text"),
     templateName: nullableString(message.templateName, "message template name"),
     state,
@@ -1150,9 +1159,16 @@ export function contactWhatsAppStatus(input: {
  * One line for a list or a quote: what the customer wrote, or a plain sentence about the
  * picture, sticker or voice note they sent. Never the bracket placeholder.
  */
+/** A message's words: the relay's stand-in for an undescribed type becomes a plain sentence. */
+export function whatsappMessageText(message: WhatsAppMessage): string {
+  return message.kind === "other" && message.text === "[unsupported message]"
+    ? "Sent a message type that cannot be shown here"
+    : message.text;
+}
+
 export function whatsappMessagePreview(message: WhatsAppMessage): string {
   const media = message.media;
-  if (!media) return message.text;
+  if (!media) return whatsappMessageText(message);
   const caption = media.caption?.trim();
   const sentence: Record<WhatsAppMediaType, string> = {
     image: "Sent a photo",

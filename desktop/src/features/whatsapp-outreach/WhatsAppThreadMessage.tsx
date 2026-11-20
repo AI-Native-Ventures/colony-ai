@@ -13,6 +13,7 @@ import { WhatsAppSendNowAction } from "./WhatsAppSendNowAction";
 import {
   isWhatsAppPhoneLikeName,
   whatsappDeliveryLabel,
+  whatsappMessageText,
   type WhatsAppMessage,
   type WhatsAppTemplate,
 } from "./whatsappOutreachModels";
@@ -320,7 +321,7 @@ export function WhatsAppThreadMessage({
             <span>Tapped a reply button</span>
           </div>
         ) : (
-          <p className="c3wa-message-text">{message.text}</p>
+          <p className="c3wa-message-text">{whatsappMessageText(message)}</p>
         )}
         {template?.buttons.length ? (
           <fieldset className="c3wa-template-buttons">

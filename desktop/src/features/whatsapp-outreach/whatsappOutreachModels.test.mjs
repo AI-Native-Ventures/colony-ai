@@ -15,6 +15,7 @@ import {
   parseWhatsAppContact,
   parseWhatsAppStageCounts,
   parseWhatsAppStatus,
+  parseWhatsAppThread,
   parseWhatsAppTemplate,
   resetWhatsAppUnknownMessageStateWarning,
   renderWhatsAppTemplate,
@@ -22,6 +23,7 @@ import {
   whatsappQueuedScheduleLabel,
   whatsappLeadStatusLabel,
   whatsappMessagePreview,
+  whatsappMessageText,
   whatsappQualityLabel,
   whatsappTemplateDisplayTitle,
   whatsappTemplateMetaName,
@@ -249,6 +251,105 @@ test("inbound received state maps to read and unknown states are omitted", () =>
     resetWhatsAppUnknownMessageStateWarning();
   }
   assert.equal(warnings.length, 1);
+});
+
+// The relay stores `other` for a location, a contact card and any type WhatsApp does not
+// describe (crates/buzz-relay/src/whatsapp/inbound.rs `parse_message`; the database CHECK on
+// `whatsapp_messages.kind` allows exactly these five). One such message used to make the
+// whole chat fail with "The relay returned an invalid WhatsApp message kind."
+const relayMessage = (overrides) => ({
+  id: "message-id",
+  waId: "27821237135",
+  direction: "in",
+  kind: "text",
+  text: "Message text.",
+  templateName: null,
+  state: "received",
+  errorCode: null,
+  errorText: null,
+  eventId: null,
+  senderPubkey: null,
+  createdAt: "2026-11-17T17:27:00+02:00",
+  ...overrides,
+});
+
+const sampleContact = {
+  waId: "27821237135",
+  e164: "+27821237135",
+  displayName: "Plane Tree Guesthouse",
+  profileName: "Thandeka",
+  businessName: "Plane Tree Guesthouse",
+  website: null,
+  label: "Plane Tree",
+  leadId: "lead-id",
+  ownerPubkey: null,
+  threadRootEventId: null,
+  lastInboundAt: "2026-11-17T17:27:00+02:00",
+  lastContactedAt: "2026-11-15T13:32:00+02:00",
+  lastReplyAt: "2026-11-17T17:27:00+02:00",
+  stage: "replied",
+  stageSetBy: null,
+  stageChangedAt: "2026-11-17T17:27:00+02:00",
+  lastOutboundState: "read",
+  windowOpen: false,
+  windowClosesAt: null,
+  optedOut: false,
+  paused: false,
+  pauseReason: null,
+  unanswered: true,
+  hasSentOutbound: true,
+  businessOutreachStopped: false,
+  businessStopReason: null,
+};
+
+test("every message kind the relay stores is accepted", () => {
+  for (const kind of ["text", "template", "media", "button", "other"]) {
+    assert.equal(parseWhatsAppMessage(relayMessage({ kind })).kind, kind);
+  }
+});
+
+test("a chat that holds a location, a contact card or an undescribed message still opens", () => {
+  const thread = parseWhatsAppThread({
+    contact: sampleContact,
+    messages: [
+      relayMessage({ id: "m1" }),
+      relayMessage({
+        id: "m2",
+        kind: "other",
+        text: "[location] Kensington Guest House",
+      }),
+      relayMessage({ id: "m3", kind: "other", text: "[contact card] Sipho" }),
+      relayMessage({ id: "m4", kind: "other", text: "[unsupported message]" }),
+    ],
+  });
+  assert.deepEqual(
+    thread.messages.map((message) => message.kind),
+    ["text", "other", "other", "other"],
+  );
+  assert.equal(thread.messages[1].text, "[location] Kensington Guest House");
+});
+
+test("a kind this build does not know yet is shown as its text, never a failed chat", () => {
+  const message = parseWhatsAppMessage(
+    relayMessage({ kind: "poll", text: "Which day suits you?" }),
+  );
+  assert.equal(message.kind, "other");
+  assert.equal(message.text, "Which day suits you?");
+  assert.equal(whatsappMessageText(message), "Which day suits you?");
+});
+
+test("the relay's stand-in for an undescribed message reads as a plain sentence", () => {
+  const undescribed = parseWhatsAppMessage(
+    relayMessage({ kind: "other", text: "[unsupported message]" }),
+  );
+  const sentence = "Sent a message type that cannot be shown here";
+  assert.equal(whatsappMessageText(undescribed), sentence);
+  assert.equal(whatsappMessagePreview(undescribed), sentence);
+  // Only the stand-in is reworded: a person who types the same words keeps them.
+  const typed = parseWhatsAppMessage(
+    relayMessage({ kind: "text", text: "[unsupported message]" }),
+  );
+  assert.equal(whatsappMessageText(typed), "[unsupported message]");
 });
 
 test("daily cap progress handles zero, the cap, and over-cap counts", () => {
