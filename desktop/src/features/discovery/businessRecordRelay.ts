@@ -66,6 +66,21 @@ export type BusinessRecords = {
 const QUERY_LIMIT = 500;
 const SCOPE_CHUNK_SIZE = 128;
 
+const PRIMARY_RECORD_KINDS = [
+  KIND_SERVICE_HEAD,
+  KIND_PROSPECT_HEAD,
+  KIND_PROPOSAL_HEAD,
+  KIND_PROPOSAL_VERSION,
+  KIND_PROPOSAL_ACCEPTANCE,
+  KIND_PROPOSAL_CONVERSION_RECEIPT,
+] as const;
+
+const RELAY_SIGNED_RECORD_KINDS = [
+  KIND_OUTREACH_LIST_HEAD,
+  KIND_DISCOVERY_CAMPAIGN_HEAD,
+  KIND_QUALIFY_OBSERVATION_HEAD,
+] as const;
+
 function channelIdOf(event: { tags: string[][] }): string | null {
   return event.tags.find((tag) => tag[0] === "h")?.[1] ?? null;
 }
@@ -120,65 +135,66 @@ export async function resolveBusinessChannel(
   return pickSalesStream(salesStreamsOf(channels))?.id ?? null;
 }
 
-async function fetchKind(
-  channelId: string,
-  kind: number,
-): Promise<RelayEvent[]> {
-  return relayClient.fetchEvents({
-    kinds: [kind],
-    limit: QUERY_LIMIT,
-    "#h": [channelId],
-  });
-}
-
 export async function loadBusinessRecords(
   channelId: string,
   communityId: TenantCommunityId,
   currentPubkey: string,
 ): Promise<BusinessRecords> {
-  const [
-    serviceEvents,
-    prospectEvents,
-    proposalHeadEvents,
-    proposalVersionEvents,
-    acceptanceEvents,
-    receiptEvents,
-    relaySelf,
-    members,
-  ] = await Promise.all([
-    fetchKind(channelId, KIND_SERVICE_HEAD),
-    fetchKind(channelId, KIND_PROSPECT_HEAD),
-    fetchKind(channelId, KIND_PROPOSAL_HEAD),
-    fetchKind(channelId, KIND_PROPOSAL_VERSION),
-    fetchKind(channelId, KIND_PROPOSAL_ACCEPTANCE),
-    fetchKind(channelId, KIND_PROPOSAL_CONVERSION_RECEIPT),
+  const [primaryEvents, relaySelf, members] = await Promise.all([
+    // One REQ can carry several filters. Keeping one filter per kind preserves
+    // the existing 500-event ceiling for every record family while reducing a
+    // dense Sales screen from six admissions to one.
+    relayClient.fetchEventsForFilters(
+      PRIMARY_RECORD_KINDS.map((kind) => ({
+        kinds: [kind],
+        limit: QUERY_LIMIT,
+        "#h": [channelId],
+      })),
+    ),
     getRelaySelf(),
     getChannelMembers(channelId),
   ]);
   if (!relaySelf) {
     throw new Error("This relay does not advertise a signing identity.");
   }
-  const [outreachListEvents, discoveryCampaignEvents, qualificationEvents] =
-    await Promise.all([
-      relayClient.fetchEvents({
-        kinds: [KIND_OUTREACH_LIST_HEAD],
-        authors: [relaySelf],
-        limit: QUERY_LIMIT,
-        "#h": [channelId],
-      }),
-      relayClient.fetchEvents({
-        kinds: [KIND_DISCOVERY_CAMPAIGN_HEAD],
-        authors: [relaySelf],
-        limit: QUERY_LIMIT,
-        "#h": [channelId],
-      }),
-      relayClient.fetchEvents({
-        kinds: [KIND_QUALIFY_OBSERVATION_HEAD],
-        authors: [relaySelf],
-        limit: QUERY_LIMIT,
-        "#h": [channelId],
-      }),
-    ]);
+  // Relay-signed records are a second filter batch because the relay identity
+  // is learned alongside the primary records. This replaces three admissions
+  // without relaxing author scoping or any per-kind result limit.
+  const relaySignedEvents = await relayClient.fetchEventsForFilters(
+    RELAY_SIGNED_RECORD_KINDS.map((kind) => ({
+      kinds: [kind],
+      authors: [relaySelf],
+      limit: QUERY_LIMIT,
+      "#h": [channelId],
+    })),
+  );
+  const serviceEvents = primaryEvents.filter(
+    (event) => event.kind === KIND_SERVICE_HEAD,
+  );
+  const prospectEvents = primaryEvents.filter(
+    (event) => event.kind === KIND_PROSPECT_HEAD,
+  );
+  const proposalHeadEvents = primaryEvents.filter(
+    (event) => event.kind === KIND_PROPOSAL_HEAD,
+  );
+  const proposalVersionEvents = primaryEvents.filter(
+    (event) => event.kind === KIND_PROPOSAL_VERSION,
+  );
+  const acceptanceEvents = primaryEvents.filter(
+    (event) => event.kind === KIND_PROPOSAL_ACCEPTANCE,
+  );
+  const receiptEvents = primaryEvents.filter(
+    (event) => event.kind === KIND_PROPOSAL_CONVERSION_RECEIPT,
+  );
+  const outreachListEvents = relaySignedEvents.filter(
+    (event) => event.kind === KIND_OUTREACH_LIST_HEAD,
+  );
+  const discoveryCampaignEvents = relaySignedEvents.filter(
+    (event) => event.kind === KIND_DISCOVERY_CAMPAIGN_HEAD,
+  );
+  const qualificationEvents = relaySignedEvents.filter(
+    (event) => event.kind === KIND_QUALIFY_OBSERVATION_HEAD,
+  );
   const role = members.find(
     (member) =>
       member.pubkey.toLocaleLowerCase() === currentPubkey.toLocaleLowerCase(),

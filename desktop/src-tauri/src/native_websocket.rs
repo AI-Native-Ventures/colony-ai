@@ -9,7 +9,10 @@ use tauri::{
 };
 
 use crate::native_websocket_batch::{is_auth_challenge, FrameBatch, BATCH_MAX_SERIALIZED_BYTES};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::{
+    sync::{mpsc, oneshot, Mutex, Semaphore},
+    time::Instant,
+};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Message},
@@ -20,6 +23,11 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(250);
 const SEND_QUEUE_CAPACITY: usize = 64;
+const RELAY_OPERATION_INTERVAL: Duration = Duration::from_millis(125);
+const RELAY_OPERATION_BURST_CAPACITY: f64 = 8.0;
+const MAX_QUEUED_RELAY_OPERATIONS: usize = 256;
+const MAX_RELAY_OPERATION_SCOPES: usize = 32;
+const SHARED_RELAY_OPERATION_SCOPE: &str = "__shared__";
 
 pub(crate) fn install_crypto_provider() {
     // Dependencies enable both rustls providers; choose one before TLS setup.
@@ -85,12 +93,91 @@ struct ConnectionHandle {
     sender: mpsc::Sender<SendRequest>,
     cancel: CancellationToken,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    operation_scope: String,
+}
+
+struct RelayOperationBucket {
+    tokens: f64,
+    last_refill_at: Instant,
+}
+
+/// Process-wide admission for Nostr operations originating in webviews.
+///
+/// Electron windows are separate JavaScript realms, so their renderer-local
+/// operation pacers cannot see each other. The hidden native host is shared by
+/// those windows and is the first point where their WebSocket sends converge.
+/// Keep a bounded bucket per relay URL here to preserve the relay's principal
+/// budget across all windows without coupling unrelated relays.
+struct NativeRelayOperationPacer {
+    buckets: Mutex<HashMap<String, RelayOperationBucket>>,
+    queue_slots: Arc<Semaphore>,
+}
+
+impl Default for NativeRelayOperationPacer {
+    fn default() -> Self {
+        Self {
+            buckets: Mutex::new(HashMap::new()),
+            queue_slots: Arc::new(Semaphore::new(MAX_QUEUED_RELAY_OPERATIONS)),
+        }
+    }
+}
+
+impl NativeRelayOperationPacer {
+    async fn acquire(&self, scope: &str, cancel: &CancellationToken) -> Result<(), String> {
+        let _queue_slot = self
+            .queue_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "WebSocket relay operation queue is full".to_string())?;
+
+        loop {
+            if cancel.is_cancelled() {
+                return Err("WebSocket connection closed".to_string());
+            }
+            let delay = {
+                let mut buckets = self.buckets.lock().await;
+                let key =
+                    if buckets.contains_key(scope) || buckets.len() < MAX_RELAY_OPERATION_SCOPES {
+                        scope
+                    } else {
+                        SHARED_RELAY_OPERATION_SCOPE
+                    };
+                let now = Instant::now();
+                let bucket =
+                    buckets
+                        .entry(key.to_string())
+                        .or_insert_with(|| RelayOperationBucket {
+                            tokens: RELAY_OPERATION_BURST_CAPACITY,
+                            last_refill_at: now,
+                        });
+                let elapsed = now.saturating_duration_since(bucket.last_refill_at);
+                bucket.tokens = (bucket.tokens
+                    + elapsed.as_secs_f64() / RELAY_OPERATION_INTERVAL.as_secs_f64())
+                .min(RELAY_OPERATION_BURST_CAPACITY);
+                bucket.last_refill_at = now;
+
+                if bucket.tokens >= 1.0 {
+                    bucket.tokens -= 1.0;
+                    return Ok(());
+                }
+
+                Duration::from_secs_f64(
+                    ((1.0 - bucket.tokens) * RELAY_OPERATION_INTERVAL.as_secs_f64()).max(0.001),
+                )
+            };
+            tokio::select! {
+                _ = cancel.cancelled() => return Err("WebSocket connection closed".to_string()),
+                _ = tokio::time::sleep(delay) => {}
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
 pub(crate) struct WebSocketManager {
     connections: Arc<Mutex<HashMap<Id, Arc<ConnectionHandle>>>>,
     connect_cancel: Arc<Mutex<CancellationToken>>,
+    operation_pacer: Arc<NativeRelayOperationPacer>,
 }
 
 impl Default for WebSocketManager {
@@ -98,6 +185,7 @@ impl Default for WebSocketManager {
         Self {
             connections: Arc::default(),
             connect_cancel: Arc::new(Mutex::new(CancellationToken::new())),
+            operation_pacer: Arc::default(),
         }
     }
 }
@@ -124,6 +212,27 @@ impl WebSocketManager {
         if let Some(handle) = self.remove(id).await {
             Self::disconnect_handle(handle).await;
         }
+    }
+
+    async fn disconnect_all(&self) {
+        let mut connect_cancel = self.connect_cancel.lock().await;
+        connect_cancel.cancel();
+        *connect_cancel = CancellationToken::new();
+        let handles = {
+            let mut connections = self.connections.lock().await;
+            connections
+                .drain()
+                .map(|(_, handle)| handle)
+                .collect::<Vec<_>>()
+        };
+        futures_util::future::join_all(
+            handles.into_iter().map(WebSocketManager::disconnect_handle),
+        )
+        .await;
+        // Keep the admission history across a renderer reload or reconnect. A
+        // reset here would mint a fresh burst inside the relay's same fixed
+        // window, defeating the cross-window quota that this native boundary
+        // exists to protect.
     }
 }
 
@@ -159,6 +268,7 @@ async fn open_connection(
         sender,
         cancel: cancel.clone(),
         task: Mutex::new(None),
+        operation_scope: url.to_string(),
     });
     let mut task_slot = handle.task.lock().await;
     manager.connections.lock().await.insert(id, handle.clone());
@@ -212,6 +322,12 @@ pub(crate) async fn send_message(
         .get(&id)
         .cloned()
         .ok_or_else(|| format!("WebSocket connection {id} not found"))?;
+    if is_relay_admission_message(&message) {
+        manager
+            .operation_pacer
+            .acquire(&handle.operation_scope, &handle.cancel)
+            .await?;
+    }
     let (result_tx, result_rx) = oneshot::channel();
     tokio::time::timeout(
         WRITE_TIMEOUT,
@@ -247,19 +363,24 @@ async fn disconnect(manager: tauri::State<'_, WebSocketManager>, id: Id) -> Resu
 
 #[tauri::command]
 async fn disconnect_all(manager: tauri::State<'_, WebSocketManager>) -> Result<(), String> {
-    let mut connect_cancel = manager.connect_cancel.lock().await;
-    connect_cancel.cancel();
-    *connect_cancel = CancellationToken::new();
-    let handles = {
-        let mut connections = manager.connections.lock().await;
-        connections
-            .drain()
-            .map(|(_, handle)| handle)
-            .collect::<Vec<_>>()
-    };
-    futures_util::future::join_all(handles.into_iter().map(WebSocketManager::disconnect_handle))
-        .await;
+    manager.disconnect_all().await;
     Ok(())
+}
+
+fn is_relay_admission_message(message: &WebSocketMessage) -> bool {
+    let WebSocketMessage::Text(text) = message else {
+        return false;
+    };
+    let Ok(frame) = serde_json::from_str::<serde_json::Value>(text) else {
+        return false;
+    };
+    matches!(
+        frame
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(serde_json::Value::as_str),
+        Some("REQ" | "COUNT" | "EVENT")
+    )
 }
 
 async fn run_connection<S>(
@@ -571,6 +692,7 @@ mod tests {
             sender,
             cancel: CancellationToken::new(),
             task: Mutex::new(None),
+            operation_scope: "test".to_string(),
         });
         manager.connections.lock().await.insert(1, handle.clone());
         let task = tauri::async_runtime::spawn(run_connection(
@@ -675,6 +797,7 @@ mod tests {
             sender,
             cancel: CancellationToken::new(),
             task: Mutex::new(None),
+            operation_scope: "test".to_string(),
         });
         manager.connections.lock().await.insert(1, handle.clone());
         let task = tauri::async_runtime::spawn(run_connection(
@@ -719,6 +842,7 @@ mod tests {
                 ready_tx.send(()).unwrap();
                 std::future::pending::<()>().await;
             }))),
+            operation_scope: "test".to_string(),
         });
         manager.connections.lock().await.insert(7, handle);
         ready_rx.await.unwrap();
@@ -744,6 +868,7 @@ mod tests {
             task: Mutex::new(Some(tauri::async_runtime::spawn(async {
                 std::future::pending::<()>().await;
             }))),
+            operation_scope: "test".to_string(),
         });
         manager.connections.lock().await.insert(1, handle);
         gate.cancel();
@@ -779,6 +904,7 @@ mod tests {
             sender: blocked_sender,
             cancel: CancellationToken::new(),
             task: Mutex::new(None),
+            operation_scope: "test".to_string(),
         });
         manager.connections.lock().await.insert(1, blocked);
 
@@ -787,6 +913,7 @@ mod tests {
             sender: healthy_sender.clone(),
             cancel: CancellationToken::new(),
             task: Mutex::new(None),
+            operation_scope: "test".to_string(),
         });
         manager.connections.lock().await.insert(2, healthy);
 
@@ -803,5 +930,137 @@ mod tests {
         .unwrap();
         assert!(healthy_receiver.recv().await.is_some());
         drop(blocked_receiver);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn admission_budget_is_shared_across_five_native_connections() {
+        let manager = WebSocketManager::default();
+        let sent_at = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        for id in 1..=5 {
+            let (sender, mut receiver) = mpsc::channel(SEND_QUEUE_CAPACITY);
+            let handle = Arc::new(ConnectionHandle {
+                sender,
+                cancel: CancellationToken::new(),
+                task: Mutex::new(None),
+                operation_scope: "wss://relay.example.test".to_string(),
+            });
+            manager.connections.lock().await.insert(id, handle);
+            let sent_at = Arc::clone(&sent_at);
+            tokio::spawn(async move {
+                while let Some(request) = receiver.recv().await {
+                    sent_at.lock().unwrap().push(Instant::now());
+                    let _ = request.result.send(Ok(()));
+                }
+            });
+        }
+
+        let start = Instant::now();
+        let sends = (0..96)
+            .map(|index| {
+                let manager = manager.clone();
+                tokio::spawn(async move {
+                    let connection_id = ((index % 5) + 1) as Id;
+                    send_message(
+                        &manager,
+                        connection_id,
+                        WebSocketMessage::Text(format!(
+                            r#"["REQ","owner-shaped-{index}",{{"kinds":[1],"limit":1}}]"#
+                        )),
+                    )
+                    .await
+                })
+            })
+            .collect::<Vec<_>>();
+
+        // Advance in operation-sized increments so every queued sender gets a
+        // chance to observe a newly minted shared token.
+        for _ in 0..100 {
+            tokio::task::yield_now().await;
+            tokio::time::advance(RELAY_OPERATION_INTERVAL).await;
+        }
+
+        for send in sends {
+            send.await.unwrap().unwrap();
+        }
+        let within_first_window = sent_at
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|sent| sent.duration_since(start) < Duration::from_secs(5))
+            .count();
+        assert!(
+            within_first_window <= 50,
+            "five windows sent {within_first_window} REQ frames in one five-second relay window"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn disconnect_all_does_not_refill_the_shared_admission_bucket() {
+        let manager = WebSocketManager::default();
+        let scope = "wss://relay.example.test".to_string();
+        let (first_sender, mut first_receiver) = mpsc::channel(SEND_QUEUE_CAPACITY);
+        let first = Arc::new(ConnectionHandle {
+            sender: first_sender,
+            cancel: CancellationToken::new(),
+            task: Mutex::new(None),
+            operation_scope: scope.clone(),
+        });
+        manager.connections.lock().await.insert(1, first);
+        tokio::spawn(async move {
+            while let Some(request) = first_receiver.recv().await {
+                let _ = request.result.send(Ok(()));
+            }
+        });
+
+        for index in 0..8 {
+            send_message(
+                &manager,
+                1,
+                WebSocketMessage::Text(format!(
+                    r#"["REQ","before-reconnect-{index}",{{"kinds":[1],"limit":1}}]"#
+                )),
+            )
+            .await
+            .unwrap();
+        }
+
+        manager.disconnect_all().await;
+
+        let (second_sender, mut second_receiver) = mpsc::channel(SEND_QUEUE_CAPACITY);
+        let second = Arc::new(ConnectionHandle {
+            sender: second_sender,
+            cancel: CancellationToken::new(),
+            task: Mutex::new(None),
+            operation_scope: scope,
+        });
+        manager.connections.lock().await.insert(2, second);
+        tokio::spawn(async move {
+            while let Some(request) = second_receiver.recv().await {
+                let _ = request.result.send(Ok(()));
+            }
+        });
+
+        let after_reconnect = tokio::spawn({
+            let manager = manager.clone();
+            async move {
+                send_message(
+                    &manager,
+                    2,
+                    WebSocketMessage::Text(
+                        r#"["REQ","after-reconnect",{"kinds":[1],"limit":1}]"#.into(),
+                    ),
+                )
+                .await
+            }
+        });
+        tokio::task::yield_now().await;
+        assert!(
+            !after_reconnect.is_finished(),
+            "a reconnect must not manufacture a fresh burst token"
+        );
+
+        tokio::time::advance(RELAY_OPERATION_INTERVAL).await;
+        assert!(after_reconnect.await.unwrap().is_ok());
     }
 }

@@ -10,6 +10,7 @@ import {
 import { isRelayDependentQuery } from "@/shared/api/relayQueryInvalidation";
 import {
   isRateLimited,
+  subscribeToRateLimitRecovery,
   waitForRateLimit,
 } from "@/shared/api/relayRateLimitGate";
 
@@ -145,4 +146,16 @@ export function useRelayAutoHeal(): void {
       schedulerRef.current?.dispose();
     };
   }, []);
+
+  React.useEffect(() => {
+    // A subscription-level CLOSED leaves the WebSocket connected, so it does
+    // not produce the degraded-to-connected transition handled above. Refresh
+    // active relay queries after the final shared back-pressure window instead
+    // of leaving their error state on screen until a person remounts the view.
+    return subscribeToRateLimitRecovery(() => {
+      void queryClient.invalidateQueries({
+        predicate: isRelayDependentQuery,
+      });
+    });
+  }, [queryClient]);
 }

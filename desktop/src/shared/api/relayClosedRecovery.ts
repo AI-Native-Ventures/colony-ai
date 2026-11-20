@@ -5,6 +5,7 @@ import {
   rateLimitRemainingMs,
 } from "@/shared/api/relayRateLimitGate";
 import {
+  relaySubscriptionFilters,
   sortEvents,
   type RelaySubscription,
   type RelaySubscriptionFilter,
@@ -18,6 +19,7 @@ const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_JITTER_MS = 250;
 
 type LiveSubscription = Extract<RelaySubscription, { mode: "live" }>;
+type ReadSubscription = Exclude<RelaySubscription, LiveSubscription>;
 
 export function clearClosedRetry(subscription: LiveSubscription) {
   if (subscription.closedRetryTimeout === undefined) return;
@@ -36,7 +38,10 @@ export function handleRelayClosed({
   subscriptions: Map<string, RelaySubscription>;
   subId: string;
   message: string;
-  sendReq: (subId: string, filter: RelaySubscriptionFilter) => Promise<void>;
+  sendReq: (
+    subId: string,
+    filters: readonly RelaySubscriptionFilter[],
+  ) => Promise<void>;
   closeSubscription?: (subId: string) => Promise<void>;
   random?: () => number;
 }) {
@@ -50,60 +55,26 @@ export function handleRelayClosed({
       const hintSeconds = parseRateLimitHint(message);
       activateRateLimit(hintSeconds);
 
-      // History subs hold a promise the caller is awaiting. Rather than
-      // rejecting immediately, defer and re-issue the REQ after the
-      // rate-limit window so the caller transparently receives their result.
-      // Bounded to 3 attempts — if the relay keeps refusing, fall through
-      // to the permanent reject so the caller's promise resolves with an error
-      // rather than waiting forever.
-      if (subscription.mode === "history") {
-        const attempt = subscription.closedRetryAttempt ?? 0;
-        if (attempt < 3) {
-          subscription.closedRetryAttempt = attempt + 1;
-          // Clear the existing op-timeout so it doesn't fire while waiting for
-          // the rate-limit window. The setTimeout delay covers this interval.
-          window.clearTimeout(subscription.timeout);
-          const hintMs = (hintSeconds ?? 10) * 1_000;
-          const delayMs =
-            Math.max(rateLimitRemainingMs() || hintMs, hintMs) +
-            jitterMs(random);
-          // Re-register under a new id so the old subId can be evicted cleanly.
-          // Accumulated events are preserved on the subscription object.
-          const newSubId = `history-${crypto.randomUUID()}`;
-          subscriptions.delete(subId);
-          subscriptions.set(newSubId, subscription);
-          // Use the rate-limit delay as the new timeout budget so the
-          // subscription is not left open indefinitely while waiting.
-          subscription.timeout = window.setTimeout(() => {
-            if (!subscriptions.has(newSubId)) return; // cancelled while waiting
-            void sendReq(newSubId, subscription.filter).catch(() => {
-              subscriptions.delete(newSubId);
-              subscription.reject(
-                new Error(message || "Relay closed the history subscription."),
-              );
-            });
-            // Set a new op-timeout for the retry REQ so the subscription
-            // cannot hang indefinitely if the relay stops responding.
-            subscription.timeout = window.setTimeout(() => {
-              subscriptions.delete(newSubId);
-              // History promise is already being rejected below; swallow any
-              // IPC/socket error from the CLOSE send so it does not surface as
-              // an unhandled rejection on a path that has no live error handler.
-              closeSubscription?.(newSubId)?.catch(() => {});
-              subscription.reject(
-                new Error("Relay closed the history subscription."),
-              );
-            }, subscription.timeoutMs);
-          }, delayMs);
-          return;
-        }
+      if (
+        scheduleRateLimitedReadRetry({
+          subscriptions,
+          subId,
+          subscription,
+          hintSeconds,
+          message,
+          sendReq,
+          closeSubscription,
+          random,
+        })
+      ) {
+        return;
       }
     }
 
     window.clearTimeout(subscription.timeout);
     subscriptions.delete(subId);
     subscription.reject(
-      new Error(message || "Relay closed the history subscription."),
+      new Error(message || closedReadMessage(subscription)),
     );
     return;
   }
@@ -115,6 +86,84 @@ export function handleRelayClosed({
     sendReq,
     random,
   });
+}
+
+/**
+ * Re-open a one-shot read after the relay's hinted rate-limit window.
+ *
+ * Both history and first-event subscriptions back a caller awaiting a read.
+ * Keeping the retry here means they share one bounded lifecycle rather than
+ * making first-event callers fail while history callers recover.
+ */
+function scheduleRateLimitedReadRetry({
+  subscriptions,
+  subId,
+  subscription,
+  hintSeconds,
+  message,
+  sendReq,
+  closeSubscription,
+  random,
+}: {
+  subscriptions: Map<string, RelaySubscription>;
+  subId: string;
+  subscription: ReadSubscription;
+  hintSeconds: number | null;
+  message: string;
+  sendReq: (
+    subId: string,
+    filters: readonly RelaySubscriptionFilter[],
+  ) => Promise<void>;
+  closeSubscription?: (subId: string) => Promise<void>;
+  random: () => number;
+}): boolean {
+  const attempt = subscription.closedRetryAttempt ?? 0;
+  if (attempt >= RETRY_MAX_ATTEMPTS) return false;
+
+  subscription.closedRetryAttempt = attempt + 1;
+  // The operation timeout only covers a sent REQ. Clear it while this read is
+  // waiting behind admission so it cannot reject before the retry is issued.
+  window.clearTimeout(subscription.timeout);
+  const hintMs = (hintSeconds ?? 10) * 1_000;
+  const delayMs =
+    Math.max(rateLimitRemainingMs() || hintMs, hintMs) + jitterMs(random);
+  const newSubId = `${subscription.mode}-${crypto.randomUUID()}`;
+  subscriptions.delete(subId);
+  subscriptions.set(newSubId, subscription);
+
+  subscription.timeout = window.setTimeout(() => {
+    if (subscriptions.get(newSubId) !== subscription) return;
+    void sendReq(newSubId, relaySubscriptionFilters(subscription)).catch(
+      (error) => {
+        if (subscriptions.get(newSubId) !== subscription) return;
+        window.clearTimeout(subscription.timeout);
+        subscriptions.delete(newSubId);
+        subscription.reject(
+          error instanceof Error
+            ? error
+            : new Error(message || closedReadMessage(subscription)),
+        );
+      },
+    );
+    // A retry that reaches the relay but never completes gets one fresh
+    // operation timeout. The subscription is removed before it rejects so a
+    // late EOSE or EVENT cannot settle the caller twice.
+    subscription.timeout = window.setTimeout(() => {
+      if (subscriptions.get(newSubId) !== subscription) return;
+      subscriptions.delete(newSubId);
+      // There is no retry owner after the read timeout. Avoid an unhandled
+      // rejection from best-effort CLOSE while preserving the caller's error.
+      closeSubscription?.(newSubId)?.catch(() => {});
+      subscription.reject(new Error(closedReadMessage(subscription)));
+    }, subscription.timeoutMs);
+  }, delayMs);
+  return true;
+}
+
+function closedReadMessage(subscription: ReadSubscription): string {
+  return subscription.mode === "first"
+    ? "Relay closed the first-event subscription."
+    : "Relay closed the history subscription.";
 }
 
 function jitterMs(random: () => number): number {
@@ -134,7 +183,10 @@ function recoverLiveSubscriptionFromClosed({
   subId: string;
   subscription: LiveSubscription;
   message: string;
-  sendReq: (subId: string, filter: RelaySubscriptionFilter) => Promise<void>;
+  sendReq: (
+    subId: string,
+    filters: readonly RelaySubscriptionFilter[],
+  ) => Promise<void>;
   random: () => number;
 }) {
   subscription.resolveReady?.("closed");
@@ -186,7 +238,7 @@ function recoverLiveSubscriptionFromClosed({
   subscription.closedRetryTimeout = window.setTimeout(() => {
     subscription.closedRetryTimeout = undefined;
     if (subscriptions.get(subId) !== subscription) return;
-    void sendReq(subId, subscription.filter).catch((error) => {
+    void sendReq(subId, relaySubscriptionFilters(subscription)).catch((error) => {
       if (subscriptions.get(subId) !== subscription) return;
       console.error("Failed to restore closed relay subscription", error);
       recoverLiveSubscriptionFromClosed({
@@ -219,6 +271,26 @@ export function prepareSubscriptionEvent(
     event.created_at,
   );
   return true;
+}
+
+/** Settle a first-event read from the same subscription map used for retries. */
+export function handleFirstSubscriptionEvent({
+  subscriptions,
+  subId,
+  event,
+  closeSubscription,
+}: {
+  subscriptions: Map<string, RelaySubscription>;
+  subId: string;
+  event: RelayEvent;
+  closeSubscription: (subId: string) => Promise<void>;
+}) {
+  const subscription = subscriptions.get(subId);
+  if (subscription?.mode !== "first") return;
+  window.clearTimeout(subscription.timeout);
+  subscriptions.delete(subId);
+  void closeSubscription(subId);
+  subscription.resolve(event);
 }
 
 export function shouldDispatchSubscriptionEvent(

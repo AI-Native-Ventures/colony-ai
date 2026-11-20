@@ -229,6 +229,48 @@ test("a rate-limited OK rejection arms the rate-limit gate", async () => {
   );
 });
 
+test("a rate-limited first-event read recovers through RelayClient without remount", async () => {
+  reset();
+  const client = connectedClient();
+  const filter = { kinds: [13_534], limit: 1 };
+  const read = client.fetchFirstEvent(filter);
+
+  await flushUntil(() => requestFrames().length === 1);
+  const [, firstSubId] = JSON.parse(requestFrames()[0].message.data);
+  await deliver(client, [
+    "CLOSED",
+    firstSubId,
+    "rate-limited: quota exceeded; retry in 3s",
+  ]);
+
+  assert.equal(isRateLimited(), true, "the CLOSED must arm shared backoff");
+  assert.equal(requestFrames().length, 1, "do not retry before the hint");
+
+  await advanceTimersBy(3_000);
+  await flushUntil(() => requestFrames().length === 2);
+  const [, retrySubId] = JSON.parse(requestFrames()[1].message.data);
+  assert.notEqual(retrySubId, firstSubId, "retry must replace the closed REQ");
+
+  const event = {
+    id: "f".repeat(64),
+    pubkey: "a".repeat(64),
+    kind: 13_534,
+    content: "membership",
+    created_at: 1,
+    tags: [],
+    sig: "b".repeat(128),
+  };
+  await deliver(client, ["EVENT", retrySubId, event]);
+
+  assert.deepEqual(await read, event);
+  assert.equal(client.wsId, 7, "the read recovers on the existing socket");
+  assert.equal(
+    client.connectionGeneration,
+    0,
+    "the read must not require a reload or reconnect",
+  );
+});
+
 test("an ordinary OK rejection does not arm the gate", async () => {
   resetRateLimitGate();
   pendingTimers.clear();
@@ -484,6 +526,43 @@ test("initial live subscriptions use an immediate burst before production pacing
     await deliver(client, ["EOSE", subId]);
   }
   await Promise.all(subscriptions);
+});
+
+test("several independently limited history filters share one production REQ", async () => {
+  reset();
+  const client = connectedClient();
+  const filters = [
+    { kinds: [47_000], limit: 500, "#h": ["sales"] },
+    { kinds: [47_034], limit: 500, "#h": ["sales"] },
+    { kinds: [47_075], limit: 500, "#h": ["sales"] },
+  ];
+  const read = client.fetchEventsForFilters(filters);
+
+  await flushUntil(() => requestFrames().length === 1);
+  const frame = JSON.parse(requestFrames()[0].message.data);
+  assert.deepEqual(
+    frame.slice(2),
+    filters,
+    "one wire REQ must preserve each record family's own filter and limit",
+  );
+
+  await deliver(client, ["EOSE", frame[1]]);
+  assert.deepEqual(await read, []);
+});
+
+test("a batched history read rejects more filters than the relay accepts", async () => {
+  reset();
+  const client = connectedClient();
+  const filters = Array.from({ length: 11 }, (_, kind) => ({
+    kinds: [47_000 + kind],
+    limit: 1,
+  }));
+
+  await assert.rejects(
+    client.fetchEventsForFilters(filters),
+    /at most 10 filters/u,
+  );
+  assert.equal(requestFrames().length, 0);
 });
 
 test("synthetic E2E relay does not spend a real relay quota budget", async () => {

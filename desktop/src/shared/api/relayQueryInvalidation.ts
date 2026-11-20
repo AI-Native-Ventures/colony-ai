@@ -33,6 +33,9 @@ const RELAY_QUERY_ROOTS = new Set<string>([
   "workflow-runs",
   "workflows",
   "workflows-all",
+  "w10-business-channel",
+  "w10-business-records",
+  "whatsapp-outreach",
 ]);
 
 const RELAY_PROJECT_QUERY_PARTS = new Set<string>([
