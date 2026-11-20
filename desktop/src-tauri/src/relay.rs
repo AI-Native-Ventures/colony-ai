@@ -28,6 +28,7 @@ const MALFORMED_RESPONSE_MESSAGE: &str = "relay returned malformed response: not
 // timed out"` string. Set above the 25s WS history timeout so a slow-but-live
 // relay is not cut off before the WebSocket path would be.
 const QUERY_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const QUERY_RATE_LIMIT_RETRY_ATTEMPTS: usize = 3;
 
 fn configured_env_var(name: &str) -> Option<String> {
     std::env::var(name)
@@ -450,17 +451,15 @@ pub async fn query_relay_at(
     api_base_url: &str,
     filters: &[serde_json::Value],
 ) -> Result<Vec<nostr::Event>, String> {
-    crate::relay_admission::wait_for_rate_limit().await;
     let url = format!("{}/query", api_base_url);
     let body_bytes =
         serde_json::to_vec(filters).map_err(|e| format!("filter serialization failed: {e}"))?;
-    let auth = build_nip98_auth_header(&Method::POST, &url, &body_bytes, state)?;
-    let events = send_query_request(
+    let events = send_query_with_rate_limit_retry(
         &state.http_client,
         &url,
-        &auth,
         None,
-        body_bytes,
+        &body_bytes,
+        || build_nip98_auth_header(&Method::POST, &url, &body_bytes, state),
         QUERY_REQUEST_TIMEOUT,
     )
     .await?;
@@ -474,21 +473,63 @@ pub async fn query_relay_at_with_keys(
     keys: &Keys,
     auth_tag: Option<&str>,
 ) -> Result<Vec<nostr::Event>, String> {
-    crate::relay_admission::wait_for_rate_limit().await;
     let url = format!("{}/query", api_base_url);
     let body_bytes =
         serde_json::to_vec(filters).map_err(|e| format!("filter serialization failed: {e}"))?;
-    let auth = build_nip98_auth_header_for_keys(keys, &Method::POST, &url, &body_bytes)?;
-    let events = send_query_request(
+    let events = send_query_with_rate_limit_retry(
         &state.http_client,
         &url,
-        &auth,
         auth_tag,
-        body_bytes,
+        &body_bytes,
+        || build_nip98_auth_header_for_keys(keys, &Method::POST, &url, &body_bytes),
         QUERY_REQUEST_TIMEOUT,
     )
     .await?;
     Ok(crate::cofounder_wake_filter::without_wakes(state, events).await)
+}
+
+/// Reissue an idempotent HTTP bridge query after relay back-pressure clears.
+///
+/// Every attempt waits before creating NIP-98 authentication, so a long
+/// hinted window cannot make a reused timestamp stale. The retry bound turns a
+/// persistently rejecting relay into a normal caller-visible error instead of
+/// an unbounded request loop.
+async fn send_query_with_rate_limit_retry<F>(
+    http_client: &reqwest::Client,
+    url: &str,
+    auth_tag: Option<&str>,
+    body_bytes: &[u8],
+    mut make_auth: F,
+    timeout: std::time::Duration,
+) -> Result<Vec<nostr::Event>, String>
+where
+    F: FnMut() -> Result<String, String>,
+{
+    for attempt in 0..=QUERY_RATE_LIMIT_RETRY_ATTEMPTS {
+        crate::relay_admission::wait_for_rate_limit().await;
+        let auth = make_auth()?;
+        match send_query_request(
+            http_client,
+            url,
+            &auth,
+            auth_tag,
+            body_bytes.to_vec(),
+            timeout,
+        )
+        .await
+        {
+            Ok(events) => return Ok(events),
+            Err(error)
+                if error.starts_with("relay rate-limited:")
+                    && attempt < QUERY_RATE_LIMIT_RETRY_ATTEMPTS =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err("relay rate-limited: query retry attempts exhausted".to_string())
 }
 
 /// Build an authenticated relay HTTP request using already-signed NIP-98 auth.

@@ -17,7 +17,7 @@ import type { RelayEvent } from "@/shared/api/types";
 const AUX_BACKFILL_CONCURRENCY = 4;
 
 /**
- * Issue a history REQ on `filter`, waiting for any active rate-limit gate
+ * Issue a history REQ on one or more filters, waiting for any active rate-limit gate
  * before starting the subscription so the op timeout begins only after
  * back-pressure has cleared.
  */
@@ -25,11 +25,14 @@ export async function requestHistoryGated(
   subscriptions: Map<string, RelaySubscription>,
   sendRaw: (payload: unknown[]) => Promise<void>,
   closeSubscription: (subId: string) => Promise<void>,
-  filter: RelaySubscriptionFilter,
+  filters: RelaySubscriptionFilter | readonly RelaySubscriptionFilter[],
   historyTimeoutMs: number,
 ): Promise<RelayEvent[]> {
   // Await the gate before issuing REQ; op timeout starts after the wait.
   await waitForRateLimit();
+  const requestFilters = Array.isArray(filters) ? filters : [filters];
+  const firstFilter = requestFilters[0];
+  if (!firstFilter) return [];
 
   return new Promise<RelayEvent[]>((resolve, reject) => {
     const subId = `history-${crypto.randomUUID()}`;
@@ -41,7 +44,8 @@ export async function requestHistoryGated(
 
     subscriptions.set(subId, {
       mode: "history",
-      filter,
+      filter: firstFilter,
+      ...(requestFilters.length > 1 ? { filters: requestFilters } : {}),
       events: [],
       resolve,
       reject,
@@ -49,7 +53,7 @@ export async function requestHistoryGated(
       timeoutMs: historyTimeoutMs,
     });
 
-    void sendRaw(["REQ", subId, filter]).catch((error) => {
+    void sendRaw(["REQ", subId, ...requestFilters]).catch((error) => {
       window.clearTimeout(timeout);
       subscriptions.delete(subId);
       reject(
@@ -86,15 +90,11 @@ export async function requestFirstEventGated(
 
     subscriptions.set(subId, {
       mode: "first",
-      onEvent: (event) => {
-        window.clearTimeout(timeout);
-        subscriptions.delete(subId);
-        void closeSubscription(subId);
-        resolve(event);
-      },
+      filter,
       resolve,
       reject,
       timeout,
+      timeoutMs: historyTimeoutMs,
     });
 
     void sendRaw(["REQ", subId, filter]).catch((error) => {

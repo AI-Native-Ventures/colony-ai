@@ -32,6 +32,8 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
+use crate::relay_operation_pacer::RelayOperationPacer;
+
 /// Backoff floor for reconnect attempts.
 const RECONNECT_BASE_DELAY: Duration = Duration::from_millis(500);
 /// Backoff ceiling. Matches the renderer session's ceiling so a relay outage
@@ -81,9 +83,9 @@ pub(crate) struct MatchedEvent {
 /// Only the archive lifecycle may replace the installed scope, and only while
 /// holding [`crate::archive::sync::ArchiveOwnership`]; see [`Self::session`]
 /// for why finite callers get a non-destructive lease instead.
-#[derive(Default)]
 pub(crate) struct NativeRelayClient {
     current: Mutex<Option<ManagedSession>>,
+    operation_pacer: Arc<RelayOperationPacer>,
 }
 
 struct ManagedSession {
@@ -132,6 +134,14 @@ impl Drop for SessionLease {
 }
 
 impl NativeRelayClient {
+    /// Creates a client whose direct relay reads use `operation_pacer`.
+    pub(crate) fn new(operation_pacer: Arc<RelayOperationPacer>) -> Self {
+        Self {
+            current: Mutex::new(None),
+            operation_pacer,
+        }
+    }
+
     /// Installs the session for `scope`, shutting down whatever scope held the
     /// slot. Destructive on entry, so every caller must already hold proof it
     /// is the current owner — today that is
@@ -145,7 +155,7 @@ impl NativeRelayClient {
         if let Some(previous) = current.take() {
             previous.session.shutdown();
         }
-        let session = start_managed(relay_url, keys, None);
+        let session = start_managed(relay_url, keys, None, Arc::clone(&self.operation_pacer));
         *current = Some(ManagedSession {
             scope,
             session: Arc::clone(&session),
@@ -187,12 +197,17 @@ impl NativeRelayClient {
                 }
             } else {
                 SessionLease {
-                    session: start_managed(relay_url, keys, None),
+                    session: start_managed(
+                        relay_url,
+                        keys,
+                        None,
+                        Arc::clone(&self.operation_pacer),
+                    ),
                     private: true,
                 }
             };
         }
-        let session = start_managed(relay_url, keys, None);
+        let session = start_managed(relay_url, keys, None, Arc::clone(&self.operation_pacer));
         *current = Some(ManagedSession {
             scope,
             session: Arc::clone(&session),
@@ -222,6 +237,12 @@ impl NativeRelayClient {
         let session = self.ensure_session(relay_url, keys).await;
         let event_rx = session.attach_archive().await;
         (session, event_rx)
+    }
+}
+
+impl Default for NativeRelayClient {
+    fn default() -> Self {
+        Self::new(Arc::new(RelayOperationPacer::default()))
     }
 }
 
@@ -389,12 +410,34 @@ pub(crate) async fn start(
     keys: Keys,
     auth_tag: Option<nostr::Tag>,
 ) -> (Arc<RelaySession>, mpsc::Receiver<MatchedEvent>) {
-    let session = start_managed(relay_url, keys, auth_tag);
+    start_with_operation_pacer(
+        relay_url,
+        keys,
+        auth_tag,
+        Arc::new(RelayOperationPacer::default()),
+    )
+    .await
+}
+
+#[cfg(test)]
+/// Starts a test session with an explicitly shared operation pacer.
+pub(crate) async fn start_with_operation_pacer(
+    relay_url: String,
+    keys: Keys,
+    auth_tag: Option<nostr::Tag>,
+    operation_pacer: Arc<RelayOperationPacer>,
+) -> (Arc<RelaySession>, mpsc::Receiver<MatchedEvent>) {
+    let session = start_managed(relay_url, keys, auth_tag, operation_pacer);
     let events = session.attach_archive().await;
     (session, events)
 }
 
-fn start_managed(relay_url: String, keys: Keys, auth_tag: Option<nostr::Tag>) -> Arc<RelaySession> {
+fn start_managed(
+    relay_url: String,
+    keys: Keys,
+    auth_tag: Option<nostr::Tag>,
+    operation_pacer: Arc<RelayOperationPacer>,
+) -> Arc<RelaySession> {
     let (wake, wake_rx) = mpsc::channel(1);
     let session = Arc::new(RelaySession {
         state: Arc::new(Mutex::new(SessionState::default())),
@@ -410,6 +453,7 @@ fn start_managed(relay_url: String, keys: Keys, auth_tag: Option<nostr::Tag>) ->
         auth_tag,
         Arc::clone(&session),
         wake_rx,
+        operation_pacer,
     ));
 
     session
@@ -421,6 +465,7 @@ async fn run_session(
     auth_tag: Option<nostr::Tag>,
     session: Arc<RelaySession>,
     mut wake_rx: mpsc::Receiver<()>,
+    operation_pacer: Arc<RelayOperationPacer>,
 ) {
     let mut delay = RECONNECT_BASE_DELAY;
     loop {
@@ -435,7 +480,7 @@ async fn run_session(
                 // clean exit — a socket that drops after one event must not
                 // inherit the previous failure's delay.
                 delay = RECONNECT_BASE_DELAY;
-                run_connection(conn, &session, &mut wake_rx).await;
+                run_connection(conn, &session, &mut wake_rx, &relay_url, &operation_pacer).await;
             }
             Err(error) => {
                 eprintln!("buzz-desktop: native_relay_client: connect failed: {error}");
@@ -458,6 +503,8 @@ async fn run_connection(
     mut conn: NostrWsConnection,
     session: &RelaySession,
     wake_rx: &mut mpsc::Receiver<()>,
+    relay_url: &str,
+    operation_pacer: &RelayOperationPacer,
 ) {
     // Subscription ids currently open ON THIS SOCKET. Deliberately local: a new
     // socket has none, so reconnect resubscribes the full desired set without
@@ -488,7 +535,16 @@ async fn run_connection(
     // already kill, while masking the drain that does the work.
     let mut retries: HashMap<String, ClosedRetry> = HashMap::new();
 
-    if !reconcile(&mut conn, session, &mut open, &mut retries).await {
+    if !reconcile(
+        &mut conn,
+        session,
+        &mut open,
+        &mut retries,
+        relay_url,
+        operation_pacer,
+    )
+    .await
+    {
         return;
     }
 
@@ -504,7 +560,16 @@ async fn run_connection(
                 return;
             }
             Some(()) = wake_rx.recv() => {
-                if !reconcile(&mut conn, session, &mut open, &mut retries).await {
+                if !reconcile(
+                    &mut conn,
+                    session,
+                    &mut open,
+                    &mut retries,
+                    relay_url,
+                    operation_pacer,
+                )
+                .await
+                {
                     return;
                 }
             }
@@ -520,7 +585,16 @@ async fn run_connection(
                         retry.due_at = None;
                     }
                 }
-                if !reconcile(&mut conn, session, &mut open, &mut retries).await {
+                if !reconcile(
+                    &mut conn,
+                    session,
+                    &mut open,
+                    &mut retries,
+                    relay_url,
+                    operation_pacer,
+                )
+                .await
+                {
                     return;
                 }
             }
@@ -671,6 +745,8 @@ async fn reconcile(
     session: &RelaySession,
     open: &mut HashMap<String, serde_json::Value>,
     retries: &mut HashMap<String, ClosedRetry>,
+    relay_url: &str,
+    operation_pacer: &RelayOperationPacer,
 ) -> bool {
     // Snapshot and drain in ONE acquisition. Taking them separately would let a
     // `set_subscriptions` land in the gap, spending its removal against a
@@ -724,6 +800,13 @@ async fn reconcile(
         // the speed of the event loop.
         if retries.get(&sub.id).is_some_and(ClosedRetry::is_blocked) {
             continue;
+        }
+        if operation_pacer
+            .acquire(relay_url, &session.cancel)
+            .await
+            .is_err()
+        {
+            return false;
         }
         if conn
             .send_raw(&serde_json::json!(["REQ", sub.id, sub.filter]))

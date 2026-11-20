@@ -52,6 +52,11 @@ export type RelaySubscriptionFilter = {
 type HistorySubscription = {
   mode: "history";
   filter: RelaySubscriptionFilter;
+  /**
+   * Additional filters sent on the same Nostr REQ. Each filter keeps its own
+   * relay limit, so callers can reduce admissions without widening a result.
+   */
+  filters?: readonly RelaySubscriptionFilter[];
   events: RelayEvent[];
   resolve: (events: RelayEvent[]) => void;
   reject: (error: Error) => void;
@@ -62,10 +67,12 @@ type HistorySubscription = {
 
 type FirstEventSubscription = {
   mode: "first";
-  onEvent: (event: RelayEvent) => void;
+  filter: RelaySubscriptionFilter;
   resolve: (event: RelayEvent | null) => void;
   reject: (error: Error) => void;
   timeout: number;
+  timeoutMs: number;
+  closedRetryAttempt?: number;
 };
 
 export type LiveSubscriptionReadiness = "eose" | "closed" | "timeout";
@@ -110,6 +117,16 @@ export type RelaySubscription =
   | HistorySubscription
   | FirstEventSubscription
   | LiveSubscription;
+
+/** Return every Nostr filter that belongs to one read subscription. */
+export function relaySubscriptionFilters(
+  subscription: RelaySubscription,
+): readonly RelaySubscriptionFilter[] {
+  if (subscription.mode === "history" && subscription.filters) {
+    return subscription.filters;
+  }
+  return [subscription.filter];
+}
 
 export type SubscriptionEventBufferItem = {
   subId: string;

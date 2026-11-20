@@ -26,6 +26,7 @@ let expiresAt: number | null = null;
 let gateTimer: number | null = null;
 let gateResolve: (() => void) | null = null;
 let gatePromise: Promise<void> | null = null;
+const recoveryListeners = new Set<() => void>();
 
 /**
  * Parse `retry in Ns` from a relay message string.
@@ -82,7 +83,25 @@ export function activateRateLimit(retryInSeconds: number | null): void {
     gateResolve = null;
     gatePromise = null;
     resolve?.();
+    for (const listener of [...recoveryListeners]) {
+      listener();
+    }
   }, durationMs);
+}
+
+/**
+ * Subscribe to the final expiry of an active rate-limit window.
+ *
+ * A later relay hint extends the shared window and replaces its timer, so a
+ * subscriber receives one callback only after the final window clears. Reset
+ * intentionally does not notify: a community switch must not revalidate
+ * queries that belong to the previous relay.
+ */
+export function subscribeToRateLimitRecovery(listener: () => void): () => void {
+  recoveryListeners.add(listener);
+  return () => {
+    recoveryListeners.delete(listener);
+  };
 }
 
 /**

@@ -42,6 +42,7 @@ mod prevent_sleep;
 mod ptt_shortcut;
 mod relay;
 mod relay_admission;
+mod relay_operation_pacer;
 mod reset;
 mod secret_store;
 mod shutdown;
@@ -127,6 +128,7 @@ pub fn run() {
             eprintln!("buzz-mesh: failed to build big-stack tokio runtime, using default: {error}");
         }
     }
+    let relay_operation_pacer = Arc::new(relay_operation_pacer::RelayOperationPacer::default());
     let builder = tauri::Builder::default();
     // The Electron parent owns single-instance coordination; the stdio child
     // must never forward to another helper and exit before its handshake.
@@ -216,7 +218,7 @@ pub fn run() {
                 })
                 .build(),
         )
-        .plugin(native_websocket::init())
+        .plugin(native_websocket::init(Arc::clone(&relay_operation_pacer)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init());
 
@@ -251,7 +253,9 @@ pub fn run() {
         .manage(terminal_runtime::TerminalSessions::default())
         .manage(factory_runtime::FactoryRuntime::default())
         .manage(archive::sync::ArchiveSyncState::default())
-        .manage(native_relay_client::NativeRelayClient::default())
+        .manage(native_relay_client::NativeRelayClient::new(
+            relay_operation_pacer,
+        ))
         .manage(observed_unread::ObservedUnreadStore::default())
         .manage(channel_head_cache::ChannelHeadCacheStore::default())
         .setup(move |app| {
