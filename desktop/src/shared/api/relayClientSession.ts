@@ -85,9 +85,7 @@ import {
   type SharedLiveSubscription,
 } from "@/shared/api/relayClientSubscriptionRegistry";
 import { buildThreadReferenceTags } from "@/features/messages/lib/threading";
-
 const MAX_FILTERS_PER_REQUEST = 10;
-
 type UserStatusInput = { text: string; emoji: string; expiresAt?: number };
 export class RelayClient {
   private wsId: number | null = null;
@@ -253,7 +251,9 @@ export class RelayClient {
   ): Promise<RelayEvent[]> {
     if (filters.length === 0) return [];
     if (filters.length > MAX_FILTERS_PER_REQUEST) {
-      throw new Error(`Max ${MAX_FILTERS_PER_REQUEST} relay filters.`);
+      throw new Error(
+        `Relay requests support at most ${MAX_FILTERS_PER_REQUEST} filters.`,
+      );
     }
     return this.fetchHistory(filters);
   }
