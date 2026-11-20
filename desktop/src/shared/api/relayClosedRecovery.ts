@@ -73,9 +73,7 @@ export function handleRelayClosed({
 
     window.clearTimeout(subscription.timeout);
     subscriptions.delete(subId);
-    subscription.reject(
-      new Error(message || closedReadMessage(subscription)),
-    );
+    subscription.reject(new Error(message || closedReadMessage(subscription)));
     return;
   }
   recoverLiveSubscriptionFromClosed({
@@ -238,18 +236,20 @@ function recoverLiveSubscriptionFromClosed({
   subscription.closedRetryTimeout = window.setTimeout(() => {
     subscription.closedRetryTimeout = undefined;
     if (subscriptions.get(subId) !== subscription) return;
-    void sendReq(subId, relaySubscriptionFilters(subscription)).catch((error) => {
-      if (subscriptions.get(subId) !== subscription) return;
-      console.error("Failed to restore closed relay subscription", error);
-      recoverLiveSubscriptionFromClosed({
-        subscriptions,
-        subId,
-        subscription,
-        message,
-        sendReq,
-        random,
-      });
-    });
+    void sendReq(subId, relaySubscriptionFilters(subscription)).catch(
+      (error) => {
+        if (subscriptions.get(subId) !== subscription) return;
+        console.error("Failed to restore closed relay subscription", error);
+        recoverLiveSubscriptionFromClosed({
+          subscriptions,
+          subId,
+          subscription,
+          message,
+          sendReq,
+          random,
+        });
+      },
+    );
   }, delayMs);
 }
 

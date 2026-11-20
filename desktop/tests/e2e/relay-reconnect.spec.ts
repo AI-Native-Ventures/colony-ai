@@ -617,7 +617,9 @@ test("an active rate-limit gate leaves healthy relay pages untouched", async ({
 
   await activateRelayRateLimit(page, 1);
   expect(
-    await page.evaluate(() => window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.()),
+    await page.evaluate(() =>
+      window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.(),
+    ),
   ).toBe("connected");
 
   await page.waitForTimeout(1_500);
@@ -632,7 +634,9 @@ test("an active rate-limit gate leaves healthy relay pages untouched", async ({
     ),
   ).toBe(0);
   expect(
-    await page.evaluate(() => window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.()),
+    await page.evaluate(() =>
+      window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.(),
+    ),
   ).toBe("connected");
 });
 

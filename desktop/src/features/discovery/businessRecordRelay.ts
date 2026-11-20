@@ -386,11 +386,7 @@ export async function loadBusinessRecords(
   ];
 
   throwIfAborted(dependencies.signal);
-  const [
-    primaryPageEvents,
-    relaySelf,
-    members,
-  ] = await Promise.all([
+  const [primaryPageEvents, relaySelf, members] = await Promise.all([
     fetchRecordPageBatch(
       primaryRecordInputs.map((input) =>
         recordPageFilter(channelId, input, undefined),
@@ -468,10 +464,7 @@ export async function loadBusinessRecords(
         kind: KIND_DISCOVERY_CAMPAIGN_HEAD,
         authors: [relaySelf],
       },
-      initialEventsForKind(
-        relaySignedPageEvents,
-        KIND_DISCOVERY_CAMPAIGN_HEAD,
-      ),
+      initialEventsForKind(relaySignedPageEvents, KIND_DISCOVERY_CAMPAIGN_HEAD),
       dependencies,
     ),
     fetchAllRecordPages(

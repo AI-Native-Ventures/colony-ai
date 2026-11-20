@@ -420,6 +420,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use tokio::io::duplex;
+    use tokio::time::Instant;
     use tokio_tungstenite::{tungstenite::protocol::Role, WebSocketStream};
 
     fn silent_channel() -> Channel<InvokeResponseBody> {

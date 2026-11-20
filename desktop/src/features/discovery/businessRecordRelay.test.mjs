@@ -200,9 +200,9 @@ test("2,001 prospect heads use two first-page batches and four continuations", a
     [6, 3, 1, 1, 1, 1],
   );
   assert.deepEqual(
-    admissions.slice(0, 2).map((filters) =>
-      filters.map((filter) => filter.kinds[0]),
-    ),
+    admissions
+      .slice(0, 2)
+      .map((filters) => filters.map((filter) => filter.kinds[0])),
     [
       [
         KIND_SERVICE_HEAD,

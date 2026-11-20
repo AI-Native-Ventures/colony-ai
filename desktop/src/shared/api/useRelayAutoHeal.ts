@@ -157,9 +157,8 @@ export class RelayAutoHealScheduler {
 export function useRelayAutoHeal(): void {
   const queryClient = useQueryClient();
   const schedulerRef = React.useRef<RelayAutoHealScheduler | null>(null);
-  const rateLimitRecoveryRef = React.useRef<RelayRateLimitRecoveryScheduler | null>(
-    null,
-  );
+  const rateLimitRecoveryRef =
+    React.useRef<RelayRateLimitRecoveryScheduler | null>(null);
 
   if (rateLimitRecoveryRef.current === null) {
     rateLimitRecoveryRef.current = new RelayRateLimitRecoveryScheduler();

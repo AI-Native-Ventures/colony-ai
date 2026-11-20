@@ -345,7 +345,11 @@ test("2,001-prospect Leads startup stays below the shared relay budget", async (
   const startedAt = Date.now();
   await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("leads-primary-table")).toBeVisible();
-  const ownerWindow = await captureWindow(page, "owner-shaped-leads", startedAt);
+  const ownerWindow = await captureWindow(
+    page,
+    "owner-shaped-leads",
+    startedAt,
+  );
   const samples = await page.evaluate(
     ({ start, end }) => {
       const frameWindow = window as RelayFrameWindow;

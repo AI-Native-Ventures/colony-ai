@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 /// reserves ten frames for independently initiated owner work.
 pub(crate) const RELAY_OPERATION_INTERVAL: Duration = Duration::from_millis(143);
 /// Maximum number of admitted operations in one five-second window.
+#[cfg(test)]
 pub(crate) const MAX_RELAY_OPERATIONS_PER_FIVE_SECONDS: usize = 40;
 /// Number of operations that may start immediately on a fresh relay scope.
 pub(crate) const RELAY_OPERATION_BURST_CAPACITY: usize = 5;

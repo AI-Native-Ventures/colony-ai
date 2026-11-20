@@ -86,7 +86,6 @@ import {
 } from "@/shared/api/relayClientSubscriptionRegistry";
 import { buildThreadReferenceTags } from "@/features/messages/lib/threading";
 
-// Mirrors `MAX_FILTERS_PER_REQ` in `crates/buzz-relay/src/protocol.rs`.
 const MAX_FILTERS_PER_REQUEST = 10;
 
 type UserStatusInput = { text: string; emoji: string; expiresAt?: number };
@@ -248,20 +247,13 @@ export class RelayClient {
     return this.fetchHistory(filter);
   }
 
-  /**
-   * Fetch several independently limited filters through one Nostr REQ.
-   *
-   * The relay applies each filter's limit independently. This is appropriate
-   * when one screen needs several disjoint event kinds from one channel.
-   */
+  /** Fetch independently limited filters through one Nostr REQ. */
   async fetchEventsForFilters(
     filters: readonly RelaySubscriptionFilter[],
   ): Promise<RelayEvent[]> {
     if (filters.length === 0) return [];
     if (filters.length > MAX_FILTERS_PER_REQUEST) {
-      throw new Error(
-        `Relay requests support at most ${MAX_FILTERS_PER_REQUEST} filters.`,
-      );
+      throw new Error(`Max ${MAX_FILTERS_PER_REQUEST} relay filters.`);
     }
     return this.fetchHistory(filters);
   }
