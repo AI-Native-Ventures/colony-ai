@@ -296,7 +296,7 @@ test("primary route journey records bounded relay request windows", async ({
   console.log(
     `[relay-request-budget] ${JSON.stringify({ windows, journey, maxWindowOperations })}`,
   );
-  expect(maxWindowOperations).toBeLessThanOrEqual(48);
+  expect(maxWindowOperations).toBeLessThanOrEqual(29);
   const channelWindow = windows.find(({ label }) => label === "channel");
   expect(channelWindow?.askHeadRequests).toBeGreaterThan(0);
   expect(channelWindow?.askHeadRequests).toBeLessThanOrEqual(20);
@@ -346,6 +346,6 @@ test("2,001-prospect Leads startup stays below the shared relay budget", async (
   console.log(
     `[relay-request-budget] ${JSON.stringify({ ownerWindow, businessBatchSizes })}`,
   );
-  expect(ownerWindow.total).toBeLessThanOrEqual(48);
+  expect(ownerWindow.total).toBeLessThanOrEqual(29);
   expect(businessBatchSizes).toEqual([3, 6]);
 });

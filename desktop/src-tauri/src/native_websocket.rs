@@ -8,11 +8,15 @@ use tauri::{
     Manager, Runtime,
 };
 
-use crate::native_websocket_batch::{is_auth_challenge, FrameBatch, BATCH_MAX_SERIALIZED_BYTES};
-use tokio::{
-    sync::{mpsc, oneshot, Mutex, Semaphore},
-    time::Instant,
+#[cfg(test)]
+use crate::relay_operation_pacer::{
+    MAX_RELAY_OPERATIONS_PER_FIVE_SECONDS, RELAY_OPERATION_BURST_CAPACITY, RELAY_OPERATION_INTERVAL,
 };
+use crate::{
+    native_websocket_batch::{is_auth_challenge, FrameBatch, BATCH_MAX_SERIALIZED_BYTES},
+    relay_operation_pacer::RelayOperationPacer,
+};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Message},
@@ -23,11 +27,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(250);
 const SEND_QUEUE_CAPACITY: usize = 64;
-const RELAY_OPERATION_INTERVAL: Duration = Duration::from_millis(125);
-const RELAY_OPERATION_BURST_CAPACITY: f64 = 8.0;
-const MAX_QUEUED_RELAY_OPERATIONS: usize = 256;
-const MAX_RELAY_OPERATION_SCOPES: usize = 32;
-const SHARED_RELAY_OPERATION_SCOPE: &str = "__shared__";
 
 pub(crate) fn install_crypto_provider() {
     // Dependencies enable both rustls providers; choose one before TLS setup.
@@ -96,101 +95,27 @@ struct ConnectionHandle {
     operation_scope: String,
 }
 
-struct RelayOperationBucket {
-    tokens: f64,
-    last_refill_at: Instant,
-}
-
-/// Process-wide admission for Nostr operations originating in webviews.
-///
-/// Electron windows are separate JavaScript realms, so their renderer-local
-/// operation pacers cannot see each other. The hidden native host is shared by
-/// those windows and is the first point where their WebSocket sends converge.
-/// Keep a bounded bucket per relay URL here to preserve the relay's principal
-/// budget across all windows without coupling unrelated relays.
-struct NativeRelayOperationPacer {
-    buckets: Mutex<HashMap<String, RelayOperationBucket>>,
-    queue_slots: Arc<Semaphore>,
-}
-
-impl Default for NativeRelayOperationPacer {
-    fn default() -> Self {
-        Self {
-            buckets: Mutex::new(HashMap::new()),
-            queue_slots: Arc::new(Semaphore::new(MAX_QUEUED_RELAY_OPERATIONS)),
-        }
-    }
-}
-
-impl NativeRelayOperationPacer {
-    async fn acquire(&self, scope: &str, cancel: &CancellationToken) -> Result<(), String> {
-        let _queue_slot = self
-            .queue_slots
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| "WebSocket relay operation queue is full".to_string())?;
-
-        loop {
-            if cancel.is_cancelled() {
-                return Err("WebSocket connection closed".to_string());
-            }
-            let delay = {
-                let mut buckets = self.buckets.lock().await;
-                let key =
-                    if buckets.contains_key(scope) || buckets.len() < MAX_RELAY_OPERATION_SCOPES {
-                        scope
-                    } else {
-                        SHARED_RELAY_OPERATION_SCOPE
-                    };
-                let now = Instant::now();
-                let bucket =
-                    buckets
-                        .entry(key.to_string())
-                        .or_insert_with(|| RelayOperationBucket {
-                            tokens: RELAY_OPERATION_BURST_CAPACITY,
-                            last_refill_at: now,
-                        });
-                let elapsed = now.saturating_duration_since(bucket.last_refill_at);
-                bucket.tokens = (bucket.tokens
-                    + elapsed.as_secs_f64() / RELAY_OPERATION_INTERVAL.as_secs_f64())
-                .min(RELAY_OPERATION_BURST_CAPACITY);
-                bucket.last_refill_at = now;
-
-                if bucket.tokens >= 1.0 {
-                    bucket.tokens -= 1.0;
-                    return Ok(());
-                }
-
-                Duration::from_secs_f64(
-                    ((1.0 - bucket.tokens) * RELAY_OPERATION_INTERVAL.as_secs_f64()).max(0.001),
-                )
-            };
-            tokio::select! {
-                _ = cancel.cancelled() => return Err("WebSocket connection closed".to_string()),
-                _ = tokio::time::sleep(delay) => {}
-            }
-        }
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct WebSocketManager {
     connections: Arc<Mutex<HashMap<Id, Arc<ConnectionHandle>>>>,
     connect_cancel: Arc<Mutex<CancellationToken>>,
-    operation_pacer: Arc<NativeRelayOperationPacer>,
+    operation_pacer: Arc<RelayOperationPacer>,
 }
 
 impl Default for WebSocketManager {
     fn default() -> Self {
-        Self {
-            connections: Arc::default(),
-            connect_cancel: Arc::new(Mutex::new(CancellationToken::new())),
-            operation_pacer: Arc::default(),
-        }
+        Self::new(Arc::new(RelayOperationPacer::default()))
     }
 }
 
 impl WebSocketManager {
+    fn new(operation_pacer: Arc<RelayOperationPacer>) -> Self {
+        Self {
+            connections: Arc::default(),
+            connect_cancel: Arc::new(Mutex::new(CancellationToken::new())),
+            operation_pacer,
+        }
+    }
     async fn remove(&self, id: Id) -> Option<Arc<ConnectionHandle>> {
         self.connections.lock().await.remove(&id)
     }
@@ -470,7 +395,8 @@ fn outbound_message(message: Message) -> OutboundMessage {
     }
 }
 
-pub fn init<R: Runtime>() -> TauriPlugin<R> {
+/// Installs the webview WebSocket bridge with the app-wide operation pacer.
+pub(crate) fn init<R: Runtime>(operation_pacer: Arc<RelayOperationPacer>) -> TauriPlugin<R> {
     install_crypto_provider();
     tauri::plugin::Builder::new("websocket")
         .invoke_handler(tauri::generate_handler![
@@ -479,8 +405,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             disconnect,
             disconnect_all
         ])
-        .setup(|app, _api| {
-            app.manage(WebSocketManager::default());
+        .setup(move |app, _api| {
+            app.manage(WebSocketManager::new(operation_pacer));
             Ok(())
         })
         .build()
@@ -990,7 +916,7 @@ mod tests {
             .filter(|sent| sent.duration_since(start) < Duration::from_secs(5))
             .count();
         assert!(
-            within_first_window <= 50,
+            within_first_window <= MAX_RELAY_OPERATIONS_PER_FIVE_SECONDS,
             "five windows sent {within_first_window} REQ frames in one five-second relay window"
         );
     }
@@ -1013,7 +939,7 @@ mod tests {
             }
         });
 
-        for index in 0..8 {
+        for index in 0..RELAY_OPERATION_BURST_CAPACITY {
             send_message(
                 &manager,
                 1,

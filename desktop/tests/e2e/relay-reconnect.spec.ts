@@ -591,7 +591,7 @@ test("sub-2s degraded flap invalidates relay queries on recovery", async ({
     .toBeGreaterThan(0);
 });
 
-test("an active rate-limit gate invalidates relay pages after its hint", async ({
+test("an active rate-limit gate leaves healthy relay pages untouched", async ({
   page,
 }) => {
   await page.goto("/");
@@ -620,20 +620,17 @@ test("an active rate-limit gate invalidates relay pages after its hint", async (
     await page.evaluate(() => window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.()),
   ).toBe("connected");
 
-  await expect
-    .poll(
+  await page.waitForTimeout(1_500);
+  expect(
+    await page.evaluate(
       () =>
-        page.evaluate(
-          () =>
-            (
-              window.__BUZZ_E2E_QUERY_CLIENT__ as unknown as {
-                __rateLimitRecoveryInvalidations?: number;
-              }
-            )?.__rateLimitRecoveryInvalidations ?? 0,
-        ),
-      { timeout: 5_000 },
-    )
-    .toBeGreaterThan(0);
+        (
+          window.__BUZZ_E2E_QUERY_CLIENT__ as unknown as {
+            __rateLimitRecoveryInvalidations?: number;
+          }
+        )?.__rateLimitRecoveryInvalidations ?? 0,
+    ),
+  ).toBe(0);
   expect(
     await page.evaluate(() => window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.()),
   ).toBe("connected");

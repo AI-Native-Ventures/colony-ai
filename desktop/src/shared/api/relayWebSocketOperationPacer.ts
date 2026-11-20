@@ -1,9 +1,10 @@
 const RELAY_ADMISSION_FRAME_TYPES = new Set(["REQ", "COUNT", "EVENT"]);
-const RELAY_OPERATION_INTERVAL_MS = 125;
+const RELAY_OPERATION_INTERVAL_MS = 200;
 // The relay's default shared WS budget is 50 operations per five seconds.
-// An eight-operation burst plus an eight-per-second refill stays below that
-// fixed-window budget while allowing initial app subscriptions to start at once.
-const RELAY_OPERATION_BURST_CAPACITY = 8;
+// A four-operation burst plus a five-per-second refill allows at most 29
+// operations in any five-second interval, leaving real room for native owner
+// work that shares the same relay principal.
+const RELAY_OPERATION_BURST_CAPACITY = 4;
 // Persistable EVENT attempts also consume the relay's 60-per-minute message
 // quota. A four-event burst plus one event every 1.2 seconds tops out at 53 in
 // any 60-second window, below the relay limit.
@@ -12,7 +13,7 @@ const HUMAN_MESSAGE_INTERVAL_MS = 1_200;
 // Business record commands (a saved lead, client, invoice and the like) draw
 // on the relay's separate record allowance of 600 per minute, not on the
 // message quota. They are paced only by the shared operation budget above: at
-// most eight a second, 480 a minute.
+// most five a second, 300 a minute.
 //
 // Must list the same kinds as `is_business_command_kind` in
 // crates/buzz-core/src/kind.rs: the relay decides which allowance an event
