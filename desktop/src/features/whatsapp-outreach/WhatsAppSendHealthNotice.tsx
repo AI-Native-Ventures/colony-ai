@@ -24,8 +24,8 @@ function DeliveryHealthSummary({ status }: { status: WhatsAppStatus }) {
     >
       <strong>
         {count} {count === 1 ? "message was" : "messages were"} not delivered by
-        Meta
-      </strong>
+        Meta.
+      </strong>{" "}
       <span>
         Meta is limiting marketing delivery to some recipients. Review the
         failed chats before changing your template or number strategy.

@@ -60,7 +60,12 @@ function silentWav(): string {
 type MediaFixture = {
   id: string;
   text: string;
-  media: Record<string, unknown>;
+  /**
+   * The kind the relay stores (`crates/buzz-relay/src/whatsapp/inbound.rs`): a location, a
+   * contact card and a type WhatsApp does not describe are `other`; the rest are `media`.
+   */
+  kind?: "media" | "other";
+  media?: Record<string, unknown>;
 };
 
 function base(media: Record<string, unknown>): Record<string, unknown> {
@@ -127,6 +132,7 @@ function fixtures(): MediaFixture[] {
     {
       id: "wa-media-location",
       text: "[location] Kensington Guest House",
+      kind: "other",
       media: base({
         type: "location",
         state: "none",
@@ -139,6 +145,7 @@ function fixtures(): MediaFixture[] {
     {
       id: "wa-media-contacts",
       text: "[contact card] Sipho Dlamini",
+      kind: "other",
       media: base({
         type: "contacts",
         state: "none",
@@ -181,6 +188,13 @@ function fixtures(): MediaFixture[] {
         filename: "big.zip",
       }),
     },
+    // No media record at all: a poll, a view-once photo, an order. One of these in a chat
+    // used to stop the whole chat from opening ("invalid WhatsApp message kind").
+    {
+      id: "wa-other-undescribed",
+      text: "[unsupported message]",
+      kind: "other",
+    },
   ];
 }
 
@@ -204,7 +218,7 @@ async function seedMedia(page: Page, items: MediaFixture[]) {
           id: row.id,
           waId,
           direction: "in",
-          kind: "media",
+          kind: row.kind ?? "media",
           text: row.text,
           templateName: null,
           state: "read",
@@ -351,6 +365,12 @@ const CHECKS: Record<string, Check> = {
   "wa-media-large": async (_page, message) => {
     await expect(message).toContainText("Document is too large to show");
     await expect(message.getByTestId("whatsapp-media-retry")).toHaveCount(0);
+  },
+  "wa-other-undescribed": async (_page, message) => {
+    await expect(message).toContainText(
+      "Sent a message type that cannot be shown here",
+    );
+    await expect(message).not.toContainText("[unsupported message]");
   },
 };
 
