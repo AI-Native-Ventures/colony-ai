@@ -260,6 +260,7 @@ pub struct AccountConfig {
     mail_from: Option<String>,
     mail_mode: Option<AccountMailMode>,
     google_client_ids: Vec<String>,
+    admin_google_client_id: Option<String>,
     google_jwks_url: Option<String>,
 }
 
@@ -627,6 +628,11 @@ impl AccountConfig {
         &self.google_client_ids
     }
 
+    /// Return the Google client ID advertised to the admin sign-in page.
+    pub(crate) fn admin_google_client_id(&self) -> Option<&str> {
+        self.admin_google_client_id.as_deref()
+    }
+
     /// Return a test-only Google JWKS URL override, when configured.
     pub(crate) fn google_jwks_url(&self) -> Option<&str> {
         self.google_jwks_url.as_deref()
@@ -645,8 +651,15 @@ impl AccountConfig {
             mail_from: None,
             mail_mode,
             google_client_ids,
+            admin_google_client_id: None,
             google_jwks_url,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_admin_google_client_id(mut self, client_id: Option<String>) -> Self {
+        self.admin_google_client_id = client_id;
+        self
     }
 }
 
@@ -670,6 +683,7 @@ impl std::fmt::Debug for AccountConfig {
                 }),
             )
             .field("google_client_ids", &self.google_client_ids)
+            .field("admin_google_client_id", &self.admin_google_client_id)
             .field(
                 "google_jwks_url",
                 &self.google_jwks_url.as_ref().map(|_| "[CONFIGURED]"),
@@ -742,6 +756,19 @@ fn account_config_from_lookup(
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
         .collect();
+    let admin_google_client_id = lookup("COLONY_ADMIN_GOOGLE_CLIENT_ID")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if let Some(client_id) = admin_google_client_id.as_deref() {
+        if !google_client_ids
+            .iter()
+            .any(|configured| configured == client_id)
+        {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_ADMIN_GOOGLE_CLIENT_ID must be one of COLONY_GOOGLE_CLIENT_IDS".to_owned(),
+            ));
+        }
+    }
 
     let google_jwks_url = lookup("COLONY_GOOGLE_JWKS_URL")
         .map(|value| value.trim().to_owned())
@@ -781,6 +808,7 @@ fn account_config_from_lookup(
         mail_from,
         mail_mode,
         google_client_ids,
+        admin_google_client_id,
         google_jwks_url,
     })
 }
@@ -1415,6 +1443,11 @@ impl Config {
     /// Explain whether the operator email-code flow can issue sessions.
     pub fn operator_email_login_status(&self) -> OperatorEmailLoginStatus {
         operator_email_login_status(&self.relay_operator_emails, &self.accounts)
+    }
+
+    /// Whether the password sign-in route has its configured allowlist and key material.
+    pub fn operator_password_login_enabled(&self) -> bool {
+        !self.relay_operator_emails.is_empty() && self.accounts.account_kek().is_some()
     }
 
     /// Loads configuration from environment variables, falling back to development defaults.
@@ -2477,6 +2510,60 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains(&encoded_key));
+    }
+
+    #[test]
+    fn admin_google_config_accepts_a_trimmed_listed_client_id() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let config = account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            (
+                "COLONY_GOOGLE_CLIENT_IDS",
+                "desktop-test-client, admin-web-test-client",
+            ),
+            ("COLONY_ADMIN_GOOGLE_CLIENT_ID", " admin-web-test-client "),
+        ]))
+        .expect("listed admin Google client id");
+
+        assert_eq!(
+            config.admin_google_client_id(),
+            Some("admin-web-test-client")
+        );
+    }
+
+    #[test]
+    fn admin_google_config_rejects_an_unlisted_client_id() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let error = account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_GOOGLE_CLIENT_IDS", "desktop-test-client"),
+            ("COLONY_ADMIN_GOOGLE_CLIENT_ID", "other-client"),
+        ]))
+        .expect_err("unlisted admin Google client id must fail startup");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid config: COLONY_ADMIN_GOOGLE_CLIENT_ID must be one of COLONY_GOOGLE_CLIENT_IDS"
+        );
+    }
+
+    #[test]
+    fn admin_google_config_treats_unset_or_blank_value_as_disabled() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let unset = account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_GOOGLE_CLIENT_IDS", "admin-web-test-client"),
+        ]))
+        .expect("unset admin Google client id");
+        let blank = account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_GOOGLE_CLIENT_IDS", "admin-web-test-client"),
+            ("COLONY_ADMIN_GOOGLE_CLIENT_ID", " \t "),
+        ]))
+        .expect("blank admin Google client id");
+
+        assert_eq!(unset.admin_google_client_id(), None);
+        assert_eq!(blank.admin_google_client_id(), None);
     }
 
     #[test]

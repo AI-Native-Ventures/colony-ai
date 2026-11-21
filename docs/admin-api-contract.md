@@ -30,9 +30,22 @@ This contract is the source of truth for field names. If the UI needs something 
 
 **Client routes the relay serves on the admin host** (index page, client-side routing): `/`, `/overview`, `/businesses`, `/businesses/{id}`, `/ai-usage`, `/system` (Health), `/sign-in`, `/reports`, `/feedback`. (`/health` is taken by the relay's own health route, so the Health board lives at `/system`.) Everything else on that host is 404.
 
+**Runtime sign-in configuration:** `GET /api/admin/v1/session/config` is public
+only on the exact admin host and needs no sign-in or `Origin` header. It returns
+`200 {"googleClientId":"<id>"|null,"emailCode":true|false,"password":true|false}`
+with `Cache-Control: no-store`. `googleClientId` is the optional
+`COLONY_ADMIN_GOOGLE_CLIENT_ID`, which must be a trimmed member of
+`COLONY_GOOGLE_CLIENT_IDS` at startup or the relay refuses to start. `emailCode`
+is true only when the email-code flow is enabled; `password` is true only when
+`RELAY_OPERATOR_EMAILS` is nonempty and `COLONY_ACCOUNT_KEK` is present. The
+response never includes an operator email, public key, or allowlist count. The
+relay contract is ready for the Step 3 admin-web migration. Until that change
+lands, the current admin page still uses its existing
+`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time setting.
+
 **Sign in with your Colony account** (the same Google sign-in Colony accounts use, server custody; no shared passwords or tokens):
 
-1. The page sends the browser to Google's OpenID Connect endpoint: `https://accounts.google.com/o/oauth2/v2/auth?client_id=<admin web client id>&redirect_uri=https://admin.colony.global/sign-in&response_type=id_token&scope=openid%20email&nonce=<random 32+ chars>&prompt=select_account`. The nonce is generated in the browser and kept in `sessionStorage`. (The page's content security policy is `script-src 'self'`, so no Google script is loaded; this is a plain redirect.)
+1. After the Step 3 admin-web migration, the page fetches the runtime configuration and uses its non-null `googleClientId` in Google's OpenID Connect endpoint: `https://accounts.google.com/o/oauth2/v2/auth?client_id=<admin web client id>&redirect_uri=https://admin.colony.global/sign-in&response_type=id_token&scope=openid%20email&nonce=<random 32+ chars>&prompt=select_account`. The nonce is generated in the browser and kept in `sessionStorage`. (The page's content security policy is `script-src 'self'`, so no Google script is loaded; this is a plain redirect.) Until then, the current page continues to use `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` from its bundle.
 2. Google returns to `/sign-in#id_token=...`. The page reads the fragment, removes it from the address bar, and posts it.
 3. `POST /api/admin/v1/session/google` with `Content-Type: application/json`, body `{"idToken": "...", "nonce": "..."}`, sent from the admin page (the request must carry `Origin: https://admin.colony.global`).
    - The relay verifies the token exactly as account sign-in does (signature, issuer, expiry, `email_verified`, audience in `COLONY_GOOGLE_CLIENT_IDS`), and that the token's `nonce` equals the posted one.
@@ -83,11 +96,11 @@ There is no dedicated email-code form board in the supplied Colony 3.0 admin des
 
 1. DNS, Cloudflare zone `colony.global`: add `CNAME admin -> colony-relay.fly.dev`, DNS only (grey cloud), the same shape as `admin.colony.ainative.ventures` today.
 2. Fly certificate: `fly certs add admin.colony.global -a colony-relay`, then `fly certs show admin.colony.global -a colony-relay` until it says issued. (If Fly asks for the `_acme-challenge` CNAME, add what it prints.)
-3. Google Cloud console (project that owns the existing Colony Google client ids): create an OAuth client of type **Web application**, authorized redirect URI `https://admin.colony.global/sign-in`, authorized JavaScript origin `https://admin.colony.global`. Append its client id to the Fly secret `COLONY_GOOGLE_CLIENT_IDS` (comma-separated, keep the existing ids). It is an identifier, not a credential; no client secret is used.
+3. Google Cloud console (project that owns the existing Colony Google client ids): create an OAuth client of type **Web application**, authorized redirect URI `https://admin.colony.global/sign-in`, authorized JavaScript origin `https://admin.colony.global`. Append its client id to the Fly secret `COLONY_GOOGLE_CLIENT_IDS` (comma-separated, keep the existing ids), then set `COLONY_ADMIN_GOOGLE_CLIENT_ID` to that same id. It is an identifier, not a credential; no client secret is used.
 4. Confirm Fly secrets on `colony-relay`: `RELAY_OPERATOR_PUBKEYS` contains the owner's **Colony account public key** (the `accounts.pubkey` for the owner's Google email, hex), and `COLONY_ACCOUNT_KEK` is set (it is, accounts work today).
 5. Set the Fly secret `RELAY_OPERATOR_EMAILS` to the approved operator entries, using plain `email` entries for matching Colony accounts and `email=pubkeyhex` entries for delivery aliases. Keep `RELAY_OPERATOR_PUBKEYS` and `COLONY_ACCOUNT_KEK` present. Email-code sign-in also requires `RESEND_API_KEY` and `COLONY_MAIL_FROM`; password sign-in does not.
 6. Deploy the relay with migration 0069 from this PR. The new routes are checked against `BUZZ_ADMIN_HOST` inside the handlers, so community hosts and installed desktop clients cannot reach or use them.
-7. Tell AD-UI the Google web client id so the page can build the redirect URL (it is public; v1 puts it in the admin bundle as a build-time constant).
+7. Step 3 updates AD-UI to fetch `/api/admin/v1/session/config` at runtime. Until that migration lands, keep providing the public Google web client ID as `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` at admin-bundle build time.
 
 ## 2. Endpoints
 

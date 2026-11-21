@@ -100,6 +100,18 @@ cookie through Google, an emailed one-time code, or a Colony account password.
 Each path requires the exact admin host and matching admin-page Origin. The
 cookie is `Secure`, `HttpOnly`, and `SameSite=Strict`; it lasts 30 days.
 
+The relay exposes an unauthenticated, admin-host-only
+`GET /api/admin/v1/session/config` route for the Step 3 admin-web migration.
+It returns
+`{"googleClientId":"<id>"|null,"emailCode":true|false,"password":true|false}`
+with `Cache-Control: no-store` and never includes an operator email, key, or
+allowlist count. `googleClientId` is set only when
+`COLONY_ADMIN_GOOGLE_CLIENT_ID` is a trimmed member of
+`COLONY_GOOGLE_CLIENT_IDS`; an unset or blank value makes that field `null`.
+The current admin web bundle still uses its
+`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time value until the Step 3
+runtime-config consumer lands.
+
 Password sign-in is `POST /api/admin/v1/session/password` with
 `{"email":"operator@example.com","password":"..."}`. The body uses camelCase
 and rejects unknown fields. The email must be configured in
@@ -314,12 +326,12 @@ available as a browser fallback.
 The UI renders null metrics as "Not collected" and shows aggregates, ids, and
 timestamps without message or WhatsApp content.
 
-To enable the Google redirect button, provide the public web OAuth client ID at
-admin bundle build time as `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID`. It is an
-identifier, not a secret, and the browser bundle does not use a client secret.
-If the value is unset, Google sign-in reports that it is not configured and the
-NIP-98 fallback remains available. The end-to-end build uses a local fake client
-ID; the production build does not read the test fixtures or test environment.
+The relay now publishes the public Google client ID through
+`GET /api/admin/v1/session/config`. It is an identifier, not a secret. Step 3
+will make the admin web client consume that field instead of the current
+`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time value. Until then, leave the
+build-time setting in place; after that migration, a `null` `googleClientId`
+will suppress Google sign-in and leave the NIP-98 fallback available.
 
 ## Local development
 
