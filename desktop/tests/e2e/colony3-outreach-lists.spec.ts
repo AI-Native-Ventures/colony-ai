@@ -1438,9 +1438,13 @@ test.describe("Outreach lists", () => {
     const summary = detail.getByRole("region", { name: "List summary" });
     const metrics = summary.locator(".c3l-list-summary-card");
     await expect(metrics).toHaveCount(4);
+    await expect(metrics.nth(0)).toContainText("Leads");
     await expect(metrics.nth(0)).toContainText("12");
+    await expect(metrics.nth(1)).toContainText("With WhatsApp");
     await expect(metrics.nth(1)).toContainText("11");
-    await expect(metrics.nth(2)).toContainText("4");
+    await expect(metrics.nth(2)).toContainText("Messaged");
+    await expect(metrics.nth(2)).toContainText("5 of 12");
+    await expect(metrics.nth(3)).toContainText("Replied");
     await expect(metrics.nth(3)).toContainText("1");
     await detail
       .getByLabel("Default WhatsApp template")
