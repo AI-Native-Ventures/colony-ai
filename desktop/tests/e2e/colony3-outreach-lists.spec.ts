@@ -1073,6 +1073,7 @@ test.describe("Outreach lists", () => {
     for (const state of proofStates) {
       await openReference(page, "/lists", state.width, state.theme, {
         mapShell: true,
+        mockWhatsApp: true,
         outreachBoard: true,
         outreachStatusBoard: true,
       });
