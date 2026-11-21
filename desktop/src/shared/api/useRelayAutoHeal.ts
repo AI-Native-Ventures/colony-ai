@@ -10,10 +10,66 @@ import {
 import { isRelayDependentQuery } from "@/shared/api/relayQueryInvalidation";
 import {
   isRateLimited,
-  waitForRateLimit,
+  subscribeToRateLimitRecovery,
 } from "@/shared/api/relayRateLimitGate";
 
 export const AUTO_HEAL_MIN_INTERVAL_MS = 15_000;
+
+type RateLimitRecoveryQuery = {
+  queryHash: string;
+  queryKey: readonly unknown[];
+  state: {
+    status: string;
+    fetchStatus: string;
+  };
+  isActive: () => boolean;
+};
+
+/**
+ * Selects the small set of reads that a completed rate-limit window may retry.
+ *
+ * An automatic retry is consumed until the query succeeds or leaves the cache.
+ * Without that latch a recovery retry that is immediately rate-limited would
+ * re-arm the same window forever. The normal query retry, an explicit retry,
+ * or a later connection recovery can still make progress; a success clears the
+ * latch for the next independent failure.
+ */
+export class RelayRateLimitRecoveryScheduler {
+  private retriedQueryHashes = new Set<string>();
+
+  /** Returns eligible failed active relay queries, marking them as retried. */
+  takeErroredActiveQueryHashes(
+    queries: readonly RateLimitRecoveryQuery[],
+  ): Set<string> {
+    const selected = new Set<string>();
+    for (const query of queries) {
+      if (
+        query.state.status !== "error" ||
+        query.state.fetchStatus === "fetching" ||
+        !query.isActive() ||
+        !isRelayDependentQuery(query) ||
+        this.retriedQueryHashes.has(query.queryHash)
+      ) {
+        continue;
+      }
+      this.retriedQueryHashes.add(query.queryHash);
+      selected.add(query.queryHash);
+    }
+    return selected;
+  }
+
+  /** Clears a query's one-retry latch after it has recovered. */
+  observeQuery(query: RateLimitRecoveryQuery): void {
+    if (query.state.status === "success") {
+      this.retriedQueryHashes.delete(query.queryHash);
+    }
+  }
+
+  /** Clears state for a query that has left the cache. */
+  forgetQuery(queryHash: string): void {
+    this.retriedQueryHashes.delete(queryHash);
+  }
+}
 
 /**
  * Tracks degraded→connected transitions and fires `onHeal` at most once per
@@ -101,24 +157,26 @@ export class RelayAutoHealScheduler {
 export function useRelayAutoHeal(): void {
   const queryClient = useQueryClient();
   const schedulerRef = React.useRef<RelayAutoHealScheduler | null>(null);
+  const rateLimitRecoveryRef =
+    React.useRef<RelayRateLimitRecoveryScheduler | null>(null);
+
+  if (rateLimitRecoveryRef.current === null) {
+    rateLimitRecoveryRef.current = new RelayRateLimitRecoveryScheduler();
+  }
 
   if (schedulerRef.current === null) {
     schedulerRef.current = new RelayAutoHealScheduler(
       () => {
         if (isRateLimited()) {
-          // Connection recovered but the relay is still under back-pressure.
-          // Defer the invalidate until the rate-limit window clears so queries
-          // don't immediately refetch and generate another burst.
-          void waitForRateLimit().then(() => {
-            void queryClient.invalidateQueries({
-              predicate: isRelayDependentQuery,
-            });
-          });
-        } else {
-          void queryClient.invalidateQueries({
-            predicate: isRelayDependentQuery,
-          });
+          // The rate-limit recovery subscription below retries only failed
+          // active queries after the shared window clears. A whole-cache
+          // invalidate here would turn a healthy busy screen into another
+          // burst and can immediately re-arm the same limit.
+          return;
         }
+        void queryClient.invalidateQueries({
+          predicate: isRelayDependentQuery,
+        });
       },
       AUTO_HEAL_MIN_INTERVAL_MS,
       window.setTimeout.bind(window),
@@ -145,4 +203,36 @@ export function useRelayAutoHeal(): void {
       schedulerRef.current?.dispose();
     };
   }, []);
+
+  React.useEffect(() => {
+    // A subscription-level CLOSED leaves the WebSocket connected, so it does
+    // not produce the degraded-to-connected transition handled above. Only
+    // retry active reads that failed, rather than starting every healthy query
+    // on a busy screen at once when the shared back-pressure window ends.
+    const recovery = rateLimitRecoveryRef.current;
+    if (recovery === null) return;
+    const unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "removed") {
+        recovery.forgetQuery(event.query.queryHash);
+        return;
+      }
+      recovery.observeQuery(event.query);
+    });
+    const unsubscribeRecovery = subscribeToRateLimitRecovery(() => {
+      const queryHashes = recovery.takeErroredActiveQueryHashes(
+        queryClient.getQueryCache().getAll(),
+      );
+      if (queryHashes.size === 0) return;
+      void queryClient.invalidateQueries({
+        predicate: (query) =>
+          queryHashes.has(query.queryHash) &&
+          query.state.status === "error" &&
+          query.isActive(),
+      });
+    });
+    return () => {
+      unsubscribeCache();
+      unsubscribeRecovery();
+    };
+  }, [queryClient]);
 }

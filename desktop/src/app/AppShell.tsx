@@ -31,7 +31,8 @@ import { useChannelActivityProjection } from "@/app/useChannelActivityProjection
 import { useTauriWindowDrag } from "@/app/useTauriWindowDrag";
 import { MapShell } from "@/features/map-shell/MapShell";
 import { MapShellDialogs } from "@/features/map-shell/MapShellDialogs";
-import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
+import { MapShellLaunchFrame } from "@/features/map-shell/MapShellLaunchFrame";
+import { useMapShellLaunchState } from "@/features/map-shell/useMapShellEnabled";
 import { useWebviewZoomShortcuts } from "@/app/useWebviewZoomShortcuts";
 import {
   channelsQueryKey,
@@ -127,7 +128,9 @@ export function AppShell() {
   const location = useLocation();
   const isNarrowWindow = useIsMobile();
   const isMapCanvasNarrow = useMediaBreakpoint(701);
-  const mapShellEnabled = useMapShellEnabled();
+  const mapShellLaunchState = useMapShellLaunchState();
+  const mapShellEnabled = mapShellLaunchState === "map";
+  const mapShellLaunchPending = mapShellLaunchState === "loading";
   const { selectedChannelId, selectedView } = React.useMemo(
     () => deriveShellRoute(location.pathname),
     [location.pathname],
@@ -835,7 +838,11 @@ export function AppShell() {
             onOpenSettings: handleOpenSettings,
           }}
         >
-          <AppShellFrame>
+          <AppShellFrame
+            pendingContent={
+              mapShellLaunchPending ? <MapShellLaunchFrame /> : undefined
+            }
+          >
             {hasCommunityRail ? (
               <CommunityRail
                 activeCommunityId={communitiesHook.activeCommunity?.id ?? null}

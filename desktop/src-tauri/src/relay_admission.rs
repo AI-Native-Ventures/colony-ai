@@ -430,15 +430,15 @@ mod tests {
         reset_rate_limit_gate();
     }
 
-    /// Acceptance: a 429 from one relay-backed command withholds the next
-    /// relay-backed command until the hinted window expires, then it resumes.
+    /// Acceptance: a 429 from a relay-backed query waits through the hinted
+    /// window and retries the same idempotent query.
     ///
     /// Drives the production `query_relay` path end-to-end against a loopback
     /// HTTP server — NIP-98 signing, `relay_error_message` classification and
     /// gate arming, and the admission wait all execute for real. Real time is
     /// required (the request crosses actual TCP), so the hint is kept at 1s.
     #[tokio::test]
-    async fn http_429_withholds_next_relay_command_until_expiry_then_resumes() {
+    async fn http_429_retries_the_same_relay_query_after_expiry() {
         use std::io::{Read, Write};
 
         let _serial = TEST_SERIAL.lock().await;
@@ -476,31 +476,19 @@ mod tests {
         *state.relay_url_override.lock().unwrap() = Some(format!("http://{addr}"));
         let filters = [serde_json::json!({ "kinds": [1], "limit": 1 })];
 
-        // Command 1: the relay answers 429 — the caller sees the typed error
-        // and the admission gate arms for the hinted 1s window.
-        let err = crate::relay::query_relay(&state, &filters)
-            .await
-            .expect_err("first command must surface the 429");
-        assert!(
-            err.starts_with("relay rate-limited: retry in 1s"),
-            "429 must map to the typed rate-limited error, got: {err}"
-        );
+        let started_at = std::time::Instant::now();
 
-        // Measure from after command 1 returns so the timer only covers the
-        // admission wait (not command 1's own network time).
-        let after_first_429 = std::time::Instant::now();
-
-        // Command 2: must be withheld until the window expires, then resume
-        // and succeed against the now-healthy relay.
+        // The first attempt receives the 429, arms the gate, and the same
+        // idempotent command retries after the full hinted cooldown.
         let events = crate::relay::query_relay(&state, &filters)
             .await
-            .expect("second command must resume and succeed after expiry");
+            .expect("query must retry and succeed after expiry");
         assert!(events.is_empty());
 
-        let wait_elapsed = after_first_429.elapsed();
+        let wait_elapsed = started_at.elapsed();
         assert!(
             wait_elapsed >= Duration::from_secs(1),
-            "second command ran {}ms after the 429 — it must wait out the full 1s window",
+            "retry ran {}ms after the 429 and did not wait out the full 1s window",
             wait_elapsed.as_millis()
         );
 

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
 
+import { KIND_PROSPECT_HEAD } from "../../src/features/discovery/businessRecordContract";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { openSidebarGroup } from "../helpers/sidebarGroups";
 
@@ -46,6 +47,42 @@ function isRequestBudgetAskHead(frame: unknown[]) {
         coordinate.startsWith("channel:") &&
         coordinate.includes("request-budget-ask-"),
     )
+  );
+}
+
+function businessRecordBatchSize(frame: unknown[]): number | null {
+  if (frame[0] !== "REQ") return null;
+  const filters = frame.slice(2);
+  if (filters.length < 2) return null;
+  const isBusinessRecordFilter = filters.every((filter) => {
+    if (!filter || typeof filter !== "object") return false;
+    const record = filter as Record<string, unknown>;
+    return (
+      Array.isArray(record.kinds) &&
+      record.kinds.length === 1 &&
+      record.limit === 500 &&
+      Array.isArray(record["#h"]) &&
+      record["#h"].length === 1
+    );
+  });
+  return isBusinessRecordFilter ? filters.length : null;
+}
+
+function isBusinessRecordProspectContinuation(frame: unknown[]): boolean {
+  if (frame[0] !== "REQ") return false;
+  const filters = frame.slice(2);
+  if (filters.length !== 1) return false;
+  const [filter] = filters;
+  if (!filter || typeof filter !== "object") return false;
+  const record = filter as Record<string, unknown>;
+  return (
+    Array.isArray(record.kinds) &&
+    record.kinds.length === 1 &&
+    record.kinds[0] === KIND_PROSPECT_HEAD &&
+    record.limit === 500 &&
+    Array.isArray(record["#h"]) &&
+    record["#h"].length === 1 &&
+    typeof record.until === "number"
   );
 }
 
@@ -278,9 +315,64 @@ test("primary route journey records bounded relay request windows", async ({
   console.log(
     `[relay-request-budget] ${JSON.stringify({ windows, journey, maxWindowOperations })}`,
   );
-  expect(maxWindowOperations).toBeLessThanOrEqual(48);
+  expect(maxWindowOperations).toBeLessThanOrEqual(40);
   const channelWindow = windows.find(({ label }) => label === "channel");
   expect(channelWindow?.askHeadRequests).toBeGreaterThan(0);
   expect(channelWindow?.askHeadRequests).toBeLessThanOrEqual(20);
   expect(journey.total).toBeLessThanOrEqual(128);
+});
+
+test("2,001-prospect Leads startup stays below the shared relay budget", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const relaySecret = generateSecretKey();
+  await installMockBridge(
+    page,
+    {
+      relaySelf: getPublicKey(relaySecret),
+      companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
+      referenceWorkspace: true,
+      referenceWorkspaceRole: "owner",
+      referenceWorkspaceLeadCount: 2_001,
+      referenceWorkspaceOutreachReady: true,
+      relayRole: "owner",
+      relayRequiresMembership: true,
+    },
+    { forceRelayPacing: true },
+  );
+
+  const startedAt = Date.now();
+  await page.goto("/#/leads", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("leads-primary-table")).toBeVisible();
+  const ownerWindow = await captureWindow(
+    page,
+    "owner-shaped-leads",
+    startedAt,
+  );
+  const samples = await page.evaluate(
+    ({ start, end }) => {
+      const frameWindow = window as RelayFrameWindow;
+      return (frameWindow.__BUZZ_E2E_RELAY_FRAMES__ ?? []).filter(
+        (sample) => sample.at >= start && sample.at < end,
+      );
+    },
+    { start: startedAt, end: startedAt + WINDOW_MS },
+  );
+  const businessBatchSizes = samples
+    .flatMap(({ frame }) => {
+      const count = businessRecordBatchSize(frame);
+      return count === null ? [] : [count];
+    })
+    .sort((left, right) => left - right);
+  const prospectContinuationRequests = samples.filter(({ frame }) =>
+    isBusinessRecordProspectContinuation(frame),
+  ).length;
+
+  console.log(
+    `[relay-request-budget] ${JSON.stringify({ ownerWindow, businessBatchSizes, prospectContinuationRequests })}`,
+  );
+  expect(ownerWindow.total).toBeLessThanOrEqual(40);
+  expect(businessBatchSizes).toEqual([3, 6]);
+  expect(prospectContinuationRequests).toBe(4);
 });

@@ -1,7 +1,11 @@
 //! Real persistent-WS receive loop -> real HTTP submit admission regressions.
 use super::*;
 use crate::relay_admission::{reset_rate_limit_gate, TEST_SERIAL};
-use axum::{routing::post, Json, Router};
+use axum::{response::IntoResponse, routing::post, Json, Router};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 async fn http_relay() -> (
     String,
@@ -38,6 +42,36 @@ async fn http_relay() -> (
         axum::serve(listener, router).await.unwrap();
     });
     (format!("http://{address}"), received, server)
+}
+
+async fn http_query_rate_limits_once() -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let route_attempts = Arc::clone(&attempts);
+    let router = Router::new().route(
+        "/query",
+        post(move || {
+            let attempts = Arc::clone(&route_attempts);
+            async move {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    (
+                        axum::http::StatusCode::TOO_MANY_REQUESTS,
+                        Json(serde_json::json!({
+                            "error": "rate-limited: quota exceeded; retry in 3s"
+                        })),
+                    )
+                        .into_response()
+                } else {
+                    (axum::http::StatusCode::OK, Json(serde_json::json!([]))).into_response()
+                }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    (format!("http://{address}"), attempts, server)
 }
 
 fn reply(keys: &Keys) -> nostr::Event {
@@ -139,16 +173,20 @@ async fn persistent_ws_shared_unavailable_still_withholds_http_reply() {
 }
 
 #[tokio::test]
-async fn http_429_still_withholds_http_reply_then_accepts_it() {
+async fn exhausted_query_retries_still_withhold_the_following_http_reply() {
     let _serial = TEST_SERIAL.lock().await;
     reset_rate_limit_gate();
     let (http_url, mut submitted, server) = http_relay().await;
     let state = crate::app_state::build_app_state();
     let keys = Keys::generate();
     let event = reply(&keys);
-    let error = crate::relay::query_relay_at(&state, &http_url, &[serde_json::json!({"limit": 1})])
-        .await
-        .unwrap_err();
+    let error = tokio::time::timeout(
+        Duration::from_secs(5),
+        crate::relay::query_relay_at(&state, &http_url, &[serde_json::json!({"limit": 1})]),
+    )
+    .await
+    .expect("a persistently limited query must exhaust its bounded retries")
+    .unwrap_err();
     assert_eq!(error, "relay rate-limited: retry in 1s");
     let before = std::time::Instant::now();
     let outcome = tokio::time::timeout(
@@ -166,4 +204,30 @@ async fn http_429_still_withholds_http_reply_then_accepts_it() {
     );
     assert!(response.accepted);
     assert_eq!(received, event);
+}
+
+#[tokio::test]
+async fn http_429_query_retries_through_the_production_bridge_path() {
+    let _serial = TEST_SERIAL.lock().await;
+    reset_rate_limit_gate();
+    let (http_url, attempts, server) = http_query_rate_limits_once().await;
+    let state = crate::app_state::build_app_state();
+    let started_at = std::time::Instant::now();
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        crate::relay::query_relay_at(&state, &http_url, &[serde_json::json!({"limit": 1})]),
+    )
+    .await;
+    server.abort();
+    reset_rate_limit_gate();
+
+    let events = outcome
+        .expect("a three-second HTTP retry hint must recover within five seconds")
+        .expect("the second production bridge query must succeed");
+    assert!(events.is_empty());
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert!(
+        started_at.elapsed() >= Duration::from_millis(2_900),
+        "the retry must wait for the relay's hinted cooldown"
+    );
 }

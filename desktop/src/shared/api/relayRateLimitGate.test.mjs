@@ -52,6 +52,7 @@ const {
   resetRateLimitGate,
   rateLimitRemainingMs,
   parseRateLimitHint,
+  subscribeToRateLimitRecovery,
   MAX_HINT_SECONDS,
 } = await import("./relayRateLimitGate.ts");
 
@@ -121,6 +122,44 @@ test("shorter hint does not shrink an existing longer window", () => {
   assert.equal(isRateLimited(), true);
   tickTo(20_001);
   assert.equal(isRateLimited(), false);
+});
+
+test("recovery subscribers fire once after the final extended gate expires", () => {
+  reset(0);
+  let recoveries = 0;
+  const unsubscribe = subscribeToRateLimitRecovery(() => {
+    recoveries += 1;
+  });
+  try {
+    activateRateLimit(5);
+    activateRateLimit(20);
+    tickTo(5_001);
+    assert.equal(recoveries, 0, "the replaced shorter timer must not notify");
+    tickTo(20_001);
+    assert.equal(recoveries, 1);
+  } finally {
+    unsubscribe();
+  }
+});
+
+test("resetting a gate does not notify recovery subscribers", () => {
+  reset(0);
+  let recoveries = 0;
+  const unsubscribe = subscribeToRateLimitRecovery(() => {
+    recoveries += 1;
+  });
+  try {
+    activateRateLimit(20);
+    resetRateLimitGate();
+    tickTo(20_001);
+    assert.equal(
+      recoveries,
+      0,
+      "a community switch must not invalidate the previous community's queries",
+    );
+  } finally {
+    unsubscribe();
+  }
 });
 
 test("null hint uses 10s default", () => {

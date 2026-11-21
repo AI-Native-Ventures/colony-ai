@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  handleFirstSubscriptionEvent,
   handleRelayClosed,
   handleSubscriptionEose,
 } from "./relayClosedRecovery.ts";
@@ -442,6 +443,68 @@ test("first-event request resolves null when EOSE arrives without an event", asy
 
   assert.equal(await firstEventPromise, null);
   assert.equal(subscriptions.has(requestedSubId), false);
+});
+
+test("rate-limited first-event CLOSED reopens the production read and resolves without remount", async () => {
+  resetAll(0);
+  const subscriptions = new Map();
+  const requests = [];
+  const closed = [];
+  const firstEvent = {
+    id: "first-recovered",
+    pubkey: "a".repeat(64),
+    kind: 13_534,
+    content: "membership",
+    created_at: 1,
+    tags: [],
+    sig: "b".repeat(128),
+  };
+  const request = requestFirstEventGated(
+    subscriptions,
+    async (payload) => {
+      requests.push(payload);
+    },
+    async (subId) => {
+      closed.push(subId);
+    },
+    { kinds: [13_534], limit: 1 },
+    25_000,
+  );
+
+  await Promise.resolve();
+  const initialSubId = requests[0]?.[1];
+  assert.match(initialSubId, /^first-/);
+  handleRelayClosed({
+    subscriptions,
+    subId: initialSubId,
+    message: "rate-limited: quota exceeded; retry in 1s",
+    sendReq: async (subId, filter) => {
+      requests.push(["REQ", subId, filter]);
+    },
+  });
+  assert.equal(
+    subscriptions.has(initialSubId),
+    false,
+    "the refused first-event subscription must be replaced",
+  );
+  assert.equal(requests.length, 1, "the retry must wait for the hint");
+
+  tickTo(1_001);
+  await Promise.resolve();
+  const retrySubId = requests[1]?.[1];
+  assert.match(retrySubId, /^first-/);
+  handleFirstSubscriptionEvent({
+    subscriptions,
+    subId: retrySubId,
+    event: firstEvent,
+    closeSubscription: async (subId) => {
+      closed.push(subId);
+    },
+  });
+
+  assert.deepEqual(await request, firstEvent);
+  assert.deepEqual(closed, [retrySubId]);
+  assert.equal(subscriptions.has(retrySubId), false);
 });
 
 test("live readiness distinguishes EOSE from CLOSED", () => {

@@ -5,9 +5,13 @@
 //! `archive/sync.rs` and its `sync_tests.rs`.
 
 use super::*;
+use crate::relay_operation_pacer::{
+    RelayOperationPacer, RELAY_OPERATION_BURST_CAPACITY, RELAY_OPERATION_INTERVAL,
+};
 use futures_util::{SinkExt, StreamExt};
 use nostr::EventBuilder;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_util::sync::CancellationToken;
 
 /// The subscription id every test below drives.
 const PROBE_ID: &str = "archive:probe";
@@ -65,6 +69,9 @@ async fn stub_relay() -> (String, mpsc::Receiver<Frame>, mpsc::Sender<StubComman
                                 ))
                                 .await
                                 .expect("send auth ok");
+                            if req_tx.send(Frame::Auth).await.is_err() {
+                                return;
+                            }
                         }
                         Some("REQ") => {
                             let id = frame[1].as_str().unwrap_or_default().to_string();
@@ -106,6 +113,7 @@ async fn stub_relay() -> (String, mpsc::Receiver<Frame>, mpsc::Sender<StubComman
 /// A client→relay frame the stub observed, in wire order.
 #[derive(Debug, PartialEq, Eq)]
 enum Frame {
+    Auth,
     Req(String),
     Close(String),
 }
@@ -138,6 +146,17 @@ async fn next_req(frames: &mut mpsc::Receiver<Frame>, label: &str) -> String {
     loop {
         if let Frame::Req(id) = next_frame(frames, label).await {
             return id;
+        }
+    }
+}
+
+async fn next_auth(frames: &mut mpsc::Receiver<Frame>) {
+    loop {
+        if matches!(
+            next_frame(frames, "the authenticated session").await,
+            Frame::Auth
+        ) {
+            return;
         }
     }
 }
@@ -226,6 +245,51 @@ async fn finite_fetch_multiplexes_with_persistent_delivery_on_a_real_websocket()
         .unwrap();
     assert_eq!(delivered.subscription_id, PROBE_ID);
     assert_eq!(*delivered.event, persistent);
+    session.shutdown();
+}
+
+/// Native catalog and archive reads use their own authenticated WebSocket,
+/// not the webview socket plug-in. Their `REQ`s must still wait behind the
+/// same injected native operation pacer.
+#[tokio::test]
+async fn native_relay_reads_wait_for_the_shared_operation_pacer() {
+    let (relay_url, mut frames, _commands) = stub_relay().await;
+    let pacer = Arc::new(RelayOperationPacer::default());
+    let (session, _events) = start_with_operation_pacer(
+        relay_url.clone(),
+        Keys::generate(),
+        None,
+        Arc::clone(&pacer),
+    )
+    .await;
+    next_auth(&mut frames).await;
+
+    // Empty the shared opening burst after authentication, so the production
+    // reconcile below can only send after the next shared refill interval.
+    let cancel = CancellationToken::new();
+    for _ in 0..RELAY_OPERATION_BURST_CAPACITY {
+        pacer.acquire(&relay_url, &cancel).await.unwrap();
+    }
+
+    session.set_subscriptions(vec![probe_subscription()]).await;
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            next_req(&mut frames, "the paced REQ")
+        )
+        .await
+        .is_err(),
+        "a native REQ bypassed the shared owner operation pacer"
+    );
+    assert_eq!(
+        tokio::time::timeout(
+            RELAY_OPERATION_INTERVAL * 3,
+            next_req(&mut frames, "the paced native REQ"),
+        )
+        .await
+        .expect("native REQ should leave after the shared refill"),
+        PROBE_ID,
+    );
     session.shutdown();
 }
 

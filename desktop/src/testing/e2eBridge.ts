@@ -1182,6 +1182,10 @@ type E2eConfig = {
     }>;
     /** Relay-signed co-founder heads used by the co-founder UI E2E fixture. */
     cofounderSettings?: MockCofounderSettings;
+    /** Reject successive co-founder settings reads in order, then answer. */
+    cofounderSettingsReadErrors?: string[];
+    /** Hold successive co-founder settings reads for this long (ms), then answer. */
+    cofounderSettingsReadDelaysMs?: number[];
     /** Relay-signed kind 30680 wake status used by Scout setup E2E coverage. */
     companyLeadStatus?: MockCofounderLeadStatus | null;
     companyFunctionHeads?: MockCompanyFunctionHead[];
@@ -10703,12 +10707,10 @@ function acceptMockToolPermissionAction(
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
-function emitMockHistory(
-  socket: MockSocket,
-  subId: string,
+function mockHistoryEvents(
   channelIds: string[],
   filter: MockFilter,
-) {
+): RelayEvent[] {
   const events = channelIds
     .flatMap((channelId) => [
       ...getMockMessageStore(channelId),
@@ -10769,9 +10771,26 @@ function emitMockHistory(
       (left, right) =>
         left.created_at - right.created_at || left.id.localeCompare(right.id),
     );
+  return events;
+}
+
+function emitMockHistory(
+  socket: MockSocket,
+  subId: string,
+  requests: ReadonlyArray<{ channelIds: string[]; filter: MockFilter }>,
+) {
+  const events = new Map<string, RelayEvent>();
+  for (const { channelIds, filter } of requests) {
+    for (const event of mockHistoryEvents(channelIds, filter)) {
+      events.set(event.id, event);
+    }
+  }
 
   const emit = () => {
-    for (const event of events) {
+    for (const event of [...events.values()].sort(
+      (left, right) =>
+        left.created_at - right.created_at || left.id.localeCompare(right.id),
+    )) {
       sendWsText(socket.handler, ["EVENT", subId, event]);
     }
     sendWsText(socket.handler, ["EOSE", subId]);
@@ -20540,10 +20559,21 @@ function sendToMockSocket(args: {
     }
 
     if (filter.kinds?.includes(KIND_COFOUNDER_HEAD)) {
-      for (const event of filterMockCofounderHeads(filter)) {
-        sendWsText(socket.handler, ["EVENT", subId, event]);
-      }
-      sendWsText(socket.handler, ["EOSE", subId]);
+      const readError = getConfig()?.mock?.cofounderSettingsReadErrors?.shift();
+      const readDelayMs =
+        getConfig()?.mock?.cofounderSettingsReadDelaysMs?.shift() ?? 0;
+      const answer = () => {
+        if (readError) {
+          sendWsText(socket.handler, ["CLOSED", subId, readError]);
+          return;
+        }
+        for (const event of filterMockCofounderHeads(filter)) {
+          sendWsText(socket.handler, ["EVENT", subId, event]);
+        }
+        sendWsText(socket.handler, ["EOSE", subId]);
+      };
+      if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
+      else answer();
       return;
     }
 
@@ -20783,14 +20813,21 @@ function sendToMockSocket(args: {
           sendWsText(socket.handler, ["CLOSED", subId, readError]);
           return;
         }
-        emitMockHistory(socket, subId, channelIds, filter);
+        emitMockHistory(socket, subId, [{ channelIds, filter }]);
       };
       if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
       else answer();
       return;
     }
 
-    emitMockHistory(socket, subId, channelIds, filter);
+    emitMockHistory(
+      socket,
+      subId,
+      filters.map((historyFilter) => ({
+        channelIds: historyFilter["#h"] ?? [],
+        filter: historyFilter,
+      })),
+    );
     return;
   }
 

@@ -14,6 +14,7 @@ import {
 } from "@/shared/constants/kinds";
 import {
   getTextPayload,
+  relaySubscriptionFilters,
   toRelayFrames,
   type ConnectionState,
   type LiveSubscriptionReadiness,
@@ -31,6 +32,7 @@ import {
 import {
   clearClosedRetry,
   flushEvents,
+  handleFirstSubscriptionEvent,
   handleRelayClosed,
   handleSubscriptionEose,
   prepareSubscriptionEvent,
@@ -83,6 +85,7 @@ import {
   type SharedLiveSubscription,
 } from "@/shared/api/relayClientSubscriptionRegistry";
 import { buildThreadReferenceTags } from "@/features/messages/lib/threading";
+const MAX_FILTERS_PER_REQUEST = 10;
 type UserStatusInput = { text: string; emoji: string; expiresAt?: number };
 export class RelayClient {
   private wsId: number | null = null;
@@ -242,6 +245,19 @@ export class RelayClient {
     return this.fetchHistory(filter);
   }
 
+  /** Fetch independently limited filters through one Nostr REQ. */
+  async fetchEventsForFilters(
+    filters: readonly RelaySubscriptionFilter[],
+  ): Promise<RelayEvent[]> {
+    if (filters.length === 0) return [];
+    if (filters.length > MAX_FILTERS_PER_REQUEST) {
+      throw new Error(
+        `Relay requests support at most ${MAX_FILTERS_PER_REQUEST} filters.`,
+      );
+    }
+    return this.fetchHistory(filters);
+  }
+
   async fetchFirstEvent(
     filter: RelaySubscriptionFilter,
   ): Promise<RelayEvent | null> {
@@ -255,13 +271,15 @@ export class RelayClient {
     );
   }
 
-  private async fetchHistory(filter: RelaySubscriptionFilter) {
+  private async fetchHistory(
+    filters: RelaySubscriptionFilter | readonly RelaySubscriptionFilter[],
+  ) {
     await this.ensureConnected();
-    const key = stableSerialize(filter);
+    const key = stableSerialize(filters);
     const existing = this.inFlightHistoryRequests.get(key);
     if (existing) return existing;
 
-    const request = this.requestHistory(filter);
+    const request = this.requestHistory(filters);
     this.inFlightHistoryRequests.set(key, request);
     try {
       return await request;
@@ -273,13 +291,13 @@ export class RelayClient {
   }
 
   private requestHistory(
-    filter: RelaySubscriptionFilter,
+    filters: RelaySubscriptionFilter | readonly RelaySubscriptionFilter[],
   ): Promise<RelayEvent[]> {
     return requestHistoryGated(
       this.subscriptions,
       (payload) => this.sendRaw(payload),
       (subId) => this.closeSubscription(subId),
-      filter,
+      filters,
       HISTORY_TIMEOUT_MS,
     );
   }
@@ -714,7 +732,9 @@ export class RelayClient {
     const subscription = this.subscriptions.get(payload[1]);
     const visibleChannels =
       subscription?.mode === "live" || subscription?.mode === "history"
-        ? subscription.filter["#h"]
+        ? relaySubscriptionFilters(subscription).flatMap(
+            (filter) => filter["#h"] ?? [],
+          )
         : undefined;
     if (
       this.visibleChannelId &&
@@ -888,9 +908,9 @@ export class RelayClient {
         subscriptions: this.subscriptions,
         subId: rest[0],
         message: typeof rest[1] === "string" ? rest[1] : "",
-        sendReq: (subId, filter) =>
+        sendReq: (subId, filters) =>
           this.sendRawWithReconnectRetry(
-            ["REQ", subId, filter],
+            ["REQ", subId, ...filters],
             "Failed to restore relay subscription after CLOSED.",
           ),
         closeSubscription: (subId) => this.closeSubscription(subId),
@@ -949,7 +969,12 @@ export class RelayClient {
     }
 
     if (subscription.mode === "first") {
-      subscription.onEvent(event);
+      handleFirstSubscriptionEvent({
+        subscriptions: this.subscriptions,
+        subId,
+        event,
+        closeSubscription: (id) => this.closeSubscription(id),
+      });
       return;
     }
 
