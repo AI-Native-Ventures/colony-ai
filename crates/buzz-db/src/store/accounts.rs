@@ -56,7 +56,7 @@ pub struct AccountRecord {
 /// Result of the final database fence before an admin password session is issued.
 pub enum AdminPasswordSigninAccount {
     /// The current row still matches the verified password account and is unlocked.
-    Eligible(AccountRecord),
+    Eligible(Box<AccountRecord>),
     /// The current row still matches, but the normal account sign-in policy locked it.
     Locked,
 }
@@ -260,7 +260,7 @@ impl Db {
         let eligible: bool = row.try_get("password_signin_eligible")?;
         let account = account_from_row(row)?;
         Ok(Some(if eligible {
-            AdminPasswordSigninAccount::Eligible(account)
+            AdminPasswordSigninAccount::Eligible(Box::new(account))
         } else {
             AdminPasswordSigninAccount::Locked
         }))
