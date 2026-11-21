@@ -45,8 +45,8 @@ const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 pub(crate) const START_IP_RATE_LIMIT: u64 = 20;
 /// Per-minute operator email-code start quota for one opaque email hash.
 pub(crate) const START_EMAIL_RATE_LIMIT: u64 = 5;
-const VERIFY_IP_RATE_LIMIT: u64 = 30;
-const VERIFY_EMAIL_RATE_LIMIT: u64 = 10;
+pub(super) const VERIFY_IP_RATE_LIMIT: u64 = 30;
+pub(super) const VERIFY_EMAIL_RATE_LIMIT: u64 = 10;
 
 const IDENTITY_HASH_LABEL: &[u8] = b"colony-admin-email-identity-v1\0";
 const IP_RATE_HASH_LABEL: &[u8] = b"colony-admin-email-ip-rate-v1\0";
@@ -134,7 +134,7 @@ enum CodeVerification {
 /// they identify a deployment/configuration condition without retaining or
 /// logging the requested address, code, or client address.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum StartReason {
+pub(super) enum StartReason {
     Sent,
     NotAllowlisted,
     NoAccount,
@@ -169,7 +169,7 @@ fn requested_response() -> Response {
         .into_response()
 }
 
-fn generic_failure_response() -> Response {
+pub(super) fn generic_failure_response() -> Response {
     // This deliberately does not use ApiError::unauthorized(), which advertises
     // the unrelated NIP-98 challenge and would distinguish code failures.
     (
@@ -224,7 +224,7 @@ fn ip_bucket(headers: &HeaderMap, peer: &ConnectInfo<SocketAddr>) -> String {
     }
 }
 
-fn ip_bucket_hash(
+pub(super) fn ip_bucket_hash(
     kek: &[u8; 32],
     headers: &HeaderMap,
     peer: &ConnectInfo<SocketAddr>,
@@ -233,7 +233,7 @@ fn ip_bucket_hash(
     keyed_hash(kek, IP_BUCKET_HASH_LABEL, &[bucket.as_bytes()])
 }
 
-fn ip_rate_hash(
+pub(super) fn ip_rate_hash(
     kek: &[u8; 32],
     headers: &HeaderMap,
     peer: &ConnectInfo<SocketAddr>,
@@ -285,14 +285,11 @@ fn email_lockout_key(email_hash: &[u8; 32]) -> String {
     format!("colony:admin-email-lockout:{}", hex::encode(email_hash))
 }
 
-fn operator_email_pubkey(
+pub(super) fn operator_email_pubkey(
     state: &AppState,
     email: &str,
     account: Option<&buzz_db::accounts::AccountRecord>,
 ) -> Result<String, StartReason> {
-    if state.config.operator_email_login_status() != OperatorEmailLoginStatus::Enabled {
-        return Err(StartReason::MailUnconfigured);
-    }
     let Some(configured) = state
         .config
         .relay_operator_emails
@@ -322,7 +319,7 @@ fn operator_email_pubkey(
     }
 }
 
-async fn audit(
+pub(super) async fn audit(
     state: &AppState,
     operation: &'static str,
     outcome: &'static str,
@@ -354,7 +351,7 @@ async fn record_start_result(
     log_start_reason(reason);
 }
 
-async fn audit_without_email(
+pub(super) async fn audit_without_email(
     state: &AppState,
     operation: &'static str,
     outcome: &'static str,
@@ -385,7 +382,7 @@ async fn record_start_result_without_email(
     record_start_result(state, reason, &ZERO_HASH, &ip_bucket_hash).await;
 }
 
-async fn rate_allowed(
+pub(super) async fn rate_allowed(
     state: &AppState,
     ip_scope: OpaqueRateLimitScope,
     email_scope: OpaqueRateLimitScope,
@@ -741,6 +738,10 @@ pub(super) async fn verify(
         audit_without_email(&state, "verify", "method_unavailable", &headers, &peer).await;
         return Ok(generic_failure_response());
     };
+    if state.config.operator_email_login_status() != OperatorEmailLoginStatus::Enabled {
+        audit_without_email(&state, "verify", "method_unavailable", &headers, &peer).await;
+        return Ok(generic_failure_response());
+    }
     let email_hash = match email_identity_hash(kek, &email) {
         Ok(hash) => hash,
         Err(_) => return Ok(generic_failure_response()),

@@ -103,6 +103,10 @@ pub enum OpaqueRateLimitScope {
     AdminEmailVerifyIp,
     /// Verifying an emailed admin session, grouped by normalized email hash.
     AdminEmailVerifyEmail,
+    /// Signing in to the admin with a password, grouped by source IP.
+    AdminPasswordSigninIp,
+    /// Signing in to the admin with a password, grouped by normalized email hash.
+    AdminPasswordSigninEmail,
 }
 
 impl OpaqueRateLimitScope {
@@ -113,6 +117,8 @@ impl OpaqueRateLimitScope {
             Self::AdminEmailStartEmail => "admin-email-start-email",
             Self::AdminEmailVerifyIp => "admin-email-verify-ip",
             Self::AdminEmailVerifyEmail => "admin-email-verify-email",
+            Self::AdminPasswordSigninIp => "admin-password-signin-ip",
+            Self::AdminPasswordSigninEmail => "admin-password-signin-email",
         }
     }
 }
@@ -442,6 +448,33 @@ mod tests {
                 "42".repeat(32)
             )
         );
+    }
+
+    #[test]
+    fn password_signin_rate_limit_scopes_do_not_share_email_code_counters() {
+        let identifier = [0x42; 32];
+        let password_ip =
+            opaque_rate_limit_key(OpaqueRateLimitScope::AdminPasswordSigninIp, &identifier);
+        let password_email =
+            opaque_rate_limit_key(OpaqueRateLimitScope::AdminPasswordSigninEmail, &identifier);
+        let email_verify =
+            opaque_rate_limit_key(OpaqueRateLimitScope::AdminEmailVerifyEmail, &identifier);
+
+        assert_eq!(
+            password_ip,
+            format!(
+                "buzz:ratelimit:opaque:admin-password-signin-ip:{}",
+                "42".repeat(32)
+            )
+        );
+        assert_eq!(
+            password_email,
+            format!(
+                "buzz:ratelimit:opaque:admin-password-signin-email:{}",
+                "42".repeat(32)
+            )
+        );
+        assert_ne!(password_email, email_verify);
     }
 
     #[tokio::test]

@@ -93,6 +93,33 @@ no extension is detected, the dashboard shows an installation screen. Once an
 extension is present, each API request is automatically signed with the
 principal's nostr key without any prompts.
 
+### Browser sign-in sessions
+
+Configured relay operators can also establish an `__Host-colony_admin` browser
+cookie through Google, an emailed one-time code, or a Colony account password.
+Each path requires the exact admin host and matching admin-page Origin. The
+cookie is `Secure`, `HttpOnly`, and `SameSite=Strict`; it lasts 30 days.
+
+Password sign-in is `POST /api/admin/v1/session/password` with
+`{"email":"operator@example.com","password":"..."}`. The body uses camelCase
+and rejects unknown fields. The email must be configured in
+`RELAY_OPERATOR_EMAILS`, resolve to a public key in `RELAY_OPERATOR_PUBKEYS`, and
+belong to a verified Colony account with a password. For an
+`email=pubkey` alias, that account proves the password and the cookie names the
+configured alias key. Password sign-in needs `COLONY_ACCOUNT_KEK`, but it does
+not need outbound mail or Resend configuration.
+
+The route applies Redis-backed opaque limits of 30 requests per minute per
+source IP and 10 per minute per email. Five wrong passwords lock that email's
+password sign-in for 15 minutes. The route does not increment, reset, or
+otherwise modify the Colony account's own password failure state. Failure
+responses are deliberately generic and the audit trail stores only keyed email
+and IP-bucket hashes, never a clear email, password, or IP address.
+
+All cookie sessions are rechecked against `RELAY_OPERATOR_PUBKEYS` on every
+request. Remove a key from that setting to revoke its active Google, emailed
+code, and password sessions immediately. NIP-98 remains the browser fallback.
+
 #### Principal model: Operator and Moderator
 
 The signer's pubkey is resolved to a principal with an effective role and a
@@ -282,7 +309,8 @@ The console reads these operator-only metrics routes:
 
 The `days` parameter accepts `7`, `30`, or `90` on the first four routes and
 does not apply to Health. Metrics require an operator principal. Cookie sessions
-come from Colony Google sign-in; NIP-98 remains available as a browser fallback.
+come from Colony Google, emailed-code, or password sign-in; NIP-98 remains
+available as a browser fallback.
 The UI renders null metrics as "Not collected" and shows aggregates, ids, and
 timestamps without message or WhatsApp content.
 

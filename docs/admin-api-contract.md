@@ -7,8 +7,8 @@ This contract is the source of truth for field names. If the UI needs something 
 
 ## 1. Rules for every endpoint
 
-- Base: the existing deployment admin API, `/api/admin/v1`, served on the operator-only admin host (same host and same NIP-98 login the Reports and Feedback pages already use). Data routes live under `/api/admin/v1/metrics/`; the unauthenticated email-session routes are documented in section 1a.
-- Method: data routes are `GET` only. The email-session routes in section 1a are the narrow exception and only mint a cookie after their own host, Origin, allowlist, account, and operator checks.
+- Base: the existing deployment admin API, `/api/admin/v1`, served on the operator-only admin host (same host and same NIP-98 login the Reports and Feedback pages already use). Data routes live under `/api/admin/v1/metrics/`; the unauthenticated browser-session routes are documented in section 1a.
+- Method: data routes are `GET` only. The browser-session routes in section 1a are the narrow exception and only mint a cookie after their own host, Origin, allowlist, account, and operator checks.
 - Auth: either the Colony sign-in session cookie (section 1a) or a NIP-98 signed request exactly as the existing routes (`Authorization: Nostr <base64 event>`, bound to the full path and query). The principal must be a **relay operator** (`probe` returns `role: "operator"`).
   - Not signed or bad signature: `401` (existing admin error body).
   - Signed by a moderator, or by a key that is not on the roster: `403`.
@@ -37,7 +37,7 @@ This contract is the source of truth for field names. If the UI needs something 
 3. `POST /api/admin/v1/session/google` with `Content-Type: application/json`, body `{"idToken": "...", "nonce": "..."}`, sent from the admin page (the request must carry `Origin: https://admin.colony.global`).
    - The relay verifies the token exactly as account sign-in does (signature, issuer, expiry, `email_verified`, audience in `COLONY_GOOGLE_CLIENT_IDS`), and that the token's `nonce` equals the posted one.
    - It looks up the existing Colony account for the verified email (it never creates or links an account) and checks that the **account's public key is listed in `RELAY_OPERATOR_PUBKEYS`**.
-   - `200 {"status":"ok","pubkeyShort":"ab12cd34","expiresInSeconds":28800}` plus `Set-Cookie: __Host-colony_admin=...; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=28800`. The cookie is a signed token (HMAC keyed from the deployment account key); removing the key from `RELAY_OPERATOR_PUBKEYS` ends its sessions at once.
+   - `200 {"status":"ok","pubkeyShort":"ab12cd34","expiresInSeconds":2592000}` plus `Set-Cookie: __Host-colony_admin=...; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`. The cookie is a signed token (HMAC keyed from the deployment account key); all browser sessions last 30 days, and removing the key from `RELAY_OPERATOR_PUBKEYS` ends its sessions at once.
    - `401 unauthorized` for a bad token or nonce; `403 forbidden` for "no such account" and "not an operator" alike (one answer, so the page cannot be used to learn who has an account); `403` also when Colony sign-in is not configured.
 4. Every later admin request is authenticated by the cookie, no `Authorization` header. The existing `GET /api/admin/v1/probe` returns `role: "operator"`, `source: "config"`; the UI uses it to decide between "signed in" and "show sign-in".
 5. Writes (report and feedback actions) with the cookie must also send the header `X-Colony-Admin: 1`; without it they are `403`. Reads (GET) do not need it.
@@ -52,6 +52,29 @@ This contract is the source of truth for field names. If the UI needs something 
 5. `POST /api/admin/v1/session/email/verify` accepts `{"email":"operator@example.com","code":"12345678"}` on the same exact host and Origin. Wrong, expired, reused, locked, rate-limited, non-allowlisted, unverified, and non-operator requests all return the same `401 {"error":{"code":"invalid_email_code","message":"The code is invalid or has expired."}}` response. Successful verification consumes the challenge and returns the same signed `__Host-colony_admin` cookie, flags, TTL, `Operator/Config` principal, and capabilities as Google sign-in.
 6. Every start writes exactly one reason class to the server log and `relay_operator_email_login_audit`: `sent`, `not_allowlisted`, `no_account`, `account_unverified`, `not_operator_key`, `mail_unconfigured`, or `mail_provider_error`. `sent` logs at info and all non-send classes at warn. The log contains no email, code, or IP. Verification continues to write its bounded audit outcome. The table records only the operation, outcome, keyed email/IP-bucket hashes, and time, with no email, code, code-hash, or salt column.
 
+**Email and password** is a second allowlisted sign-in path. It does not replace
+Google or NIP-98 and it cannot authenticate a moderator.
+
+1. `POST /api/admin/v1/session/password` accepts
+   `{"email":"operator@example.com","password":"..."}` only from the exact
+   admin host and Origin. The body is camelCase and rejects unknown fields.
+2. The email must be in `RELAY_OPERATOR_EMAILS`, resolve to a key in
+   `RELAY_OPERATOR_PUBKEYS`, and identify a verified Colony account with a
+   password. For an alias entry, that account proves the password and the
+   returned cookie names the configured alias key.
+3. Password sign-in does not require Resend or another outbound mail setting.
+   It still requires `COLONY_ACCOUNT_KEK` for the opaque identity hashes and
+   session signing key. It applies 30-per-minute source-IP and 10-per-minute
+   email limits, then performs one real or dummy Argon2 verification.
+4. Five wrong passwords lock password sign-in for that opaque email identity
+   for 15 minutes in Redis. The route never writes the Colony account's own
+   failed-attempt or lock columns. Redis failure fails closed.
+5. Wrong passwords, missing or unverified accounts, missing password hashes,
+   non-allowlisted accounts, unrostered keys, and locked paths return the same
+   generic 401 body as email-code verification. Successful sign-in returns the
+   same 30-day cookie response as Google. Password audit rows use operation
+   `password` and only keyed email and IP-bucket hashes.
+
 There is no dedicated email-code form board in the supplied Colony 3.0 admin design shots. The UI therefore extends the existing sign-in card using its established typography, spacing, colors, focus treatment, and button grammar. This is a documented design gap for owner review, not a new board.
 
 **NIP-98 stays** as the operator fallback (a request with an `Authorization: Nostr ...` header ignores the cookie). The metrics boards accept either. Moderators (DB roster) keep NIP-98 only; the cookie sign-in is for keys in `RELAY_OPERATOR_PUBKEYS`.
@@ -62,8 +85,8 @@ There is no dedicated email-code form board in the supplied Colony 3.0 admin des
 2. Fly certificate: `fly certs add admin.colony.global -a colony-relay`, then `fly certs show admin.colony.global -a colony-relay` until it says issued. (If Fly asks for the `_acme-challenge` CNAME, add what it prints.)
 3. Google Cloud console (project that owns the existing Colony Google client ids): create an OAuth client of type **Web application**, authorized redirect URI `https://admin.colony.global/sign-in`, authorized JavaScript origin `https://admin.colony.global`. Append its client id to the Fly secret `COLONY_GOOGLE_CLIENT_IDS` (comma-separated, keep the existing ids). It is an identifier, not a credential; no client secret is used.
 4. Confirm Fly secrets on `colony-relay`: `RELAY_OPERATOR_PUBKEYS` contains the owner's **Colony account public key** (the `accounts.pubkey` for the owner's Google email, hex), and `COLONY_ACCOUNT_KEK` is set (it is, accounts work today).
-5. Set the Fly secret `RELAY_OPERATOR_EMAILS` to the approved operator entries, using plain `email` entries for matching Colony accounts and `email=pubkeyhex` entries for delivery aliases. Keep `RELAY_OPERATOR_PUBKEYS`, `COLONY_ACCOUNT_KEK`, `RESEND_API_KEY`, and `COLONY_MAIL_FROM` present: aliases still require the independent pubkey roster and all email login uses the existing Resend mailer.
-6. Deploy the relay and migration 0065 with this PR. The new routes are checked against `BUZZ_ADMIN_HOST` inside the handlers, so community hosts and installed desktop clients cannot reach or use them.
+5. Set the Fly secret `RELAY_OPERATOR_EMAILS` to the approved operator entries, using plain `email` entries for matching Colony accounts and `email=pubkeyhex` entries for delivery aliases. Keep `RELAY_OPERATOR_PUBKEYS` and `COLONY_ACCOUNT_KEK` present. Email-code sign-in also requires `RESEND_API_KEY` and `COLONY_MAIL_FROM`; password sign-in does not.
+6. Deploy the relay with migration 0069 from this PR. The new routes are checked against `BUZZ_ADMIN_HOST` inside the handlers, so community hosts and installed desktop clients cannot reach or use them.
 7. Tell AD-UI the Google web client id so the page can build the redirect URL (it is public; v1 puts it in the admin bundle as a build-time constant).
 
 ## 2. Endpoints

@@ -2873,12 +2873,12 @@ CREATE TABLE relay_operator_read_audit (
 );
 CREATE INDEX relay_operator_read_audit_recent ON relay_operator_read_audit (read_at DESC);
 
--- Append-only audit for the allowlisted emailed operator-session flow. It has
--- only keyed identity hashes: the code, code hash, and salt are short-lived
--- Redis state and never enter the durable audit database.
+-- Append-only audit for allowlisted operator-session flows. It has only keyed
+-- identity hashes: code material and passwords never enter the durable audit
+-- database.
 CREATE TABLE relay_operator_email_login_audit (
     id UUID NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
-    operation TEXT NOT NULL CHECK (operation IN ('start', 'verify')),
+    operation TEXT NOT NULL CHECK (operation IN ('start', 'verify', 'password')),
     outcome TEXT NOT NULL CHECK (char_length(outcome) BETWEEN 1 AND 64),
     email_hash BYTEA NOT NULL CHECK (octet_length(email_hash) = 32),
     ip_bucket_hash BYTEA NOT NULL CHECK (octet_length(ip_bucket_hash) = 32),

@@ -411,8 +411,8 @@ impl Db {
         Ok(())
     }
 
-    /// Record an emailed operator-session start or verification outcome without
-    /// retaining the email address, source IP, code, code hash, or salt.
+    /// Record an operator-session outcome without retaining the email address,
+    /// source IP, code, code hash, salt, or password.
     #[datastore_span(name = "record_operator_email_login", system = "postgresql")]
     pub async fn record_operator_email_login_audit(
         &self,

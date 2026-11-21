@@ -1,6 +1,6 @@
 //! Email, password, Google, and key-custody account endpoints.
 
-mod crypto;
+pub(crate) mod crypto;
 mod google;
 pub(crate) mod mail;
 

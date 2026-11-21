@@ -1,21 +1,18 @@
 //! "Sign in with your Colony account" for the operator admin.
 //!
-//! The browser sends the person through Google's OpenID Connect redirect
-//! (`response_type=id_token`, with a random nonce it keeps in `sessionStorage`)
-//! and posts the returned ID token and nonce to `POST /session/google`. The
-//! relay verifies the token with the same verifier the account sign-in uses,
-//! finds the Colony account for the verified email, and only when that account's
-//! public key is listed in `RELAY_OPERATOR_PUBKEYS` sets a signed, expiring,
-//! `HttpOnly` session cookie. Nothing else about the account is returned and
-//! no account is ever created here.
+//! The browser can establish a session with Google OpenID Connect, an
+//! allowlisted emailed code, or the password of an allowlisted Colony account.
+//! Each path resolves a configured operator key before it sets a signed,
+//! expiring, `HttpOnly` session cookie. Nothing else about the account is
+//! returned and no account is ever created here.
 //!
 //! The cookie is a stateless token: `v1.<payload>.<mac>` where the MAC is an
 //! HMAC-SHA256 over the payload keyed from the deployment account key
 //! (`COLONY_ACCOUNT_KEK`). Every request re-checks that the key is still in
-//! `RELAY_OPERATOR_PUBKEYS`, so removing a key ends its sessions at once. Writes
-//! made with the cookie also need the `X-Colony-Admin` header (a header only
-//! same-origin script can add) on top of `SameSite=Strict` and the existing
-//! Origin check. NIP-98 stays available as the operator fallback.
+//! `RELAY_OPERATOR_PUBKEYS`, so removing a key ends its 30-day sessions at
+//! once. Writes made with the cookie also need the `X-Colony-Admin` header (a
+//! header only same-origin script can add) on top of `SameSite=Strict` and the
+//! existing Origin check. NIP-98 stays available as the operator fallback.
 
 use std::sync::Arc;
 
@@ -37,6 +34,7 @@ use super::auth::{is_admin_host, origin_matches_host, AdminPrincipal, AdminRole,
 use super::error::ApiError;
 
 mod email;
+mod password;
 
 #[cfg(test)]
 pub(super) use email::{
@@ -48,8 +46,8 @@ pub(super) use email::{
 /// `Path=/` and no `Domain`, so the cookie cannot be set from a sibling host.
 pub(super) const COOKIE_NAME: &str = "__Host-colony_admin";
 
-/// How long a sign-in lasts.
-pub(super) const SESSION_SECS: u64 = 8 * 60 * 60;
+/// How long a browser operator sign-in lasts.
+pub(super) const SESSION_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// Header a cookie-authenticated write must carry.
 pub(super) const CSRF_HEADER: &str = "x-colony-admin";
@@ -63,6 +61,7 @@ pub(super) fn routes() -> Router<Arc<crate::state::AppState>> {
         .route("/session/google", post(google_session))
         .route("/session/email/start", post(email::start))
         .route("/session/email/verify", post(email::verify))
+        .route("/session/password", post(password::signin))
         .route("/session/logout", post(logout))
 }
 
@@ -299,6 +298,7 @@ mod tests {
 
     const NOW: u64 = 1_800_000_000;
     const PK: &str = "ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34";
+    const THIRTY_DAYS_SECS: u64 = 30 * 24 * 60 * 60;
 
     fn key(seed: u8) -> [u8; 32] {
         session_key(&[seed; 32]).expect("key")
@@ -311,10 +311,11 @@ mod tests {
     }
 
     #[test]
-    fn a_token_expires_after_eight_hours() {
+    fn a_token_expires_after_thirty_days() {
+        assert_eq!(SESSION_SECS, THIRTY_DAYS_SECS);
         let token = mint_token(&key(1), PK, NOW).expect("mint");
-        assert!(verify_token(&key(1), &token, NOW + SESSION_SECS - 1).is_some());
-        assert!(verify_token(&key(1), &token, NOW + SESSION_SECS).is_none());
+        assert!(verify_token(&key(1), &token, NOW + THIRTY_DAYS_SECS - 1).is_some());
+        assert!(verify_token(&key(1), &token, NOW + THIRTY_DAYS_SECS).is_none());
     }
 
     #[test]
@@ -372,9 +373,13 @@ mod tests {
         for required in ["__Host-", "Secure", "HttpOnly", "SameSite=Strict", "Path=/"] {
             assert!(text.contains(required), "{required}");
         }
+        assert!(text.contains("Max-Age=2592000"));
         assert!(!text.contains("Domain"));
     }
 }
 
 #[cfg(test)]
 mod email_login_postgres_tests;
+
+#[cfg(test)]
+mod password_login_postgres_tests;
