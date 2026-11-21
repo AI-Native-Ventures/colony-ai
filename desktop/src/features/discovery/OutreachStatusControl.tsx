@@ -25,6 +25,7 @@ import {
 } from "./outreachStatus";
 
 type OutreachStatusControlProps = {
+  effectiveStatus?: OutreachStatus;
   outreach: OutreachStatusRecord | null | undefined;
   currentPubkey?: string | null;
   profiles?: UserProfileLookup;
@@ -50,6 +51,7 @@ function setByLabel(input: {
 
 /** Shared list-table and list-detail control for one persisted outreach state. */
 export function OutreachStatusControl({
+  effectiveStatus,
   outreach,
   currentPubkey,
   profiles,
@@ -59,7 +61,7 @@ export function OutreachStatusControl({
   testId,
 }: OutreachStatusControlProps) {
   const [pending, setPending] = React.useState(false);
-  const status = outreachStatusFor(outreach);
+  const status = effectiveStatus ?? outreachStatusFor(outreach);
   const option = outreachStatusOption(status);
   const by = outreach
     ? setByLabel({ outreach, currentPubkey, profiles })

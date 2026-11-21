@@ -834,6 +834,7 @@ test.describe("Outreach lists", () => {
     page,
   }) => {
     await openReference(page, "/lists", 1440, "light", {
+      mockWhatsApp: true,
       outreachBoard: true,
       outreachStatusBoard: true,
     });
@@ -848,20 +849,23 @@ test.describe("Outreach lists", () => {
     await expect(table.locator("thead th")).toHaveText([
       "Name",
       "Leads",
+      "Messaged",
       "Outreach",
       "Source",
       "Default template",
       "Updated",
     ]);
-    const [leadsBox, outreachBox, sourceBox] = await Promise.all(
-      ["Leads", "Outreach", "Source"].map((label) =>
+    const [leadsBox, messagedBox, outreachBox, sourceBox] = await Promise.all(
+      ["Leads", "Messaged", "Outreach", "Source"].map((label) =>
         table.getByRole("columnheader", { name: label }).boundingBox(),
       ),
     );
-    if (!leadsBox || !outreachBox || !sourceBox) {
+    if (!leadsBox || !messagedBox || !outreachBox || !sourceBox) {
       throw new Error("The outreach-list table headers need bounds.");
     }
     expect(leadsBox.x).toBeLessThan(outreachBox.x);
+    expect(leadsBox.x).toBeLessThan(messagedBox.x);
+    expect(messagedBox.x).toBeLessThan(outreachBox.x);
     expect(outreachBox.x).toBeLessThan(sourceBox.x);
 
     const tableStatus = page.getByTestId(`outreach-status-${STATUS_LIST_ID}`);

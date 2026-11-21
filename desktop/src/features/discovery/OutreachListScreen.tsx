@@ -21,9 +21,7 @@ import { useMediaBreakpoint } from "@/shared/hooks/use-mobile";
 import {
   useWhatsAppLeadData,
   findWhatsAppContactForLead,
-  getWhatsAppLeadStatus,
 } from "@/features/whatsapp-outreach/whatsappLeadStatus";
-import { whatsappLeadStatusLabel } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 import { buildOutreachListLink } from "@/shared/lib/entityLink";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
@@ -37,6 +35,7 @@ import { OutreachStatusControl } from "./OutreachStatusControl";
 import {
   countOutreachStatusFilters,
   filterByOutreachStatus,
+  outreachStatusFor,
   outreachStatusOption,
   shouldAutoMarkOutreachInProgress,
   type OutreachStatusFilter,
@@ -45,6 +44,14 @@ import type { OutreachStatus } from "./businessRecordContract";
 import type { OutreachBatchLead } from "./outreachBatch";
 import { calculateOutreachFitScore } from "./outreachFitScore";
 import { canEdit } from "./leadShared";
+import { calculateOutreachListProgress } from "./outreachListProgress";
+import { OutreachListMessagedCount } from "./OutreachListMessagedCount";
+import {
+  contactedAtLabel,
+  sourceLabel,
+  stageLabel,
+  statusLabel,
+} from "./outreachListPresentation";
 import {
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
@@ -52,92 +59,6 @@ import {
 import { MapOutreachDeskHeader } from "@/features/whatsapp-outreach/MapOutreachDesk";
 
 import "./colony3-leads.css";
-
-function sourceLabel(
-  source: LeadContext["records"]["outreachLists"][number]["record"]["source"],
-  campaignNames: ReadonlyMap<string, string>,
-): string {
-  if (source.kind === "campaign") {
-    return source.campaignId
-      ? (campaignNames.get(source.campaignId) ?? "Discovery campaign")
-      : "Discovery campaign";
-  }
-  return source.kind === "agent" ? "Created by Scout" : "Created by a person";
-}
-
-function stageLabel(
-  prospect: LeadContext["records"]["prospects"][number]["record"]["prospect"],
-): string {
-  if (prospect.qualification === "unreviewed") return "New";
-  switch (prospect.stage) {
-    case "in_conversation":
-      return "In conversation";
-    case "qualified":
-      return "Qualified";
-    case "proposal":
-      return "Proposal";
-    case "won":
-      return "Won";
-    case "lost":
-      return "Lost";
-  }
-}
-
-function statusLabel(
-  leadId: string,
-  phone: string | null,
-  contacts: ReturnType<typeof useWhatsAppLeadData>["contactsQuery"]["data"],
-  inBatchLeadIds: ReadonlySet<string>,
-): string {
-  const contact = findWhatsAppContactForLead(leadId, contacts ?? []);
-  if (contact?.stage === "not_on_whatsapp") return "No WhatsApp";
-  if (!phone && !contact?.e164) return "No phone number";
-  const leadStatus = getWhatsAppLeadStatus(contact, inBatchLeadIds.has(leadId));
-  if (leadStatus === "opted-out") return whatsappLeadStatusLabel(leadStatus);
-  if (leadStatus === "replied" || contact?.stage === "replied") {
-    return "Replied";
-  }
-  if (leadStatus === "in-batch") return whatsappLeadStatusLabel(leadStatus);
-  switch (contact?.lastOutboundState) {
-    case "delivered":
-      return "Delivered";
-    case "read":
-      return "Read";
-    case "failed":
-      return "Failed";
-    case "sent":
-      return "Sent";
-  }
-  return contact?.lastContactedAt ? "Sent" : "Not contacted";
-}
-
-function contactedAtLabel(value: string): string {
-  const date = new Date(value);
-  const dayKey = (candidate: Date) =>
-    new Intl.DateTimeFormat("en-CA", {
-      day: "2-digit",
-      month: "2-digit",
-      timeZone: "Africa/Johannesburg",
-      year: "numeric",
-    }).format(candidate);
-  const today = new Date();
-  if (dayKey(date) === dayKey(today)) {
-    return `Today ${new Intl.DateTimeFormat("en-ZA", {
-      hour: "2-digit",
-      hourCycle: "h23",
-      minute: "2-digit",
-      timeZone: "Africa/Johannesburg",
-    }).format(date)}`;
-  }
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (dayKey(date) === dayKey(yesterday)) return "Yesterday";
-  return new Intl.DateTimeFormat("en-ZA", {
-    day: "numeric",
-    month: "short",
-    timeZone: "Africa/Johannesburg",
-  }).format(date);
-}
 
 export function OutreachListScreen({
   context,
@@ -209,20 +130,80 @@ export function OutreachListScreen({
   const outreachProfilesQuery = useUsersBatchQuery(outreachStatusPubkeys, {
     enabled: outreachStatusPubkeys.length > 0,
   });
+  const leadsById = React.useMemo(
+    () =>
+      new Map(
+        context.records.prospects.map((row) => [row.record.prospectId, row]),
+      ),
+    [context.records.prospects],
+  );
+  const contactsLoading =
+    whatsappStatus.isPending ||
+    (whatsappStatus.data?.connected === true && contactsQuery.isPending);
+  const contactsUnavailableReason = contactsLoading
+    ? null
+    : whatsappStatus.isError
+      ? errorMessage(whatsappStatus.error)
+      : whatsappStatus.data?.connected !== true
+        ? "WhatsApp is not connected for this business."
+        : contactsQuery.isError
+          ? errorMessage(contactsQuery.error)
+          : contactsQuery.data?.truncated
+            ? "WhatsApp has more than 5,000 contacts. Counts are unavailable."
+            : contactsQuery.data === undefined
+              ? "WhatsApp contact status is unavailable."
+              : null;
+  const contactsReady =
+    !contactsLoading &&
+    contactsUnavailableReason === null &&
+    contactsQuery.data !== undefined;
+  const outreachProgressByListId = React.useMemo(() => {
+    if (!contactsReady || !contactsQuery.data) return null;
+    return new Map(
+      allLists.map(({ record }) => [
+        record.listId,
+        calculateOutreachListProgress({
+          contacts: contactsQuery.data,
+          inBatchLeadIds,
+          members: record.members.map((member) => {
+            const row = leadsById.get(member.leadId);
+            const prospect =
+              row?.record.status === "active" ? row.record.prospect : null;
+            return {
+              active: prospect !== null,
+              leadId: member.leadId,
+              phone: prospect?.phone ?? null,
+              whatsappPhone: prospect?.whatsappPhone ?? null,
+            };
+          }),
+        }),
+      ]),
+    );
+  }, [allLists, contactsQuery.data, contactsReady, inBatchLeadIds, leadsById]);
+  const effectiveOutreachStatus = (
+    record: LeadContext["records"]["outreachLists"][number]["record"],
+  ) =>
+    outreachStatusFor(
+      record.outreach,
+      outreachProgressByListId?.get(record.listId),
+    );
   const current = listId
     ? (allLists.find(({ record }) => record.listId === listId) ?? null)
+    : null;
+  const currentProgress = current
+    ? (outreachProgressByListId?.get(current.record.listId) ?? null)
     : null;
   const archiveScopedLists = allLists.filter(({ record }) =>
     showArchived ? record.status === "archived" : record.status === "active",
   );
   const outreachCounts = countOutreachStatusFilters(
     archiveScopedLists,
-    ({ record }) => record.outreach,
+    ({ record }) => effectiveOutreachStatus(record),
   );
   const visibleLists = filterByOutreachStatus(
     archiveScopedLists,
-    outreachFilter,
-    ({ record }) => record.outreach,
+    contactsReady ? outreachFilter : "all",
+    ({ record }) => effectiveOutreachStatus(record),
   )
     .filter(({ record }) =>
       `${record.name} ${record.note ?? ""}`
@@ -230,9 +211,6 @@ export function OutreachListScreen({
         .includes(query.trim().toLocaleLowerCase()),
     )
     .sort((left, right) => right.record.updatedAt - left.record.updatedAt);
-  const leadsById = new Map(
-    context.records.prospects.map((row) => [row.record.prospectId, row]),
-  );
   const qualificationHeadsByLeadId = new Map(
     context.records.qualificationObservations.map((head) => [
       head.record.leadId,
@@ -271,9 +249,6 @@ export function OutreachListScreen({
   const knownWhatsAppCount = listMembers.filter(
     ({ prospect, contact }) =>
       prospect && contact && contact.stage !== "not_on_whatsapp",
-  ).length;
-  const contactedCount = listMembers.filter(({ prospect, contact }) =>
-    Boolean(prospect && contact?.lastContactedAt),
   ).length;
   const repliedCount = listMembers.filter(({ prospect, contact }) =>
     Boolean(prospect && (contact?.lastReplyAt || contact?.stage === "replied")),
@@ -554,11 +529,19 @@ export function OutreachListScreen({
                     className={
                       outreachFilter === value ? "is-selected" : undefined
                     }
+                    disabled={!contactsReady && value !== "all"}
                     key={value}
                     onClick={() => setOutreachFilter(value)}
                     type="button"
                   >
-                    {label} <span>{outreachCounts[value]}</span>
+                    {label}{" "}
+                    <span>
+                      {contactsReady
+                        ? outreachCounts[value]
+                        : contactsLoading
+                          ? "..."
+                          : "-"}
+                    </span>
                   </button>
                 ))}
               </fieldset>
@@ -595,6 +578,7 @@ export function OutreachListScreen({
                   <tr>
                     <th>Name</th>
                     <th>Leads</th>
+                    <th>Messaged</th>
                     <th>Outreach</th>
                     <th>Source</th>
                     <th>Default template</th>
@@ -614,10 +598,21 @@ export function OutreachListScreen({
                         {record.note ? <small>{record.note}</small> : null}
                       </td>
                       <td>{record.members.length}</td>
+                      <td>
+                        <OutreachListMessagedCount
+                          loading={contactsLoading}
+                          progress={outreachProgressByListId?.get(
+                            record.listId,
+                          )}
+                          testId={`outreach-messaged-${record.listId}`}
+                          unavailableReason={contactsUnavailableReason}
+                        />
+                      </td>
                       <td className="c3l-list-outreach-cell">
                         <OutreachStatusControl
                           currentPubkey={context.currentPubkey}
                           disabled={busy}
+                          effectiveStatus={effectiveOutreachStatus(record)}
                           onStatusChange={
                             canWrite && record.status === "active"
                               ? async (status) =>
@@ -661,8 +656,8 @@ export function OutreachListScreen({
             </section>
           )}
           <p className="c3l-list-outreach-explainer">
-            Outreach turns to In progress by itself when the first WhatsApp
-            batch goes out from a list. You, Scout or any agent can change it.
+            Outreach follows message history until you, Scout or any agent sets
+            a status. A set status always stays in control.
           </p>
         </div>
       </main>
@@ -874,7 +869,13 @@ export function OutreachListScreen({
               <h1 className="c3l-title">{current.record.name}</h1>
             )}
             <span className="c3l-list-mobile-subtitle">
-              Outreach list · {current.record.members.length} leads
+              Outreach list · {current.record.members.length} leads ·{" "}
+              <OutreachListMessagedCount
+                loading={contactsLoading}
+                progress={currentProgress}
+                testId="outreach-messaged-detail-mobile"
+                unavailableReason={contactsUnavailableReason}
+              />
             </span>
             <div className="c3l-list-provenance">
               <div className="c3l-list-outreach-field">
@@ -882,6 +883,7 @@ export function OutreachListScreen({
                 <OutreachStatusControl
                   currentPubkey={context.currentPubkey}
                   disabled={busy}
+                  effectiveStatus={effectiveOutreachStatus(current.record)}
                   onStatusChange={
                     canWrite && current.record.status === "active"
                       ? async (status) =>
@@ -898,6 +900,15 @@ export function OutreachListScreen({
                   testId="outreach-status-detail"
                 />
               </div>
+              <span className="c3l-list-messaged">
+                Messaged{" "}
+                <OutreachListMessagedCount
+                  loading={contactsLoading}
+                  progress={currentProgress}
+                  testId="outreach-messaged-detail"
+                  unavailableReason={contactsUnavailableReason}
+                />
+              </span>
               <span className="c3l-list-source">
                 <Compass aria-hidden="true" size={13} />
                 {sourceLabel(current.record.source, campaignNames)}
@@ -987,16 +998,28 @@ export function OutreachListScreen({
           <article className="c3l-list-summary-card">
             <span>With WhatsApp</span>
             <strong>
-              {contactsQuery.isPending ? "..." : knownWhatsAppCount}
+              {contactsReady
+                ? knownWhatsAppCount
+                : contactsLoading
+                  ? "..."
+                  : "-"}
             </strong>
           </article>
           <article className="c3l-list-summary-card">
-            <span>Contacted</span>
-            <strong>{contactsQuery.isPending ? "..." : contactedCount}</strong>
+            <span>Messaged</span>
+            <strong>
+              <OutreachListMessagedCount
+                loading={contactsLoading}
+                progress={currentProgress}
+                unavailableReason={contactsUnavailableReason}
+              />
+            </strong>
           </article>
           <article className="c3l-list-summary-card">
             <span>Replied</span>
-            <strong>{contactsQuery.isPending ? "..." : repliedCount}</strong>
+            <strong>
+              {contactsReady ? repliedCount : contactsLoading ? "..." : "-"}
+            </strong>
           </article>
         </section>
         {renameOpen ? (

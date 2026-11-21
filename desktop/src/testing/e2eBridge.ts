@@ -732,6 +732,8 @@ type E2eConfig = {
     referenceWorkspaceOutreachBoard?: boolean;
     /** Seed durable outreach-status examples for list-status interaction tests. */
     referenceWorkspaceOutreachStatusBoard?: boolean;
+    /** Seed isolated Lists examples for the messaged-count proof. */
+    referenceWorkspaceListMessaged?: boolean;
     /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
     referenceWorkspaceOutreachSidebar?: boolean;
     /** Limit global people search to explicitly seeded board identities. */
@@ -6043,7 +6045,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
   }
   const withoutSales = config.mock?.referenceWorkspaceWithoutSales === true;
   const whatsappGuesthouses = config.mock?.whatsappGuesthouses === true;
-  const outreachBoard = config.mock?.referenceWorkspaceOutreachBoard === true;
+  const listMessaged = config.mock?.referenceWorkspaceListMessaged === true;
+  const outreachBoard =
+    config.mock?.referenceWorkspaceOutreachBoard === true || listMessaged;
   const outreachMentionBoard =
     config.mock?.referenceWorkspaceOutreachMentionBoard === true;
   const outreachSidebar =
@@ -6203,9 +6207,10 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     for (const event of referenceSalesRecordEvents(self, communityId, {
       longLeadNames: config.mock?.referenceWorkspaceLongLeadNames === true,
       whatsappGuesthouses: config.mock?.whatsappGuesthouses === true,
-      outreachBoard: config.mock?.referenceWorkspaceOutreachBoard === true,
+      outreachBoard,
       outreachStatusBoard:
         config.mock?.referenceWorkspaceOutreachStatusBoard === true,
+      listMessaged,
       outreachMentionBoard:
         config.mock?.referenceWorkspaceOutreachMentionBoard === true,
       restaurantsBoard:

@@ -161,6 +161,14 @@ export const REFERENCE_PROSPECT_IDS = {
   "parkview-manor": "1e1a7000-0000-4000-9000-000000001038",
 } as const;
 
+/** Isolated list IDs used only by the Lists messaged-count E2E fixture. */
+export const REFERENCE_LIST_MESSAGED_IDS = {
+  untouched: "3f1a7000-0000-4000-9000-000000000101",
+  partlyMessaged: "3f1a7000-0000-4000-9000-000000000102",
+  finished: "3f1a7000-0000-4000-9000-000000000103",
+  explicitStatus: "3f1a7000-0000-4000-9000-000000000104",
+} as const;
+
 const CLIENT_WORK_SECTION_ID = "reference-client-work";
 const REFERENCE_EVENT_SIGNATURE = "mocksig".repeat(20).slice(0, 128);
 const REFERENCE_RECORD_TIME = Math.floor(
@@ -1587,6 +1595,8 @@ export function referenceSalesRecordEvents(
     outreachBoard?: boolean;
     /** Seed durable outreach-status examples for list-status interaction tests. */
     outreachStatusBoard?: boolean;
+    /** Seed isolated Lists examples for the messaged-count proof. */
+    listMessaged?: boolean;
     outreachMentionBoard?: boolean;
     restaurantsBoard?: boolean;
     /** Add an eligible phone to Form & Field for outreach-list board flows. */
@@ -1602,6 +1612,7 @@ export function referenceSalesRecordEvents(
     options.relaySelfPubkey ?? REFERENCE_RELAY_SELF_PUBKEY;
   const now = Math.floor(Date.now() / 1000);
   const events: RelayEvent[] = [];
+  const outreachBoard = options.outreachBoard || options.listMessaged;
 
   const service = {
     serviceId: REFERENCE_SERVICE_ID,
@@ -1633,7 +1644,7 @@ export function referenceSalesRecordEvents(
 
   const sourceLeadSeeds = options.restaurantsBoard
     ? RESTAURANT_BOARD_LEADS
-    : options.outreachBoard
+    : outreachBoard
       ? OUTREACH_BOARD_LEADS
       : options.outreachMentionBoard
         ? OUTREACH_BOARD_LEADS.filter(([slug]) => slug === "the-olive-house")
@@ -1699,7 +1710,7 @@ export function referenceSalesRecordEvents(
           `1e1a7000-0000-4000-9000-${String(1013 + extraLeadIndex).padStart(12, "0")}`);
     createdProspectIds.push(prospectId);
     const verifiedAt = now - (index + 1) * 2 * 24 * 60 * 60;
-    const qualification = options.outreachBoard
+    const qualification = outreachBoard
       ? index < 96
         ? "unreviewed"
         : "qualified"
@@ -1713,8 +1724,7 @@ export function referenceSalesRecordEvents(
           ? stage
           : "qualified";
     const jacaranda =
-      (options.whatsappGuesthouses || options.outreachBoard) &&
-      slug === "stillroom";
+      (options.whatsappGuesthouses || outreachBoard) && slug === "stillroom";
     const prospect = {
       prospectId,
       party: {
@@ -1759,7 +1769,7 @@ export function referenceSalesRecordEvents(
               "+27 82 555 3391",
             ][index] ?? `+27 60 555 ${String(2000 + index).slice(-4)}`)
           : null
-        : options.outreachBoard
+        : outreachBoard
           ? index < 106
             ? ([
                 "+27 82 555 4410",
@@ -1911,7 +1921,7 @@ export function referenceSalesRecordEvents(
         ? 24
         : 12,
   });
-  if (options.outreachBoard) {
+  if (outreachBoard) {
     addCampaignHead({
       eventId: 1191,
       id: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
@@ -1935,11 +1945,12 @@ export function referenceSalesRecordEvents(
       found: 41,
     });
   }
-  if (options.outreachBoard || options.outreachMentionBoard) {
+  if (outreachBoard || options.outreachMentionBoard) {
     type OutreachListSeed = {
       id: string;
       name: string;
       count: number;
+      memberOffset?: number;
       source: {
         kind: "campaign" | "manual";
         campaignId: string | null;
@@ -1947,61 +1958,102 @@ export function referenceSalesRecordEvents(
       updatedAt: number;
       status?: "active" | "archived";
       outreach?: {
-        status: "in_progress";
+        status: "not_started" | "in_progress" | "done";
         setBy: string;
         setByAgent: true;
         setAt: number;
       };
     };
-    const listSeeds: OutreachListSeed[] = options.outreachMentionBoard
+    const listSeeds: OutreachListSeed[] = options.listMessaged
       ? [
           {
-            id: "3f1a7000-0000-4000-9000-000000000001",
-            name: "Melville guesthouses, Nov",
-            count: 12,
-            source: {
-              kind: "campaign",
-              campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
-            },
+            id: REFERENCE_LIST_MESSAGED_IDS.untouched,
+            name: "Untouched leads",
+            count: 2,
+            memberOffset: 0,
+            source: { kind: "manual", campaignId: null },
             updatedAt: now,
           },
           {
-            id: "3f1a7000-0000-4000-9000-000000000004",
-            name: "Melville guesthouses, follow up",
-            count: 3,
+            id: REFERENCE_LIST_MESSAGED_IDS.partlyMessaged,
+            name: "Partly messaged",
+            count: 2,
+            memberOffset: 2,
             source: { kind: "manual", campaignId: null },
-            updatedAt: now - 4 * 24 * 60 * 60,
+            updatedAt: now - 60,
+          },
+          {
+            id: REFERENCE_LIST_MESSAGED_IDS.finished,
+            name: "Finished outreach",
+            count: 2,
+            memberOffset: 4,
+            source: { kind: "manual", campaignId: null },
+            updatedAt: now - 120,
+          },
+          {
+            id: REFERENCE_LIST_MESSAGED_IDS.explicitStatus,
+            name: "Explicit status wins",
+            count: 2,
+            memberOffset: 6,
+            source: { kind: "manual", campaignId: null },
+            updatedAt: now - 180,
+            outreach: {
+              status: "done",
+              setBy: REFERENCE_AGENTS.scout.pubkey,
+              setByAgent: true,
+              setAt: now - 180,
+            },
           },
         ]
-      : [
-          {
-            id: "3f1a7000-0000-4000-9000-000000000001",
-            name: "Melville guesthouses, Nov",
-            count: 12,
-            source: {
-              kind: "campaign",
-              campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+      : options.outreachMentionBoard
+        ? [
+            {
+              id: "3f1a7000-0000-4000-9000-000000000001",
+              name: "Melville guesthouses, Nov",
+              count: 12,
+              source: {
+                kind: "campaign",
+                campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+              },
+              updatedAt: now,
             },
-            updatedAt: now,
-          },
-          {
-            id: "3f1a7000-0000-4000-9000-000000000002",
-            name: "Rosebank restaurants",
-            count: 41,
-            source: {
-              kind: "campaign",
-              campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants,
+            {
+              id: "3f1a7000-0000-4000-9000-000000000004",
+              name: "Melville guesthouses, follow up",
+              count: 3,
+              source: { kind: "manual", campaignId: null },
+              updatedAt: now - 4 * 24 * 60 * 60,
             },
-            updatedAt: now - 5 * 24 * 60 * 60,
-          },
-          {
-            id: "3f1a7000-0000-4000-9000-000000000003",
-            name: "Follow up after Easter",
-            count: 6,
-            source: { kind: "manual", campaignId: null },
-            updatedAt: now - 21 * 24 * 60 * 60,
-          },
-        ];
+          ]
+        : [
+            {
+              id: "3f1a7000-0000-4000-9000-000000000001",
+              name: "Melville guesthouses, Nov",
+              count: 12,
+              source: {
+                kind: "campaign",
+                campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.guesthouses,
+              },
+              updatedAt: now,
+            },
+            {
+              id: "3f1a7000-0000-4000-9000-000000000002",
+              name: "Rosebank restaurants",
+              count: 41,
+              source: {
+                kind: "campaign",
+                campaignId: REFERENCE_DISCOVERY_CAMPAIGN_IDS.restaurants,
+              },
+              updatedAt: now - 5 * 24 * 60 * 60,
+            },
+            {
+              id: "3f1a7000-0000-4000-9000-000000000003",
+              name: "Follow up after Easter",
+              count: 6,
+              source: { kind: "manual", campaignId: null },
+              updatedAt: now - 21 * 24 * 60 * 60,
+            },
+          ];
     if (options.outreachStatusBoard) {
       const scoutOwnedList = listSeeds.find(
         (list) => list.name === "Rosebank restaurants",
@@ -2040,12 +2092,13 @@ export function referenceSalesRecordEvents(
             status: list.status ?? "active",
             source: list.source,
             defaultTemplate: null,
-            members: Array.from(
-              { length: list.count },
-              (_, memberIndex) =>
-                createdProspectIds[memberIndex] ??
-                `1e1a7000-0000-4000-9000-${String(910000 + memberIndex).padStart(12, "0")}`,
-            ).map((leadId) => ({
+            members: Array.from({ length: list.count }, (_, memberIndex) => {
+              const offset = list.memberOffset ?? 0;
+              return (
+                createdProspectIds[offset + memberIndex] ??
+                `1e1a7000-0000-4000-9000-${String(910000 + offset + memberIndex).padStart(12, "0")}`
+              );
+            }).map((leadId) => ({
               leadId,
               addedBy: selfPubkey,
               addedByAgent: false,
