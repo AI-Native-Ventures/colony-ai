@@ -356,7 +356,7 @@ fn client_state(state: &str) -> &str {
 
 /// When an approved (`ready`) row is expected to go out, so the app can say so. A row the
 /// owner released with `send_now` reports that moment; any other new chat waits for the next
-/// send window (the pacing gap and the daily cap can still delay it a little); a row that is
+/// send window (cap-aware pacing and the daily cap can still delay it); a row that is
 /// not a new chat goes out at the next sender pass. `None` for every other state.
 fn sends_at(message: &WhatsappMessage, now: chrono::DateTime<Utc>) -> Option<String> {
     if message.state != "ready" {

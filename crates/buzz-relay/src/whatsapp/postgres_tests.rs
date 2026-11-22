@@ -2815,7 +2815,7 @@ async fn pending_batch_never_sends_and_approved_rows_are_paced_capped_and_roll_o
     fx.run_sender(base() - Duration::hours(7)).await;
     assert_eq!(fx.graph.send_count(), 0, "outside the send window");
 
-    // PACING: one new chat per pass, then a few minutes apart.
+    // PACING: one new chat per pass, then a cap-aware interval.
     fx.run_sender(base()).await;
     assert_eq!(fx.graph.send_count(), 1);
     fx.run_sender(base()).await;

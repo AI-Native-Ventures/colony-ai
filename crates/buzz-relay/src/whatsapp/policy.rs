@@ -22,9 +22,12 @@ const SEND_WINDOW_START_SECS: i64 = 8 * 3600;
 const SEND_WINDOW_END_SECS: i64 = 18 * 3600;
 const SECS_PER_DAY: i64 = 86_400;
 /// Smallest gap between two paced new-chat sends.
-pub const MIN_GAP_SECS: i64 = 180;
+pub const MIN_GAP_SECS: i64 = 20;
 /// Largest gap between two paced new-chat sends.
 pub const MAX_GAP_SECS: i64 = 360;
+/// Per-row pacing jitter stays within this percentage of the cap-aware interval.
+const GAP_JITTER_PERCENT: u32 = 20;
+const GAP_JITTER_STEPS: u32 = 2 * GAP_JITTER_PERCENT + 1;
 /// Most rows a batch may have for the owner's `send_now` decision: a test, not a blast.
 pub const SEND_NOW_MAX_ROWS: i64 = 3;
 /// Country code applied to numbers written with a leading zero.
@@ -499,12 +502,19 @@ pub fn next_window_start(now: DateTime<Utc>) -> DateTime<Utc> {
     }
 }
 
-/// A few minutes between two new-chat sends, stable per row so a retry never reshuffles.
-pub fn row_gap(id: &Uuid) -> Duration {
+/// The cap-aware gap for a new-chat row, with stable per-row jitter so a retry never reshuffles.
+///
+/// Callers use this only after checking the daily cap and send window. Its bounded fallback
+/// inputs still make it safe if that ordering changes.
+fn paced_row_gap(now: DateTime<Utc>, sent_today: i64, cap: i32, id: &Uuid) -> Duration {
+    let remaining = i64::from(cap).saturating_sub(sent_today).max(1);
+    let seconds_left = (SEND_WINDOW_END_SECS - sast_second_of_day(now)).max(0);
+    let cap_aware_gap = seconds_left / remaining;
     let bytes = id.as_bytes();
     let seed = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-    let span = (MAX_GAP_SECS - MIN_GAP_SECS + 1) as u32;
-    Duration::seconds(MIN_GAP_SECS + i64::from(seed % span))
+    let jitter_percent = i64::from(seed % GAP_JITTER_STEPS) - i64::from(GAP_JITTER_PERCENT);
+    let jittered_gap = cap_aware_gap.saturating_mul(100 + jitter_percent) / 100;
+    Duration::seconds(jittered_gap.clamp(MIN_GAP_SECS, MAX_GAP_SECS))
 }
 
 /// What the sender does with the next new-chat row right now.
@@ -522,13 +532,14 @@ pub enum NewChatDecision {
 }
 
 /// Decide whether the next new chat may go out. The cap is checked first so a cap of 0
-/// stops everything, then the 08:00 to 18:00 window, then the gap since the last send.
+/// stops everything, then the 08:00 to 18:00 window, then the cap-aware gap since the last
+/// send.
 pub fn decide_new_chat(
     now: DateTime<Utc>,
     last_new_chat_at: Option<DateTime<Utc>>,
     sent_today: i64,
     cap: i32,
-    gap: Duration,
+    row_id: &Uuid,
 ) -> NewChatDecision {
     if sent_today >= i64::from(cap) {
         let tomorrow = sast_day_start(now) + Duration::seconds(SECS_PER_DAY);
@@ -540,6 +551,7 @@ pub fn decide_new_chat(
         return NewChatDecision::WaitUntil(next_window_start(now));
     }
     if let Some(last) = last_new_chat_at {
+        let gap = paced_row_gap(now, sent_today, cap, row_id);
         let due = last + gap;
         if now < due {
             return NewChatDecision::WaitUntil(due);
@@ -1100,6 +1112,12 @@ mod tests {
             .expect("test time")
     }
 
+    fn row_id_with_seed(seed: u32) -> Uuid {
+        let mut bytes = [0; 16];
+        bytes[..4].copy_from_slice(&seed.to_be_bytes());
+        Uuid::from_bytes(bytes)
+    }
+
     #[test]
     fn no_thanks_and_stop_are_different_opt_outs() {
         // GUARD: both block sending, the stored reason tells them apart.
@@ -1330,15 +1348,56 @@ mod tests {
     }
 
     #[test]
-    fn row_gap_is_a_few_minutes_and_stable() {
-        for _ in 0..50 {
-            let id = Uuid::new_v4();
-            let gap = row_gap(&id);
-            assert!(
-                gap >= Duration::seconds(MIN_GAP_SECS) && gap <= Duration::seconds(MAX_GAP_SECS)
+    fn cap_aware_gap_spreads_500_sends_across_the_window_with_stable_jitter() {
+        let start = at(6, 0, 0); // 08:00 Johannesburg.
+        let neutral_jitter = row_id_with_seed(20);
+        assert_eq!(
+            paced_row_gap(start, 0, 500, &neutral_jitter),
+            Duration::seconds(72)
+        );
+
+        let low_jitter = row_id_with_seed(0);
+        let high_jitter = row_id_with_seed(40);
+        assert_eq!(
+            paced_row_gap(start, 0, 500, &low_jitter),
+            Duration::seconds(57)
+        );
+        assert_eq!(
+            paced_row_gap(start, 0, 500, &high_jitter),
+            Duration::seconds(86)
+        );
+        assert_eq!(
+            paced_row_gap(start, 0, 500, &low_jitter),
+            paced_row_gap(start, 0, 500, &low_jitter)
+        );
+
+        let mut now = start;
+        let mut last = None;
+        for sent_today in 0..500 {
+            assert_eq!(
+                decide_new_chat(now, last, sent_today, 500, &neutral_jitter),
+                NewChatDecision::SendNow
             );
-            assert_eq!(gap, row_gap(&id));
+            last = Some(now);
+            if sent_today < 499 {
+                now += paced_row_gap(now, sent_today, 500, &neutral_jitter);
+            }
         }
+        assert!(now < at(16, 0, 0), "the 500th send fits before 18:00");
+    }
+
+    #[test]
+    fn cap_aware_gap_clamps_for_small_caps_and_late_starts() {
+        let neutral_jitter = row_id_with_seed(20);
+        assert_eq!(
+            paced_row_gap(at(6, 0, 0), 0, 50, &neutral_jitter),
+            Duration::seconds(MAX_GAP_SECS)
+        );
+        // 14:00 UTC is 16:00 Johannesburg, leaving two hours for 400 sends.
+        assert_eq!(
+            paced_row_gap(at(14, 0, 0), 0, 400, &neutral_jitter),
+            Duration::seconds(MIN_GAP_SECS)
+        );
     }
 
     #[test]
@@ -1359,51 +1418,71 @@ mod tests {
     }
 
     #[test]
-    fn pacing_waits_for_the_window_and_the_gap() {
-        let gap = Duration::seconds(240);
+    fn pacing_waits_for_the_window_and_the_cap_aware_gap() {
+        let row_id = row_id_with_seed(20);
+        let start = at(6, 0, 0);
+        let due = start + Duration::seconds(72);
         assert_eq!(
-            decide_new_chat(at(10, 0, 0), None, 0, 30, gap),
+            decide_new_chat(start, None, 0, 500, &row_id),
             NewChatDecision::SendNow
         );
         assert_eq!(
-            decide_new_chat(at(10, 1, 0), Some(at(10, 0, 0)), 1, 30, gap),
-            NewChatDecision::WaitUntil(at(10, 4, 0))
+            decide_new_chat(due - Duration::seconds(1), Some(start), 1, 500, &row_id),
+            NewChatDecision::WaitUntil(due)
         );
         assert_eq!(
-            decide_new_chat(at(10, 4, 0), Some(at(10, 0, 0)), 1, 30, gap),
+            decide_new_chat(due, Some(start), 1, 500, &row_id),
             NewChatDecision::SendNow
         );
         assert_eq!(
-            decide_new_chat(at(3, 0, 0), None, 0, 30, gap),
+            decide_new_chat(at(3, 0, 0), None, 0, 500, &row_id),
             NewChatDecision::WaitUntil(at(6, 0, 0))
         );
     }
 
     #[test]
     fn cap_stops_sending_and_rolls_to_tomorrow() {
-        let gap = Duration::seconds(240);
+        let row_id = row_id_with_seed(20);
         let tomorrow = Utc
             .with_ymd_and_hms(2026, 10, 30, 6, 0, 0)
             .single()
             .expect("time");
         assert_eq!(
-            decide_new_chat(at(10, 0, 0), None, 30, 30, gap),
+            decide_new_chat(at(10, 0, 0), None, 30, 30, &row_id),
             NewChatDecision::CapReached {
                 resume_at: tomorrow
             }
         );
         assert_eq!(
-            decide_new_chat(at(10, 0, 0), None, 29, 30, gap),
+            decide_new_chat(at(10, 0, 0), None, 29, 30, &row_id),
             NewChatDecision::SendNow
         );
         // The owner raising the cap takes effect on the next decision.
         assert_eq!(
-            decide_new_chat(at(10, 0, 0), None, 30, 50, gap),
+            decide_new_chat(at(10, 0, 0), None, 30, 50, &row_id),
             NewChatDecision::SendNow
         );
         // A cap of zero stops everything.
         assert!(matches!(
-            decide_new_chat(at(10, 0, 0), None, 0, 0, gap),
+            decide_new_chat(at(10, 0, 0), None, 0, 0, &row_id),
+            NewChatDecision::CapReached { .. }
+        ));
+    }
+
+    #[test]
+    fn cap_and_closed_window_short_circuit_before_pacing_math() {
+        let row_id = row_id_with_seed(20);
+        let after_window = at(16, 0, 0); // 18:00 Johannesburg.
+        let tomorrow = Utc
+            .with_ymd_and_hms(2026, 10, 30, 6, 0, 0)
+            .single()
+            .expect("time");
+        assert_eq!(
+            decide_new_chat(after_window, None, 0, 500, &row_id),
+            NewChatDecision::WaitUntil(tomorrow)
+        );
+        assert!(matches!(
+            decide_new_chat(after_window, None, 500, 500, &row_id),
             NewChatDecision::CapReached { .. }
         ));
     }
