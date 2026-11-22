@@ -104,9 +104,10 @@ export function synthesizeEmptyDiscoveryStatus(
   if (getDiscoveredPersonaModelOptions(response, provider) !== null) {
     return null;
   }
-  const agentLabel = response.agentName.trim() || "This agent";
+  const agentLabel =
+    typeof response.agentName === "string" ? response.agentName.trim() : "";
   return {
-    message: `${agentLabel} reported no models. Check that the CLI is installed and signed in, then reopen this screen.`,
+    message: `${agentLabel || "This agent"} reported no models. Check that the CLI is installed and signed in, then reopen this screen.`,
     tone: "warning",
   };
 }
