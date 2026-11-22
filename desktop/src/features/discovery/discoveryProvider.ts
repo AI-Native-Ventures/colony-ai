@@ -175,7 +175,14 @@ export type DiscoveryCampaignProvider = {
   subscribe: (
     listener: (campaign: DiscoveryCampaign | null) => void,
   ) => () => void;
-  start: (input: DiscoveryCampaignInput) => Promise<DiscoveryCampaign>;
+  /**
+   * Starts a campaign. A supplied signal stops only work before the campaign
+   * is persisted, so a timed-out group slot cannot create an orphan later.
+   */
+  start: (
+    input: DiscoveryCampaignInput,
+    signal?: AbortSignal,
+  ) => Promise<DiscoveryCampaign>;
   /** Persists local qualification selection and the bounded run's state. */
   updateQualification?: (
     campaignId: string,

@@ -31,7 +31,7 @@ pub const MAX_CAMPAIGN_LABEL_CHARS: usize = 60;
 /// Most picked tags a campaign keeps.
 pub const MAX_CAMPAIGN_TAGS: usize = 20;
 /// Most leads one campaign can target.
-pub const MAX_CAMPAIGN_TARGET: u32 = 500;
+pub const MAX_CAMPAIGN_TARGET: u32 = 2_000;
 /// Largest found or skipped count a campaign record accepts.
 pub const MAX_CAMPAIGN_COUNT: u32 = 100_000;
 /// Longest WhatsApp template name or language code, in characters.
@@ -1712,14 +1712,14 @@ mod tests {
     }
 
     #[test]
-    fn campaign_target_must_be_1_to_500() {
-        for target in [0, 501] {
+    fn campaign_target_must_be_1_to_2000() {
+        for target in [0, 2_001] {
             let mut a = campaign_create();
             a.target = Some(target);
             assert!(validate_campaign_action(&a).is_err(), "{target}");
         }
         let mut a = campaign_create();
-        a.target = Some(500);
+        a.target = Some(2_000);
         assert!(validate_campaign_action(&a).is_ok());
     }
 

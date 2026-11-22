@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installDiscoveryImageMocks } from "../helpers/discoveryImages";
+import { answerFirstSearchWordOnly } from "./helpers/discoveryFirstWord";
 import { prepareMapShell } from "./mapShellTestSupport";
 
 const PROOF_DIR =
@@ -117,11 +118,25 @@ type MultiCityWindow = Window & {
   __BUZZ_E2E_W10_FAIL_NEXT_START__?: boolean;
   __BUZZ_E2E_W10_TRANSIENT_START_FAILURES__?: number;
   __BUZZ_E2E_W10_FAIL_NEXT_START_GLOBALLY__?: boolean;
+  __BUZZ_E2E_OWNER_SIZED_DISCOVERY_SEARCH_CALLS__?: Array<{
+    location: string;
+    skip: number;
+  }>;
+  __BUZZ_E2E_DISCOVERY_SEARCH__?: (request: {
+    location: string;
+    skip: number;
+  }) => Promise<unknown>;
 };
 
 async function installMultiCityFixture(
   page: Page,
-  scenario: { dark: boolean; height: number; width: number },
+  scenario: {
+    dark: boolean;
+    height: number;
+    width: number;
+    referenceWorkspaceLeadCount?: number;
+    realDiscovery?: boolean;
+  },
 ) {
   await page.addInitScript((locations) => {
     const testWindow = window as MultiCityWindow;
@@ -137,11 +152,49 @@ async function installMultiCityFixture(
       return { locations: matching.length ? matching : locations };
     };
   }, LOCATIONS);
+  if (scenario.realDiscovery) {
+    await page.addInitScript(() => {
+      const testWindow = window as MultiCityWindow;
+      testWindow.__BUZZ_E2E_OWNER_SIZED_DISCOVERY_SEARCH_CALLS__ = [];
+      testWindow.__BUZZ_E2E_DISCOVERY_SEARCH__ = async (request) => {
+        testWindow.__BUZZ_E2E_OWNER_SIZED_DISCOVERY_SEARCH_CALLS__?.push({
+          location: request.location,
+          skip: request.skip,
+        });
+        if (request.skip > 0) return new Promise<never>(() => {});
+        const slug = request.location
+          .toLocaleLowerCase()
+          .replace(/[^a-z0-9]+/gu, "-")
+          .replace(/^-|-$/gu, "");
+        return {
+          provider: "outscraper",
+          places: Array.from({ length: 20 }, (_, index) => ({
+            placeId: `${slug}-${index + 1}`,
+            name: `${request.location} prospect ${index + 1}`,
+            category: "Home goods store",
+            address: `${index + 1} Main Road, ${request.location}`,
+            city: request.location,
+            state: "South Africa",
+            phone: "+27 11 555 0100",
+            rating: 4.5,
+            reviews: 20,
+          })),
+          estimatedCostUsd: 0.06,
+          nextSkip: 20,
+        };
+      };
+    });
+    await answerFirstSearchWordOnly(page);
+  }
   await installDiscoveryImageMocks(page);
   await prepareMapShell(page, {
     cofounderEnabled: true,
     featureEnabled: true,
     height: scenario.height,
+    referenceWorkspaceLeadCount: scenario.referenceWorkspaceLeadCount,
+    referenceWorkspaceDiscoveryStandIn: scenario.realDiscovery
+      ? false
+      : undefined,
     theme: scenario.dark ? "dark" : "light",
     width: scenario.width,
   });
@@ -398,6 +451,23 @@ async function createTenCityCampaign(page: Page) {
     })
     .check();
   await dialog.getByRole("button", { name: "Approve & start 10" }).click();
+  await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
+}
+
+async function createNineCityOwnerCampaign(page: Page) {
+  const dialog = await openCampaignDialog(page);
+  const input = dialog.getByRole("combobox", { name: /Cities|Location/ });
+  for (const [index, location] of LOCATIONS.slice(0, 9).entries()) {
+    if (index % 2 === 0) await chooseByKeyboard(input, location.label);
+    else await chooseByPointer(dialog, input, location.label);
+  }
+  await dialog.getByLabel("Prospects per city").fill("500");
+  await dialog
+    .getByRole("checkbox", {
+      name: "I approve the maximum budget for all 9 campaigns.",
+    })
+    .check();
+  await dialog.getByRole("button", { name: "Approve & start 9" }).click();
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
 }
 
@@ -667,6 +737,111 @@ test("a global start failure leaves each unstarted city visibly not started", as
   await expect(johannesburg).toBeVisible();
   await expectVisibleCityTabStatus(johannesburg, "Not started");
   await assertCityTabGeometry(page, 4);
+});
+
+test("a 2,000-target form separates the target and budget-approval errors", async ({
+  page,
+}) => {
+  await installMultiCityFixture(page, {
+    dark: false,
+    height: 900,
+    width: 1440,
+  });
+  const dialog = await openCampaignDialog(page);
+  const location = dialog.getByRole("combobox", { name: /Cities|Location/ });
+  await chooseByKeyboard(location, LOCATIONS[0].label);
+  const target = dialog.getByLabel("Prospect target");
+  await expect(target).toHaveAttribute("min", "1");
+  await expect(target).toHaveAttribute("max", "2000");
+  await target.fill("2001");
+  await dialog.getByRole("button", { name: "Approve & start" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Choose 1 to 2,000 prospects per city.",
+  );
+  await target.fill("2000");
+  await dialog.getByRole("button", { name: "Approve & start" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Tick the box to approve the maximum budget.",
+  );
+  await dialog
+    .getByRole("checkbox", {
+      name: "I approve this campaign’s maximum budget.",
+    })
+    .check();
+  await dialog.getByRole("button", { name: "Approve & start" }).click();
+  await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
+});
+
+test("owner-sized Sales records still start the first three 500-per-city campaigns", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await installMultiCityFixture(page, {
+    dark: false,
+    height: 900,
+    referenceWorkspaceLeadCount: 2_001,
+    realDiscovery: true,
+    width: 1440,
+  });
+  await createNineCityOwnerCampaign(page);
+  for (const location of LOCATIONS.slice(0, 3)) {
+    await expect(
+      page.getByRole("tab", {
+        name: new RegExp(`${location.label.split(",")[0]}.*Searching`),
+      }),
+    ).toBeVisible();
+  }
+  await expect(page.getByRole("tab")).toHaveCount(10);
+  const firstPageCities = await page.evaluate(() => {
+    const testWindow = window as MultiCityWindow;
+    return [
+      ...new Set(
+        (testWindow.__BUZZ_E2E_OWNER_SIZED_DISCOVERY_SEARCH_CALLS__ ?? [])
+          .filter((call) => call.skip === 0)
+          .map((call) => call.location),
+      ),
+    ].sort();
+  });
+  expect(firstPageCities).toEqual(
+    LOCATIONS.slice(0, 3)
+      .map((location) => location.label)
+      .sort(),
+  );
+});
+
+test("the map-shell catalog opens a starting group and a single campaign", async ({
+  page,
+}) => {
+  await installMultiCityFixture(page, {
+    dark: false,
+    height: 900,
+    width: 1440,
+  });
+  await page.evaluate(() => {
+    (window as MultiCityWindow).__BUZZ_E2E_W10_TRANSIENT_START_FAILURES__ = 3;
+  });
+  await createThreeCityCampaign(page);
+  await returnToDiscovery(page);
+  await page.getByRole("button", { name: /All campaigns/ }).click();
+  await expect(page.getByTestId("discovery-campaigns-page")).toBeVisible();
+
+  const groupRow = page
+    .getByTestId("discovery-campaign-row")
+    .filter({ hasText: "Home furnishing prospects" });
+  await expect(groupRow).toContainText("Starting");
+  await expect(groupRow).not.toContainText("Ended early");
+  await groupRow.click();
+  await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Campaign cities" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All cities.*Starting/ })).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByTestId("discovery-campaigns-page")).toBeVisible();
+  const singleRow = page
+    .getByTestId("discovery-campaign-row")
+    .filter({ hasText: "Independent brands needing social support" });
+  await singleRow.click();
+  await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
 });
 
 for (const scenario of [

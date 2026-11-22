@@ -5,9 +5,14 @@ const {
   buildDiscoveryCampaignCreateAction,
   buildOutreachListCreateAction,
   buildOutreachListMutation,
+  discoveryCampaignDTag,
   outreachListDTag,
+  parseDiscoveryCampaignHead,
   parseOutreachListHead,
 } = await import("./outreachRecords.ts");
+const { KIND_DISCOVERY_CAMPAIGN_HEAD } = await import(
+  "./businessRecordContract.ts"
+);
 
 const COMMUNITY = "e2e-tenant";
 const CHANNEL = "e2e-sales-channel";
@@ -298,5 +303,74 @@ test("campaign backfill create keeps the campaign id and maps final progress", (
       endNote: "Search finished",
       runBy: { kind: "person", pubkey: "d".repeat(64) },
     },
+  );
+});
+
+test("campaign builder and relay parser accept 2,000 and reject 2,001", () => {
+  const campaignId = "18e47754-1cb4-4d04-a0b2-fd5ac6a90c48";
+  const action = buildDiscoveryCampaignCreateAction({
+    campaignId,
+    name: "Restaurants prospects, Johannesburg",
+    audience: "businesses",
+    industryName: "Food and drink",
+    verticalId: "restaurants",
+    verticalName: "Restaurants",
+    area: "Johannesburg, South Africa",
+    target: 2_000,
+    status: "running",
+  });
+  assert.equal(action.target, 2_000);
+  assert.throws(
+    () =>
+      buildDiscoveryCampaignCreateAction({
+        ...action,
+        target: 2_001,
+      }),
+    /between 1 and 2,000/u,
+  );
+
+  const head = {
+    schemaVersion: 1,
+    campaignId,
+    name: action.name,
+    audience: action.audience,
+    industryName: action.industryName,
+    verticalId: action.verticalId,
+    verticalName: action.verticalName,
+    pickedTags: [],
+    query: null,
+    area: action.area,
+    target: 2_000,
+    found: 0,
+    skippedDuplicates: 0,
+    status: "running",
+    endNote: null,
+    runBy: { kind: "person", pubkey: "d".repeat(64) },
+    createdBy: "d".repeat(64),
+    createdByAgent: false,
+    createdAt: 1,
+    updatedAt: 1,
+    archived: false,
+    sourceActionEventId: "e".repeat(64),
+  };
+  const campaignEvent = (target) =>
+    event(
+      { ...head, target },
+      {
+        kind: KIND_DISCOVERY_CAMPAIGN_HEAD,
+        tags: [
+          ["h", CHANNEL],
+          ["d", discoveryCampaignDTag(COMMUNITY, campaignId)],
+        ],
+      },
+    );
+  assert.equal(
+    parseDiscoveryCampaignHead(campaignEvent(2_000), COMMUNITY, CHANNEL)
+      ?.record.target,
+    2_000,
+  );
+  assert.equal(
+    parseDiscoveryCampaignHead(campaignEvent(2_001), COMMUNITY, CHANNEL),
+    null,
   );
 });
