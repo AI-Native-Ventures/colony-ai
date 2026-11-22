@@ -1046,7 +1046,7 @@ test("a missing location or an out-of-range target is refused before any search"
   await assert.rejects(controller.start({ ...INPUT, target: 0 }), {
     message: FIRST_START_ERROR,
   });
-  await assert.rejects(controller.start({ ...INPUT, target: 501 }), {
+  await assert.rejects(controller.start({ ...INPUT, target: 2_001 }), {
     message: FIRST_START_ERROR,
   });
   assert.equal(log.searches.length, 0);

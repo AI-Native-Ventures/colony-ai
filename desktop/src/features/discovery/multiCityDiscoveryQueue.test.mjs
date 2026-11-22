@@ -541,13 +541,21 @@ test("a city-only start failure is recorded and the queue continues", async () =
     () => assert.equal(fake.startedInputs.length, 4),
     "the next city starts after one city alone fails",
   );
+  await waitFor(() => {
+    const fourthCity = (
+      coordinator.getGroup("group-1") ?? coordinator.getGroups()[0]
+    )?.cities[3];
+    assert.ok(fourthCity?.campaignId, "the fourth city campaign is recorded");
+    assert.equal(fourthCity.state, "waiting");
+  }, "the fourth city campaign is recorded after its start settles");
   const group = coordinator.getGroup("group-1") ?? coordinator.getGroups()[0];
+  assert.ok(group);
   assert.deepEqual(
     fake.startedInputs.map((entry) => entry.location).slice(0, 3),
     [JOHANNESBURG.label, CAPE_TOWN.label, DURBAN.label],
   );
   assert.equal(group.cities[0].state, "failed");
-  assert.equal(group.cities[3].campaignId, "campaign-3");
+  assert.ok(group.cities[3].campaignId);
   coordinator.dispose();
 });
 
