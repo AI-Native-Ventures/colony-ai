@@ -1,5 +1,6 @@
 import type {
   DiscoveryCampaign,
+  DiscoveryCampaignInput,
   DiscoveryCampaignProvider,
   DiscoveryRunStatus,
 } from "./discoveryProvider";
