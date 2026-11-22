@@ -1,8 +1,7 @@
-//! PostgreSQL-backed tests for hire completion through the production handler.
+//! PostgreSQL-backed tests for hire lifecycle records through production handlers.
 //!
-//! Each test drives one hire through create, owner approval, employee
-//! attachment and the employee's introduction, then submits `complete` to
-//! `handle` and reads back what the transaction stored.
+//! Focused cases drive the relevant lifecycle transitions and read back what
+//! the transaction stored.
 
 use super::*;
 
@@ -15,13 +14,14 @@ use buzz_core::company_functions::{
 };
 use buzz_core::company_members::member_d_tag;
 use buzz_core::company_records::{
-    goal_d_tag, GoalAction, GoalActionKind, GoalHead, GoalRecord, GoalStatus, HireRolePack,
-    HireTool, HireToolRisk, RoleDutyTemplate, RoleOnHire, DEFAULT_HIRE_TIME_ZONE,
-    HIRE_GOAL_DEFAULT_DONE_CONDITION, PLAN_CHECK_DUTY_INSTRUCTIONS, PLAN_CHECK_DUTY_SCHEDULE,
-    PLAN_CHECK_DUTY_TITLE,
+    ask_d_tag, goal_d_tag, AskAction, AskActionKind, AskCategory, AskRecord, AskSubject,
+    AskSubjectKind, AskThreadStart, AskType, GoalAction, GoalActionKind, GoalHead, GoalRecord,
+    GoalStatus, HireRolePack, HireTool, HireToolRisk, RoleDutyTemplate, RoleOnHire,
+    DEFAULT_HIRE_TIME_ZONE, HIRE_GOAL_DEFAULT_DONE_CONDITION, PLAN_CHECK_DUTY_INSTRUCTIONS,
+    PLAN_CHECK_DUTY_SCHEDULE, PLAN_CHECK_DUTY_TITLE,
 };
 use buzz_core::kind::{
-    KIND_DUTY_HEAD, KIND_GOAL_ACTION, KIND_GOAL_HEAD, KIND_MEMBER_POSITION_HEAD,
+    KIND_ASK_ACTION, KIND_DUTY_HEAD, KIND_GOAL_ACTION, KIND_GOAL_HEAD, KIND_MEMBER_POSITION_HEAD,
 };
 use buzz_db::channel::{ChannelType, ChannelVisibility};
 use buzz_db::channel_members::MemberRole;
@@ -35,6 +35,7 @@ const OWNS: &str = "Show up well on social media every week";
 const ROLE_DUTY_TITLE: &str = "Next week's posts";
 
 struct Fixture {
+    pool: sqlx::PgPool,
     state: Arc<AppState>,
     tenant: TenantContext,
     _serial_guard: tokio::sync::MutexGuard<'static, ()>,
@@ -146,6 +147,7 @@ async fn fixture_with_employee_ownership(
             .expect("add the employee to its home channel");
     }
     Fixture {
+        pool,
         state,
         tenant,
         _serial_guard: serial_guard,
@@ -159,6 +161,14 @@ fn auth(keys: &Keys) -> IngestAuth {
     IngestAuth::Http {
         pubkey: keys.public_key(),
         scopes: vec![buzz_auth::Scope::MessagesWrite],
+        auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+    }
+}
+
+fn profile_auth(keys: &Keys) -> IngestAuth {
+    IngestAuth::Http {
+        pubkey: keys.public_key(),
+        scopes: vec![buzz_auth::Scope::UsersWrite],
         auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
     }
 }
@@ -329,21 +339,196 @@ async fn register_employee_for_owner(fixture: &Fixture) {
     );
 }
 
+async fn publish_employee_profile(fixture: &Fixture, employee: &Keys, display_name: &str) {
+    let profile = EventBuilder::new(
+        Kind::Metadata,
+        serde_json::json!({ "display_name": display_name }).to_string(),
+    )
+    .sign_with_keys(employee)
+    .expect("sign the employee profile");
+    let accepted = crate::handlers::ingest::ingest_event(
+        &fixture.state,
+        &fixture.tenant,
+        profile,
+        profile_auth(employee),
+    )
+    .await
+    .expect("publish the employee profile");
+    assert!(accepted.accepted, "the employee profile is accepted");
+    let stored_profile = fixture
+        .state
+        .db
+        .get_user(
+            fixture.tenant.community(),
+            &employee.public_key().to_bytes(),
+        )
+        .await
+        .expect("read the synced employee profile")
+        .expect("the employee profile exists");
+    assert_eq!(stored_profile.display_name.as_deref(), Some(display_name));
+}
+
+async fn register_replacement_employee(fixture: &Fixture, employee: &Keys, display_name: &str) {
+    fixture
+        .state
+        .db
+        .ensure_user(
+            fixture.tenant.community(),
+            &employee.public_key().to_bytes(),
+        )
+        .await
+        .expect("ensure the replacement employee");
+    assert!(
+        fixture
+            .state
+            .db
+            .set_agent_owner(
+                fixture.tenant.community(),
+                &employee.public_key().to_bytes(),
+                &fixture.owner.public_key().to_bytes(),
+            )
+            .await
+            .expect("register the replacement employee"),
+        "the replacement employee is owned by the founder"
+    );
+    fixture
+        .state
+        .db
+        .add_member(
+            fixture.tenant.community(),
+            fixture.channel_id,
+            &employee.public_key().to_bytes(),
+            MemberRole::Bot,
+            Some(&fixture.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("add the replacement employee to its home channel");
+    publish_employee_profile(fixture, employee, display_name).await;
+}
+
 async fn post_employee_introduction(fixture: &Fixture, channel_id: Uuid, content: &str) -> Event {
+    post_employee_introduction_as(fixture, &fixture.employee, channel_id, content).await
+}
+
+async fn post_employee_introduction_as(
+    fixture: &Fixture,
+    employee: &Keys,
+    channel_id: Uuid,
+    content: &str,
+) -> Event {
     let introduction = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), content)
         .tags([Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag")])
-        .sign_with_keys(&fixture.employee)
+        .sign_with_keys(employee)
         .expect("sign the employee introduction");
     let accepted = crate::handlers::ingest::ingest_event(
         &fixture.state,
         &fixture.tenant,
         introduction.clone(),
-        auth(&fixture.employee),
+        auth(employee),
     )
     .await
     .expect("ingest the employee introduction");
     assert!(accepted.accepted, "the employee introduction is accepted");
     introduction
+}
+
+fn named_hire_create(
+    fixture: &Fixture,
+    hire_id: Uuid,
+    display_name: &str,
+    title: &str,
+) -> HireAction {
+    let mut create = hire_action(hire_id, HireActionKind::Create, None);
+    create.proposal = Some(HireProposal {
+        hire_id,
+        role_pack: role_pack(),
+        display_name: display_name.into(),
+        title: title.into(),
+        manager_pubkey: Some(fixture.owner.public_key().to_hex()),
+        introduction_channel_id: fixture.channel_id,
+        runtime_id: "runtime-test".into(),
+        provider_id: None,
+        model_id: None,
+        weekly_allowance: None,
+    });
+    create
+}
+
+async fn approve_hire(fixture: &Fixture, hire_id: Uuid) {
+    let approve = hire_action(
+        hire_id,
+        HireActionKind::Approve,
+        Some(hire_head(fixture, hire_id).await.event.id.to_hex()),
+    );
+    submit(fixture, sign_hire_action(&fixture.owner, &approve))
+        .await
+        .expect("approve the hire");
+}
+
+async fn attach_employee_to_hire(fixture: &Fixture, hire_id: Uuid, employee: &Keys) -> Event {
+    let mut attach = hire_action(
+        hire_id,
+        HireActionKind::AttachEmployee,
+        Some(hire_head(fixture, hire_id).await.event.id.to_hex()),
+    );
+    attach.employee_pubkey = Some(employee.public_key().to_hex());
+    let event = sign_hire_action(&fixture.owner, &attach);
+    submit(fixture, event.clone())
+        .await
+        .expect("attach the employee");
+    event
+}
+
+async fn deny_hire(fixture: &Fixture, hire_id: Uuid) {
+    let mut deny = hire_action(
+        hire_id,
+        HireActionKind::Deny,
+        Some(hire_head(fixture, hire_id).await.event.id.to_hex()),
+    );
+    deny.reason = Some("The employee was removed before starting.".into());
+    submit(fixture, sign_hire_action(&fixture.owner, &deny))
+        .await
+        .expect("deny the attached hire");
+}
+
+async fn deny_named_employee_hire(fixture: &Fixture, display_name: &str) -> (Uuid, Event) {
+    let hire_id = Uuid::new_v4();
+    let title = format!("Former {display_name}");
+    let create = named_hire_create(fixture, hire_id, display_name, &title);
+    submit(fixture, sign_hire_action(&fixture.owner, &create))
+        .await
+        .expect("create the original named hire");
+    approve_hire(fixture, hire_id).await;
+    register_employee_for_owner(fixture).await;
+    publish_employee_profile(fixture, &fixture.employee, display_name).await;
+    let attachment = attach_employee_to_hire(fixture, hire_id, &fixture.employee).await;
+    deny_hire(fixture, hire_id).await;
+    let denied =
+        parse_hire_head(&hire_head(fixture, hire_id).await).expect("parse the denied hire");
+    assert_eq!(denied.status, HireStatus::Denied);
+    assert_eq!(denied.employee_pubkey, None);
+    (hire_id, attachment)
+}
+
+async fn complete_hire_with_employee(fixture: &Fixture, hire_id: Uuid, employee: &Keys) {
+    let introduction = post_employee_introduction_as(
+        fixture,
+        employee,
+        fixture.channel_id,
+        "I have joined the company.",
+    )
+    .await;
+    let mut complete = hire_action(
+        hire_id,
+        HireActionKind::Complete,
+        Some(hire_head(fixture, hire_id).await.event.id.to_hex()),
+    );
+    complete.employee_pubkey = Some(employee.public_key().to_hex());
+    complete.introduction_event_id = Some(introduction.id.to_hex());
+    complete.time_zone = None;
+    submit(fixture, sign_hire_action(&fixture.owner, &complete))
+        .await
+        .expect("complete the hire");
 }
 
 /// Drives one hire to the point where only `complete` remains and returns
@@ -963,6 +1148,291 @@ async fn a_removed_prebuilt_employee_can_close_then_refill_its_same_slot() {
         Some(employee.as_str()),
     )
     .await;
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_denied_employee_profile_allows_a_fresh_hire_to_complete_with_a_new_employee() {
+    let fixture = fixture_without_employee_owner().await;
+    let display_name = "Head of Sales";
+    let (_denied_hire_id, _) = deny_named_employee_hire(&fixture, display_name).await;
+
+    let replacement_hire_id = Uuid::new_v4();
+    let replacement_create =
+        named_hire_create(&fixture, replacement_hire_id, display_name, "Head of Sales");
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &replacement_create),
+    )
+    .await
+    .expect("create the replacement Head of Sales hire");
+    let duplicate = named_hire_create(&fixture, Uuid::new_v4(), display_name, "Head of Sales");
+    assert_eq!(
+        rejection(submit(&fixture, sign_hire_action(&fixture.owner, &duplicate)).await),
+        "conflict: employee display name is already in use"
+    );
+    approve_hire(&fixture, replacement_hire_id).await;
+
+    let replacement_employee = Keys::generate();
+    register_replacement_employee(&fixture, &replacement_employee, display_name).await;
+    attach_employee_to_hire(&fixture, replacement_hire_id, &replacement_employee).await;
+    complete_hire_with_employee(&fixture, replacement_hire_id, &replacement_employee).await;
+
+    let hired = parse_hire_head(&hire_head(&fixture, replacement_hire_id).await)
+        .expect("parse the replacement hire");
+    let replacement_employee_pubkey = replacement_employee.public_key().to_hex();
+    assert_eq!(hired.status, HireStatus::Hired);
+    assert_eq!(
+        hired.employee_pubkey.as_deref(),
+        Some(replacement_employee_pubkey.as_str())
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_live_attachment_action_releases_a_denied_employee_name_without_head_history() {
+    let fixture = fixture_without_employee_owner().await;
+    let display_name = "Head of Sales";
+    let (denied_hire_id, attachment) = deny_named_employee_hire(&fixture, display_name).await;
+
+    // The attachment action, not the superseded head payload, is the forward
+    // durability source when retention removes old head revisions.
+    let removed = sqlx::query(
+        "DELETE FROM events \
+         WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4 \
+           AND deleted_at IS NOT NULL",
+    )
+    .bind(fixture.tenant.community().as_uuid())
+    .bind(KIND_HIRE_HEAD as i32)
+    .bind(fixture.state.relay_keypair.public_key().to_bytes().to_vec())
+    .bind(hire_d_tag(denied_hire_id))
+    .execute(&fixture.pool)
+    .await
+    .expect("remove the historic hire-head revisions");
+    assert!(removed.rows_affected() > 0);
+    let action_remains = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS ( \
+         SELECT 1 FROM events WHERE community_id = $1 AND id = $2 AND deleted_at IS NULL \
+         )",
+    )
+    .bind(fixture.tenant.community().as_uuid())
+    .bind(attachment.id.to_bytes().as_slice())
+    .fetch_one(&fixture.pool)
+    .await
+    .expect("check the append-only attachment action");
+    assert!(action_remains);
+
+    let replacement = named_hire_create(&fixture, Uuid::new_v4(), display_name, "Head of Sales");
+    submit(&fixture, sign_hire_action(&fixture.owner, &replacement))
+        .await
+        .expect("create the replacement from the append-only attachment action");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_denied_employee_profile_allows_an_open_hire_to_use_the_released_name() {
+    let fixture = fixture_without_employee_owner().await;
+    let display_name = "Head of Sales";
+    let (_denied_hire_id, _) = deny_named_employee_hire(&fixture, display_name).await;
+
+    let replacement_hire_id = Uuid::new_v4();
+    let initial = named_hire_create(
+        &fixture,
+        replacement_hire_id,
+        "Interim Head of Sales",
+        "Interim Head of Sales",
+    );
+    submit(&fixture, sign_hire_action(&fixture.owner, &initial))
+        .await
+        .expect("create the replacement under a temporary name");
+
+    let mut update = hire_action(
+        replacement_hire_id,
+        HireActionKind::Update,
+        Some(
+            hire_head(&fixture, replacement_hire_id)
+                .await
+                .event
+                .id
+                .to_hex(),
+        ),
+    );
+    update.proposal =
+        named_hire_create(&fixture, replacement_hire_id, display_name, "Head of Sales").proposal;
+    submit(&fixture, sign_hire_action(&fixture.owner, &update))
+        .await
+        .expect("rename the replacement to the released Head of Sales name");
+
+    let updated = parse_hire_head(&hire_head(&fixture, replacement_hire_id).await)
+        .expect("parse the renamed replacement hire");
+    assert_eq!(updated.proposal.display_name, display_name);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_denied_employee_profile_allows_an_employee_proposed_hire_with_the_released_name() {
+    let fixture = fixture_without_employee_owner().await;
+    let display_name = "Head of Sales";
+    let (_denied_hire_id, _) = deny_named_employee_hire(&fixture, display_name).await;
+
+    let replacement_hire_id = Uuid::new_v4();
+    let proposal = named_hire_create(&fixture, replacement_hire_id, display_name, "Head of Sales")
+        .proposal
+        .expect("build the employee-proposed hire");
+    let ask_id = Uuid::new_v4();
+    let ask = AskRecord {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        ask_id,
+        ask_type: AskType::Approval,
+        category: AskCategory::Hire,
+        title: "Hire Head of Sales".into(),
+        body: None,
+        thread_root_event_id: None,
+        thread_start: Some(AskThreadStart {
+            title: "Head of Sales hiring request".into(),
+            opening_context: None,
+        }),
+        addressee_pubkey: None,
+        decide_by: None,
+        options: None,
+        items: None,
+        tool_consent: None,
+        subject: Some(AskSubject {
+            kind: AskSubjectKind::Hire,
+            id: replacement_hire_id.to_string(),
+        }),
+        member_proposal: None,
+        secret_request: None,
+        hire_proposal: Some(proposal),
+        duty_proposal: None,
+        spend_allowance_proposal: None,
+    };
+    let action = AskAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        ask_id,
+        action: AskActionKind::Create,
+        expected_head_event_id: None,
+        ask: Some(ask),
+        reason: None,
+    };
+    let d_tag = ask_d_tag(fixture.channel_id, ask_id);
+    let event = EventBuilder::new(
+        Kind::Custom(KIND_ASK_ACTION as u16),
+        serde_json::to_string(&action).expect("serialize the employee-proposed hire ask"),
+    )
+    .tags([
+        Tag::parse(["h", fixture.channel_id.to_string().as_str()]).expect("h tag"),
+        Tag::parse(["d", d_tag.as_str()]).expect("d tag"),
+    ])
+    .sign_with_keys(&fixture.employee)
+    .expect("sign the employee-proposed hire ask");
+    let accepted = crate::handlers::company_records::handle(
+        &fixture.tenant,
+        &fixture.state,
+        event,
+        auth(&fixture.employee),
+    )
+    .await
+    .expect("create the employee-proposed hire with the released name");
+    assert!(accepted.accepted);
+
+    let linked_hire = parse_hire_head(&hire_head(&fixture, replacement_hire_id).await)
+        .expect("parse the linked hire head");
+    assert_eq!(linked_hire.status, HireStatus::Proposed);
+    assert_eq!(linked_hire.proposal.display_name, display_name);
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_legacy_soft_deleted_hire_revision_releases_the_denied_employee_name() {
+    let fixture = fixture_without_employee_owner().await;
+    let display_name = "Head of Sales";
+    let (_denied_hire_id, attachment) = deny_named_employee_hire(&fixture, display_name).await;
+
+    let deleted = sqlx::query(
+        "UPDATE events SET deleted_at = NOW() \
+         WHERE community_id = $1 AND id = $2 AND deleted_at IS NULL",
+    )
+    .bind(fixture.tenant.community().as_uuid())
+    .bind(attachment.id.to_bytes().as_slice())
+    .execute(&fixture.pool)
+    .await
+    .expect("hide the immutable attachment command for the legacy fallback");
+    assert_eq!(deleted.rows_affected(), 1);
+
+    let replacement = named_hire_create(&fixture, Uuid::new_v4(), display_name, "Head of Sales");
+    submit(&fixture, sign_hire_action(&fixture.owner, &replacement))
+        .await
+        .expect("create the replacement from the soft-deleted head revision");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_live_agent_profile_that_was_never_denied_still_blocks_the_name() {
+    let fixture = fixture().await;
+    let display_name = "Head of Sales";
+    publish_employee_profile(&fixture, &fixture.employee, display_name).await;
+
+    let create = named_hire_create(&fixture, Uuid::new_v4(), display_name, "Head of Sales");
+    assert_eq!(
+        rejection(submit(&fixture, sign_hire_action(&fixture.owner, &create)).await),
+        "conflict: employee display name is already in use"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_former_denied_employee_with_a_current_head_of_brand_still_blocks_the_name() {
+    let fixture = fixture_without_employee_owner().await;
+    let display_name = "Head of Sales";
+    let (_denied_hire_id, _) = deny_named_employee_hire(&fixture, display_name).await;
+
+    let brand_hire_id = Uuid::new_v4();
+    let brand_create = named_hire_create(&fixture, brand_hire_id, "Head of Brand", "Head of Brand");
+    submit(&fixture, sign_hire_action(&fixture.owner, &brand_create))
+        .await
+        .expect("create the Head of Brand hire");
+    approve_hire(&fixture, brand_hire_id).await;
+    attach_employee_to_hire(&fixture, brand_hire_id, &fixture.employee).await;
+    complete_hire_with_employee(&fixture, brand_hire_id, &fixture.employee).await;
+
+    let replacement = named_hire_create(&fixture, Uuid::new_v4(), display_name, "Head of Sales");
+    assert_eq!(
+        rejection(submit(&fixture, sign_hire_action(&fixture.owner, &replacement)).await),
+        "conflict: employee display name is already in use"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_real_member_profile_still_blocks_the_name() {
+    let fixture = fixture().await;
+    let display_name = "Head of Sales";
+    let member = Keys::generate();
+    fixture
+        .state
+        .db
+        .ensure_user(fixture.tenant.community(), &member.public_key().to_bytes())
+        .await
+        .expect("ensure the real member");
+    fixture
+        .state
+        .db
+        .add_relay_member(
+            fixture.tenant.community(),
+            &member.public_key().to_hex(),
+            "member",
+            None,
+        )
+        .await
+        .expect("add the real member");
+    publish_employee_profile(&fixture, &member, display_name).await;
+
+    let create = named_hire_create(&fixture, Uuid::new_v4(), display_name, "Head of Sales");
+    assert_eq!(
+        rejection(submit(&fixture, sign_hire_action(&fixture.owner, &create)).await),
+        "conflict: employee display name is already in use"
+    );
 }
 
 #[tokio::test]
