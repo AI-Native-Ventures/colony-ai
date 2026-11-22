@@ -165,6 +165,14 @@ fn auth(keys: &Keys) -> IngestAuth {
     }
 }
 
+fn profile_auth(keys: &Keys) -> IngestAuth {
+    IngestAuth::Http {
+        pubkey: keys.public_key(),
+        scopes: vec![buzz_auth::Scope::UsersWrite],
+        auth_method: crate::handlers::ingest::HttpAuthMethod::DevPubkey,
+    }
+}
+
 fn role_pack() -> HireRolePack {
     HireRolePack {
         persona_id: "persona-test-social".into(),
@@ -342,7 +350,7 @@ async fn publish_employee_profile(fixture: &Fixture, employee: &Keys, display_na
         &fixture.state,
         &fixture.tenant,
         profile,
-        auth(employee),
+        profile_auth(employee),
     )
     .await
     .expect("publish the employee profile");
