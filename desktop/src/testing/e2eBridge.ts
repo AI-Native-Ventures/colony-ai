@@ -7590,17 +7590,16 @@ function mockSlotHireActionError(
     return null;
   }
   if (action.op !== "slot_hire_set") return null;
-  if (typeof action.hireId !== "string" || typeof action.function !== "string") {
+  if (
+    typeof action.hireId !== "string" ||
+    typeof action.function !== "string"
+  ) {
     return "invalid: slot_hire_set needs hireId and function.";
   }
   if (
-    ![
-      "sales",
-      "operations",
-      "customer_success",
-      "finance",
-      "brand",
-    ].includes(action.function)
+    !["sales", "operations", "customer_success", "finance", "brand"].includes(
+      action.function,
+    )
   ) {
     return "invalid: slot_hire_set needs hireId and function.";
   }

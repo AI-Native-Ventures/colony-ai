@@ -1036,7 +1036,9 @@ test.describe("prebuilt head hiring journeys", () => {
     ).toContain("#D9A83F");
   });
 
-  test("an attached local hire finishes automatically once", async ({ page }) => {
+  test("an attached local hire finishes automatically once", async ({
+    page,
+  }) => {
     await preparePrebuiltHireCapture(
       page,
       "light",
@@ -1045,10 +1047,12 @@ test.describe("prebuilt head hiring journeys", () => {
     );
 
     await expect
-      .poll(async () =>
-        (await readCommandLog(page)).filter(
-          (entry) => parsedCompleteHireAction(entry)?.hireId === RECOVERY_HIRE_ID,
-        ).length,
+      .poll(
+        async () =>
+          (await readCommandLog(page)).filter(
+            (entry) =>
+              parsedCompleteHireAction(entry)?.hireId === RECOVERY_HIRE_ID,
+          ).length,
       )
       .toBe(1);
     await expect(page.getByTestId("prebuilt-head-hire-dialog")).toBeHidden();

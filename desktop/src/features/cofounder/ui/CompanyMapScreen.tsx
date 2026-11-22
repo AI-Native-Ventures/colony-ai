@@ -88,6 +88,8 @@ export function CompanyMapScreen({
     Partial<Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>>
   >({});
   useEffect(() => {
+    attemptedAutomaticHiresRef.current.clear();
+    setAutomaticHire(null);
     const restored: Partial<
       Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>
     > = {};
@@ -100,10 +102,6 @@ export function CompanyMapScreen({
     }
     setRecentPrebuiltHires(restored);
   }, [activeCommunity?.id]);
-  useEffect(() => {
-    attemptedAutomaticHiresRef.current.clear();
-    setAutomaticHire(null);
-  }, [communityId]);
   useEffect(() => {
     if (
       !communityId ||
@@ -134,12 +132,11 @@ export function CompanyMapScreen({
               ),
           );
           const attemptKey = `${communityId}:${recovered.head.head.proposal.hireId}`;
-          if (
-            recovered.head.head.status === "approved" &&
-            hasLocalEmployee
-          ) {
+          if (recovered.head.head.status === "approved" && hasLocalEmployee) {
             if (attemptedAutomaticHiresRef.current.has(attemptKey)) {
-              if (automaticHire?.hireId === recovered.head.head.proposal.hireId) {
+              if (
+                automaticHire?.hireId === recovered.head.head.proposal.hireId
+              ) {
                 return;
               }
               continue;

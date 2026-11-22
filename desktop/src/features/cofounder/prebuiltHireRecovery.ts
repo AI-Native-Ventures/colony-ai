@@ -23,9 +23,7 @@ export function isPrebuiltHeadHireForFunction(
 }
 
 /** Terminal heads keep their slot intent for audit but cannot be resumed. */
-export function isTerminalPrebuiltHire(
-  record: CompanyHireHeadRecord,
-): boolean {
+export function isTerminalPrebuiltHire(record: CompanyHireHeadRecord): boolean {
   return record.head.status === "denied" || record.head.status === "hired";
 }
 

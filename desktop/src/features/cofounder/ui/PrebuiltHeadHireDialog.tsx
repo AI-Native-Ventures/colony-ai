@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -9,12 +8,9 @@ import {
   useManagedAgentsQuery,
   usePersonasQuery,
 } from "@/features/agents/hooks";
+import type { AgentDropdownOption } from "@/features/agents/ui/agentConfigControls";
 import { simpleModelLabel } from "@/features/agents/ui/simpleAgentAi";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
-import {
-  AgentDropdownSelect,
-  type AgentDropdownOption,
-} from "@/features/agents/ui/agentConfigControls";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
 import {
   useChannelsQuery,
@@ -23,7 +19,6 @@ import {
 } from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { companyTeamQueryKey } from "@/features/company-team/teamRelay";
 import {
   companyAccessQueryKey,
@@ -34,12 +29,6 @@ import { companyFunctionHeadsQueryKey } from "@/features/cofounder/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMessages";
 import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/shared/ui/dialog";
 
 import {
   defaultHireLocalConfiguration,
@@ -59,11 +48,9 @@ import type {
 import {
   defaultEffortFor,
   effortOptionsFor,
-  WorkerModelProbe,
 } from "@/features/company-hiring/ui/hireConfigureModels";
 
 import type { FunctionId } from "../cofounderRecords";
-import { FUNCTION_DETAILS } from "../functions";
 import {
   materializePrebuiltAgent,
   prebuiltHeadForFunction,
@@ -104,6 +91,7 @@ import type {
   PrebuiltHireCompletion,
   PrebuiltHireProgress,
 } from "../prebuiltHireStorage";
+import { PrebuiltHeadHireDialogForm } from "./PrebuiltHeadHireDialogForm";
 
 type ModelChoice = {
   runtimeId: string;
@@ -151,22 +139,6 @@ function storedChoice(draft: ChoiceDraft): PrebuiltHireChoice {
     modelId: draft.modelId,
     ...(draft.effortLevel ? { effortLevel: draft.effortLevel } : {}),
   };
-}
-
-function prebuiltChoiceFieldClassName({
-  required,
-  value,
-}: {
-  required: boolean;
-  value: string;
-}) {
-  const needsChoice = required && !value;
-  return [
-    "h-[2.875rem] min-w-0 max-w-full rounded-xl border-2 px-3 text-sm font-medium",
-    needsChoice
-      ? "border-primary focus-visible:ring-primary/35"
-      : "border-input",
-  ].join(" ");
 }
 
 function errorText(error: unknown) {
@@ -779,8 +751,7 @@ export function PrebuiltHeadHireDialog({
       if (!current) {
         current = await publishAndConfirm(
           buildPrebuiltHireCreateAction(proposal),
-          (record) =>
-            isPrebuiltHeadHireForFunction(record, hireId, functionId),
+          (record) => isPrebuiltHeadHireForFunction(record, hireId, functionId),
         );
       }
       assertCurrentRun();
@@ -892,7 +863,7 @@ export function PrebuiltHeadHireDialog({
             }),
             (record) =>
               record?.head.employeePubkey?.toLowerCase() ===
-                employeePubkey?.toLowerCase(),
+              employeePubkey?.toLowerCase(),
           );
           assertCurrentRun();
         }
@@ -1121,277 +1092,65 @@ export function PrebuiltHeadHireDialog({
   if (!open || !agent || !functionId) return null;
 
   return (
-    <Dialog onOpenChange={close} open={open}>
-      <DialogContent
-        aria-describedby="prebuilt-hire-description"
-        className="max-w-[37.5rem]"
-        data-testid="prebuilt-head-hire-dialog"
-      >
-        <div className="pr-8">
-          <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-            Hire for {FUNCTION_DETAILS[functionId].name}
-          </p>
-          <DialogTitle className="mt-1">{agent.name}</DialogTitle>
-          <DialogDescription id="prebuilt-hire-description">
-            Scout hands {FUNCTION_DETAILS[functionId].name} over the moment you
-            hire.
-          </DialogDescription>
-        </div>
-
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <EmployeeAvatar
-            className="size-11 rounded-full"
-            instance={prebuiltAgentAvatarDataUrl(agent)}
-            name={agent.name}
-            role={`Head of ${FUNCTION_DETAILS[functionId].name}`}
-          />
-          <div>
-            <p className="text-sm font-extrabold">{agent.name}</p>
-            <p className="text-xs text-muted-foreground">Pre-built agent.</p>
-          </div>
-        </div>
-
-        <section className="rounded-xl border border-border bg-muted/30 p-4">
-          <div>
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              What it does
-            </p>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
-              {agent.does.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="mt-4 border-t border-border pt-4">
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              What it asks of you
-            </p>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
-              {agent.asks.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        {runtimes.map((runtime) => (
-          <WorkerModelProbe
-            envVars={inheritedEnvVars}
-            key={choiceKey(
-              runtime.id,
-              providerForRuntime(runtime, inheritedProvider),
-            )}
-            onOptions={receiveModelOptions}
-            providerId={providerForRuntime(runtime, inheritedProvider)}
-            runtime={runtime}
-          />
-        ))}
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <label
-            className="grid min-w-0 gap-1.5 text-sm font-bold"
-            htmlFor="prebuilt-hire-harness"
-          >
-            Harness
-            <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName({
-                required: runtimes.length > 0,
-                value: choice.runtimeId,
-              })}
-              disabled={submitting || runtimes.length === 0}
-              id="prebuilt-hire-harness"
-              onValueChange={(runtimeId) => {
-                const runtime = runtimes.find(
-                  (candidate) => candidate.id === runtimeId,
-                );
-                setChoice({
-                  ...EMPTY_CHOICE,
-                  runtimeId: runtime?.id ?? "",
-                  providerId: runtime
-                    ? providerForRuntime(runtime, inheritedProvider)
-                    : "",
-                });
-              }}
-              options={runtimeOptions}
-              placeholder="Choose a harness"
-              placeholderValue=""
-              testId="prebuilt-hire-harness"
-              value={choice.runtimeId}
-            />
-          </label>
-          <label
-            className="grid min-w-0 gap-1.5 text-sm font-bold"
-            htmlFor="prebuilt-hire-model"
-          >
-            Model
-            <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName({
-                required: modelRequired,
-                value: choice.modelId,
-              })}
-              disabled={submitting || !selectedRuntime}
-              id="prebuilt-hire-model"
-              onValueChange={(modelId) =>
-                setChoice((current) => ({
-                  ...current,
-                  modelId,
-                  effortLevel: "",
-                }))
-              }
-              options={selectedModelOptions}
-              placeholder="Choose a model"
-              placeholderValue=""
-              selectedLabel={
-                selectedModel ? (
-                  <span className="block truncate" title={selectedModel.label}>
-                    {selectedModel.label}
-                  </span>
-                ) : undefined
-              }
-              testId="prebuilt-hire-model"
-              value={choice.modelId}
-            />
-          </label>
-          <label
-            className="grid min-w-0 gap-1.5 text-sm font-bold"
-            htmlFor="prebuilt-hire-effort"
-          >
-            Effort
-            <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName({
-                required: effortRequired,
-                value: choice.effortLevel,
-              })}
-              disabled={submitting || !selectedModel || !requiresEffort}
-              id="prebuilt-hire-effort"
-              onValueChange={(effortLevel) =>
-                setChoice((current) => ({ ...current, effortLevel }))
-              }
-              options={effortChoiceOptions}
-              placeholder={
-                requiresEffort ? "Choose effort" : "Set by this harness"
-              }
-              placeholderValue=""
-              testId="prebuilt-hire-effort"
-              value={choice.effortLevel}
-            />
-          </label>
-        </div>
-        <p
-          className="text-sm text-muted-foreground"
-          data-testid="prebuilt-hire-choice-helper"
-        >
-          {hasSavedChoice
-            ? "Same as your last hire. Change any of them."
-            : "This is your first hire, so pick all three. Next time Colony shows what you picked here."}
-        </p>
-        {runtimesQuery.isPending ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Checking which AI is ready on this Mac.
-          </p>
-        ) : null}
-        {recoveryState === "checking" ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Checking for an unfinished hire before starting a new one.
-          </p>
-        ) : null}
-        {recoveryState === "employee_removed" ? (
-          <p
-            className="text-sm text-muted-foreground"
-            data-testid="prebuilt-hire-employee-removed"
-            role="status"
-          >
-            The {agent.name} from your earlier hire was removed from this Mac.
-          </p>
-        ) : null}
-        {!runtimesQuery.isPending && runtimes.length === 0 ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            No AI is ready on this Mac.{" "}
-            <Link className="underline" to="/settings">
-              Open Settings
-            </Link>{" "}
-            to connect a harness.
-          </p>
-        ) : null}
-        {selectedRuntime &&
-        !modelChoices.some(
-          (model) => model.runtimeId === selectedRuntime.id,
-        ) ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            This harness has not reported a model yet. Check its sign-in and
-            model settings, then choose again.
-          </p>
-        ) : null}
-
-        {validChannels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            There is no company chat to start this hire in. Join one first.
-          </p>
-        ) : null}
-
-        {failure ? (
-          <div
-            className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm"
-            role="alert"
-          >
-            <p>{failure}</p>
-            {progress && headQuery.data?.head.status === "proposed" ? (
-              <button
-                className="mt-2 font-bold underline"
-                disabled={submitting}
-                onClick={() => void undoUnapprovedHire()}
-                type="button"
-              >
-                Undo unapproved hire
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        {!isOwner ? (
-          <p className="text-sm text-muted-foreground">
-            Only the company owner can finish this hire.
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {!selectionReady ? (
-            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-              {recoveryState === "checking"
-                ? "Checking for an unfinished hire."
-                : selectedRuntime && !selectedModel
-                  ? "Choose a model before hiring. Colony will not create an agent without one."
-                  : "Pick all three to hire."}
-            </p>
-          ) : (
-            <span aria-hidden="true" />
-          )}
-          <div className="flex flex-wrap justify-end gap-3">
-            <button
-              className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50"
-              disabled={submitting}
-              onClick={() => onOpenChange(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-              data-testid="prebuilt-hire-finish"
-              disabled={!selectionReady || !isOwner || submitting}
-              onClick={() => void finishHire()}
-              type="button"
-            >
-              {submitting
-                ? `Hiring ${agent.name}`
-                : recoveryState === "employee_removed"
-                  ? `Hire ${agent.name} again`
-                  : failure && autoFinishHireId === progress?.hireId
-                    ? `Retry ${agent.name}`
-                    : `Hire ${agent.name}`}
-            </button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <PrebuiltHeadHireDialogForm
+      agent={agent}
+      canUndoUnapprovedHire={Boolean(
+        progress && headQuery.data?.head.status === "proposed",
+      )}
+      choice={choice}
+      effortChoiceOptions={effortChoiceOptions}
+      effortRequired={effortRequired}
+      failure={failure}
+      functionId={functionId}
+      hasModelChoicesForSelectedRuntime={modelChoices.some(
+        (model) => model.runtimeId === selectedRuntime?.id,
+      )}
+      hasSavedChoice={hasSavedChoice}
+      hasSelectedModel={Boolean(selectedModel)}
+      hasValidChannels={validChannels.length > 0}
+      inheritedEnvVars={inheritedEnvVars}
+      inheritedProvider={inheritedProvider}
+      isOwner={Boolean(isOwner)}
+      modelRequired={modelRequired}
+      onEffortChange={(effortLevel) =>
+        setChoice((current) => ({ ...current, effortLevel }))
+      }
+      onModelChange={(modelId) =>
+        setChoice((current) => ({
+          ...current,
+          modelId,
+          effortLevel: "",
+        }))
+      }
+      onOpenChange={close}
+      onOptions={receiveModelOptions}
+      onRetry={() => void finishHire()}
+      onRuntimeChange={(runtimeId) => {
+        const runtime = runtimes.find(
+          (candidate) => candidate.id === runtimeId,
+        );
+        setChoice({
+          ...EMPTY_CHOICE,
+          runtimeId: runtime?.id ?? "",
+          providerId: runtime
+            ? providerForRuntime(runtime, inheritedProvider)
+            : "",
+        });
+      }}
+      onUndoUnapprovedHire={() => void undoUnapprovedHire()}
+      recoveryState={recoveryState}
+      requiresEffort={requiresEffort}
+      retryingAutoFinish={Boolean(
+        failure && autoFinishHireId === progress?.hireId,
+      )}
+      runtimeOptions={runtimeOptions}
+      runtimes={runtimes}
+      runtimesQueryIsPending={runtimesQuery.isPending}
+      selectedModelLabel={selectedModel?.label}
+      selectedModelOptions={selectedModelOptions}
+      selectedRuntime={selectedRuntime}
+      selectionReady={selectionReady}
+      submitting={submitting}
+    />
   );
 }
