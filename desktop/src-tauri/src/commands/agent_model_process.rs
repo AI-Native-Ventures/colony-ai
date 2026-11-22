@@ -37,26 +37,49 @@ pub(super) async fn run_agent_models_command(
     let model_for_fallback = persisted_model.clone();
     let native_env = merged_env.clone();
     let env_for_redaction = merged_env.clone();
+    let acp_agent_command = agent_command.clone();
 
-    let (acp_response, native_response) = tokio::task::spawn_blocking(move || {
-        let acp_response = run_acp_model_list(
+    // Some runtimes provide both the ACP catalog and a native CLI catalog.
+    // Launch the bounded calls together: each has an independent timeout, and
+    // waiting for one before starting the other made a cold Codex picker pay
+    // both timeout budgets serially.
+    let acp_task = tokio::task::spawn_blocking(move || {
+        run_acp_model_list(
             resolved_acp,
-            &agent_command,
+            &acp_agent_command,
             agent_args,
-            persisted_model.clone(),
+            persisted_model,
             merged_env,
             &env_for_redaction,
-        );
-        let native_response = match source {
-            ModelListSource::CodexCli | ModelListSource::OpenCodeCli => Some(
-                run_native_model_list(&agent_command, source, refresh, persisted_model, native_env),
-            ),
-            ModelListSource::Acp | ModelListSource::ClaudeCode => None,
-        };
-        (acp_response, native_response)
-    })
-    .await
-    .map_err(|error| format!("model discovery task failed: {error}"))?;
+        )
+    });
+    let native_task = match source {
+        ModelListSource::CodexCli | ModelListSource::OpenCodeCli => {
+            let native_agent_command = agent_command;
+            let native_persisted_model = model_for_fallback.clone();
+            Some(tokio::task::spawn_blocking(move || {
+                run_native_model_list(
+                    &native_agent_command,
+                    source,
+                    refresh,
+                    native_persisted_model,
+                    native_env,
+                )
+            }))
+        }
+        ModelListSource::Acp | ModelListSource::ClaudeCode => None,
+    };
+
+    let acp_response = acp_task
+        .await
+        .map_err(|error| format!("model discovery task failed: {error}"))?;
+    let native_response = match native_task {
+        Some(task) => Some(
+            task.await
+                .map_err(|error| format!("native model discovery task failed: {error}"))?,
+        ),
+        None => None,
+    };
 
     match source {
         ModelListSource::ClaudeCode => match acp_response {

@@ -23,11 +23,15 @@ import {
 } from "@/features/cofounder/companyMapJobRoutes";
 import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
 import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
-import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
+import type {
+  PrebuiltHireCompletion,
+  PrebuiltHireStartup,
+} from "@/features/cofounder/prebuiltHireStorage";
 
 import type { CompanyMapBoardProps, ProfileLookup } from "./companyMapTypes";
 import {
   PrebuiltHeadPreview,
+  PrebuiltHireStartupNotice,
   PrebuiltHiredHeadPreview,
   PrebuiltJustHiredContent,
 } from "./CompanyMapPartCard";
@@ -336,8 +340,10 @@ function PhoneActionCard({
   members,
   profiles,
   recentPrebuiltHires,
+  prebuiltHireStartups,
   onClose,
   onHireHead,
+  onRetryPrebuiltHireStart,
 }: {
   activePart: FunctionId | null;
   canHirePrebuiltHeads: boolean;
@@ -347,8 +353,10 @@ function PhoneActionCard({
   members: CompanyMapBoardProps["members"];
   profiles: ProfileLookup;
   recentPrebuiltHires?: Partial<Record<FunctionId, PrebuiltHireCompletion>>;
+  prebuiltHireStartups?: Partial<Record<FunctionId, PrebuiltHireStartup>>;
   onClose: () => void;
   onHireHead: (functionId: FunctionId) => void;
+  onRetryPrebuiltHireStart: (functionId: FunctionId) => void;
 }) {
   const firstName = ownerName.trim().split(/\s+/)[0] || "there";
   if (!activePart) {
@@ -414,6 +422,15 @@ function PhoneActionCard({
   const canHireHead = Boolean(
     slot.state !== "filled" && prebuiltHead && canHirePrebuiltHeads,
   );
+  const candidateStartup = prebuiltHireStartups?.[activePart];
+  const startup =
+    candidateStartup &&
+    (!recentHire ||
+      (candidateStartup.hireId === recentHire.hireId &&
+        candidateStartup.employeePubkey.toLowerCase() ===
+          recentHire.employeePubkey.toLowerCase()))
+      ? candidateStartup
+      : null;
 
   if (recentHire && prebuiltHead) {
     return (
@@ -427,6 +444,13 @@ function PhoneActionCard({
           leadName={lead ? fullName(lead, profiles) : null}
           recentHire={recentHire}
         />
+        {startup ? (
+          <PrebuiltHireStartupNotice
+            head={prebuiltHead}
+            onRetry={() => onRetryPrebuiltHireStart(activePart)}
+            startup={startup}
+          />
+        ) : null}
         <div className="company-map-card-actions">
           <Link
             className="company-map-primary-action"
@@ -460,6 +484,13 @@ function PhoneActionCard({
       </p>
       {slot.state !== "filled" ? (
         <PrebuiltHeadPreview functionId={activePart} />
+      ) : null}
+      {startup && prebuiltHead ? (
+        <PrebuiltHireStartupNotice
+          head={prebuiltHead}
+          onRetry={() => onRetryPrebuiltHireStart(activePart)}
+          startup={startup}
+        />
       ) : null}
       {slot.state === "filled" && prebuiltHead ? (
         <PrebuiltHiredHeadPreview
@@ -520,7 +551,9 @@ export function CompanyMapPhone({
   whatsAppChannelId,
   canHirePrebuiltHeads = false,
   onHireHead = () => undefined,
+  onRetryPrebuiltHireStart = () => undefined,
   recentPrebuiltHires,
+  prebuiltHireStartups,
 }: CompanyMapBoardProps) {
   const [activePart, setActivePart] = useState<FunctionId | null>(null);
   return (
@@ -678,9 +711,11 @@ export function CompanyMapPhone({
         members={members}
         onClose={() => setActivePart(null)}
         onHireHead={onHireHead}
+        onRetryPrebuiltHireStart={onRetryPrebuiltHireStart}
         ownerName={ownerName}
         profiles={profiles}
         recentPrebuiltHires={recentPrebuiltHires}
+        prebuiltHireStartups={prebuiltHireStartups}
         slots={slots}
         summary={summary}
       />

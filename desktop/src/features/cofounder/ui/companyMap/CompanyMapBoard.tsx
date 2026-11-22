@@ -659,7 +659,9 @@ function CompanyMapDesktop({
   scoutPubkey,
   canHirePrebuiltHeads = false,
   onHireHead = () => undefined,
+  onRetryPrebuiltHireStart = () => undefined,
   recentPrebuiltHires,
+  prebuiltHireStartups,
   members,
   profiles,
   slots,
@@ -945,9 +947,11 @@ function CompanyMapDesktop({
               onGroupMouseEnter={enterPart}
               onGroupMouseLeave={closeHoverSoon}
               onHireHead={onHireHead}
+              onRetryPrebuiltHireStart={onRetryPrebuiltHireStart}
               ownerName={ownerName}
               profiles={profiles}
               recentPrebuiltHires={recentPrebuiltHires}
+              prebuiltHireStartups={prebuiltHireStartups}
               slots={slots}
               summary={summary}
             />

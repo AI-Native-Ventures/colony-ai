@@ -137,7 +137,14 @@ function makeIpcHandler(overrides = {}) {
     if (cmd === "discover_acp_providers")
       return Promise.resolve([rawGooseCatalogEntry()]);
     if (cmd === "discover_agent_models")
-      return Promise.resolve({ options: [], is_optional: true });
+      return Promise.resolve({
+        agentName: "Goose",
+        agentVersion: "test",
+        models: [],
+        agentDefaultModel: null,
+        selectedModel: null,
+        supportsSwitching: false,
+      });
     if (cmd === "get_runtime_file_config") return Promise.resolve(null);
     return Promise.reject(new Error(`unmocked: ${cmd}`));
   };

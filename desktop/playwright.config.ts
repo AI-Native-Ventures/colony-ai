@@ -350,6 +350,7 @@ export default defineConfig({
         "**/money-rails-pay-ui.spec.ts",
         "**/cofounder-map.spec.ts",
         "**/prebuilt-head-hire.spec.ts",
+        "**/hire-speed.spec.ts",
         "**/fullmap-slice1.spec.ts",
         "**/fullmap-slice2.spec.ts",
         "**/fullmap-slice3a.spec.ts",
