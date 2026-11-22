@@ -761,8 +761,8 @@ export function WhatsAppBatchScreen({
                             Today’s cap of{" "}
                             {statusQuery.data?.dailyNewChatCap ?? 30} new chats
                             is reached after {remainingToday} more. Sends are
-                            spaced about 8 minutes apart to keep the number’s
-                            quality Green.
+                            spread across 08:00 to 18:00 (Johannesburg) to fit
+                            this cap.
                           </p>
                           {canSendNowBatch ? (
                             <div className="c3wa-send-now-action">

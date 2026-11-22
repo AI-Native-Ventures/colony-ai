@@ -26,8 +26,7 @@ use super::graph::{GraphError, SendRequest};
 use super::inbound::{load_lead_phone_lookup, LeadPhoneLookup, LeadPhoneMatch};
 use super::policy::{
     account_retry_error_codes, classify_failure_code, decide_new_chat, decide_owner_send_now, e164,
-    normalize_wa_id, render_template, row_gap, sast_day_start, window_open, FailureKind,
-    NewChatDecision,
+    normalize_wa_id, render_template, sast_day_start, window_open, FailureKind, NewChatDecision,
 };
 use super::{channel, Access};
 use crate::state::AppState;
@@ -41,6 +40,16 @@ const CONTACT_LEAD_LINK_RETRY: Duration = Duration::hours(1);
 const PHONE_REFRESH_EVERY: Duration = Duration::minutes(30);
 const TEMPLATE_RESYNC_EVERY: Duration = Duration::hours(6);
 const MAX_TEXT_CHARS: usize = 4096;
+
+fn paced_new_chat_decision(
+    now: DateTime<Utc>,
+    last_new_chat_at: Option<DateTime<Utc>>,
+    sent_today: i64,
+    cap: i32,
+    row_id: &Uuid,
+) -> NewChatDecision {
+    decide_new_chat(now, last_new_chat_at, sent_today, cap, row_id)
+}
 
 /// What a send turned out to be.
 #[derive(Debug, PartialEq, Eq)]
@@ -707,12 +716,12 @@ pub async fn process_community(
             let decision = if released {
                 decide_owner_send_now(now, sent_today, settings.daily_new_chat_cap)
             } else {
-                decide_new_chat(
+                paced_new_chat_decision(
                     now,
                     last,
                     sent_today,
                     settings.daily_new_chat_cap,
-                    row_gap(&message.id),
+                    &message.id,
                 )
             };
             match decision {
@@ -1215,6 +1224,26 @@ mod tests {
         assert_eq!(initial_state(Access::OwnerAdmin), "queued");
         assert_eq!(initial_state(Access::Outreach), "draft");
         assert_eq!(initial_state(Access::Member), "draft");
+    }
+
+    #[test]
+    fn sender_uses_the_cap_aware_new_chat_decision() {
+        // GUARD: this invokes the same `decide_new_chat` call the sender loop uses. Restoring
+        // the old fixed row gap would wait well past this cap-aware due time.
+        let start = Utc
+            .with_ymd_and_hms(2026, 10, 29, 6, 0, 0)
+            .single()
+            .expect("test time");
+        let row_id = Uuid::from_bytes([0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        let due = start + Duration::seconds(72);
+        assert_eq!(
+            paced_new_chat_decision(start, None, 0, 500, &row_id),
+            NewChatDecision::SendNow
+        );
+        assert_eq!(
+            paced_new_chat_decision(due - Duration::seconds(1), Some(start), 1, 500, &row_id),
+            NewChatDecision::WaitUntil(due)
+        );
     }
 
     #[test]

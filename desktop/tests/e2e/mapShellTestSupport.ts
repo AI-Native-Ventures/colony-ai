@@ -63,6 +63,8 @@ function functionHead(
 function mapShellFixture(
   cofounderEnabled = true,
   extraChannels: MapShellExtraChannel[] = [],
+  referenceWorkspaceLeadCount?: number,
+  referenceWorkspaceDiscoveryStandIn?: boolean,
 ) {
   const relaySecret = generateSecretKey();
   return {
@@ -81,6 +83,12 @@ function mapShellFixture(
       approvalSwitches: APPROVAL_SWITCHES,
     },
     referenceWorkspace: true,
+    ...(referenceWorkspaceLeadCount === undefined
+      ? {}
+      : { referenceWorkspaceLeadCount }),
+    ...(referenceWorkspaceDiscoveryStandIn === undefined
+      ? {}
+      : { referenceWorkspaceDiscoveryStandIn }),
     referenceWorkspaceBusinessName: "Horizon Labs",
     companyNumbers: makeCofounderNumbersFixture({
       ownerPubkey: OWNER_PUBKEY,
@@ -170,6 +178,8 @@ export async function prepareMapShell(
     workspaces?: typeof MAP_SHELL_WORKSPACES;
     extraChannels?: MapShellExtraChannel[];
     identity?: (typeof TEST_IDENTITIES)[keyof typeof TEST_IDENTITIES];
+    referenceWorkspaceLeadCount?: number;
+    referenceWorkspaceDiscoveryStandIn?: boolean;
     mock?: MapShellMock;
   },
 ) {
@@ -258,7 +268,12 @@ export async function prepareMapShell(
   await installMockBridge(
     page,
     options.mock ??
-      mapShellFixture(options.cofounderEnabled, options.extraChannels),
+      mapShellFixture(
+        options.cofounderEnabled,
+        options.extraChannels,
+        options.referenceWorkspaceLeadCount,
+        options.referenceWorkspaceDiscoveryStandIn,
+      ),
     {
       identity: options.identity,
       skipCommunitySeed: Boolean(options.workspaces),

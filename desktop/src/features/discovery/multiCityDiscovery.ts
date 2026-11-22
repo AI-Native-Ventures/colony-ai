@@ -413,6 +413,23 @@ export function groupCampaignStatus(
   return "complete";
 }
 
+/** The label mirrors the city's live queue state instead of implying a stop. */
+export function groupCampaignStatusLabel(
+  group: MultiCityCampaignGroup,
+  campaigns: readonly DiscoveryCampaign[],
+): string {
+  const statuses = group.cities.map((city) => groupCityStatus(city, campaigns));
+  if (statuses.includes("running")) return "Searching";
+  if (statuses.includes("starting")) return "Starting";
+  if (group.blockedReason || statuses.includes("failed")) return "Failed";
+  if (statuses.includes("waiting") || statuses.includes("not_started")) {
+    return "Waiting";
+  }
+  if (statuses.includes("paused")) return "Paused";
+  if (statuses.includes("cancelled")) return "Stopped";
+  return "Done";
+}
+
 export function groupProgress(
   group: MultiCityCampaignGroup,
   campaigns: readonly DiscoveryCampaign[],
