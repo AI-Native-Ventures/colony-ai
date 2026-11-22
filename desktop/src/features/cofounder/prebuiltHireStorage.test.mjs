@@ -6,9 +6,11 @@ import {
   readPrebuiltHireChoice,
   readPrebuiltHireCompletion,
   readPrebuiltHireProgress,
+  readPrebuiltHireStartup,
   writePrebuiltHireChoice,
   writePrebuiltHireCompletion,
   writePrebuiltHireProgress,
+  writePrebuiltHireStartup,
 } from "./prebuiltHireStorage.ts";
 
 function installStorage() {
@@ -75,6 +77,21 @@ test("a completed map hire keeps its direct chat only inside that company", () =
     completion,
   );
   assert.equal(readPrebuiltHireCompletion("company-b", "finance"), null);
+});
+
+test("a failed local head start stays visible for a map retry", () => {
+  installStorage();
+  const startup = {
+    hireId: "hire-1",
+    functionId: "finance",
+    agentId: "prebuilt-head-finance",
+    employeePubkey: "employee-1",
+    status: "failed",
+    error: "The local harness did not start.",
+  };
+  assert.equal(writePrebuiltHireStartup("company-a", startup), true);
+  assert.deepEqual(readPrebuiltHireStartup("company-a", "finance"), startup);
+  assert.equal(readPrebuiltHireStartup("company-b", "finance"), null);
 });
 
 test("a legacy completion cannot reveal prompt-only first move text", () => {
