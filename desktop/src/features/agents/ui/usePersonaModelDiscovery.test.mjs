@@ -166,6 +166,15 @@ test("synthesizeEmptyDiscoveryStatus_emptyAgentName_usesGenericFallback", () => 
   assert.match(status?.message ?? "", /This agent/);
 });
 
+test("synthesizeEmptyDiscoveryStatus_missingAgentName_usesGenericFallback", () => {
+  const emptyDiscovery = response({ models: [] });
+  delete emptyDiscovery.agentName;
+
+  const status = synthesizeEmptyDiscoveryStatus(emptyDiscovery, "");
+  assert.equal(status?.tone, "warning");
+  assert.match(status?.message ?? "", /This agent/);
+});
+
 // ── isCacheableDiscoveryResponse ──────────────────────────────────────────────
 
 test("isCacheableDiscoveryResponse_withUsableModels_returnsTrue", () => {

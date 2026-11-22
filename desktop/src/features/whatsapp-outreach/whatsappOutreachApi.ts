@@ -49,6 +49,10 @@ const CONTACT_PAGE_LIMIT = 200;
 /** Pages one contact load follows (5,000 contacts), so a relay fault cannot loop for ever. */
 export const WHATSAPP_CONTACT_MAX_PAGES = 25;
 
+/** A paged contact result that keeps consumers honest when the bounded load stops early. */
+export type WhatsAppContactLoad = readonly WhatsAppContact[] &
+  Readonly<{ truncated: boolean }>;
+
 export type WhatsAppCommandKind =
   | typeof KIND_WHATSAPP_BATCH
   | typeof KIND_WHATSAPP_BATCH_DECISION
@@ -248,15 +252,27 @@ export async function loadWhatsAppTemplates(
  * `waId` (it moved between pages while loading); contacts inside one page are all kept, in
  * order, even with equal `waId`s.
  */
+function contactLoad(
+  contacts: WhatsAppContact[],
+  truncated: boolean,
+): WhatsAppContactLoad {
+  return Object.defineProperty(contacts, "truncated", {
+    enumerable: false,
+    value: truncated,
+    writable: false,
+  }) as unknown as WhatsAppContactLoad;
+}
+
 export async function loadWhatsAppContacts(
   relayUrl: string,
   dependencies?: ApiDependencies,
-): Promise<readonly WhatsAppContact[]> {
+): Promise<WhatsAppContactLoad> {
   const contacts: WhatsAppContact[] = [];
   // `waId`s returned by earlier pages. The current page is added only once it is processed.
   const seenWaIds = new Set<string>();
   const usedCursors = new Set<string>();
   let before: string | undefined;
+  let truncated = false;
   for (let page = 0; page < WHATSAPP_CONTACT_MAX_PAGES; page += 1) {
     const response = await queryWhatsApp<{
       contacts?: unknown;
@@ -285,13 +301,17 @@ export async function loadWhatsAppContacts(
         "The WhatsApp relay returned an invalid contact page cursor.",
       );
     }
+    if (page === WHATSAPP_CONTACT_MAX_PAGES - 1) {
+      truncated = true;
+      break;
+    }
     if (usedCursors.has(next)) {
       throw new Error("The WhatsApp relay repeated a contact page cursor.");
     }
     usedCursors.add(next);
     before = next;
   }
-  return contacts;
+  return contactLoad(contacts, truncated);
 }
 
 /**

@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useManagedAgentsQuery } from "@/features/agents/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useAvailableAcpRuntimes,
+  useManagedAgentsQuery,
+} from "@/features/agents/hooks";
+import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
+import { WorkerModelDiscoveryWarmup } from "@/features/company-hiring/ui/hireConfigureModels";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
@@ -27,9 +32,12 @@ import {
 } from "../companyMapScout";
 import {
   readPrebuiltHireCompletion,
+  readPrebuiltHireStartup,
   type PrebuiltHireCompletion,
+  type PrebuiltHireStartup,
 } from "../prebuiltHireStorage";
 import { findRecoverablePrebuiltHire } from "../prebuiltHireRecovery";
+import { startPrebuiltHireAgent } from "../prebuiltHireStartup";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
 import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
@@ -48,6 +56,16 @@ export function CompanyMapScreen({
 } = {}) {
   const { activeCommunity } = useCommunities();
   const communityId = activeCommunity?.id ?? null;
+  const relayUrl = activeCommunity?.relayUrl ?? null;
+  const activeCommunityIdRef = useRef<string | null>(communityId);
+  activeCommunityIdRef.current = communityId;
+  const shouldWarmModelDiscovery = Boolean(activeCommunity);
+  const runtimesQuery = useAvailableAcpRuntimes({
+    enabled: shouldWarmModelDiscovery,
+  });
+  const agentDefaults = useAgentDialogDefaults({
+    open: shouldWarmModelDiscovery,
+  });
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
@@ -87,11 +105,17 @@ export function CompanyMapScreen({
   const [recentPrebuiltHires, setRecentPrebuiltHires] = useState<
     Partial<Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>>
   >({});
+  const [prebuiltHireStartups, setPrebuiltHireStartups] = useState<
+    Partial<Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireStartup>>
+  >({});
   useEffect(() => {
     attemptedAutomaticHiresRef.current.clear();
     setAutomaticHire(null);
     const restored: Partial<
       Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>
+    > = {};
+    const restoredStartups: Partial<
+      Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireStartup>
     > = {};
     for (const functionId of FUNCTION_ORDER) {
       const completion = readPrebuiltHireCompletion(
@@ -99,9 +123,65 @@ export function CompanyMapScreen({
         functionId,
       );
       if (completion) restored[functionId] = completion;
+      const startup = readPrebuiltHireStartup(activeCommunity?.id, functionId);
+      if (startup) restoredStartups[functionId] = startup;
     }
     setRecentPrebuiltHires(restored);
+    setPrebuiltHireStartups(restoredStartups);
   }, [activeCommunity?.id]);
+  const receivePrebuiltHireStartupStatus = useCallback(
+    (
+      functionId: (typeof FUNCTION_ORDER)[number],
+      status: PrebuiltHireStartup | null,
+    ) => {
+      setPrebuiltHireStartups((current) => {
+        if (status) return { ...current, [functionId]: status };
+        if (!current[functionId]) return current;
+        const next = { ...current };
+        delete next[functionId];
+        return next;
+      });
+    },
+    [],
+  );
+  const publishPrebuiltHireStartupStatus = useCallback(
+    (
+      sourceCommunityId: string,
+      functionId: (typeof FUNCTION_ORDER)[number],
+      status: PrebuiltHireStartup | null,
+    ) => {
+      if (activeCommunityIdRef.current !== sourceCommunityId) return;
+      receivePrebuiltHireStartupStatus(functionId, status);
+    },
+    [receivePrebuiltHireStartupStatus],
+  );
+  const retryPrebuiltHireStart = useCallback(
+    (functionId: (typeof FUNCTION_ORDER)[number]) => {
+      const startup =
+        prebuiltHireStartups[functionId] ??
+        readPrebuiltHireStartup(communityId, functionId);
+      const signerPubkey = identityQuery.data?.pubkey;
+      if (!startup || !communityId || !relayUrl || !signerPubkey) return;
+      startPrebuiltHireAgent({
+        agentId: startup.agentId,
+        communityId,
+        employeePubkey: startup.employeePubkey,
+        functionId,
+        hireId: startup.hireId,
+        onStatus: (status) =>
+          publishPrebuiltHireStartupStatus(communityId, functionId, status),
+        relayUrl,
+        signerPubkey,
+      });
+    },
+    [
+      communityId,
+      identityQuery.data?.pubkey,
+      prebuiltHireStartups,
+      publishPrebuiltHireStartupStatus,
+      relayUrl,
+    ],
+  );
   useEffect(() => {
     if (
       !communityId ||
@@ -256,9 +336,19 @@ export function CompanyMapScreen({
   }
   const ownerName = profileQuery.data?.displayName?.trim() || "Owner";
   const canHirePrebuiltHeads = membershipQuery.data?.role === "owner";
+  const inheritedProvider = agentDefaults.inheritedDefaults.provider.value;
+  const inheritedEnvVars = agentDefaults.inheritedEnvVars;
 
   return (
     <>
+      {(runtimesQuery.data ?? []).map((runtime) => (
+        <WorkerModelDiscoveryWarmup
+          envVars={inheritedEnvVars}
+          key={`${runtime.id}:${runtime.providerEnvVar ? inheritedProvider : ""}`}
+          providerId={runtime.providerEnvVar ? inheritedProvider : ""}
+          runtime={runtime}
+        />
+      ))}
       {!enabled ? (
         <p
           className="mx-auto mt-3 max-w-2xl rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
@@ -276,11 +366,13 @@ export function CompanyMapScreen({
         ownerName={ownerName}
         ownerPubkey={identityQuery.data?.pubkey}
         profiles={profiles}
-        relayUrl={activeCommunity?.relayUrl}
+        relayUrl={relayUrl ?? undefined}
         scoutPubkey={scoutPubkey}
         canHirePrebuiltHeads={canHirePrebuiltHeads}
         onHireHead={setHireFunctionId}
+        onRetryPrebuiltHireStart={retryPrebuiltHireStart}
         recentPrebuiltHires={recentPrebuiltHires}
+        prebuiltHireStartups={prebuiltHireStartups}
         slots={slots}
         liveFunctionIds={liveFunctionIds}
         mapWindowDepth={mapWindowDepth}
@@ -302,6 +394,10 @@ export function CompanyMapScreen({
         defaultChannelId={scoutChannelId}
         functionId={hireFunctionId}
         managerPubkey={scoutPubkey}
+        onAgentStartupStatus={(functionId, status) => {
+          if (!communityId) return;
+          publishPrebuiltHireStartupStatus(communityId, functionId, status);
+        }}
         onCompleted={(completion) => {
           if (completion) {
             setRecentPrebuiltHires((current) => ({

@@ -5,6 +5,12 @@ import type {
 
 export type OutreachStatusFilter = "all" | OutreachStatus;
 
+export type OutreachStatusProgress = Readonly<{
+  messaged: number;
+  resolved: number;
+  total: number;
+}>;
+
 export const OUTREACH_STATUS_OPTIONS = [
   {
     value: "not_started",
@@ -29,8 +35,20 @@ export const OUTREACH_STATUS_OPTIONS = [
 
 export function outreachStatusFor(
   outreach: OutreachStatusRecord | null | undefined,
+  progress?: OutreachStatusProgress | null,
 ): OutreachStatus {
-  return outreach?.status ?? "not_started";
+  if (outreach) return outreach.status;
+  if (!progress) return "not_started";
+  if (progress.total > 0 && progress.resolved >= progress.total) {
+    return "done";
+  }
+  return progress.messaged > 0 ? "in_progress" : "not_started";
+}
+
+function resolvedOutreachStatus(
+  value: OutreachStatus | OutreachStatusRecord | null | undefined,
+): OutreachStatus {
+  return typeof value === "string" ? value : outreachStatusFor(value);
 }
 
 export function outreachStatusOption(status: OutreachStatus) {
@@ -43,7 +61,9 @@ export function outreachStatusOption(status: OutreachStatus) {
 
 export function countOutreachStatusFilters<T>(
   records: readonly T[],
-  outreachForRecord: (record: T) => OutreachStatusRecord | null | undefined,
+  outreachForRecord: (
+    record: T,
+  ) => OutreachStatus | OutreachStatusRecord | null | undefined,
 ): Record<OutreachStatusFilter, number> {
   const counts: Record<OutreachStatusFilter, number> = {
     all: records.length,
@@ -52,7 +72,7 @@ export function countOutreachStatusFilters<T>(
     done: 0,
   };
   for (const record of records) {
-    counts[outreachStatusFor(outreachForRecord(record))] += 1;
+    counts[resolvedOutreachStatus(outreachForRecord(record))] += 1;
   }
   return counts;
 }
@@ -60,11 +80,13 @@ export function countOutreachStatusFilters<T>(
 export function filterByOutreachStatus<T>(
   records: readonly T[],
   filter: OutreachStatusFilter,
-  outreachForRecord: (record: T) => OutreachStatusRecord | null | undefined,
+  outreachForRecord: (
+    record: T,
+  ) => OutreachStatus | OutreachStatusRecord | null | undefined,
 ): T[] {
   if (filter === "all") return [...records];
   return records.filter(
-    (record) => outreachStatusFor(outreachForRecord(record)) === filter,
+    (record) => resolvedOutreachStatus(outreachForRecord(record)) === filter,
   );
 }
 

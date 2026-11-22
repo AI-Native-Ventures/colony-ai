@@ -458,6 +458,7 @@ test("loading contacts follows nextCursor and joins the pages in order", async (
   assert.equal(relay.bodies[0].limit, 200);
   assert.equal(relay.bodies[1].before, "c1");
   assert.equal(relay.bodies[2].before, "c2");
+  assert.equal(contacts.truncated, false);
 });
 
 test("an owner-scale 500-contact load makes three bounded WhatsApp reads", async () => {
@@ -497,7 +498,7 @@ test("an older relay without nextCursor is one request, as before", async () => 
   assert.equal(relay.bodies.length, 1);
 });
 
-test("contact paging stops at the page cap without an error", async () => {
+test("contact paging marks a list incomplete when it reaches the page cap", async () => {
   let served = 0;
   const relay = scriptedRelay(() => {
     served += 1;
@@ -512,6 +513,7 @@ test("contact paging stops at the page cap without an error", async () => {
   );
   assert.equal(relay.bodies.length, WHATSAPP_CONTACT_MAX_PAGES);
   assert.equal(contacts.length, WHATSAPP_CONTACT_MAX_PAGES);
+  assert.equal(contacts.truncated, true);
 });
 
 test("a repeated contact cursor throws instead of looping", async () => {

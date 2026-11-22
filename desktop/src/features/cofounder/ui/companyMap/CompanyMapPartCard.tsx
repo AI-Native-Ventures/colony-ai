@@ -13,7 +13,10 @@ import {
 } from "@/features/cofounder/functions";
 import { prebuiltHeadForFunction } from "@/features/cofounder/prebuiltAgents";
 import { prebuiltAgentAvatarDataUrl } from "@/features/cofounder/prebuiltAgentAvatar";
-import type { PrebuiltHireCompletion } from "@/features/cofounder/prebuiltHireStorage";
+import type {
+  PrebuiltHireCompletion,
+  PrebuiltHireStartup,
+} from "@/features/cofounder/prebuiltHireStorage";
 
 import {
   fullName,
@@ -149,6 +152,46 @@ export function PrebuiltJustHiredContent({
   );
 }
 
+/** Shows the durable detached-start state and its one recovery action. */
+export function PrebuiltHireStartupNotice({
+  head,
+  onRetry,
+  startup,
+}: {
+  head: NonNullable<ReturnType<typeof prebuiltHeadForFunction>>;
+  onRetry: () => void;
+  startup: PrebuiltHireStartup;
+}) {
+  const failed = startup.status === "failed";
+  return (
+    <div
+      className="mt-3 rounded-xl border border-border bg-muted/30 p-3 text-sm"
+      data-testid={`cofounder-prebuilt-hire-startup-${startup.functionId}`}
+      role={failed ? "alert" : "status"}
+    >
+      <p className="font-bold">
+        {failed
+          ? `${head.name} was hired but did not start.`
+          : `Starting ${head.name}.`}
+      </p>
+      <p className="mt-1 text-muted-foreground">
+        {failed
+          ? startup.error
+          : "You can keep using the company map while this head starts."}
+      </p>
+      {failed ? (
+        <button
+          className="mt-2 font-bold underline"
+          onClick={onRetry}
+          type="button"
+        >
+          Retry start
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function CompanyMapPartCard({
   activePart,
   canHirePrebuiltHeads,
@@ -159,9 +202,11 @@ export function CompanyMapPartCard({
   onGroupMouseEnter,
   onGroupMouseLeave,
   onHireHead,
+  onRetryPrebuiltHireStart,
   ownerName,
   profiles,
   recentPrebuiltHires,
+  prebuiltHireStartups,
   slots,
   summary,
 }: {
@@ -174,9 +219,11 @@ export function CompanyMapPartCard({
   onGroupMouseEnter: (functionId: FunctionId) => void;
   onGroupMouseLeave: () => void;
   onHireHead: (functionId: FunctionId) => void;
+  onRetryPrebuiltHireStart: (functionId: FunctionId) => void;
   ownerName: string;
   profiles: ProfileLookup;
   recentPrebuiltHires?: Partial<Record<FunctionId, PrebuiltHireCompletion>>;
+  prebuiltHireStartups?: Partial<Record<FunctionId, PrebuiltHireStartup>>;
   slots: FunctionSlotView[];
   summary: CompanyMapSummary | undefined;
 }) {
@@ -248,6 +295,15 @@ export function CompanyMapPartCard({
   const canHireHead = Boolean(
     slot.state !== "filled" && head && canHirePrebuiltHeads,
   );
+  const candidateStartup = prebuiltHireStartups?.[activePart];
+  const startup =
+    candidateStartup &&
+    (!recentHire ||
+      (candidateStartup.hireId === recentHire.hireId &&
+        candidateStartup.employeePubkey.toLowerCase() ===
+          recentHire.employeePubkey.toLowerCase()))
+      ? candidateStartup
+      : null;
   const summaryLine =
     slot.state === "filled" && leadName
       ? isPrebuiltLead
@@ -273,6 +329,13 @@ export function CompanyMapPartCard({
           leadName={leadName}
           recentHire={recentHire}
         />
+        {startup ? (
+          <PrebuiltHireStartupNotice
+            head={head}
+            onRetry={() => onRetryPrebuiltHireStart(activePart)}
+            startup={startup}
+          />
+        ) : null}
         <div className="company-map-card-actions">
           <Link
             className="company-map-primary-action"
@@ -312,6 +375,13 @@ export function CompanyMapPartCard({
       </p>
       {slot.state !== "filled" ? (
         <PrebuiltHeadPreview functionId={activePart} />
+      ) : null}
+      {startup && head ? (
+        <PrebuiltHireStartupNotice
+          head={head}
+          onRetry={() => onRetryPrebuiltHireStart(activePart)}
+          startup={startup}
+        />
       ) : null}
       {slot.state === "filled" && head ? (
         <PrebuiltHiredHeadPreview

@@ -34,9 +34,23 @@ export type PrebuiltHireCompletion = {
   firstMessage: string;
 };
 
+/**
+ * Durable local status for the detached host start that follows a completed
+ * hire. It is scoped by community and function in storage, never by relay.
+ */
+export type PrebuiltHireStartup = {
+  agentId: string;
+  employeePubkey: string;
+  error?: string;
+  functionId: FunctionId;
+  hireId: string;
+  status: "starting" | "failed";
+};
+
 const CHOICE_KEY_PREFIX = "company-map-prebuilt-choice:v1:";
 const PROGRESS_KEY_PREFIX = "company-map-prebuilt-progress:v1:";
 const COMPLETION_KEY_PREFIX = "company-map-prebuilt-completion:v1:";
+const STARTUP_KEY_PREFIX = "company-map-prebuilt-startup:v1:";
 const FUNCTION_IDS = new Set<FunctionId>([
   "sales",
   "operations",
@@ -63,6 +77,10 @@ function progressKey(communityId: string, functionId: FunctionId) {
 
 function completionKey(communityId: string, functionId: FunctionId) {
   return `${COMPLETION_KEY_PREFIX}${communityId}:${functionId}`;
+}
+
+function startupKey(communityId: string, functionId: FunctionId) {
+  return `${STARTUP_KEY_PREFIX}${communityId}:${functionId}`;
 }
 
 function nonEmptyString(value: unknown): value is string {
@@ -243,6 +261,18 @@ function readableCompletion(value: PrebuiltHireCompletion): boolean {
   );
 }
 
+function readableStartup(value: PrebuiltHireStartup): boolean {
+  return (
+    nonEmptyString(value.hireId) &&
+    FUNCTION_IDS.has(value.functionId) &&
+    nonEmptyString(value.agentId) &&
+    nonEmptyString(value.employeePubkey) &&
+    (value.status === "starting" || value.status === "failed") &&
+    (value.status !== "failed" || nonEmptyString(value.error)) &&
+    (value.status !== "starting" || value.error === undefined)
+  );
+}
+
 export function readPrebuiltHireCompletion(
   communityId: string | null | undefined,
   functionId: FunctionId,
@@ -295,6 +325,71 @@ export function writePrebuiltHireCompletion(
     completionKey(communityId, completion.functionId),
     completion,
   );
+}
+
+/** Reads one scoped detached-start status, rejecting malformed local data. */
+export function readPrebuiltHireStartup(
+  communityId: string | null | undefined,
+  functionId: FunctionId,
+): PrebuiltHireStartup | null {
+  if (!communityId) return null;
+  const raw = readJson(startupKey(communityId, functionId));
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const status = record.status;
+  if (
+    Object.keys(record).some(
+      (key) =>
+        key !== "hireId" &&
+        key !== "functionId" &&
+        key !== "agentId" &&
+        key !== "employeePubkey" &&
+        key !== "status" &&
+        key !== "error",
+    ) ||
+    record.functionId !== functionId ||
+    !FUNCTION_IDS.has(record.functionId as FunctionId) ||
+    !nonEmptyString(record.hireId) ||
+    !nonEmptyString(record.agentId) ||
+    !nonEmptyString(record.employeePubkey) ||
+    (status !== "starting" && status !== "failed") ||
+    (status === "failed" && !nonEmptyString(record.error)) ||
+    (status === "starting" && record.error !== undefined)
+  ) {
+    return null;
+  }
+  return {
+    hireId: record.hireId.trim(),
+    functionId,
+    agentId: record.agentId.trim(),
+    employeePubkey: record.employeePubkey.trim(),
+    status,
+    ...(typeof record.error === "string" ? { error: record.error.trim() } : {}),
+  };
+}
+
+/** Persists a valid detached-start status for the map recovery affordance. */
+export function writePrebuiltHireStartup(
+  communityId: string | null | undefined,
+  startup: PrebuiltHireStartup,
+) {
+  if (!communityId || !readableStartup(startup)) return false;
+  return writeJson(startupKey(communityId, startup.functionId), startup);
+}
+
+/** Removes a stale detached-start status after a successful host start. */
+export function clearPrebuiltHireStartup(
+  communityId: string | null | undefined,
+  functionId: FunctionId,
+) {
+  if (!communityId) return;
+  try {
+    storage()?.removeItem(startupKey(communityId, functionId));
+  } catch {
+    // The hire is complete even when a stale startup notice cannot be cleared.
+  }
 }
 
 export function clearPrebuiltHireProgress(
