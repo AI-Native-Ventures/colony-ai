@@ -218,6 +218,8 @@ type MockBridgeOptions = {
   referenceWorkspaceOutreachBoard?: boolean;
   /** Seed durable outreach-status examples for list-status interaction tests. */
   referenceWorkspaceOutreachStatusBoard?: boolean;
+  /** Seed isolated Lists examples for the messaged-count proof. */
+  referenceWorkspaceListMessaged?: boolean;
   /** Use the approved Sales and Outreach sidebar for outreach UI boards. */
   referenceWorkspaceOutreachSidebar?: boolean;
   /** Limit global people search to explicitly seeded board identities. */

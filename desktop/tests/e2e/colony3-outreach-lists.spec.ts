@@ -834,6 +834,7 @@ test.describe("Outreach lists", () => {
     page,
   }) => {
     await openReference(page, "/lists", 1440, "light", {
+      mockWhatsApp: true,
       outreachBoard: true,
       outreachStatusBoard: true,
     });
@@ -848,20 +849,23 @@ test.describe("Outreach lists", () => {
     await expect(table.locator("thead th")).toHaveText([
       "Name",
       "Leads",
+      "Messaged",
       "Outreach",
       "Source",
       "Default template",
       "Updated",
     ]);
-    const [leadsBox, outreachBox, sourceBox] = await Promise.all(
-      ["Leads", "Outreach", "Source"].map((label) =>
+    const [leadsBox, messagedBox, outreachBox, sourceBox] = await Promise.all(
+      ["Leads", "Messaged", "Outreach", "Source"].map((label) =>
         table.getByRole("columnheader", { name: label }).boundingBox(),
       ),
     );
-    if (!leadsBox || !outreachBox || !sourceBox) {
+    if (!leadsBox || !messagedBox || !outreachBox || !sourceBox) {
       throw new Error("The outreach-list table headers need bounds.");
     }
     expect(leadsBox.x).toBeLessThan(outreachBox.x);
+    expect(leadsBox.x).toBeLessThan(messagedBox.x);
+    expect(messagedBox.x).toBeLessThan(outreachBox.x);
     expect(outreachBox.x).toBeLessThan(sourceBox.x);
 
     const tableStatus = page.getByTestId(`outreach-status-${STATUS_LIST_ID}`);
@@ -1069,6 +1073,7 @@ test.describe("Outreach lists", () => {
     for (const state of proofStates) {
       await openReference(page, "/lists", state.width, state.theme, {
         mapShell: true,
+        mockWhatsApp: true,
         outreachBoard: true,
         outreachStatusBoard: true,
       });
@@ -1433,9 +1438,13 @@ test.describe("Outreach lists", () => {
     const summary = detail.getByRole("region", { name: "List summary" });
     const metrics = summary.locator(".c3l-list-summary-card");
     await expect(metrics).toHaveCount(4);
+    await expect(metrics.nth(0)).toContainText("Leads");
     await expect(metrics.nth(0)).toContainText("12");
+    await expect(metrics.nth(1)).toContainText("With WhatsApp");
     await expect(metrics.nth(1)).toContainText("11");
-    await expect(metrics.nth(2)).toContainText("4");
+    await expect(metrics.nth(2)).toContainText("Messaged");
+    await expect(metrics.nth(2)).toContainText("5 of 12");
+    await expect(metrics.nth(3)).toContainText("Replied");
     await expect(metrics.nth(3)).toContainText("1");
     await detail
       .getByLabel("Default WhatsApp template")
