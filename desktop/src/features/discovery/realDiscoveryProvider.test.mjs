@@ -755,7 +755,7 @@ test("a new campaign for the same type and selected place starts after durable c
     },
   });
   // Small targets are retained here only to exercise the state machine's
-  // target stop. The approved dialog itself allows 100 through 500.
+  // target stop. The approved dialog itself allows 1 through 2,000.
   await controller.start({ ...INPUT, target: 40 });
   await controller.whenIdle();
   const first = controller.getCurrent();
@@ -1046,7 +1046,7 @@ test("a missing location or an out-of-range target is refused before any search"
   await assert.rejects(controller.start({ ...INPUT, target: 0 }), {
     message: FIRST_START_ERROR,
   });
-  await assert.rejects(controller.start({ ...INPUT, target: 501 }), {
+  await assert.rejects(controller.start({ ...INPUT, target: 2_001 }), {
     message: FIRST_START_ERROR,
   });
   assert.equal(log.searches.length, 0);
@@ -1776,6 +1776,38 @@ test("simultaneous starts share one context read and retain each other's saved l
     1,
     "the shared context and reservation fence never save one provider result twice",
   );
+});
+
+test("an abort during shared Sales-context loading settles before it can create a campaign", async () => {
+  const contextReady = deferred();
+  const { controller, context } = harness({
+    resolveContext: async () => contextReady.promise,
+    search: async () => page(1, 1, null),
+  });
+  const abort = new AbortController();
+  const starting = controller.start({ ...INPUT, target: 2_000 }, abort.signal);
+  abort.abort();
+  await assert.rejects(starting, { name: "AbortError" });
+  contextReady.resolve(context);
+  await settle();
+  assert.equal(controller.getCampaigns().length, 0);
+  controller.dispose();
+});
+
+test("an abort after the first search response cannot persist a campaign", async () => {
+  const abort = new AbortController();
+  const { controller } = harness({
+    search: async () => {
+      abort.abort();
+      return page(1, 1, null);
+    },
+  });
+  await assert.rejects(
+    controller.start({ ...INPUT, target: 2_000 }, abort.signal),
+    { name: "AbortError" },
+  );
+  assert.equal(controller.getCampaigns().length, 0);
+  controller.dispose();
 });
 
 test("a different signed-in identity starts with an empty list", async () => {

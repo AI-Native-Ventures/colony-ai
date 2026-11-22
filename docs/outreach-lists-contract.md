@@ -181,7 +181,7 @@ Messages are plain English and safe to show.
 
 | op | needs |
 |---|---|
-| `create` | `name`, `audience`, `industryName`, `verticalId`, `verticalName`, `area`, `target` (1 to 500), `status`; optional `pickedTags` (at most 20), `query`, `runBy`, and for the backfill `found`, `skippedDuplicates`, `endNote` |
+| `create` | `name`, `audience`, `industryName`, `verticalId`, `verticalName`, `area`, `target` (1 to 2,000), `status`; optional `pickedTags` (at most 20), `query`, `runBy`, and for the backfill `found`, `skippedDuplicates`, `endNote` |
 | `progress` | `found`, `skippedDuplicates`, optional `status` (`running` or `paused`) |
 | `finish` | `status` (`complete`, `cancelled` or `failed`), `found`, `skippedDuplicates`, optional `endNote` |
 | `rename` | `name` |

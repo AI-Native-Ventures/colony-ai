@@ -8,9 +8,9 @@ import type {
 } from "./discoverySearch";
 import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
 
-/** The owner-facing campaign form permits targets from 100 through 500. */
-export const MIN_TARGET = 100;
-export const MAX_TARGET = 500;
+/** The owner-facing campaign form permits targets from 1 through 2,000. */
+export const MIN_TARGET = 1;
+export const MAX_TARGET = 2_000;
 export const PUBLISH_CONCURRENCY = 6;
 export const PUBLISH_BACKOFF_MS = [400, 800, 1600] as const;
 export const SEARCH_BACKOFF_MS = [1_000, 3_000] as const;
@@ -67,5 +67,5 @@ export type DiscoveryController = DiscoveryCampaignProvider & {
 };
 
 export const FIRST_START_ERROR =
-  "Pick a location from the list and choose 100 to 500 prospects.";
+  "Pick a location from the list and choose 1 to 2,000 prospects.";
 export const STOPPED_ERROR = "The search was stopped before it began.";

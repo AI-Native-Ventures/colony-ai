@@ -21,6 +21,7 @@ import { ArrowRightGlyph } from "./DiscoveryIcons";
 import { MultiCityLocationPicker } from "./MultiCityLocationPicker";
 import { RunnerAvatar } from "./DiscoveryRunner";
 import { BUDGET_USD_PER_PROSPECT } from "./discoveryCampaignContinuation";
+import { MAX_TARGET, MIN_TARGET } from "./discoveryControllerContract";
 import { formatCustomerPrice } from "./discoveryCustomerPricing";
 import {
   attachNearbyLocations,
@@ -340,8 +341,8 @@ export function DiscoveryCampaignDialog({
       </label>
       <input
         id="w10-campaign-target"
-        max={500}
-        min={100}
+        max={MAX_TARGET}
+        min={MIN_TARGET}
         onChange={(event) => setTarget(event.currentTarget.value)}
         required
         type="number"
@@ -397,11 +398,14 @@ export function DiscoveryCampaignDialog({
     if (
       (!allowMultipleCities && !location.trim()) ||
       !Number.isInteger(requested) ||
-      requested < 100 ||
-      requested > 500 ||
-      !approved
+      requested < MIN_TARGET ||
+      requested > MAX_TARGET
     ) {
-      setError("Choose 100 to 500 prospects and approve the maximum budget.");
+      setError("Choose 1 to 2,000 prospects per city.");
+      return;
+    }
+    if (!approved) {
+      setError("Tick the box to approve the maximum budget.");
       return;
     }
     if (!name.trim()) {
