@@ -683,7 +683,7 @@ async fn handle_decision(
                 tenant,
                 "batch_approved",
                 &format!(
-                    "Batch {short} approved: {ready} message(s) will go out between 08:00 and 18:00 (Johannesburg), a few minutes apart, within the daily cap."
+                    "Batch {short} approved: {ready} message(s) will be spread across 08:00 to 18:00 (Johannesburg) to fit today's daily cap."
                 ),
             )
             .await;
