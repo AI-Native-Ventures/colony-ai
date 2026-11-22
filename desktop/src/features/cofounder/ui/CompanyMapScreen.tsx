@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { TeamPage, TeamPageTitle } from "@/features/company-team/ui/TeamPage";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import { useIdentityQuery } from "@/shared/api/hooks";
+import { fetchCurrentCompanyHireHead } from "@/features/company-hiring/hireRelay";
 import { useProfileQuery, useUsersBatchQuery } from "@/features/profile/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import {
@@ -12,6 +14,7 @@ import {
   useFunctionSlotsQuery,
   useWorkerRunsQuery,
 } from "../hooks";
+import { useCompanyAccessQuery } from "../accessHooks";
 import { workerEffectiveStatus } from "../cofounderRecords";
 import { FUNCTION_ORDER } from "../functions";
 import { useNeedsYouSummary } from "../needsYouSummary";
@@ -26,6 +29,7 @@ import {
   readPrebuiltHireCompletion,
   type PrebuiltHireCompletion,
 } from "../prebuiltHireStorage";
+import { findRecoverablePrebuiltHire } from "../prebuiltHireRecovery";
 
 import { CompanyMapBoard } from "./companyMap/CompanyMapBoard";
 import { PrebuiltHeadHireDialog } from "./PrebuiltHeadHireDialog";
@@ -43,6 +47,7 @@ export function CompanyMapScreen({
   onMapWindowFit?: () => void;
 } = {}) {
   const { activeCommunity } = useCommunities();
+  const communityId = activeCommunity?.id ?? null;
   const settingsQuery = useCofounderSettingsQuery(activeCommunity?.id ?? null);
   const slots = useFunctionSlotsQuery(activeCommunity?.id ?? null);
   const teamQuery = useCompanyTeamQuery(Boolean(activeCommunity));
@@ -56,6 +61,10 @@ export function CompanyMapScreen({
   const whatsappStatus = useWhatsAppStatusQuery(enabled);
   const playbooksQuery = usePlaybooksQuery(Boolean(activeCommunity));
   const channelsQuery = useChannelsQuery({ enabled: Boolean(activeCommunity) });
+  const accessQuery = useCompanyAccessQuery(communityId);
+  const managedAgentsQuery = useManagedAgentsQuery({
+    enabled: Boolean(activeCommunity),
+  });
   const members = teamQuery.data?.members ?? [];
   const pubkeys = members.map((member) => member.pubkey);
   const profilesQuery = useUsersBatchQuery(pubkeys, {
@@ -70,6 +79,11 @@ export function CompanyMapScreen({
   const [hireFunctionId, setHireFunctionId] = useState<
     (typeof FUNCTION_ORDER)[number] | null
   >(null);
+  const [automaticHire, setAutomaticHire] = useState<{
+    functionId: (typeof FUNCTION_ORDER)[number];
+    hireId: string;
+  } | null>(null);
+  const attemptedAutomaticHiresRef = useRef(new Set<string>());
   const [recentPrebuiltHires, setRecentPrebuiltHires] = useState<
     Partial<Record<(typeof FUNCTION_ORDER)[number], PrebuiltHireCompletion>>
   >({});
@@ -86,6 +100,84 @@ export function CompanyMapScreen({
     }
     setRecentPrebuiltHires(restored);
   }, [activeCommunity?.id]);
+  useEffect(() => {
+    attemptedAutomaticHiresRef.current.clear();
+    setAutomaticHire(null);
+  }, [communityId]);
+  useEffect(() => {
+    if (
+      !communityId ||
+      !enabled ||
+      accessQuery.isPending ||
+      accessQuery.isError ||
+      managedAgentsQuery.isPending ||
+      managedAgentsQuery.isError
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const findAutomaticHire = async () => {
+      try {
+        for (const functionId of FUNCTION_ORDER) {
+          const recovered = await findRecoverablePrebuiltHire(
+            accessQuery.data?.slotHires ?? [],
+            functionId,
+            fetchCurrentCompanyHireHead,
+          );
+          if (cancelled || !recovered) continue;
+          const employeePubkey = recovered.head.head.employeePubkey;
+          const hasLocalEmployee = Boolean(
+            employeePubkey &&
+              managedAgentsQuery.data?.some(
+                (agent) =>
+                  agent.pubkey.toLowerCase() === employeePubkey.toLowerCase(),
+              ),
+          );
+          const attemptKey = `${communityId}:${recovered.head.head.proposal.hireId}`;
+          if (
+            recovered.head.head.status === "approved" &&
+            hasLocalEmployee
+          ) {
+            if (attemptedAutomaticHiresRef.current.has(attemptKey)) {
+              if (automaticHire?.hireId === recovered.head.head.proposal.hireId) {
+                return;
+              }
+              continue;
+            }
+            setAutomaticHire({
+              functionId,
+              hireId: recovered.head.head.proposal.hireId,
+            });
+            return;
+          }
+        }
+        if (!cancelled) setAutomaticHire(null);
+      } catch {
+        if (!cancelled) setAutomaticHire(null);
+      }
+    };
+    void findAutomaticHire();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessQuery.data?.slotHires,
+    accessQuery.isError,
+    accessQuery.isPending,
+    automaticHire?.hireId,
+    communityId,
+    enabled,
+    managedAgentsQuery.data,
+    managedAgentsQuery.isError,
+    managedAgentsQuery.isPending,
+  ]);
+  useEffect(() => {
+    if (!automaticHire || hireFunctionId !== null || !communityId) return;
+    const attemptKey = `${communityId}:${automaticHire.hireId}`;
+    if (attemptedAutomaticHiresRef.current.has(attemptKey)) return;
+    attemptedAutomaticHiresRef.current.add(attemptKey);
+    setHireFunctionId(automaticHire.functionId);
+  }, [automaticHire, communityId, hireFunctionId]);
   const operationsWorkflows = useMemo(
     () =>
       operationsMapWorkflows({
@@ -205,6 +297,11 @@ export function CompanyMapScreen({
         whatsAppChannelId={whatsappStatus.data?.outreachChannelId}
       />
       <PrebuiltHeadHireDialog
+        autoFinishHireId={
+          automaticHire?.functionId === hireFunctionId
+            ? automaticHire.hireId
+            : null
+        }
         defaultChannelId={scoutChannelId}
         functionId={hireFunctionId}
         managerPubkey={scoutPubkey}
@@ -215,6 +312,9 @@ export function CompanyMapScreen({
               [completion.functionId]: completion,
             }));
           }
+          setAutomaticHire((current) =>
+            current?.functionId === completion?.functionId ? null : current,
+          );
           setHireFunctionId(null);
         }}
         onOpenChange={(nextOpen) => {

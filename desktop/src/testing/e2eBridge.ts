@@ -7551,6 +7551,11 @@ function acceptMockCompanyAccessAction(
     return;
   }
   if (!mock.companyAccessRecords) mock.companyAccessRecords = [];
+  const slotHireError = mockSlotHireActionError(event, mock);
+  if (slotHireError) {
+    reject(slotHireError);
+    return;
+  }
   const error = applyMockAccessAction(
     mock.companyAccessRecords,
     event.content,
@@ -7563,6 +7568,78 @@ function acceptMockCompanyAccessAction(
     return;
   }
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+/** Mirrors the relay checks that need both access and hire-head mock state. */
+function mockSlotHireActionError(
+  event: RelayEvent,
+  mock: NonNullable<E2eConfig["mock"]>,
+): string | null {
+  let action: {
+    op?: unknown;
+    hireId?: unknown;
+    function?: unknown;
+  };
+  try {
+    action = JSON.parse(event.content) as {
+      op?: unknown;
+      hireId?: unknown;
+      function?: unknown;
+    };
+  } catch {
+    return null;
+  }
+  if (action.op !== "slot_hire_set") return null;
+  if (typeof action.hireId !== "string" || typeof action.function !== "string") {
+    return "invalid: slot_hire_set needs hireId and function.";
+  }
+  if (
+    ![
+      "sales",
+      "operations",
+      "customer_success",
+      "finance",
+      "brand",
+    ].includes(action.function)
+  ) {
+    return "invalid: slot_hire_set needs hireId and function.";
+  }
+  const current = filterMockCompanyHireHeads({
+    kinds: [KIND_HIRE_HEAD],
+    "#d": [`company:hire:${action.hireId.toLowerCase()}`],
+    limit: 2,
+  })[0];
+  if (!current) return "conflict: that hire does not exist";
+  let head: { status?: unknown; proposedByPubkey?: unknown };
+  try {
+    head = JSON.parse(current.content) as {
+      status?: unknown;
+      proposedByPubkey?: unknown;
+    };
+  } catch {
+    return "invalid: current hire head is malformed";
+  }
+  const isAdmin =
+    mock.relayRole === undefined ||
+    mock.relayRole === "owner" ||
+    mock.relayRole === "admin";
+  if (
+    !isAdmin &&
+    (typeof head.proposedByPubkey !== "string" ||
+      head.proposedByPubkey.toLowerCase() !== event.pubkey.toLowerCase())
+  ) {
+    return "restricted: only the owner, an admin or the proposer of the hire can choose its slot";
+  }
+  if (head.status !== "proposed" && head.status !== "awaiting_founder") {
+    return "conflict: the slot can only be chosen while the hire is waiting for a decision";
+  }
+  const occupied = mock.companyFunctionHeads?.find(
+    (candidate) => candidate.function === action.function,
+  );
+  if (occupied?.state === "filled") {
+    return "conflict: that slot already has a lead; clear it before hiring into it";
+  }
+  return null;
 }
 
 function filterMockCompanyFunctionHeads(filter: MockFilter): RelayEvent[] {
@@ -10422,13 +10499,19 @@ function acceptMockHireAction(
       head.status = "hired";
       head.introductionEventId = action.introductionEventId;
     } else if (action.action === "deny") {
-      if (status !== "proposed" && status !== "awaiting_founder") {
+      if (
+        status !== "proposed" &&
+        status !== "awaiting_founder" &&
+        status !== "approved"
+      ) {
         reject("conflict: hire cannot be denied in its current state");
         return;
       }
       head.status = "denied";
       if (typeof action.reason === "string") head.denialReason = action.reason;
       delete head.founderApprovalReason;
+      delete head.employeePubkey;
+      delete head.introductionEventId;
     } else {
       reject("invalid: hire action type is unsupported");
       return;

@@ -43,6 +43,7 @@ import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
 import { resetMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
 import { resetScoutStartState } from "@/features/cofounder/scoutKeepAlive";
 import { resetCompanyMapOpenPart } from "@/features/cofounder/companyMapOpenPart";
+import { resetPrebuiltHireRunFence } from "@/features/cofounder/prebuiltHireRunFence";
 import { setStartFloorLookup } from "@/features/agents/startFloorLookup";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
@@ -100,6 +101,7 @@ async function resetCommunityState({
   // counted in.
   resetScoutStartState();
   resetCompanyMapOpenPart();
+  resetPrebuiltHireRunFence();
   setStartFloorLookup(null);
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();

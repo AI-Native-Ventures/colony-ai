@@ -2730,6 +2730,7 @@ mod tests {
         slot_hire_set: crate::company_access::AccessAction,
         approve: HireAction,
         attach_employee: HireAction,
+        deny: HireAction,
         complete: HireAction,
     }
 
@@ -2758,6 +2759,7 @@ mod tests {
         );
         assert!(validate_hire_action(&fixture.approve).is_ok());
         assert!(validate_hire_action(&fixture.attach_employee).is_ok());
+        assert!(validate_hire_action(&fixture.deny).is_ok());
         assert!(validate_hire_action(&fixture.complete).is_ok());
     }
 
