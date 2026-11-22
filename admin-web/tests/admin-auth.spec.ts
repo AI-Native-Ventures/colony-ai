@@ -468,6 +468,177 @@ test("email-code failures stay clear and generic, with an available resend path"
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
+test("an operator can sign in with email and password through the cookie API", async ({
+  page,
+}) => {
+  let probeCount = 0;
+  let passwordBody: { email?: string; password?: string } | undefined;
+  let passwordHeaders: Record<string, string> | undefined;
+  let cookieProbeHeader: string | undefined;
+  await page.route("**/api/admin/v1/probe", (route) => {
+    probeCount += 1;
+    cookieProbeHeader = route.request().headers().cookie;
+    return route.fulfill(
+      probeCount === 1
+        ? {
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: { code: "unauthorized", message: "sign in" },
+            }),
+          }
+        : cookieProbeHeader?.includes("admin_e2e_session=test")
+          ? {
+              contentType: "application/json",
+              body: JSON.stringify({ role: "operator", source: "config" }),
+            }
+          : {
+              status: 401,
+              contentType: "application/json",
+              body: JSON.stringify({
+                error: { code: "unauthorized", message: "sign in" },
+              }),
+            },
+    );
+  });
+  await page.route("**/api/admin/v1/session/config", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        googleClientId: null,
+        emailCode: true,
+        password: true,
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/password", async (route) => {
+    passwordHeaders = route.request().headers();
+    passwordBody = route.request().postDataJSON() as {
+      email?: string;
+      password?: string;
+    };
+    await route.fulfill({
+      contentType: "application/json",
+      // The HTTP Playwright fixture cannot persist the production Secure
+      // __Host- cookie, so this fixture cookie proves the browser receives and
+      // returns a same-origin session cookie before the operator probe.
+      headers: {
+        "set-cookie": "admin_e2e_session=test; Path=/; SameSite=Strict",
+      },
+      body: JSON.stringify({
+        status: "ok",
+        pubkeyShort: "ab12cd34",
+        expiresInSeconds: 2592000,
+      }),
+    });
+  });
+  await page.route("**/api/admin/v1/metrics/overview?**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(emptyOverviewResponse),
+    }),
+  );
+
+  await page.goto("/overview");
+  await page.getByLabel("Email").fill("operator@example.test");
+  await page.getByLabel("Password").fill("correct horse battery staple");
+  await page.getByLabel("Password").press("Enter");
+
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  expect(passwordBody).toEqual({
+    email: "operator@example.test",
+    password: "correct horse battery staple",
+  });
+  expect(passwordHeaders?.authorization).toBeUndefined();
+  expect(passwordHeaders?.["x-colony-admin"]).toBeUndefined();
+  expect(cookieProbeHeader).toContain("admin_e2e_session=test");
+});
+
+test("password failures stay generic, clear the password, and refocus it", async ({
+  page,
+}) => {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "unauthorized", message: "sign in" },
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/config", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        googleClientId: null,
+        emailCode: true,
+        password: true,
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/password", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "invalid_password",
+          message: "The password is invalid.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/overview");
+  await page.getByLabel("Email").fill("operator@example.test");
+  const password = page.getByLabel("Password");
+  await password.fill("wrong password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(
+    page.getByText(
+      "Email or password not accepted. Try again, or sign in with a code.",
+    ),
+  ).toBeVisible();
+  await expect(password).toHaveValue("");
+  await expect(password).toBeFocused();
+  await expect(page.getByLabel("Email")).toHaveValue("operator@example.test");
+});
+
+test("Google uses the runtime client ID when the relay provides one", async ({
+  page,
+}) => {
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "unauthorized", message: "sign in" },
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/config", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        googleClientId: "runtime-google-client",
+        emailCode: true,
+        password: false,
+      }),
+    }),
+  );
+  await page.route("https://accounts.google.com/**", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "Google" }),
+  );
+
+  await page.goto("/overview");
+  await page.getByRole("button", { name: "Continue with Google" }).click();
+  await expect(page).toHaveURL(/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+  expect(new URL(page.url()).searchParams.get("client_id")).toBe(
+    "runtime-google-client",
+  );
+});
+
 test("Google OIDC posts the fragment token and stored nonce, then checks the operator role", async ({
   page,
 }) => {
@@ -490,6 +661,16 @@ test("Google OIDC posts the fragment token and stored nonce, then checks the ope
       body: JSON.stringify({ role: "operator", source: "config" }),
     });
   });
+  await page.route("**/api/admin/v1/session/config", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        googleClientId: null,
+        emailCode: true,
+        password: false,
+      }),
+    }),
+  );
   await page.route("https://accounts.google.com/**", (route) =>
     route.fulfill({ status: 200, contentType: "text/html", body: "Google" }),
   );

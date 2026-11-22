@@ -100,17 +100,20 @@ cookie through Google, an emailed one-time code, or a Colony account password.
 Each path requires the exact admin host and matching admin-page Origin. The
 cookie is `Secure`, `HttpOnly`, and `SameSite=Strict`; it lasts 30 days.
 
-The relay exposes an unauthenticated, admin-host-only
-`GET /api/admin/v1/session/config` route for the Step 3 admin-web migration.
-It returns
+On load, the page requests the unauthenticated, admin-host-only
+`GET /api/admin/v1/session/config` route. It returns
 `{"googleClientId":"<id>"|null,"emailCode":true|false,"password":true|false}`
 with `Cache-Control: no-store` and never includes an operator email, key, or
 allowlist count. `googleClientId` is set only when
 `COLONY_ADMIN_GOOGLE_CLIENT_ID` is a trimmed member of
 `COLONY_GOOGLE_CLIENT_IDS`; an unset or blank value makes that field `null`.
-The current admin web bundle still uses its
-`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time value until the Step 3
-runtime-config consumer lands.
+When `password` is true, the page makes email and password the first sign-in
+form and keeps the emailed-code flow as an alternate. When `emailCode` is
+false, it hides that alternate. Google uses `googleClientId`, then falls back to
+the public `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time value for an older
+relay. If the configuration cannot be loaded, the page keeps the existing code
+and NIP-98 options available, uses that build-time Google fallback, and offers
+Retry.
 
 Password sign-in is `POST /api/admin/v1/session/password` with
 `{"email":"operator@example.com","password":"..."}`. The body uses camelCase
@@ -326,12 +329,13 @@ available as a browser fallback.
 The UI renders null metrics as "Not collected" and shows aggregates, ids, and
 timestamps without message or WhatsApp content.
 
-The relay now publishes the public Google client ID through
-`GET /api/admin/v1/session/config`. It is an identifier, not a secret. Step 3
-will make the admin web client consume that field instead of the current
-`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time value. Until then, leave the
-build-time setting in place; after that migration, a `null` `googleClientId`
-will suppress Google sign-in and leave the NIP-98 fallback available.
+The relay publishes the public Google client ID through
+`GET /api/admin/v1/session/config`. It is an identifier, not a secret. The
+admin page uses it at runtime and falls back to
+`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` when the runtime field is `null` or an
+older relay does not provide the endpoint. A `null` runtime field without that
+fallback suppresses Google sign-in and leaves the other sign-in methods
+available.
 
 ## Local development
 

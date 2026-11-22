@@ -39,13 +39,16 @@ with `Cache-Control: no-store`. `googleClientId` is the optional
 is true only when the email-code flow is enabled; `password` is true only when
 `RELAY_OPERATOR_EMAILS` is nonempty and `COLONY_ACCOUNT_KEK` is present. The
 response never includes an operator email, public key, or allowlist count. The
-relay contract is ready for the Step 3 admin-web migration. Until that change
-lands, the current admin page still uses its existing
-`VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time setting.
+admin page requests this once when it loads. It uses `password` to show the
+email-and-password form first, `emailCode` to offer the emailed-code alternate,
+and `googleClientId` for Google. A null `googleClientId` falls back to the
+public `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` build-time value. If the request
+fails or its JSON is invalid, the page keeps the established code and NIP-98
+paths available, uses that build-time Google fallback, and offers Retry.
 
 **Sign in with your Colony account** (the same Google sign-in Colony accounts use, server custody; no shared passwords or tokens):
 
-1. After the Step 3 admin-web migration, the page fetches the runtime configuration and uses its non-null `googleClientId` in Google's OpenID Connect endpoint: `https://accounts.google.com/o/oauth2/v2/auth?client_id=<admin web client id>&redirect_uri=https://admin.colony.global/sign-in&response_type=id_token&scope=openid%20email&nonce=<random 32+ chars>&prompt=select_account`. The nonce is generated in the browser and kept in `sessionStorage`. (The page's content security policy is `script-src 'self'`, so no Google script is loaded; this is a plain redirect.) Until then, the current page continues to use `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` from its bundle.
+1. The page fetches the runtime configuration and uses its non-null `googleClientId` in Google's OpenID Connect endpoint: `https://accounts.google.com/o/oauth2/v2/auth?client_id=<admin web client id>&redirect_uri=https://admin.colony.global/sign-in&response_type=id_token&scope=openid%20email&nonce=<random 32+ chars>&prompt=select_account`. The nonce is generated in the browser and kept in `sessionStorage`. (The page's content security policy is `script-src 'self'`, so no Google script is loaded; this is a plain redirect.) A null runtime value falls back to `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` when that public build-time value is available.
 2. Google returns to `/sign-in#id_token=...`. The page reads the fragment, removes it from the address bar, and posts it.
 3. `POST /api/admin/v1/session/google` with `Content-Type: application/json`, body `{"idToken": "...", "nonce": "..."}`, sent from the admin page (the request must carry `Origin: https://admin.colony.global`).
    - The relay verifies the token exactly as account sign-in does (signature, issuer, expiry, `email_verified`, audience in `COLONY_GOOGLE_CLIENT_IDS`), and that the token's `nonce` equals the posted one.
@@ -100,7 +103,7 @@ There is no dedicated email-code form board in the supplied Colony 3.0 admin des
 4. Confirm Fly secrets on `colony-relay`: `RELAY_OPERATOR_PUBKEYS` contains the owner's **Colony account public key** (the `accounts.pubkey` for the owner's Google email, hex), and `COLONY_ACCOUNT_KEK` is set (it is, accounts work today).
 5. Set the Fly secret `RELAY_OPERATOR_EMAILS` to the approved operator entries, using plain `email` entries for matching Colony accounts and `email=pubkeyhex` entries for delivery aliases. Keep `RELAY_OPERATOR_PUBKEYS` and `COLONY_ACCOUNT_KEK` present. Email-code sign-in also requires `RESEND_API_KEY` and `COLONY_MAIL_FROM`; password sign-in does not.
 6. Deploy the relay with migration 0069 from this PR. The new routes are checked against `BUZZ_ADMIN_HOST` inside the handlers, so community hosts and installed desktop clients cannot reach or use them.
-7. Step 3 updates AD-UI to fetch `/api/admin/v1/session/config` at runtime. Until that migration lands, keep providing the public Google web client ID as `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` at admin-bundle build time.
+7. AD-UI fetches `/api/admin/v1/session/config` at runtime. Keep providing the public Google web client ID as `VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID` at admin-bundle build time while older relays remain in use; it is the safe fallback when the endpoint is unavailable.
 
 ## 2. Endpoints
 
