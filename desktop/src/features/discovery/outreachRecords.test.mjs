@@ -365,8 +365,8 @@ test("campaign builder and relay parser accept 2,000 and reject 2,001", () => {
       },
     );
   assert.equal(
-    parseDiscoveryCampaignHead(campaignEvent(2_000), COMMUNITY, CHANNEL)
-      ?.record.target,
+    parseDiscoveryCampaignHead(campaignEvent(2_000), COMMUNITY, CHANNEL)?.record
+      .target,
     2_000,
   );
   assert.equal(

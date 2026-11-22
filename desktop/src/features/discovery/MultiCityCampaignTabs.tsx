@@ -32,9 +32,7 @@ function statusLabel(status: ReturnType<typeof groupCityStatus>): string {
   return "Paused";
 }
 
-function groupVisualStatus(
-  label: string,
-): ReturnType<typeof groupCityStatus> {
+function groupVisualStatus(label: string): ReturnType<typeof groupCityStatus> {
   switch (label) {
     case "Searching":
       return "running";

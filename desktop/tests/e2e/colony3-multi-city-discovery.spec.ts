@@ -832,8 +832,12 @@ test("the map-shell catalog opens a starting group and a single campaign", async
   await expect(groupRow).not.toContainText("Ended early");
   await groupRow.click();
   await expect(page.getByTestId("w10-campaign-page")).toBeVisible();
-  await expect(page.getByRole("tablist", { name: "Campaign cities" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /All cities.*Starting/ })).toBeVisible();
+  await expect(
+    page.getByRole("tablist", { name: "Campaign cities" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: /All cities.*Starting/ }),
+  ).toBeVisible();
 
   await page.goBack();
   await expect(page.getByTestId("discovery-campaigns-page")).toBeVisible();
