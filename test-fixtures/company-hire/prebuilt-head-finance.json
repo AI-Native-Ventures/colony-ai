@@ -45,6 +45,13 @@
     "expectedHeadEventId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "employeePubkey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
   },
+  "deny": {
+    "schemaVersion": 1,
+    "hireId": "00000000-0000-4000-8000-000000000001",
+    "action": "deny",
+    "expectedHeadEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "reason": "The attached employee was removed from this Mac before the hire finished."
+  },
   "complete": {
     "schemaVersion": 1,
     "hireId": "00000000-0000-4000-8000-000000000001",

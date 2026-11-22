@@ -7,6 +7,7 @@ import { buildAccessActionEvent } from "./accessRecords.ts";
 import {
   prebuiltBuiltInRole,
   prebuiltHeadForFunction,
+  materializePrebuiltAgent,
   PREBUILT_AGENTS,
 } from "./prebuiltAgents.ts";
 import {
@@ -14,6 +15,7 @@ import {
   buildPrebuiltHireAttachEmployeeAction,
   buildPrebuiltHireCompleteAction,
   buildPrebuiltHireCreateAction,
+  buildPrebuiltHireDenyAction,
   buildPrebuiltHireProposal,
   buildPrebuiltSlotHireSetAction,
   prebuiltFirstMessageText,
@@ -100,6 +102,46 @@ test("prebuilt head role-pack jobs keep their approved display names", () => {
   }
 });
 
+test("a reopened Operations hire reuses its existing persona before creating an agent", async () => {
+  const agent = prebuiltHeadForFunction("operations");
+  assert.ok(agent);
+  const role = prebuiltBuiltInRole(agent, "goose");
+  let createCalls = 0;
+  const personaId = await materializePrebuiltAgent(agent, "goose", {
+    scope: "operations-reopen",
+    listPersonas: async () => [
+      {
+        id: "persona-operations-head",
+        displayName: role.displayName,
+        avatarUrl: null,
+        description: role.description,
+        companyRole: role.companyRole,
+        systemPrompt: role.systemPrompt,
+        runtime: null,
+        model: null,
+        provider: null,
+        namePool: [],
+        isBuiltIn: false,
+        isActive: true,
+        shared: false,
+        envVars: {},
+        respondTo: null,
+        respondToAllowlist: [],
+        parallelism: null,
+        createdAt: "2026-11-22T04:20:01.000Z",
+        updatedAt: "2026-11-22T04:20:01.000Z",
+      },
+    ],
+    createPersona: async () => {
+      createCalls += 1;
+      throw new Error("an existing Operations persona must be reused");
+    },
+  });
+
+  assert.equal(personaId, "persona-operations-head");
+  assert.equal(createCalls, 0);
+});
+
 test("the channel introduction and owner-visible first message use distinct durable markers", () => {
   const agent = prebuiltHeadForFunction("sales");
   assert.ok(agent);
@@ -172,6 +214,14 @@ test("the prebuilt Finance hire sends the shared relay contract", () => {
       employeePubkey: wireFixture.attachEmployee.employeePubkey,
     }),
     wireFixture.attachEmployee,
+  );
+  assert.deepEqual(
+    buildPrebuiltHireDenyAction({
+      hireId: wireFixture.deny.hireId,
+      expectedHeadEventId: wireFixture.deny.expectedHeadEventId,
+      reason: wireFixture.deny.reason,
+    }),
+    wireFixture.deny,
   );
   assert.deepEqual(
     buildPrebuiltHireCompleteAction({

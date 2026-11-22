@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -9,12 +8,9 @@ import {
   useManagedAgentsQuery,
   usePersonasQuery,
 } from "@/features/agents/hooks";
+import type { AgentDropdownOption } from "@/features/agents/ui/agentConfigControls";
 import { simpleModelLabel } from "@/features/agents/ui/simpleAgentAi";
 import { useAgentDialogDefaults } from "@/features/agents/ui/useAgentDialogDefaults";
-import {
-  AgentDropdownSelect,
-  type AgentDropdownOption,
-} from "@/features/agents/ui/agentConfigControls";
 import { attachManagedAgentToChannel } from "@/features/agents/channelAgents";
 import {
   useChannelsQuery,
@@ -23,7 +19,6 @@ import {
 } from "@/features/channels/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { companyTeamQueryKey } from "@/features/company-team/teamRelay";
 import {
   companyAccessQueryKey,
@@ -34,12 +29,6 @@ import { companyFunctionHeadsQueryKey } from "@/features/cofounder/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMessages";
 import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/shared/ui/dialog";
 
 import {
   defaultHireLocalConfiguration,
@@ -59,15 +48,22 @@ import type {
 import {
   defaultEffortFor,
   effortOptionsFor,
-  WorkerModelProbe,
 } from "@/features/company-hiring/ui/hireConfigureModels";
 
 import type { FunctionId } from "../cofounderRecords";
-import { FUNCTION_DETAILS } from "../functions";
 import {
   materializePrebuiltAgent,
   prebuiltHeadForFunction,
 } from "../prebuiltAgents";
+import {
+  findRecoverablePrebuiltHire,
+  isPrebuiltHeadHireForFunction,
+} from "../prebuiltHireRecovery";
+import {
+  claimPrebuiltHireRun,
+  ownsPrebuiltHireRun,
+  releasePrebuiltHireRun,
+} from "../prebuiltHireRunFence";
 import {
   buildPrebuiltHireApproveAction,
   buildPrebuiltHireAttachEmployeeAction,
@@ -95,6 +91,7 @@ import type {
   PrebuiltHireCompletion,
   PrebuiltHireProgress,
 } from "../prebuiltHireStorage";
+import { PrebuiltHeadHireDialogForm } from "./PrebuiltHeadHireDialogForm";
 
 type ModelChoice = {
   runtimeId: string;
@@ -110,7 +107,12 @@ type ChoiceDraft = {
   effortLevel: string;
 };
 
-type HireRecoveryState = "idle" | "checking" | "ready" | "failed";
+type HireRecoveryState =
+  | "idle"
+  | "checking"
+  | "ready"
+  | "employee_removed"
+  | "failed";
 
 const EMPTY_CHOICE: ChoiceDraft = {
   runtimeId: "",
@@ -139,39 +141,13 @@ function storedChoice(draft: ChoiceDraft): PrebuiltHireChoice {
   };
 }
 
-function prebuiltChoiceFieldClassName({
-  required,
-  value,
-}: {
-  required: boolean;
-  value: string;
-}) {
-  const needsChoice = required && !value;
-  return [
-    "h-[2.875rem] min-w-0 max-w-full rounded-xl border-2 px-3 text-sm font-medium",
-    needsChoice
-      ? "border-primary focus-visible:ring-primary/35"
-      : "border-input",
-  ].join(" ");
-}
-
-function sameProposal(
-  record: CompanyHireHeadRecord | null,
-  hireId: string,
-  functionId: FunctionId,
-) {
-  return (
-    record?.head.proposal.hireId === hireId &&
-    record.head.proposal.title === prebuiltHeadForFunction(functionId)?.name
-  );
-}
-
 function errorText(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message;
   return "The hire paused before it finished. Retry to continue from the saved step.";
 }
 
 export function PrebuiltHeadHireDialog({
+  autoFinishHireId = null,
   defaultChannelId,
   functionId,
   managerPubkey,
@@ -180,6 +156,7 @@ export function PrebuiltHeadHireDialog({
   open,
   ownerName,
 }: {
+  autoFinishHireId?: string | null;
   defaultChannelId?: string | null;
   functionId: FunctionId | null;
   managerPubkey?: string | null;
@@ -212,14 +189,13 @@ export function PrebuiltHeadHireDialog({
   );
   const [recoveryState, setRecoveryState] =
     React.useState<HireRecoveryState>("idle");
-  const [recoveryHireId, setRecoveryHireId] = React.useState<string | null>(
-    null,
-  );
   const [failure, setFailure] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
+  const autoFinishAttemptedRef = React.useRef<string | null>(null);
+  const finishHireRef = React.useRef<(() => void) | null>(null);
   const agent = functionId ? prebuiltHeadForFunction(functionId) : null;
-  const headQuery = useCompanyHireHeadQuery(progress?.hireId ?? recoveryHireId);
+  const headQuery = useCompanyHireHeadQuery(progress?.hireId ?? null);
   const agentDefaults = useAgentDialogDefaults({
     open,
   });
@@ -305,7 +281,7 @@ export function PrebuiltHeadHireDialog({
   const selectionReady = Boolean(
     selectedRuntime &&
       selectedModel &&
-      recoveryState === "ready" &&
+      (recoveryState === "ready" || recoveryState === "employee_removed") &&
       (!requiresEffort || effortOptions.includes(choice.effortLevel)) &&
       validChannels.some((channel) => channel.id === channelId),
   );
@@ -339,8 +315,9 @@ export function PrebuiltHeadHireDialog({
     const savedChoice = readPrebuiltHireChoice(communityId) ?? null;
     const preferredChoice = savedProgress?.choice ?? savedChoice;
     setProgress(savedProgress);
-    setRecoveryHireId(null);
-    setRecoveryState(savedProgress ? "ready" : "checking");
+    // Saved browser state is only a recovery hint. Keep the action disabled
+    // until its current relay head and local employee state are checked.
+    setRecoveryState("checking");
     setHasSavedChoice(savedChoice !== null);
     setChoice(
       preferredChoice
@@ -363,111 +340,173 @@ export function PrebuiltHeadHireDialog({
       !open ||
       !communityId ||
       !functionId ||
+      !agent ||
       progress ||
-      recoveryState !== "checking" ||
-      recoveryHireId !== null
+      recoveryState !== "checking"
     ) {
       return;
     }
-    if (accessQuery.isPending) return;
-    if (accessQuery.isError) {
+    if (accessQuery.isPending || managedAgentsQuery.isPending) return;
+    if (accessQuery.isError || managedAgentsQuery.isError) {
       setRecoveryState("failed");
       setFailure(
         "Colony could not check for an unfinished hire, so it will not start another one. Close this and try again.",
       );
       return;
     }
-    const slotHire = accessQuery.data?.slotHires.find(
-      (entry) => entry.functionId === functionId,
-    );
-    if (!slotHire) {
-      setRecoveryState("ready");
-      return;
-    }
-    setRecoveryHireId(slotHire.hireId);
+    let cancelled = false;
+    const recover = async () => {
+      try {
+        const recovered = await findRecoverablePrebuiltHire(
+          accessQuery.data?.slotHires ?? [],
+          functionId,
+          fetchCurrentCompanyHireHead,
+        );
+        if (cancelled) return;
+        if (!recovered) {
+          setRecoveryState("ready");
+          return;
+        }
+        const proposal = recovered.head.head.proposal;
+        if (!proposal.modelId) {
+          setRecoveryState("failed");
+          setFailure(
+            "This unfinished hire has no model selected. Choose a model before hiring. Colony will not create another agent without one.",
+          );
+          return;
+        }
+        const savedChoice = readPrebuiltHireChoice(communityId);
+        const preservedEffort =
+          savedChoice?.runtimeId === proposal.runtimeId &&
+          savedChoice.providerId === (proposal.providerId ?? "") &&
+          savedChoice.modelId === proposal.modelId
+            ? savedChoice.effortLevel
+            : undefined;
+        const recoveredChoice: PrebuiltHireChoice = {
+          runtimeId: proposal.runtimeId,
+          providerId: proposal.providerId ?? "",
+          modelId: proposal.modelId,
+          ...(preservedEffort ? { effortLevel: preservedEffort } : {}),
+        };
+        const recoveredProgress: PrebuiltHireProgress = {
+          hireId: proposal.hireId,
+          functionId,
+          agentId: agent.id,
+          introductionChannelId: proposal.introductionChannelId,
+          choice: recoveredChoice,
+          ...(recovered.head.head.employeePubkey
+            ? { employeePubkey: recovered.head.head.employeePubkey }
+            : {}),
+        };
+        writePrebuiltHireChoice(communityId, recoveredChoice);
+        writePrebuiltHireProgress(communityId, recoveredProgress);
+        setChoice({
+          ...recoveredChoice,
+          effortLevel: recoveredChoice.effortLevel ?? "",
+        });
+        setChannelId(proposal.introductionChannelId);
+        setHasSavedChoice(true);
+        setProgress(recoveredProgress);
+        const attachedEmployee = recovered.head.head.employeePubkey;
+        const hasLocalEmployee = Boolean(
+          attachedEmployee &&
+            managedAgentsQuery.data?.some(
+              (candidate) =>
+                candidate.pubkey.toLowerCase() ===
+                attachedEmployee.toLowerCase(),
+            ),
+        );
+        setRecoveryState(
+          recovered.head.head.status === "approved" &&
+            attachedEmployee &&
+            !hasLocalEmployee
+            ? "employee_removed"
+            : "ready",
+        );
+      } catch {
+        if (cancelled) return;
+        setRecoveryState("failed");
+        setFailure(
+          "Colony found an unfinished hire but could not read it, so it will not start another one. Close this and try again.",
+        );
+      }
+    };
+    void recover();
+    return () => {
+      cancelled = true;
+    };
   }, [
+    agent,
     accessQuery.data?.slotHires,
     accessQuery.isError,
     accessQuery.isPending,
     communityId,
     functionId,
+    managedAgentsQuery.data,
+    managedAgentsQuery.isError,
+    managedAgentsQuery.isPending,
     open,
     progress,
-    recoveryHireId,
     recoveryState,
   ]);
 
   React.useEffect(() => {
-    if (
-      !open ||
-      !communityId ||
-      !functionId ||
-      !agent ||
-      progress ||
-      recoveryState !== "checking" ||
-      !recoveryHireId
-    ) {
+    if (!open || !progress || submitting) return;
+    if (headQuery.isPending || managedAgentsQuery.isPending) return;
+    if (headQuery.isError) {
+      if (recoveryState === "checking") {
+        setRecoveryState("failed");
+        setFailure(
+          "Colony found an unfinished hire but could not read it, so it will not start another one. Close this and try again.",
+        );
+      }
       return;
     }
-    if (headQuery.isPending) return;
-    if (headQuery.isError || !headQuery.data) {
+    if (!headQuery.data) {
+      // A previous window can stop after writing its local progress but before
+      // its first relay create. That is still resumable, including the
+      // Operations persona-only interruption.
+      if (recoveryState === "checking") setRecoveryState("ready");
+      return;
+    }
+    if (managedAgentsQuery.isError) {
       setRecoveryState("failed");
       setFailure(
-        "Colony found an unfinished hire but could not read it, so it will not start another one. Close this and try again.",
+        "Colony could not check this employee on this Mac. Close this and try again.",
       );
       return;
     }
-    const recoveredHead = headQuery.data;
+    const attachedEmployee = headQuery.data.head.employeePubkey;
+    const hasLocalEmployee = Boolean(
+      attachedEmployee &&
+        managedAgentsQuery.data?.some(
+          (candidate) =>
+            candidate.pubkey.toLowerCase() === attachedEmployee.toLowerCase(),
+        ),
+    );
     if (
-      !sameProposal(recoveredHead, recoveryHireId, functionId) ||
-      recoveredHead.head.status === "denied" ||
-      recoveredHead.head.status === "hired"
+      headQuery.data.head.status === "approved" &&
+      attachedEmployee &&
+      !hasLocalEmployee
     ) {
-      setRecoveryHireId(null);
+      setRecoveryState("employee_removed");
+    } else if (
+      recoveryState === "checking" ||
+      recoveryState === "employee_removed"
+    ) {
       setRecoveryState("ready");
-      return;
     }
-    const proposal = recoveredHead.head.proposal;
-    if (!proposal.modelId) {
-      setRecoveryState("failed");
-      setFailure(
-        "This unfinished hire has no model selected. Choose a model before hiring. Colony will not create another agent without one.",
-      );
-      return;
-    }
-    const recoveredChoice: PrebuiltHireChoice = {
-      runtimeId: proposal.runtimeId,
-      providerId: proposal.providerId ?? "",
-      modelId: proposal.modelId,
-    };
-    const recoveredProgress: PrebuiltHireProgress = {
-      hireId: proposal.hireId,
-      functionId,
-      agentId: agent.id,
-      introductionChannelId: proposal.introductionChannelId,
-      choice: recoveredChoice,
-      ...(recoveredHead.head.employeePubkey
-        ? { employeePubkey: recoveredHead.head.employeePubkey }
-        : {}),
-    };
-    writePrebuiltHireChoice(communityId, recoveredChoice);
-    writePrebuiltHireProgress(communityId, recoveredProgress);
-    setChoice({ ...recoveredChoice, effortLevel: "" });
-    setChannelId(proposal.introductionChannelId);
-    setHasSavedChoice(true);
-    setProgress(recoveredProgress);
-    setRecoveryState("ready");
   }, [
-    agent,
-    communityId,
-    functionId,
     headQuery.data,
     headQuery.isError,
     headQuery.isPending,
+    managedAgentsQuery.data,
+    managedAgentsQuery.isError,
+    managedAgentsQuery.isPending,
     open,
     progress,
-    recoveryHireId,
     recoveryState,
+    submitting,
   ]);
 
   React.useEffect(() => {
@@ -582,31 +621,97 @@ export function PrebuiltHeadHireDialog({
       return;
     }
     if (!selectionReady) return;
+    const replacesRemovedEmployee =
+      recoveryState === "employee_removed" && progress !== null;
+    const runHireId = progress?.hireId ?? globalThis.crypto.randomUUID();
+    const runLease = claimPrebuiltHireRun(communityId, runHireId);
+    if (!runLease) return;
+    const assertCurrentRun = () => {
+      if (!ownsPrebuiltHireRun(runLease)) {
+        throw new Error("This hire is continuing in another company session.");
+      }
+    };
     submittingRef.current = true;
     setSubmitting(true);
     setFailure(null);
     try {
       const selectedChoice = storedChoice(choice);
-      const hireId = progress?.hireId ?? globalThis.crypto.randomUUID();
+      const resumedProgress = replacesRemovedEmployee ? null : progress;
+      if (replacesRemovedEmployee && progress) {
+        const stranded = await fetchCurrentCompanyHireHead(progress.hireId);
+        assertCurrentRun();
+        if (!stranded) {
+          throw new Error(
+            "Colony could not read the earlier hire, so it will not start another one.",
+          );
+        }
+        if (stranded.head.status === "approved") {
+          const strandedEmployee = stranded.head.employeePubkey;
+          if (!strandedEmployee) {
+            throw new Error(
+              "The earlier hire changed before Colony could replace it. Close this and try again.",
+            );
+          }
+          const localAgents = (await managedAgentsQuery.refetch()).data ?? [];
+          assertCurrentRun();
+          if (
+            localAgents.some(
+              (candidate) =>
+                candidate.pubkey.toLowerCase() ===
+                strandedEmployee.toLowerCase(),
+            )
+          ) {
+            setRecoveryState("ready");
+            throw new Error(
+              "The earlier employee is available on this Mac. Retry to finish that hire.",
+            );
+          }
+          await publishAndConfirm(
+            buildPrebuiltHireDenyAction({
+              hireId: progress.hireId,
+              expectedHeadEventId: stranded.event.id,
+              reason:
+                "The attached employee was removed from this Mac before the hire finished.",
+            }),
+            (record) =>
+              record?.head.status === "denied" &&
+              record.head.employeePubkey === undefined &&
+              record.head.introductionEventId === undefined,
+          );
+          assertCurrentRun();
+        } else if (stranded.head.status !== "denied") {
+          throw new Error(
+            "The earlier hire changed before Colony could replace it. Close this and try again.",
+          );
+        }
+        clearPrebuiltHireProgress(communityId, progress.functionId);
+        removeHireDraft(relayUrl, progress.hireId);
+        setProgress(null);
+        setRecoveryState("ready");
+      }
+      const hireId = replacesRemovedEmployee
+        ? globalThis.crypto.randomUUID()
+        : runHireId;
       let flow: PrebuiltHireProgress = {
         hireId,
         functionId,
         agentId: agent.id,
         introductionChannelId: channelId,
         choice: selectedChoice,
-        ...(progress?.employeePubkey
-          ? { employeePubkey: progress.employeePubkey }
+        ...(resumedProgress?.employeePubkey
+          ? { employeePubkey: resumedProgress.employeePubkey }
           : {}),
-        ...(progress?.introductionEventId
-          ? { introductionEventId: progress.introductionEventId }
+        ...(resumedProgress?.introductionEventId
+          ? { introductionEventId: resumedProgress.introductionEventId }
           : {}),
-        ...(progress?.directChannelId
-          ? { directChannelId: progress.directChannelId }
+        ...(resumedProgress?.directChannelId
+          ? { directChannelId: resumedProgress.directChannelId }
           : {}),
-        ...(progress?.firstMessageEventId
-          ? { firstMessageEventId: progress.firstMessageEventId }
+        ...(resumedProgress?.firstMessageEventId
+          ? { firstMessageEventId: resumedProgress.firstMessageEventId }
           : {}),
       };
+      assertCurrentRun();
       writePrebuiltHireChoice(communityId, selectedChoice);
       writePrebuiltHireProgress(communityId, flow);
       setProgress(flow);
@@ -620,6 +725,7 @@ export function PrebuiltHeadHireDialog({
           createPersona: createPersona.mutateAsync,
         },
       );
+      assertCurrentRun();
       const proposal = buildPrebuiltHireProposal({
         agent,
         choice: selectedChoice,
@@ -641,13 +747,15 @@ export function PrebuiltHeadHireDialog({
       });
 
       let current = await fetchCurrentCompanyHireHead(hireId);
+      assertCurrentRun();
       if (!current) {
         current = await publishAndConfirm(
           buildPrebuiltHireCreateAction(proposal),
-          (record) => sameProposal(record, hireId, functionId),
+          (record) => isPrebuiltHeadHireForFunction(record, hireId, functionId),
         );
       }
-      if (!sameProposal(current, hireId, functionId)) {
+      assertCurrentRun();
+      if (!isPrebuiltHeadHireForFunction(current, hireId, functionId)) {
         throw new Error(
           "A different hire already uses this saved recovery record.",
         );
@@ -661,7 +769,9 @@ export function PrebuiltHeadHireDialog({
         current.head.status === "proposed" ||
         current.head.status === "awaiting_founder"
       ) {
+        assertCurrentRun();
         await ensureSlotIntent(hireId, functionId);
+        assertCurrentRun();
         current = await publishAndConfirm(
           buildPrebuiltHireApproveAction({
             hireId,
@@ -671,6 +781,7 @@ export function PrebuiltHeadHireDialog({
             record?.head.status === "approved" ||
             record?.head.status === "hired",
         );
+        assertCurrentRun();
       }
       if (current.head.status === "approved") {
         let employeePubkey =
@@ -687,6 +798,7 @@ export function PrebuiltHeadHireDialog({
                 candidate.pubkey.toLowerCase() ===
                 employeePubkey?.toLowerCase(),
             );
+            assertCurrentRun();
           }
         }
         if (!employeePubkey) {
@@ -698,6 +810,7 @@ export function PrebuiltHeadHireDialog({
               "That harness is no longer ready. Pick another AI and retry.",
             );
           }
+          assertCurrentRun();
           const created = await createManagedAgent.mutateAsync({
             name: agent.name,
             personaId,
@@ -716,6 +829,7 @@ export function PrebuiltHeadHireDialog({
             startOnAppLaunch: false,
             backend: { type: "local" },
           });
+          assertCurrentRun();
           managedAgent = created.agent;
           employeePubkey = created.agent.pubkey;
           flow = { ...flow, employeePubkey };
@@ -733,12 +847,14 @@ export function PrebuiltHeadHireDialog({
           );
         }
         current = await fetchCurrentCompanyHireHead(hireId);
+        assertCurrentRun();
         if (current?.head.status !== "approved") {
           throw new Error(
             "The hire changed before the employee could join. Retry it.",
           );
         }
         if (!current.head.employeePubkey) {
+          assertCurrentRun();
           current = await publishAndConfirm(
             buildPrebuiltHireAttachEmployeeAction({
               hireId,
@@ -749,6 +865,7 @@ export function PrebuiltHeadHireDialog({
               record?.head.employeePubkey?.toLowerCase() ===
               employeePubkey?.toLowerCase(),
           );
+          assertCurrentRun();
         }
         const introductionChannelId =
           current.head.proposal.introductionChannelId;
@@ -757,12 +874,15 @@ export function PrebuiltHeadHireDialog({
           writePrebuiltHireProgress(communityId, flow);
           setProgress(flow);
         }
+        assertCurrentRun();
         await attachManagedAgentToChannel(introductionChannelId, {
           agent: managedAgent,
           role: "bot",
           ensureRunning: true,
         });
+        assertCurrentRun();
         if (!flow.introductionEventId) {
+          assertCurrentRun();
           const introduction = await sendManagedAgentChannelMessage({
             agentPubkey: employeePubkey,
             channelId: introductionChannelId,
@@ -770,11 +890,13 @@ export function PrebuiltHeadHireDialog({
             marker: prebuiltHireIntroductionMarker(hireId),
             markerScope: "agent",
           });
+          assertCurrentRun();
           flow = { ...flow, introductionEventId: introduction.eventId };
           writePrebuiltHireProgress(communityId, flow);
           setProgress(flow);
         }
         current = await fetchCurrentCompanyHireHead(hireId);
+        assertCurrentRun();
         if (!current)
           throw new Error("The relay could not find the saved hire. Retry it.");
         if (current.head.status !== "hired") {
@@ -784,6 +906,7 @@ export function PrebuiltHeadHireDialog({
               "The channel introduction was not saved. Retry this hire.",
             );
           }
+          assertCurrentRun();
           current = await publishAndConfirm(
             buildPrebuiltHireCompleteAction({
               hireId,
@@ -797,9 +920,11 @@ export function PrebuiltHeadHireDialog({
                 employeePubkey?.toLowerCase() &&
               record.head.introductionEventId === introductionEventId,
           );
+          assertCurrentRun();
         }
       }
       current = await fetchCurrentCompanyHireHead(hireId);
+      assertCurrentRun();
       if (current?.head.status !== "hired") {
         throw new Error("The relay did not complete this hire. Retry it.");
       }
@@ -813,11 +938,13 @@ export function PrebuiltHeadHireDialog({
         setProgress(flow);
       }
       if (!flow.directChannelId) {
+        assertCurrentRun();
         const directChat = await openDm.mutateAsync({
           pubkeys: [employeePubkey],
           expectedRelayUrl: relayUrl,
           expectedSignerPubkey: identityQuery.data.pubkey,
         });
+        assertCurrentRun();
         flow = { ...flow, directChannelId: directChat.id };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
@@ -827,6 +954,7 @@ export function PrebuiltHeadHireDialog({
         throw new Error("The direct chat could not be recovered. Retry it.");
       }
       if (!flow.firstMessageEventId) {
+        assertCurrentRun();
         const firstMessage = await sendManagedAgentChannelMessage({
           agentPubkey: employeePubkey,
           channelId: directChannelId,
@@ -834,6 +962,7 @@ export function PrebuiltHeadHireDialog({
           marker: prebuiltHireFirstMessageMarker(hireId),
           markerScope: "agent",
         });
+        assertCurrentRun();
         flow = { ...flow, firstMessageEventId: firstMessage.eventId };
         writePrebuiltHireProgress(communityId, flow);
         setProgress(flow);
@@ -851,6 +980,7 @@ export function PrebuiltHeadHireDialog({
               firstMessage: prebuiltFirstMessageText(agent, ownerName),
             }
           : null;
+      assertCurrentRun();
       if (completion) writePrebuiltHireCompletion(communityId, completion);
       clearPrebuiltHireProgress(communityId, functionId);
       removeHireDraft(relayUrl, hireId);
@@ -866,14 +996,55 @@ export function PrebuiltHeadHireDialog({
         }),
         queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
       ]);
+      assertCurrentRun();
       onCompleted(completion);
     } catch (error) {
-      setFailure(errorText(error));
+      if (ownsPrebuiltHireRun(runLease)) setFailure(errorText(error));
     } finally {
       submittingRef.current = false;
-      setSubmitting(false);
+      if (ownsPrebuiltHireRun(runLease)) setSubmitting(false);
+      releasePrebuiltHireRun(runLease);
     }
   };
+
+  React.useEffect(() => {
+    finishHireRef.current = () => void finishHire();
+  });
+
+  React.useEffect(() => {
+    if (
+      !autoFinishHireId ||
+      autoFinishAttemptedRef.current === autoFinishHireId ||
+      !progress ||
+      progress.hireId.toLowerCase() !== autoFinishHireId.toLowerCase() ||
+      recoveryState !== "ready" ||
+      submitting ||
+      !selectionReady ||
+      headQuery.data?.head.status !== "approved"
+    ) {
+      return;
+    }
+    const employeePubkey = headQuery.data.head.employeePubkey;
+    if (
+      !employeePubkey ||
+      !managedAgentsQuery.data?.some(
+        (candidate) =>
+          candidate.pubkey.toLowerCase() === employeePubkey.toLowerCase(),
+      )
+    ) {
+      return;
+    }
+    autoFinishAttemptedRef.current = autoFinishHireId;
+    finishHireRef.current?.();
+  }, [
+    autoFinishHireId,
+    headQuery.data,
+    managedAgentsQuery.data,
+    progress,
+    recoveryState,
+    selectionReady,
+    submitting,
+  ]);
 
   const undoUnapprovedHire = async () => {
     if (!progress || submittingRef.current) return;
@@ -921,262 +1092,65 @@ export function PrebuiltHeadHireDialog({
   if (!open || !agent || !functionId) return null;
 
   return (
-    <Dialog onOpenChange={close} open={open}>
-      <DialogContent
-        aria-describedby="prebuilt-hire-description"
-        className="max-w-[37.5rem]"
-        data-testid="prebuilt-head-hire-dialog"
-      >
-        <div className="pr-8">
-          <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-            Hire for {FUNCTION_DETAILS[functionId].name}
-          </p>
-          <DialogTitle className="mt-1">{agent.name}</DialogTitle>
-          <DialogDescription id="prebuilt-hire-description">
-            Scout hands {FUNCTION_DETAILS[functionId].name} over the moment you
-            hire.
-          </DialogDescription>
-        </div>
-
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <EmployeeAvatar
-            className="size-11 rounded-full"
-            instance={prebuiltAgentAvatarDataUrl(agent)}
-            name={agent.name}
-            role={`Head of ${FUNCTION_DETAILS[functionId].name}`}
-          />
-          <div>
-            <p className="text-sm font-extrabold">{agent.name}</p>
-            <p className="text-xs text-muted-foreground">Pre-built agent.</p>
-          </div>
-        </div>
-
-        <section className="rounded-xl border border-border bg-muted/30 p-4">
-          <div>
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              What it does
-            </p>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
-              {agent.does.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-          <div className="mt-4 border-t border-border pt-4">
-            <p className="text-2xs font-extrabold uppercase tracking-[0.12em] text-muted-foreground">
-              What it asks of you
-            </p>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
-              {agent.asks.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        {runtimes.map((runtime) => (
-          <WorkerModelProbe
-            envVars={inheritedEnvVars}
-            key={choiceKey(
-              runtime.id,
-              providerForRuntime(runtime, inheritedProvider),
-            )}
-            onOptions={receiveModelOptions}
-            providerId={providerForRuntime(runtime, inheritedProvider)}
-            runtime={runtime}
-          />
-        ))}
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <label
-            className="grid min-w-0 gap-1.5 text-sm font-bold"
-            htmlFor="prebuilt-hire-harness"
-          >
-            Harness
-            <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName({
-                required: runtimes.length > 0,
-                value: choice.runtimeId,
-              })}
-              disabled={submitting || runtimes.length === 0}
-              id="prebuilt-hire-harness"
-              onValueChange={(runtimeId) => {
-                const runtime = runtimes.find(
-                  (candidate) => candidate.id === runtimeId,
-                );
-                setChoice({
-                  ...EMPTY_CHOICE,
-                  runtimeId: runtime?.id ?? "",
-                  providerId: runtime
-                    ? providerForRuntime(runtime, inheritedProvider)
-                    : "",
-                });
-              }}
-              options={runtimeOptions}
-              placeholder="Choose a harness"
-              placeholderValue=""
-              testId="prebuilt-hire-harness"
-              value={choice.runtimeId}
-            />
-          </label>
-          <label
-            className="grid min-w-0 gap-1.5 text-sm font-bold"
-            htmlFor="prebuilt-hire-model"
-          >
-            Model
-            <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName({
-                required: modelRequired,
-                value: choice.modelId,
-              })}
-              disabled={submitting || !selectedRuntime}
-              id="prebuilt-hire-model"
-              onValueChange={(modelId) =>
-                setChoice((current) => ({
-                  ...current,
-                  modelId,
-                  effortLevel: "",
-                }))
-              }
-              options={selectedModelOptions}
-              placeholder="Choose a model"
-              placeholderValue=""
-              selectedLabel={
-                selectedModel ? (
-                  <span className="block truncate" title={selectedModel.label}>
-                    {selectedModel.label}
-                  </span>
-                ) : undefined
-              }
-              testId="prebuilt-hire-model"
-              value={choice.modelId}
-            />
-          </label>
-          <label
-            className="grid min-w-0 gap-1.5 text-sm font-bold"
-            htmlFor="prebuilt-hire-effort"
-          >
-            Effort
-            <AgentDropdownSelect
-              className={prebuiltChoiceFieldClassName({
-                required: effortRequired,
-                value: choice.effortLevel,
-              })}
-              disabled={submitting || !selectedModel || !requiresEffort}
-              id="prebuilt-hire-effort"
-              onValueChange={(effortLevel) =>
-                setChoice((current) => ({ ...current, effortLevel }))
-              }
-              options={effortChoiceOptions}
-              placeholder={
-                requiresEffort ? "Choose effort" : "Set by this harness"
-              }
-              placeholderValue=""
-              testId="prebuilt-hire-effort"
-              value={choice.effortLevel}
-            />
-          </label>
-        </div>
-        <p
-          className="text-sm text-muted-foreground"
-          data-testid="prebuilt-hire-choice-helper"
-        >
-          {hasSavedChoice
-            ? "Same as your last hire. Change any of them."
-            : "This is your first hire, so pick all three. Next time Colony shows what you picked here."}
-        </p>
-        {runtimesQuery.isPending ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Checking which AI is ready on this Mac.
-          </p>
-        ) : null}
-        {recoveryState === "checking" ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Checking for an unfinished hire before starting a new one.
-          </p>
-        ) : null}
-        {!runtimesQuery.isPending && runtimes.length === 0 ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            No AI is ready on this Mac.{" "}
-            <Link className="underline" to="/settings">
-              Open Settings
-            </Link>{" "}
-            to connect a harness.
-          </p>
-        ) : null}
-        {selectedRuntime &&
-        !modelChoices.some(
-          (model) => model.runtimeId === selectedRuntime.id,
-        ) ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            This harness has not reported a model yet. Check its sign-in and
-            model settings, then choose again.
-          </p>
-        ) : null}
-
-        {validChannels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            There is no company chat to start this hire in. Join one first.
-          </p>
-        ) : null}
-
-        {failure ? (
-          <div
-            className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm"
-            role="alert"
-          >
-            <p>{failure}</p>
-            {progress && headQuery.data?.head.status === "proposed" ? (
-              <button
-                className="mt-2 font-bold underline"
-                disabled={submitting}
-                onClick={() => void undoUnapprovedHire()}
-                type="button"
-              >
-                Undo unapproved hire
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        {!isOwner ? (
-          <p className="text-sm text-muted-foreground">
-            Only the company owner can finish this hire.
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {!selectionReady ? (
-            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-              {recoveryState === "checking"
-                ? "Checking for an unfinished hire."
-                : selectedRuntime && !selectedModel
-                  ? "Choose a model before hiring. Colony will not create an agent without one."
-                  : "Pick all three to hire."}
-            </p>
-          ) : (
-            <span aria-hidden="true" />
-          )}
-          <div className="flex flex-wrap justify-end gap-3">
-            <button
-              className="rounded-xl border border-border px-4 py-2 text-sm font-bold hover:bg-muted disabled:opacity-50"
-              disabled={submitting}
-              onClick={() => onOpenChange(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-              data-testid="prebuilt-hire-finish"
-              disabled={!selectionReady || !isOwner || submitting}
-              onClick={() => void finishHire()}
-              type="button"
-            >
-              {submitting ? `Hiring ${agent.name}` : `Hire ${agent.name}`}
-            </button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <PrebuiltHeadHireDialogForm
+      agent={agent}
+      canUndoUnapprovedHire={Boolean(
+        progress && headQuery.data?.head.status === "proposed",
+      )}
+      choice={choice}
+      effortChoiceOptions={effortChoiceOptions}
+      effortRequired={effortRequired}
+      failure={failure}
+      functionId={functionId}
+      hasModelChoicesForSelectedRuntime={modelChoices.some(
+        (model) => model.runtimeId === selectedRuntime?.id,
+      )}
+      hasSavedChoice={hasSavedChoice}
+      hasSelectedModel={Boolean(selectedModel)}
+      hasValidChannels={validChannels.length > 0}
+      inheritedEnvVars={inheritedEnvVars}
+      inheritedProvider={inheritedProvider}
+      isOwner={Boolean(isOwner)}
+      modelRequired={modelRequired}
+      onEffortChange={(effortLevel) =>
+        setChoice((current) => ({ ...current, effortLevel }))
+      }
+      onModelChange={(modelId) =>
+        setChoice((current) => ({
+          ...current,
+          modelId,
+          effortLevel: "",
+        }))
+      }
+      onOpenChange={close}
+      onOptions={receiveModelOptions}
+      onRetry={() => void finishHire()}
+      onRuntimeChange={(runtimeId) => {
+        const runtime = runtimes.find(
+          (candidate) => candidate.id === runtimeId,
+        );
+        setChoice({
+          ...EMPTY_CHOICE,
+          runtimeId: runtime?.id ?? "",
+          providerId: runtime
+            ? providerForRuntime(runtime, inheritedProvider)
+            : "",
+        });
+      }}
+      onUndoUnapprovedHire={() => void undoUnapprovedHire()}
+      recoveryState={recoveryState}
+      requiresEffort={requiresEffort}
+      retryingAutoFinish={Boolean(
+        failure && autoFinishHireId === progress?.hireId,
+      )}
+      runtimeOptions={runtimeOptions}
+      runtimes={runtimes}
+      runtimesQueryIsPending={runtimesQuery.isPending}
+      selectedModelLabel={selectedModel?.label}
+      selectedModelOptions={selectedModelOptions}
+      selectedRuntime={selectedRuntime}
+      selectionReady={selectionReady}
+      submitting={submitting}
+    />
   );
 }
