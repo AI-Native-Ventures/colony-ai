@@ -274,6 +274,7 @@ export function usePersonaModelDiscovery({
     if (
       modelDiscoveryKey === null ||
       modelDiscoveryRequestKey === null ||
+      modelDiscoveryIdentityKey === null ||
       discoveryAgentCommand === null
     ) {
       modelDiscoveryRequestRef.current += 1;

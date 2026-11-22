@@ -116,13 +116,14 @@ function parseCache(value: string | null): ModelDiscoveryCache {
     if (record.version !== CACHE_VERSION || !Array.isArray(record.entries)) {
       return { entries: [], version: CACHE_VERSION };
     }
-    const entries = record.entries.flatMap((entry) => {
+    const entries: CachedModelDiscovery[] = record.entries.flatMap((entry) => {
       if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
         return [];
       }
       const candidate = entry as Record<string, unknown>;
       if (
         typeof candidate.key !== "string" ||
+        typeof candidate.updatedAt !== "number" ||
         !Number.isFinite(candidate.updatedAt) ||
         !isAgentModelsResponse(candidate.response)
       ) {

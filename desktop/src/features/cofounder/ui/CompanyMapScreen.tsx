@@ -366,7 +366,7 @@ export function CompanyMapScreen({
         ownerName={ownerName}
         ownerPubkey={identityQuery.data?.pubkey}
         profiles={profiles}
-        relayUrl={relayUrl}
+        relayUrl={relayUrl ?? undefined}
         scoutPubkey={scoutPubkey}
         canHirePrebuiltHeads={canHirePrebuiltHeads}
         onHireHead={setHireFunctionId}
