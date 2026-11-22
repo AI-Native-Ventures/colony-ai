@@ -4,6 +4,7 @@
 //! to a hire. The completed hire head and company member position are written
 //! in one transaction after the signed introduction exists in its channel.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nostr::{Event, EventBuilder, EventId, Kind, Tag};
@@ -26,6 +27,8 @@ use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplac
 use buzz_db::EventQuery;
 
 const MAX_CURRENT_HIRE_HEADS: i64 = 10_000;
+const MAX_CONFLICTING_NAME_PROFILES: i64 = 64;
+const MAX_HIRE_HISTORY_PER_EMPLOYEE: i64 = 64;
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
@@ -309,6 +312,10 @@ pub(super) async fn handle(
                 .employee_pubkey
                 .clone()
                 .ok_or_else(|| invalid("attach_employee needs employeePubkey"))?;
+            let employee_pubkey = nostr::PublicKey::from_hex(&employee)
+                .map_err(|_| invalid("employeePubkey must be a public key"))?;
+            let employee_pubkey_bytes = employee_pubkey.to_bytes();
+            lock_employee_hire_state(&mut tx, tenant, &employee_pubkey_bytes).await?;
             head.employee_pubkey = Some(employee);
             head.source_action_event_id = event.id.to_hex();
             head
@@ -707,7 +714,8 @@ async fn dispatch_hire_records(
     .await;
 }
 
-/// Serializes one employee name and checks real member profiles and open hires.
+/// Serializes one employee name and checks member profiles, managed profiles,
+/// and open hires. A managed profile is released only by a denied former hire.
 pub(super) async fn validate_unique_name_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
     tenant: &TenantContext,
@@ -734,25 +742,98 @@ pub(super) async fn validate_unique_name_in_transaction(
         .transpose()
         .map_err(|_| invalid("employeePubkey must be a public key"))?
         .map(|pubkey| pubkey.to_bytes().to_vec());
-    let profile_name_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT 1 FROM users \
-         WHERE community_id = $1 \
-         AND (agent_owner_pubkey IS NOT NULL OR EXISTS ( \
+    let conflicting_profiles = sqlx::query_as::<_, (Vec<u8>, bool, bool)>(
+        "SELECT users.pubkey, users.agent_owner_pubkey IS NOT NULL, EXISTS ( \
              SELECT 1 FROM relay_members rm \
-             WHERE rm.community_id = users.community_id AND rm.pubkey = encode(users.pubkey, 'hex'))) \
-         AND lower(btrim(COALESCE(display_name, ''))) = lower($2) \
-         AND ($3::bytea IS NULL OR pubkey <> $3))",
+             WHERE rm.community_id = users.community_id \
+               AND rm.pubkey = encode(users.pubkey, 'hex') \
+         ) \
+         FROM users \
+         WHERE users.community_id = $1 \
+           AND lower(btrim(COALESCE(users.display_name, ''))) = lower($2) \
+           AND ($3::bytea IS NULL OR users.pubkey <> $3) \
+           AND (users.agent_owner_pubkey IS NOT NULL OR EXISTS ( \
+             SELECT 1 FROM relay_members rm \
+             WHERE rm.community_id = users.community_id \
+               AND rm.pubkey = encode(users.pubkey, 'hex') \
+           )) \
+         ORDER BY users.pubkey \
+         LIMIT $4",
     )
     .bind(tenant.community().as_uuid())
     .bind(display_name.trim())
     .bind(exclude_pubkey)
-    .fetch_one(&mut **tx)
+    .bind(MAX_CONFLICTING_NAME_PROFILES + 1)
+    .fetch_all(&mut **tx)
     .await
     .map_err(internal)?;
-    if profile_name_exists {
+    if conflicting_profiles.len() as i64 > MAX_CONFLICTING_NAME_PROFILES {
+        return Err(IngestError::Internal(
+            "error: conflicting employee profiles exceed the supported name-check limit".into(),
+        ));
+    }
+    if conflicting_profiles
+        .iter()
+        .any(|(_, _, is_relay_member)| *is_relay_member)
+    {
         return Err(conflict("employee display name is already in use"));
     }
 
+    for (pubkey, is_managed_agent, _) in &conflicting_profiles {
+        if *is_managed_agent {
+            lock_employee_hire_state(tx, tenant, pubkey).await?;
+        }
+    }
+    let current_heads = current_hire_heads_for_name_check(tenant, state).await?;
+
+    for (pubkey, is_managed_agent, _) in conflicting_profiles {
+        if is_managed_agent
+            && !name_is_released_for_former_denied_employee(
+                tx,
+                tenant,
+                state,
+                &pubkey,
+                &current_heads,
+            )
+            .await?
+        {
+            return Err(conflict("employee display name is already in use"));
+        }
+    }
+
+    for head in &current_heads {
+        if Some(head.proposal.hire_id) != exclude_hire_id
+            && head.status != HireStatus::Denied
+            && head.proposal.display_name.trim().to_lowercase() == normalized
+        {
+            return Err(conflict("employee display name is already in use"));
+        }
+    }
+    Ok(())
+}
+
+/// Serializes employee attachment with release checks for the same profile.
+async fn lock_employee_hire_state(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: &TenantContext,
+    employee_pubkey: &[u8],
+) -> Result<(), IngestError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!(
+            "company-hire-employee:{}:{}",
+            tenant.community().as_uuid(),
+            hex::encode(employee_pubkey)
+        ))
+        .execute(&mut **tx)
+        .await
+        .map_err(internal)?;
+    Ok(())
+}
+
+async fn current_hire_heads_for_name_check(
+    tenant: &TenantContext,
+    state: &AppState,
+) -> Result<Vec<HireHead>, IngestError> {
     let mut query = EventQuery::for_community(tenant.community());
     query.kinds = Some(vec![KIND_HIRE_HEAD as i32]);
     query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
@@ -768,16 +849,124 @@ pub(super) async fn validate_unique_name_in_transaction(
             "error: current hire heads exceed the supported name-check limit".into(),
         ));
     }
-    for stored in &heads {
-        let head = parse_hire_head(stored)?;
-        if Some(head.proposal.hire_id) != exclude_hire_id
-            && head.status != HireStatus::Denied
-            && head.proposal.display_name.trim().to_lowercase() == normalized
+    heads.iter().map(parse_hire_head).collect()
+}
+
+async fn name_is_released_for_former_denied_employee(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: &TenantContext,
+    state: &AppState,
+    employee_pubkey: &[u8],
+    current_heads: &[HireHead],
+) -> Result<bool, IngestError> {
+    let employee_pubkey = hex::encode(employee_pubkey);
+    if current_heads.iter().any(|head| {
+        head.status != HireStatus::Denied
+            && head.employee_pubkey.as_deref() == Some(employee_pubkey.as_str())
+    }) {
+        return Ok(false);
+    }
+
+    let denied_hire_ids = current_heads
+        .iter()
+        .filter(|head| head.status == HireStatus::Denied)
+        .map(|head| head.proposal.hire_id)
+        .collect::<BTreeSet<_>>();
+    if denied_hire_ids.is_empty() {
+        return Ok(false);
+    }
+
+    if current_heads.iter().any(|head| {
+        head.status == HireStatus::Denied
+            && head.employee_pubkey.as_deref() == Some(employee_pubkey.as_str())
+    }) {
+        return Ok(true);
+    }
+
+    let attached_hire_ids =
+        historic_hire_ids_for_employee(tx, tenant, state, employee_pubkey.as_str()).await?;
+    Ok(attached_hire_ids
+        .iter()
+        .any(|hire_id| denied_hire_ids.contains(hire_id)))
+}
+
+async fn historic_hire_ids_for_employee(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: &TenantContext,
+    state: &AppState,
+    employee_pubkey: &str,
+) -> Result<BTreeSet<Uuid>, IngestError> {
+    // An attach command is append-only evidence that survives parameterized
+    // hire-head replacement. The soft-deleted head query below supports
+    // historic data whose only remaining employee association is a revision.
+    let action_contents = sqlx::query_scalar::<_, String>(
+        "SELECT content FROM events \
+         WHERE community_id = $1 \
+           AND kind = $2 \
+           AND channel_id IS NULL \
+           AND deleted_at IS NULL \
+           AND content::jsonb ->> 'employeePubkey' = $3 \
+         ORDER BY created_at DESC, id \
+         LIMIT $4",
+    )
+    .bind(tenant.community().as_uuid())
+    .bind(KIND_HIRE_ACTION as i32)
+    .bind(employee_pubkey)
+    .bind(MAX_HIRE_HISTORY_PER_EMPLOYEE + 1)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(internal)?;
+    if action_contents.len() as i64 > MAX_HIRE_HISTORY_PER_EMPLOYEE {
+        return Err(IngestError::Internal(
+            "error: employee hire action history exceeds the supported name-check limit".into(),
+        ));
+    }
+
+    let historic_head_contents = sqlx::query_scalar::<_, String>(
+        "SELECT content FROM events \
+         WHERE community_id = $1 \
+           AND kind = $2 \
+           AND pubkey = $3 \
+           AND deleted_at IS NOT NULL \
+           AND content::jsonb ->> 'employeePubkey' = $4 \
+         ORDER BY created_at DESC, id \
+         LIMIT $5",
+    )
+    .bind(tenant.community().as_uuid())
+    .bind(KIND_HIRE_HEAD as i32)
+    .bind(state.relay_keypair.public_key().to_bytes().to_vec())
+    .bind(employee_pubkey)
+    .bind(MAX_HIRE_HISTORY_PER_EMPLOYEE + 1)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(internal)?;
+    if historic_head_contents.len() as i64 > MAX_HIRE_HISTORY_PER_EMPLOYEE {
+        return Err(IngestError::Internal(
+            "error: employee hire head history exceeds the supported name-check limit".into(),
+        ));
+    }
+
+    let mut hire_ids = BTreeSet::new();
+    for content in action_contents {
+        let action = serde_json::from_str::<HireAction>(&content)
+            .map_err(|_| IngestError::Internal("error: stored hire action is invalid".into()))?;
+        if matches!(
+            action.action,
+            HireActionKind::AttachEmployee | HireActionKind::Complete
+        ) && action.employee_pubkey.as_deref() == Some(employee_pubkey)
         {
-            return Err(conflict("employee display name is already in use"));
+            hire_ids.insert(action.hire_id);
         }
     }
-    Ok(())
+    for content in historic_head_contents {
+        let head = serde_json::from_str::<HireHead>(&content).map_err(|_| {
+            IngestError::Internal("error: stored historic hire head is invalid".into())
+        })?;
+        if head.employee_pubkey.as_deref() == Some(employee_pubkey) {
+            hire_ids.insert(head.proposal.hire_id);
+        }
+    }
+    Ok(hire_ids)
 }
 
 /// Prepare the first hire head for an employee-proposed ask.
