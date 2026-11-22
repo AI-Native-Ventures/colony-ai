@@ -59,11 +59,13 @@ import {
   findRecoverablePrebuiltHire,
   isPrebuiltHeadHireForFunction,
 } from "../prebuiltHireRecovery";
+import { materializePersonaAndReadHireHead } from "../prebuiltHireParallel";
 import {
   claimPrebuiltHireRun,
   ownsPrebuiltHireRun,
   releasePrebuiltHireRun,
 } from "../prebuiltHireRunFence";
+import { startPrebuiltHireAgent } from "../prebuiltHireStartup";
 import {
   buildPrebuiltHireApproveAction,
   buildPrebuiltHireAttachEmployeeAction,
@@ -79,6 +81,7 @@ import {
 } from "../prebuiltHireModels";
 import { prebuiltAgentAvatarDataUrl } from "../prebuiltAgentAvatar";
 import {
+  clearPrebuiltHireStartup,
   clearPrebuiltHireProgress,
   readPrebuiltHireChoice,
   readPrebuiltHireProgress,
@@ -90,6 +93,7 @@ import type {
   PrebuiltHireChoice,
   PrebuiltHireCompletion,
   PrebuiltHireProgress,
+  PrebuiltHireStartup,
 } from "../prebuiltHireStorage";
 import { PrebuiltHeadHireDialogForm } from "./PrebuiltHeadHireDialogForm";
 
@@ -151,6 +155,7 @@ export function PrebuiltHeadHireDialog({
   defaultChannelId,
   functionId,
   managerPubkey,
+  onAgentStartupStatus,
   onCompleted,
   onOpenChange,
   open,
@@ -160,6 +165,10 @@ export function PrebuiltHeadHireDialog({
   defaultChannelId?: string | null;
   functionId: FunctionId | null;
   managerPubkey?: string | null;
+  onAgentStartupStatus?: (
+    functionId: FunctionId,
+    status: PrebuiltHireStartup | null,
+  ) => void;
   onCompleted: (completion: PrebuiltHireCompletion | null) => void;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -716,15 +725,16 @@ export function PrebuiltHeadHireDialog({
       writePrebuiltHireProgress(communityId, flow);
       setProgress(flow);
 
-      const personaId = await materializePrebuiltAgent(
-        agent,
-        selectedChoice.runtimeId,
-        {
-          scope: communityId,
-          listPersonas: async () => (await personasQuery.refetch()).data ?? [],
-          createPersona: createPersona.mutateAsync,
-        },
-      );
+      const [personaId, initialHead] = await materializePersonaAndReadHireHead({
+        materializePersona: () =>
+          materializePrebuiltAgent(agent, selectedChoice.runtimeId, {
+            scope: communityId,
+            listPersonas: async () =>
+              (await personasQuery.refetch()).data ?? [],
+            createPersona: createPersona.mutateAsync,
+          }),
+        readHireHead: () => fetchCurrentCompanyHireHead(hireId),
+      });
       assertCurrentRun();
       const proposal = buildPrebuiltHireProposal({
         agent,
@@ -746,7 +756,7 @@ export function PrebuiltHeadHireDialog({
         ...(flow.employeePubkey ? { employeePubkey: flow.employeePubkey } : {}),
       });
 
-      let current = await fetchCurrentCompanyHireHead(hireId);
+      let current = initialHead;
       assertCurrentRun();
       if (!current) {
         current = await publishAndConfirm(
@@ -875,12 +885,33 @@ export function PrebuiltHeadHireDialog({
           setProgress(flow);
         }
         assertCurrentRun();
+        let startWasDetached = false;
         await attachManagedAgentToChannel(introductionChannelId, {
           agent: managedAgent,
           role: "bot",
           ensureRunning: true,
+          detachedStart: () => {
+            startWasDetached = true;
+          },
         });
         assertCurrentRun();
+        if (startWasDetached) {
+          startPrebuiltHireAgent({
+            agentId: flow.agentId,
+            communityId,
+            employeePubkey,
+            functionId,
+            hireId,
+            onStatus: (status) => onAgentStartupStatus?.(functionId, status),
+            relayUrl,
+            signerPubkey: identityQuery.data.pubkey,
+          });
+        } else {
+          // Recovery can find an employee that is already running. A former
+          // failed-start notice is no longer true once that path succeeds.
+          clearPrebuiltHireStartup(communityId, functionId);
+          onAgentStartupStatus?.(functionId, null);
+        }
         if (!flow.introductionEventId) {
           assertCurrentRun();
           const introduction = await sendManagedAgentChannelMessage({
@@ -984,7 +1015,11 @@ export function PrebuiltHeadHireDialog({
       if (completion) writePrebuiltHireCompletion(communityId, completion);
       clearPrebuiltHireProgress(communityId, functionId);
       removeHireDraft(relayUrl, hireId);
-      await Promise.all([
+      assertCurrentRun();
+      // These cache refreshes must not hold the completed-hire affordance
+      // open. The map receives `completion` below immediately, and each query
+      // has its own normal retry and error state.
+      void Promise.all([
         queryClient.invalidateQueries({
           queryKey: companyFunctionHeadsQueryKey(communityId, relayUrl),
         }),
@@ -996,7 +1031,6 @@ export function PrebuiltHeadHireDialog({
         }),
         queryClient.invalidateQueries({ queryKey: channelsQueryKey }),
       ]);
-      assertCurrentRun();
       onCompleted(completion);
     } catch (error) {
       if (ownsPrebuiltHireRun(runLease)) setFailure(errorText(error));

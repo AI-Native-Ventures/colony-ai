@@ -1,6 +1,5 @@
 import * as React from "react";
 
-import { discoverAgentModels } from "@/shared/api/agentModels";
 import type {
   AcpRuntimeCatalogEntry,
   AgentModelsResponse,
@@ -13,11 +12,16 @@ import {
 import type { PersonaModelOption } from "./agentConfigOptions";
 import { providerRequiresExplicitModel } from "./agentConfigOptions";
 import { resolveModelLabel } from "@/features/agents/lib/formatAgentModelLabel";
+import {
+  MODEL_DISCOVERY_REFRESH_AFTER_MS,
+  modelDiscoveryCacheKey,
+  readCachedModelDiscovery,
+  requestSharedModelDiscovery,
+} from "./personaModelDiscoveryCache";
 
 export const MODEL_DISCOVERY_LOADING_VALUE = "__model_discovery_loading__";
 
 const MODEL_DISCOVERY_CREDENTIAL_DEBOUNCE_MS = 250;
-const MAX_MODEL_DISCOVERY_CACHE_ENTRIES = 24;
 
 function stableModelDiscoveryEnvKey(envVars: EnvVarsValue): string {
   return JSON.stringify(
@@ -195,13 +199,9 @@ export function usePersonaModelDiscovery({
   >(null);
   const [modelDiscoveryLoading, setModelDiscoveryLoading] =
     React.useState(false);
-  const modelDiscoveryCacheRef = React.useRef(
-    new Map<string, AgentModelsResponse>(),
-  );
   const modelDiscoveryRequestRef = React.useRef(0);
 
   const refreshModelDiscovery = React.useCallback(() => {
-    modelDiscoveryCacheRef.current.clear();
     refreshRequestedRef.current = true;
     setRefreshToken((current) => current + 1);
   }, []);
@@ -229,32 +229,53 @@ export function usePersonaModelDiscovery({
     () => stableModelDiscoveryEnvKey(envVars),
     [envVars],
   );
-  const modelDiscoveryArgsKey = JSON.stringify(
-    selectedRuntime?.defaultArgs ?? [],
-  );
-  const modelDiscoveryKey = React.useMemo(() => {
+  const modelDiscoveryIdentityKey = React.useMemo(() => {
     if (!canDiscoverModelOptions || discoveryAgentCommand === null) {
       return null;
     }
 
-    return JSON.stringify({
+    return modelDiscoveryCacheKey({
       agentCommand: discoveryAgentCommand,
-      agentArgs: modelDiscoveryArgsKey,
+      agentArgs: selectedRuntime?.defaultArgs ?? [],
       provider: trimmedProvider,
-      envVars: modelDiscoveryEnvKey,
-      refreshToken,
+      runtimeId: selectedRuntime?.id ?? "",
     });
   }, [
     canDiscoverModelOptions,
     discoveryAgentCommand,
-    modelDiscoveryArgsKey,
-    modelDiscoveryEnvKey,
-    refreshToken,
+    selectedRuntime?.defaultArgs,
+    selectedRuntime?.id,
     trimmedProvider,
   ]);
+  const modelDiscoveryKey = React.useMemo(() => {
+    if (modelDiscoveryIdentityKey === null) return null;
+    return JSON.stringify({
+      identity: modelDiscoveryIdentityKey,
+      envVars: modelDiscoveryEnvKey,
+      refreshToken,
+    });
+  }, [modelDiscoveryEnvKey, modelDiscoveryIdentityKey, refreshToken]);
+  const modelDiscoveryRequestKey = React.useMemo(() => {
+    if (modelDiscoveryIdentityKey === null) return null;
+    return JSON.stringify({
+      identity: modelDiscoveryIdentityKey,
+      envVars: modelDiscoveryEnvKey,
+    });
+  }, [modelDiscoveryEnvKey, modelDiscoveryIdentityKey]);
+  const cachedModelDiscovery = React.useMemo(
+    () =>
+      modelDiscoveryIdentityKey === null
+        ? null
+        : readCachedModelDiscovery(modelDiscoveryIdentityKey),
+    [modelDiscoveryIdentityKey],
+  );
 
   React.useEffect(() => {
-    if (modelDiscoveryKey === null || discoveryAgentCommand === null) {
+    if (
+      modelDiscoveryKey === null ||
+      modelDiscoveryRequestKey === null ||
+      discoveryAgentCommand === null
+    ) {
       modelDiscoveryRequestRef.current += 1;
       setModelDiscoveryData(null);
       setModelDiscoveryDataKey(null);
@@ -284,70 +305,61 @@ export function usePersonaModelDiscovery({
     modelDiscoveryRequestRef.current = requestId;
     const activeAgentCommand = discoveryAgentCommand;
     const activeModelDiscoveryKey = modelDiscoveryKey;
-    const cached = modelDiscoveryCacheRef.current.get(activeModelDiscoveryKey);
+    const activeModelDiscoveryRequestKey = modelDiscoveryRequestKey;
+    const activeModelDiscoveryIdentityKey = modelDiscoveryIdentityKey;
+    const cached = cachedModelDiscovery;
     if (cached) {
-      setModelDiscoveryData(cached);
+      setModelDiscoveryData(cached.response);
       setModelDiscoveryDataKey(activeModelDiscoveryKey);
       setModelDiscoveryStatus(
-        synthesizeEmptyDiscoveryStatus(cached, trimmedProvider),
+        synthesizeEmptyDiscoveryStatus(cached.response, trimmedProvider),
       );
       setModelDiscoveryStatusKey(activeModelDiscoveryKey);
       setModelDiscoveryLoading(false);
-      return;
     }
-
-    setModelDiscoveryData(null);
-    setModelDiscoveryDataKey(null);
-    setModelDiscoveryStatus(null);
-    setModelDiscoveryStatusKey(activeModelDiscoveryKey);
-    setModelDiscoveryLoading(true);
     const refresh = refreshRequestedRef.current;
     refreshRequestedRef.current = false;
+    const cacheIsFresh =
+      cached !== null &&
+      Date.now() - cached.updatedAt < MODEL_DISCOVERY_REFRESH_AFTER_MS;
+    if (cacheIsFresh && !refresh) return;
+    if (!cached) {
+      setModelDiscoveryData(null);
+      setModelDiscoveryDataKey(null);
+      setModelDiscoveryStatus(null);
+      setModelDiscoveryStatusKey(activeModelDiscoveryKey);
+      setModelDiscoveryLoading(true);
+    }
     function runModelDiscovery() {
-      void discoverAgentModels({
+      const input = {
         agentCommand: activeAgentCommand,
         agentArgs: selectedRuntimeDefaultArgs ?? [],
         provider: trimmedProvider || undefined,
         envVars,
         definitionEnv: selectedRuntimeDefinitionEnv ?? {},
         refresh,
-      })
-        .then((response) => {
-          if (modelDiscoveryRequestRef.current !== requestId) {
-            return;
-          }
-          // Only cache responses that yielded usable model options.  An
-          // empty/no-switching result gets the "reopen this screen" warning,
-          // and closing → reopening the dialog must re-run discovery so the
-          // user's CLI-install/sign-in is actually reflected.
-          if (isCacheableDiscoveryResponse(response, trimmedProvider)) {
-            if (
-              modelDiscoveryCacheRef.current.size >=
-              MAX_MODEL_DISCOVERY_CACHE_ENTRIES
-            ) {
-              const oldestKey = modelDiscoveryCacheRef.current
-                .keys()
-                .next().value;
-              if (oldestKey !== undefined) {
-                modelDiscoveryCacheRef.current.delete(oldestKey);
-              }
-            }
-            modelDiscoveryCacheRef.current.set(
-              activeModelDiscoveryKey,
-              response,
-            );
-          }
-          setModelDiscoveryData(response);
+      };
+      const receiveResponse = (response: AgentModelsResponse) => {
+        if (modelDiscoveryRequestRef.current !== requestId) return;
+        const next =
+          cached && !isCacheableDiscoveryResponse(response, trimmedProvider)
+            ? cached.response
+            : response;
+        setModelDiscoveryData(next);
+        setModelDiscoveryDataKey(activeModelDiscoveryKey);
+        setModelDiscoveryStatus(
+          synthesizeEmptyDiscoveryStatus(next, trimmedProvider),
+        );
+        setModelDiscoveryStatusKey(activeModelDiscoveryKey);
+        setModelDiscoveryLoading(false);
+      };
+      const receiveError = (error: unknown) => {
+        if (modelDiscoveryRequestRef.current !== requestId) return;
+        if (cached) {
+          setModelDiscoveryData(cached.response);
           setModelDiscoveryDataKey(activeModelDiscoveryKey);
-          setModelDiscoveryStatus(
-            synthesizeEmptyDiscoveryStatus(response, trimmedProvider),
-          );
-          setModelDiscoveryStatusKey(activeModelDiscoveryKey);
-        })
-        .catch((error) => {
-          if (modelDiscoveryRequestRef.current !== requestId) {
-            return;
-          }
+          setModelDiscoveryStatus(null);
+        } else {
           setModelDiscoveryData(null);
           setModelDiscoveryDataKey(null);
           setModelDiscoveryStatus(
@@ -357,27 +369,34 @@ export function usePersonaModelDiscovery({
               selectedRuntimeLabel,
             ),
           );
-          setModelDiscoveryStatusKey(activeModelDiscoveryKey);
-        })
-        .finally(() => {
-          if (modelDiscoveryRequestRef.current === requestId) {
-            setModelDiscoveryLoading(false);
-          }
-        });
+        }
+        setModelDiscoveryStatusKey(activeModelDiscoveryKey);
+        setModelDiscoveryLoading(false);
+      };
+      void requestSharedModelDiscovery(
+        {
+          cacheKey: activeModelDiscoveryIdentityKey,
+          input,
+          requestKey: activeModelDiscoveryRequestKey,
+          shouldCache: (response) =>
+            isCacheableDiscoveryResponse(response, trimmedProvider),
+        },
+        { onSuccess: receiveResponse },
+      ).catch((error) => {
+        receiveError(error);
+      });
     }
 
-    if (!shouldDebounceModelDiscovery) {
-      runModelDiscovery();
-      return;
-    }
-
-    const timeout = window.setTimeout(
-      runModelDiscovery,
-      MODEL_DISCOVERY_CREDENTIAL_DEBOUNCE_MS,
-    );
+    const timeout = shouldDebounceModelDiscovery
+      ? window.setTimeout(
+          runModelDiscovery,
+          MODEL_DISCOVERY_CREDENTIAL_DEBOUNCE_MS,
+        )
+      : null;
+    if (timeout === null) runModelDiscovery();
 
     return () => {
-      window.clearTimeout(timeout);
+      if (timeout !== null) window.clearTimeout(timeout);
       if (modelDiscoveryRequestRef.current === requestId) {
         modelDiscoveryRequestRef.current += 1;
         setModelDiscoveryLoading(false);
@@ -386,7 +405,10 @@ export function usePersonaModelDiscovery({
   }, [
     discoveryAgentCommand,
     envVars,
+    cachedModelDiscovery,
     modelDiscoveryKey,
+    modelDiscoveryIdentityKey,
+    modelDiscoveryRequestKey,
     selectedRuntimeAvailability,
     selectedRuntimeDefaultArgs,
     selectedRuntimeDefinitionEnv,
@@ -398,7 +420,7 @@ export function usePersonaModelDiscovery({
   const activeModelDiscoveryData =
     modelDiscoveryKey !== null && modelDiscoveryDataKey === modelDiscoveryKey
       ? modelDiscoveryData
-      : null;
+      : (cachedModelDiscovery?.response ?? null);
   const activeModelDiscoveryStatus =
     modelDiscoveryKey === null
       ? modelDiscoveryStatus

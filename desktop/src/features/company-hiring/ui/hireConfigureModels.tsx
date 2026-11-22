@@ -52,8 +52,33 @@ export function WorkerModelProbe({
     provider: providerId,
     selectedRuntime: runtime,
   });
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     onOptions(runtime.id, providerId, discoveredModelOptions);
   }, [discoveredModelOptions, onOptions, providerId, runtime.id]);
+  return null;
+}
+
+/**
+ * Starts shared model discovery before a hire dialog needs its model picker.
+ * It deliberately renders nothing, and uses the same hook as every visible
+ * agent configuration surface so one bounded request warms the durable cache.
+ */
+export function WorkerModelDiscoveryWarmup({
+  envVars,
+  providerId,
+  runtime,
+}: {
+  envVars: Record<string, string>;
+  providerId: string;
+  runtime: AcpRuntimeCatalogEntry;
+}) {
+  usePersonaModelDiscovery({
+    envVars,
+    isCustomProviderEditing: false,
+    modelFieldVisible: true,
+    open: true,
+    provider: providerId,
+    selectedRuntime: runtime,
+  });
   return null;
 }
