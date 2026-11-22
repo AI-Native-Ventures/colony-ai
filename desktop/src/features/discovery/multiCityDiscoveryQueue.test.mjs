@@ -15,7 +15,10 @@ import {
 import { DiscoverySearchError } from "./discoverySearch.ts";
 import {
   isPassingStartError,
+  START_ATTEMPT_TIMEOUT_MS,
+  START_INTERRUPTED_MESSAGE,
   START_RETRY_DELAYS_SECONDS,
+  START_TIMEOUT_MESSAGE,
 } from "./multiCityDiscoveryQueue.ts";
 
 function place(label, latitude, longitude) {
@@ -142,9 +145,9 @@ function fakeProvider(plan) {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
-      async start(campaignInput) {
+      async start(campaignInput, signal) {
         startedInputs.push(campaignInput);
-        const result = await plan(campaignInput, startedInputs.length);
+        const result = await plan(campaignInput, startedInputs.length, signal);
         if (result instanceof Error) throw result;
         sequence += 1;
         const campaign = {
@@ -225,6 +228,20 @@ async function waitFor(assertion, label) {
   throw new Error(`${label}: ${lastError?.message ?? "timed out"}`);
 }
 
+function waitForAbort(signal) {
+  return new Promise((_, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("stopped", "AbortError"));
+      return;
+    }
+    signal?.addEventListener(
+      "abort",
+      () => reject(new DOMException("stopped", "AbortError")),
+      { once: true },
+    );
+  });
+}
+
 test("multi-city queue starts three cities together and replaces a finished slot in order", async () => {
   const fake = fakeProvider(async () => ({ status: "running" }));
   const coordinator = createMultiCityDiscoveryCoordinator({
@@ -292,6 +309,100 @@ test("ten cities start exactly three and a completed city starts only the next o
   );
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(fake.startedInputs.length, 4, "one completion starts one city");
+  coordinator.dispose();
+});
+
+test("an interrupted nine-city 500-per-city group keeps explicit retry records", async () => {
+  const storage = inMemoryStorage();
+  const cities = Array.from({ length: 9 }, (_, index) =>
+    place(`City ${index + 1}, South Africa`, -26 - index, 28 + index),
+  );
+  const fake = fakeProvider(async (_campaignInput, _attempt, signal) =>
+    waitForAbort(signal),
+  );
+  const initial = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage,
+    storageKey: "owner-nine-city-group",
+  });
+  await initial.startGroup({ ...input(cities), target: 500 });
+  await waitFor(
+    () => assert.equal(fake.startedInputs.length, 3),
+    "the owner group's first three starts",
+  );
+  initial.dispose();
+
+  // This is the exact durable shape written by develop's interrupted-start
+  // reconciliation: its first three in-flight cities became silent
+  // not_started records while the other six remained queued.
+  const stored = JSON.parse(storage.getItem("owner-nine-city-group"));
+  for (const city of stored.groups[0].cities.slice(0, 3)) {
+    city.state = "not_started";
+    city.reason = null;
+    city.retryRequested = false;
+  }
+  storage.setItem("owner-nine-city-group", JSON.stringify(stored));
+
+  const restored = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage,
+    storageKey: "owner-nine-city-group",
+  });
+  const group = restored.getGroups()[0];
+  assert.ok(group);
+  assert.deepEqual(
+    group.cities.slice(0, 3).map((city) => ({
+      campaignId: city.campaignId,
+      reason: city.reason,
+      state: city.state,
+    })),
+    Array.from({ length: 3 }, () => ({
+      campaignId: null,
+      reason: START_INTERRUPTED_MESSAGE,
+      state: "failed",
+    })),
+  );
+  assert.deepEqual(
+    group.cities.slice(3).map((city) => city.state),
+    Array.from({ length: 6 }, () => "waiting"),
+  );
+  restored.dispose();
+});
+
+test("a stalled city start reaches a bounded visible retry state", async () => {
+  const timeouts = [];
+  const fake = fakeProvider(async (_campaignInput, _attempt, signal) =>
+    waitForAbort(signal),
+  );
+  const coordinator = createMultiCityDiscoveryCoordinator({
+    provider: fake.provider,
+    storage: inMemoryStorage(),
+    storageKey: "bounded-start",
+    sleep: async () => {},
+    startTimeout: async (milliseconds, signal) => {
+      if (signal.aborted) throw new DOMException("stopped", "AbortError");
+      timeouts.push(milliseconds);
+    },
+  });
+  await coordinator.startGroup(input([JOHANNESBURG, CAPE_TOWN]));
+  await waitFor(
+    () =>
+      assert.deepEqual(
+        coordinator.getGroups()[0]?.cities.map((city) => city.state),
+        ["failed", "failed"],
+      ),
+    "the bounded start failures",
+  );
+  const cities = coordinator.getGroups()[0]?.cities;
+  assert.deepEqual(
+    cities?.map((city) => city.reason),
+    [START_TIMEOUT_MESSAGE, START_TIMEOUT_MESSAGE],
+  );
+  assert.equal(fake.startedInputs.length, 8);
+  assert.deepEqual(
+    timeouts,
+    Array.from({ length: 8 }, () => START_ATTEMPT_TIMEOUT_MS),
+  );
   coordinator.dispose();
 });
 
@@ -430,13 +541,21 @@ test("a city-only start failure is recorded and the queue continues", async () =
     () => assert.equal(fake.startedInputs.length, 4),
     "the next city starts after one city alone fails",
   );
+  await waitFor(() => {
+    const fourthCity = (
+      coordinator.getGroup("group-1") ?? coordinator.getGroups()[0]
+    )?.cities[3];
+    assert.ok(fourthCity?.campaignId, "the fourth city campaign is recorded");
+    assert.equal(fourthCity.state, "waiting");
+  }, "the fourth city campaign is recorded after its start settles");
   const group = coordinator.getGroup("group-1") ?? coordinator.getGroups()[0];
+  assert.ok(group);
   assert.deepEqual(
     fake.startedInputs.map((entry) => entry.location).slice(0, 3),
     [JOHANNESBURG.label, CAPE_TOWN.label, DURBAN.label],
   );
   assert.equal(group.cities[0].state, "failed");
-  assert.equal(group.cities[3].campaignId, "campaign-3");
+  assert.ok(group.cities[3].campaignId);
   coordinator.dispose();
 });
 

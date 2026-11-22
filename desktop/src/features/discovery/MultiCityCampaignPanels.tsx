@@ -2,7 +2,7 @@ import type * as React from "react";
 
 import type { DiscoveryCampaign } from "./discoveryProvider";
 import {
-  groupCampaignStatus,
+  groupCampaignStatusLabel,
   groupCityStatus,
   groupProgress,
   shortPlaceName,
@@ -41,7 +41,7 @@ export function MultiCityAllSummary({
   onRetry: (() => void) | null;
 }) {
   const progress = groupProgress(group, campaigns);
-  const status = groupCampaignStatus(group, campaigns);
+  const status = groupCampaignStatusLabel(group, campaigns);
   const percent = Math.min(
     100,
     progress.target ? (progress.count / progress.target) * 100 : 0,
@@ -49,15 +49,21 @@ export function MultiCityAllSummary({
   const failedCities = group.cities.filter(
     (city) => groupCityStatus(city, campaigns) === "failed",
   ).length;
-  const title = group.blockedReason
-    ? "The remaining cities need attention"
-    : progress.searching
-      ? `${progress.searching} of ${group.cities.length} cities searching`
-      : status === "complete"
-        ? "All city searches are complete"
-        : status === "failed"
-          ? "Some city searches need attention"
-          : "The city queue is paused";
+  let title = "The city queue stopped";
+  if (group.blockedReason) title = "The remaining cities need attention";
+  else if (status === "Searching") {
+    title = `${progress.searching} of ${group.cities.length} cities searching`;
+  } else if (status === "Starting") {
+    title = "Cities are starting";
+  } else if (status === "Waiting") {
+    title = "Cities are waiting";
+  } else if (status === "Done") {
+    title = "All city searches are complete";
+  } else if (status === "Failed") {
+    title = "Some city searches need attention";
+  } else if (status === "Paused") {
+    title = "The city queue is paused";
+  }
   return (
     <section className="c3mc-all-summary" data-testid="multi-city-all-summary">
       <div>

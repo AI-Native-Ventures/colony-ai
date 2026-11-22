@@ -23,11 +23,12 @@ import {
   type DiscoveryCampaign,
 } from "./discoveryProvider";
 import {
-  groupProgress,
+  groupCampaignStatusLabel,
   groupSummaryCampaign,
   shortPlaceName,
   type MultiCityCampaignGroup,
 } from "./multiCityDiscovery";
+import { openMultiCityDiscoveryGroupView } from "./multiCityDiscoveryRuntime";
 import { useMultiCityDiscovery } from "./useMultiCityDiscovery";
 
 import "./multi-city-discovery.css";
@@ -101,6 +102,22 @@ function statusTone(campaign: DiscoveryCampaign): string {
       return "c3d-campaigns-status--failed";
     case "stopped":
       return "c3d-campaigns-status--stopped";
+  }
+}
+
+function groupStatusTone(label: string): string {
+  switch (label) {
+    case "Searching":
+    case "Starting":
+    case "Waiting":
+      return "c3d-campaigns-status--running";
+    case "Failed":
+      return "c3d-campaigns-status--failed";
+    case "Paused":
+    case "Stopped":
+      return "c3d-campaigns-status--stopped";
+    default:
+      return "c3d-campaigns-status--ready";
   }
 }
 
@@ -349,11 +366,8 @@ function CampaignRow({
   onSelect: () => void;
 }) {
   const runner = campaign.runBy ?? null;
-  const groupProgressState = group ? groupProgress(group, campaigns) : null;
   const label = group
-    ? groupProgressState?.searching
-      ? `Searching ${groupProgressState.searching} of ${group.cities.length}`
-      : campaignStatusLabel(campaign)
+    ? groupCampaignStatusLabel(group, campaigns)
     : campaignStatusLabel(campaign);
   const maximum = Math.max(campaign.target, 1);
   const progress = Math.min(100, Math.round((campaign.count / maximum) * 100));
@@ -447,7 +461,9 @@ function CampaignRow({
           </button>
         ) : (
           <span
-            className={`c3d-campaigns-status ${statusTone(campaign)}`}
+            className={`c3d-campaigns-status ${
+              group ? groupStatusTone(label) : statusTone(campaign)
+            }`}
             title={label}
           >
             {label}
@@ -541,10 +557,10 @@ export function CampaignsScreen({
   }
 
   function selectGroup(group: MultiCityCampaignGroup) {
-    if (!multiCity.coordinator) return;
-    void multiCity.coordinator.openGroup(group.groupId).then((campaignId) => {
-      if (campaignId) void navigate({ to: "/campaign" });
-    });
+    openMultiCityDiscoveryGroupView(group.groupId);
+    const opening = multiCity.coordinator?.openGroup(group.groupId);
+    if (opening) void opening.catch(() => undefined);
+    void navigate({ to: "/campaign" });
   }
 
   return (

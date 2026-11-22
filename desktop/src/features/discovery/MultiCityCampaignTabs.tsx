@@ -3,7 +3,7 @@ import * as React from "react";
 import { MessageGlyph, PinGlyph } from "./DiscoveryIcons";
 import type { DiscoveryCampaign } from "./discoveryProvider";
 import {
-  groupCampaignStatus,
+  groupCampaignStatusLabel,
   groupCityStatus,
   groupProgress,
   shortPlaceName,
@@ -30,6 +30,25 @@ function statusLabel(status: ReturnType<typeof groupCityStatus>): string {
   if (status === "cancelled") return "Stopped";
   if (status === "failed") return "Failed";
   return "Paused";
+}
+
+function groupVisualStatus(label: string): ReturnType<typeof groupCityStatus> {
+  switch (label) {
+    case "Searching":
+      return "running";
+    case "Starting":
+      return "starting";
+    case "Waiting":
+      return "waiting";
+    case "Failed":
+      return "failed";
+    case "Paused":
+      return "paused";
+    case "Stopped":
+      return "cancelled";
+    default:
+      return "complete";
+  }
 }
 
 function startedOn(createdAt: number): string {
@@ -93,16 +112,10 @@ export function MultiCityCampaignTabs({
   const buttons = React.useRef(new Map<string, HTMLButtonElement>());
   const progress = groupProgress(group, campaigns);
   const totalSearching = progress.searching;
-  const allStatus = groupCampaignStatus(group, campaigns);
-  const allVisualStatus = totalSearching ? "running" : allStatus;
-  const allStatusLabel =
-    allStatus === "complete"
-      ? "Done"
-      : totalSearching
-        ? `${totalSearching} searching`
-        : statusLabel(allStatus);
+  const allStatusLabel = groupCampaignStatusLabel(group, campaigns);
+  const allVisualStatus = groupVisualStatus(allStatusLabel);
   const allStatusTitle = totalSearching
-    ? `${totalSearching} of ${group.cities.length} cities searching`
+    ? `${totalSearching} of ${group.cities.length} cities ${allStatusLabel.toLocaleLowerCase()}`
     : allStatusLabel;
 
   function choose(tab: MultiCityCampaignTab) {
@@ -165,7 +178,7 @@ export function MultiCityCampaignTabs({
       >
         <button
           aria-controls="multi-city-campaign-panel"
-          aria-label={`All cities, ${progress.count} of ${progress.target} found, ${totalSearching} of ${group.cities.length} searching`}
+          aria-label={`All cities, ${progress.count} of ${progress.target} found, ${allStatusTitle}`}
           aria-selected={selectedTab === "all"}
           className="c3mc-city-tab"
           id={multiCityTabId(group.groupId, "all")}

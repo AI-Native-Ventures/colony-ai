@@ -92,6 +92,7 @@ import {
   MAX_RATE_LIMIT_WAIT_MS,
   MAX_RATE_LIMIT_WAITS,
   MAX_TARGET,
+  MIN_TARGET,
   PUBLISH_BACKOFF_MS,
   PUBLISH_CONCURRENCY,
   SEARCH_BACKOFF_MS,
@@ -121,6 +122,40 @@ export type {
   DiscoveryController,
   DiscoveryDeps,
 } from "./discoveryControllerContract";
+
+function abortStartError(): DOMException {
+  return new DOMException("The search was stopped.", "AbortError");
+}
+
+function throwIfStartAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw abortStartError();
+}
+
+function awaitWithStartAbort<T>(
+  pending: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return pending;
+  if (signal.aborted) return Promise.reject(abortStartError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(abortStartError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void pending.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function createDiscoveryController(
   deps: DiscoveryDeps,
 ): DiscoveryController {
@@ -892,7 +927,7 @@ export function createDiscoveryController(
       };
     },
 
-    async start(input: DiscoveryCampaignInput) {
+    async start(input: DiscoveryCampaignInput, signal?: AbortSignal) {
       const location = input.location.trim();
       const target = Math.floor(input.target);
       const locationSelection = input.locationSelection ?? null;
@@ -904,19 +939,23 @@ export function createDiscoveryController(
         // Older persisted campaigns and the focused state-machine tests can
         // have a smaller target. The only owner-facing entrypoint is the form,
         // which enforces MIN_TARGET before an approved run reaches here.
-        target < 1 ||
+        target < MIN_TARGET ||
         target > MAX_TARGET
       ) {
         throw new Error(FIRST_START_ERROR);
       }
-      const context = await resolveStartContext();
+      throwIfStartAborted(signal);
+      const context = await awaitWithStartAbort(resolveStartContext(), signal);
       if (disposed) throw new Error(STOPPED_ERROR);
+      throwIfStartAborted(signal);
       ensureOwner(context.pubkey);
 
       // The first page runs before anything is created, so a server that
       // cannot search (not set up, no credits) fails here with its plain
       // words and leaves no campaign behind.
       const probe = new AbortController();
+      const abortProbe = () => probe.abort();
+      signal?.addEventListener("abort", abortProbe, { once: true });
       const probeId = `probe-${++probeSequence}`;
       startProbes.add(probe);
       requestBudget.registerCampaign(probeId);
@@ -976,10 +1015,12 @@ export function createDiscoveryController(
             )
           : null;
       } finally {
+        signal?.removeEventListener("abort", abortProbe);
         startProbes.delete(probe);
         requestBudget.unregisterCampaign(probeId);
       }
       if (disposed) throw new Error(STOPPED_ERROR);
+      throwIfStartAborted(signal);
 
       const campaign: StoredCampaign = {
         id: deps.newId(),

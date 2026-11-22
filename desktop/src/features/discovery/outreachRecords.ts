@@ -1,3 +1,6 @@
+import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
+import type { RelayEvent } from "@/shared/api/types";
+
 import {
   businessDTag,
   KIND_DISCOVERY_CAMPAIGN_HEAD,
@@ -10,8 +13,7 @@ import {
   type OutreachStatusRecord,
   type OutreachListTemplate,
 } from "./businessRecordContract";
-import type { TenantCommunityId } from "@/features/communities/tenantCommunity";
-import type { RelayEvent } from "@/shared/api/types";
+import { MAX_TARGET, MIN_TARGET } from "./discoveryControllerContract";
 
 export const MAX_OUTREACH_LIST_LEADS = 500;
 
@@ -346,8 +348,8 @@ export function parseDiscoveryCampaignHead(
   if (stringValue(content.query) && content.query.length > 300) return null;
   if (
     !integerValue(content.target) ||
-    content.target < 1 ||
-    content.target > 500 ||
+    content.target < MIN_TARGET ||
+    content.target > MAX_TARGET ||
     !integerValue(content.found) ||
     !integerValue(content.skippedDuplicates)
   ) {
@@ -574,10 +576,12 @@ export function buildDiscoveryCampaignCreateAction(input: {
   }
   if (
     !Number.isInteger(input.target) ||
-    input.target < 1 ||
-    input.target > 500
+    input.target < MIN_TARGET ||
+    input.target > MAX_TARGET
   ) {
-    throw new Error("A campaign target must be between 1 and 500.");
+    throw new Error(
+      `A campaign target must be between ${MIN_TARGET} and ${MAX_TARGET.toLocaleString()}.`,
+    );
   }
   const pickedTags = [...new Set(input.pickedTags ?? [])]
     .map((tag) => tag.trim())

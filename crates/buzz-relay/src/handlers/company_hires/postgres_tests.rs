@@ -198,6 +198,7 @@ struct PrebuiltHeadFinanceActions {
     slot_hire_set: AccessAction,
     approve: HireAction,
     attach_employee: HireAction,
+    deny: HireAction,
     complete: HireAction,
 }
 
@@ -206,6 +207,23 @@ fn prebuilt_head_finance_actions() -> PrebuiltHeadFinanceActions {
         "../../../../../test-fixtures/company-hire/prebuilt-head-finance.json"
     ))
     .expect("the checked-in prebuilt Finance action shapes must deserialize")
+}
+
+fn prebuilt_head_finance_actions_for(hire_id: Uuid) -> PrebuiltHeadFinanceActions {
+    let mut actions = prebuilt_head_finance_actions();
+    actions.create.hire_id = hire_id;
+    actions
+        .create
+        .proposal
+        .as_mut()
+        .expect("the fixture create action has its proposal")
+        .hire_id = hire_id;
+    actions.slot_hire_set.hire_id = Some(hire_id);
+    actions.approve.hire_id = hire_id;
+    actions.attach_employee.hire_id = hire_id;
+    actions.deny.hire_id = hire_id;
+    actions.complete.hire_id = hire_id;
+    actions
 }
 
 fn hire_action(
@@ -764,6 +782,187 @@ async fn prebuilt_finance_replays_the_relay_completion_contract() {
         kickoffs(&fixture, hire_id).await.is_empty(),
         "no relay kickoff or wake occurs without timeZone"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn a_removed_prebuilt_employee_can_close_then_refill_its_same_slot() {
+    let fixture = fixture_without_employee_owner().await;
+    let mut stranded = prebuilt_head_finance_actions_for(Uuid::new_v4());
+    let stranded_id = stranded.create.hire_id;
+    let owner = fixture.owner.public_key().to_hex();
+    let employee = fixture.employee.public_key().to_hex();
+    let stranded_proposal = stranded
+        .create
+        .proposal
+        .as_mut()
+        .expect("the fixture create action has its proposal");
+    stranded_proposal.introduction_channel_id = fixture.channel_id;
+    stranded_proposal.manager_pubkey = Some(owner.clone());
+
+    submit(&fixture, sign_hire_action(&fixture.owner, &stranded.create))
+        .await
+        .expect("create the stranded fixture hire");
+    let stranded_slot = buzz_sdk::company_records::build_access_action(&stranded.slot_hire_set)
+        .expect("build the fixture slot intent")
+        .sign_with_keys(&fixture.owner)
+        .expect("sign the fixture slot intent");
+    crate::handlers::company_access::handle(
+        &fixture.tenant,
+        &fixture.state,
+        stranded_slot,
+        auth(&fixture.owner),
+    )
+    .await
+    .expect("reserve Finance for the stranded hire");
+    stranded.approve.expected_head_event_id =
+        Some(hire_head(&fixture, stranded_id).await.event.id.to_hex());
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &stranded.approve),
+    )
+    .await
+    .expect("approve the stranded hire");
+    register_employee_for_owner(&fixture).await;
+    stranded.attach_employee.expected_head_event_id =
+        Some(hire_head(&fixture, stranded_id).await.event.id.to_hex());
+    stranded.attach_employee.employee_pubkey = Some(employee.clone());
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &stranded.attach_employee),
+    )
+    .await
+    .expect("attach the employee before it is removed locally");
+    assert_prebuilt_hire_head(
+        &fixture,
+        stranded_id,
+        HireStatus::Approved,
+        Some(employee.as_str()),
+    )
+    .await;
+
+    stranded.deny.expected_head_event_id =
+        Some(hire_head(&fixture, stranded_id).await.event.id.to_hex());
+    let denied = submit(&fixture, sign_hire_action(&fixture.owner, &stranded.deny))
+        .await
+        .expect("close the attached approved hire");
+    assert!(denied.accepted);
+    let denied_head =
+        assert_prebuilt_hire_head(&fixture, stranded_id, HireStatus::Denied, None).await;
+    assert_eq!(
+        denied_head.denial_reason, stranded.deny.reason,
+        "the fixture reason remains durable audit history"
+    );
+    assert_eq!(denied_head.introduction_event_id, None);
+    assert_eq!(
+        crate::handlers::company_access::current_slot_hire(
+            &fixture.state,
+            fixture.tenant.community(),
+            stranded_id,
+        )
+        .await
+        .expect("read the historic slot intent")
+        .expect("the immutable historic slot intent remains")
+        .function,
+        CompanyFunction::Finance,
+    );
+
+    let mut replacement = prebuilt_head_finance_actions_for(Uuid::new_v4());
+    let replacement_id = replacement.create.hire_id;
+    let replacement_proposal = replacement
+        .create
+        .proposal
+        .as_mut()
+        .expect("the fixture replacement has its proposal");
+    replacement_proposal.introduction_channel_id = fixture.channel_id;
+    replacement_proposal.manager_pubkey = Some(owner);
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &replacement.create),
+    )
+    .await
+    .expect("create the fresh fixture hire");
+    let replacement_slot =
+        buzz_sdk::company_records::build_access_action(&replacement.slot_hire_set)
+            .expect("build the fresh fixture slot intent")
+            .sign_with_keys(&fixture.owner)
+            .expect("sign the fresh fixture slot intent");
+    crate::handlers::company_access::handle(
+        &fixture.tenant,
+        &fixture.state,
+        replacement_slot,
+        auth(&fixture.owner),
+    )
+    .await
+    .expect("reserve Finance again after the approved close");
+    replacement.approve.expected_head_event_id =
+        Some(hire_head(&fixture, replacement_id).await.event.id.to_hex());
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &replacement.approve),
+    )
+    .await
+    .expect("approve the fresh hire");
+    replacement.attach_employee.expected_head_event_id =
+        Some(hire_head(&fixture, replacement_id).await.event.id.to_hex());
+    replacement.attach_employee.employee_pubkey = Some(employee.clone());
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &replacement.attach_employee),
+    )
+    .await
+    .expect("attach the fresh employee");
+    let introduction = post_employee_introduction(
+        &fixture,
+        fixture.channel_id,
+        "Head of Finance here. I have joined to lead Finance.",
+    )
+    .await;
+    replacement.complete.expected_head_event_id =
+        Some(hire_head(&fixture, replacement_id).await.event.id.to_hex());
+    replacement.complete.employee_pubkey = Some(employee.clone());
+    replacement.complete.introduction_event_id = Some(introduction.id.to_hex());
+    replacement.complete.time_zone = None;
+    submit(
+        &fixture,
+        sign_hire_action(&fixture.owner, &replacement.complete),
+    )
+    .await
+    .expect("complete the fresh same-slot hire");
+    assert_prebuilt_hire_head(
+        &fixture,
+        replacement_id,
+        HireStatus::Hired,
+        Some(employee.as_str()),
+    )
+    .await;
+    assert_eq!(
+        slot_head(&fixture, CompanyFunction::Finance)
+            .await
+            .expect("the replacement fills Finance")
+            .state,
+        SlotState::Filled,
+    );
+
+    replacement.deny.expected_head_event_id =
+        Some(hire_head(&fixture, replacement_id).await.event.id.to_hex());
+    assert_eq!(
+        rejection(
+            submit(
+                &fixture,
+                sign_hire_action(&fixture.owner, &replacement.deny),
+            )
+            .await
+        ),
+        "conflict: hire is already complete or denied",
+    );
+    assert_prebuilt_hire_head(
+        &fixture,
+        replacement_id,
+        HireStatus::Hired,
+        Some(employee.as_str()),
+    )
+    .await;
 }
 
 #[tokio::test]

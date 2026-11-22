@@ -1,5 +1,6 @@
 import type {
   DiscoveryCampaign,
+  DiscoveryCampaignInput,
   DiscoveryCampaignProvider,
   DiscoveryRunStatus,
 } from "./discoveryProvider";
@@ -24,6 +25,12 @@ export const MAX_CITIES_AT_ONCE = 3;
 /** One initial attempt and these three passing-error retries are allowed. */
 export const START_RETRY_DELAYS_SECONDS = [5, 20, 60] as const;
 export const START_RETRY_MESSAGE = "Could not reach the server.";
+/** A group slot cannot wait forever for Sales records before creating a campaign. */
+export const START_ATTEMPT_TIMEOUT_MS = 30_000;
+const START_TIMEOUT_REASON = "Starting this city took too long.";
+export const START_TIMEOUT_MESSAGE = `${START_TIMEOUT_REASON} Try again.`;
+export const START_INTERRUPTED_MESSAGE =
+  "The previous start did not finish. Try again.";
 
 export type MultiCityDiscoverySnapshot = {
   groups: MultiCityCampaignGroup[];
@@ -41,6 +48,8 @@ export type MultiCityDiscoveryCoordinatorOptions = {
   cityId?: () => string;
   /** Injectable so the retry policy is falsifiable without waiting 85 seconds. */
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Injectable so the start deadline is falsifiable without waiting 30 seconds. */
+  startTimeout?: (ms: number, signal: AbortSignal) => Promise<void>;
 };
 
 const TERMINAL_STATUSES = new Set<DiscoveryRunStatus>([
@@ -169,6 +178,7 @@ export function isPassingStartError(error: unknown): boolean {
   return [
     "timed out",
     "timeout",
+    "took too long",
     "could not reach",
     "network",
     "connection",
@@ -228,6 +238,10 @@ export class MultiCityDiscoveryCoordinator {
   private readonly makeGroupId: () => string;
   private readonly makeCityId: () => string;
   private readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  private readonly startTimeout: (
+    ms: number,
+    signal: AbortSignal,
+  ) => Promise<void>;
   private readonly listeners = new Set<
     (snapshot: MultiCityDiscoverySnapshot) => void
   >();
@@ -250,6 +264,7 @@ export class MultiCityDiscoveryCoordinator {
     this.makeGroupId = options.groupId ?? (() => newId("group"));
     this.makeCityId = options.cityId ?? (() => newId("city"));
     this.sleep = options.sleep ?? defaultSleep;
+    this.startTimeout = options.startTimeout ?? defaultSleep;
     this.groups = readMultiCityState(this.storage, this.storageKey);
     this.reconcileInterruptedStarts();
     this.rememberStatuses(this.campaigns());
@@ -530,7 +545,12 @@ export class MultiCityDiscoveryCoordinator {
     this.groups = this.groups.map((group) => ({
       ...group,
       cities: group.cities.map((city) => {
-        if (city.campaignId || city.state !== "starting") return city;
+        const interruptedStart =
+          city.state === "starting" ||
+          (city.state === "not_started" &&
+            city.reason === null &&
+            group.blockedReason === null);
+        if (city.campaignId || !interruptedStart) return city;
         const matching = campaigns.find(
           (campaign) =>
             !claimed.has(campaign.id) &&
@@ -548,8 +568,16 @@ export class MultiCityDiscoveryCoordinator {
           };
         }
         // No durable campaign exists, so an app restart must never issue a
-        // paid retry by itself. The owner can choose Try again.
-        return { ...city, state: "not_started", retryRequested: false };
+        // paid retry by itself. Keep a durable, visible retry record instead
+        // of silently changing an in-flight start to not_started. The second
+        // branch also repairs that unreasoned legacy state from before this
+        // recovery record existed.
+        return {
+          ...city,
+          state: "failed",
+          reason: START_INTERRUPTED_MESSAGE,
+          retryRequested: false,
+        };
       }),
     }));
     if (changed)
@@ -902,8 +930,9 @@ export class MultiCityDiscoveryCoordinator {
       );
       if (!group || !city || city.campaignId || group.blockedReason) return;
       try {
-        const campaign = await this.provider.start(
+        const campaign = await this.startWithDeadline(
           campaignInputForGroupCity(group, city),
+          signal,
         );
         if (this.disposed) return;
         // A simultaneous global setup failure may abort this city's retry
@@ -959,6 +988,10 @@ export class MultiCityDiscoveryCoordinator {
         }
         const delay = START_RETRY_DELAYS_SECONDS[attempt];
         if (delay !== undefined && isPassingStartError(error)) {
+          const retryMessage =
+            reason === START_TIMEOUT_MESSAGE
+              ? START_TIMEOUT_REASON
+              : START_RETRY_MESSAGE;
           this.updateGroup(groupId, (current) => ({
             ...current,
             cities: current.cities.map((candidate) =>
@@ -966,7 +999,7 @@ export class MultiCityDiscoveryCoordinator {
                 ? {
                     ...candidate,
                     state: "starting",
-                    reason: `${START_RETRY_MESSAGE} Trying again in ${delay} s.`,
+                    reason: `${retryMessage} Trying again in ${delay} s.`,
                   }
                 : candidate,
             ),
@@ -994,6 +1027,35 @@ export class MultiCityDiscoveryCoordinator {
         }));
         return;
       }
+    }
+  }
+
+  private async startWithDeadline(
+    input: DiscoveryCampaignInput,
+    signal: AbortSignal,
+  ): Promise<DiscoveryCampaign> {
+    if (signal.aborted) throw abortError();
+    const attempt = new AbortController();
+    const deadline = new AbortController();
+    const abortAttempt = () => {
+      attempt.abort();
+      deadline.abort();
+    };
+    signal.addEventListener("abort", abortAttempt, { once: true });
+    try {
+      const started = this.provider.start(input, attempt.signal);
+      const result = await Promise.race([
+        started.then((campaign) => ({ kind: "campaign" as const, campaign })),
+        this.startTimeout(START_ATTEMPT_TIMEOUT_MS, deadline.signal).then(
+          () => ({ kind: "timeout" as const }),
+        ),
+      ]);
+      if (result.kind === "campaign") return result.campaign;
+      attempt.abort();
+      throw new Error(START_TIMEOUT_MESSAGE);
+    } finally {
+      deadline.abort();
+      signal.removeEventListener("abort", abortAttempt);
     }
   }
 }

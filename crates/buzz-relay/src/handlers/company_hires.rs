@@ -317,13 +317,17 @@ pub(super) async fn handle(
             let mut head = current.ok_or_else(|| conflict("hire does not exist"))?;
             if !matches!(
                 head.status,
-                HireStatus::Proposed | HireStatus::AwaitingFounder
+                HireStatus::Proposed | HireStatus::AwaitingFounder | HireStatus::Approved
             ) {
-                return Err(conflict("hire is already approved, complete or denied"));
+                return Err(conflict("hire is already complete or denied"));
             }
             head.status = HireStatus::Denied;
             head.denial_reason = action.reason.clone();
             head.founder_approval_reason = None;
+            // A terminal denial cannot retain an employee attachment or its
+            // introduction. Removing both also removes the signed `p` tag.
+            head.employee_pubkey = None;
+            head.introduction_event_id = None;
             head.source_action_event_id = event.id.to_hex();
             head
         }
