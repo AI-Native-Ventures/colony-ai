@@ -59,8 +59,9 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-**conduct@buzz-relay.org**.
+reported in private to the Colony maintainers through
+**[this private report form](https://github.com/AI-Native-Ventures/colony-ai/security/advisories/new)**. It is the same form as for security
+reports: say at the top that your report is about conduct.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
