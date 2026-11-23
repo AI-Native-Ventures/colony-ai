@@ -250,6 +250,16 @@ describe("admin sign-in options", () => {
       name: "Continue with Google",
     });
     expect(fallbackButton).toHaveProperty("disabled", false);
+
+    cleanup();
+    renderPasswordSignIn({
+      config: { googleClientId: null, emailCode: true, password: false },
+      buildTimeGoogleClientId: "",
+    });
+    const unavailableButton = await screen.findByRole("button", {
+      name: "Continue with Google",
+    });
+    expect(unavailableButton).toHaveProperty("disabled", true);
   });
 
   it("keeps code and NIP-98 available when config loading fails, then retries", async () => {
@@ -274,15 +284,49 @@ describe("admin sign-in options", () => {
       screen.getByRole("button", { name: "Continue with Google" }),
     ).toHaveProperty("disabled", false);
 
+    fireEvent.change(screen.getByLabelText("Operator email address"), {
+      target: { value: "operator@example.test" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByRole("form", {
       name: "Sign in with email and password",
     });
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveProperty(
+      "value",
+      "",
+    );
     expect(
       fetchMock.mock.calls.filter(([input]) =>
         requestPath(input as RequestInfo | URL).endsWith("/session/config"),
       ),
     ).toHaveLength(2);
+  });
+
+  it("waits for config before exposing a form that could be replaced", async () => {
+    installFetch();
+    const config = deferred<AdminSigninConfig>();
+    render(
+      <OperatorAdminApp
+        path="/overview"
+        signInConfigLoader={() => config.promise}
+      />,
+    );
+
+    await screen.findByText("Loading sign-in options...");
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.queryByLabelText("Operator email address")).toBeNull();
+
+    await act(async () => {
+      config.resolve(passwordConfig);
+      await config.promise;
+    });
+    await screen.findByRole("form", {
+      name: "Sign in with email and password",
+    });
+    expect(screen.getByRole("textbox", { name: "Email" })).toHaveProperty(
+      "value",
+      "",
+    );
   });
 
   it("ignores an older config response after a newer request begins", async () => {

@@ -468,6 +468,56 @@ test("email-code failures stay clear and generic, with an available resend path"
   await expect(page.getByRole("button", { name: "Resend code" })).toBeEnabled();
 });
 
+test("sign-in waits for config before exposing a replaceable email form", async ({
+  page,
+}) => {
+  let releaseConfig = () => {};
+  const configHeld = new Promise<void>((resolve) => {
+    releaseConfig = resolve;
+  });
+  await page.route("**/api/admin/v1/probe", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "unauthorized", message: "sign in" },
+      }),
+    }),
+  );
+  await page.route("**/api/admin/v1/session/config", async (route) => {
+    await configHeld;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        googleClientId: null,
+        emailCode: true,
+        password: true,
+      }),
+    });
+  });
+
+  await page.goto("/overview");
+  await expect(page.getByText("Loading sign-in options...")).toBeVisible();
+  await expect(page.locator("form")).toHaveCount(0);
+
+  // Keystrokes while the options are unresolved cannot land in a form that is
+  // about to be replaced. The password form appears only after config settles.
+  await page.keyboard.type("operator@example.test");
+  releaseConfig();
+
+  const passwordForm = page.getByRole("form", {
+    name: "Sign in with email and password",
+  });
+  await expect(passwordForm).toBeVisible();
+  const email = passwordForm.getByRole("textbox", {
+    name: "Email",
+    exact: true,
+  });
+  await expect(email).toHaveValue("");
+  await email.fill("operator@example.test");
+  await expect(email).toHaveValue("operator@example.test");
+});
+
 test("an operator can sign in with email and password through the cookie API", async ({
   page,
 }) => {
@@ -540,9 +590,16 @@ test("an operator can sign in with email and password through the cookie API", a
   );
 
   await page.goto("/overview");
-  await page.getByLabel("Email").fill("operator@example.test");
-  await page.getByLabel("Password").fill("correct horse battery staple");
-  await page.getByLabel("Password").press("Enter");
+  const passwordForm = page.getByRole("form", {
+    name: "Sign in with email and password",
+  });
+  await expect(passwordForm).toBeVisible();
+  await passwordForm
+    .getByRole("textbox", { name: "Email", exact: true })
+    .fill("operator@example.test");
+  const password = passwordForm.getByLabel("Password", { exact: true });
+  await password.fill("correct horse battery staple");
+  await password.press("Enter");
 
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   expect(passwordBody).toEqual({
@@ -590,10 +647,16 @@ test("password failures stay generic, clear the password, and refocus it", async
   );
 
   await page.goto("/overview");
-  await page.getByLabel("Email").fill("operator@example.test");
-  const password = page.getByLabel("Password");
+  const passwordForm = page.getByRole("form", {
+    name: "Sign in with email and password",
+  });
+  await expect(passwordForm).toBeVisible();
+  await passwordForm
+    .getByRole("textbox", { name: "Email", exact: true })
+    .fill("operator@example.test");
+  const password = passwordForm.getByLabel("Password", { exact: true });
   await password.fill("wrong password");
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await passwordForm.getByRole("button", { name: "Sign in" }).click();
 
   await expect(
     page.getByText(
@@ -602,7 +665,9 @@ test("password failures stay generic, clear the password, and refocus it", async
   ).toBeVisible();
   await expect(password).toHaveValue("");
   await expect(password).toBeFocused();
-  await expect(page.getByLabel("Email")).toHaveValue("operator@example.test");
+  await expect(
+    passwordForm.getByRole("textbox", { name: "Email", exact: true }),
+  ).toHaveValue("operator@example.test");
 });
 
 test("Google uses the runtime client ID when the relay provides one", async ({
@@ -665,7 +730,7 @@ test("Google OIDC posts the fragment token and stored nonce, then checks the ope
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        googleClientId: null,
+        googleClientId: "e2e-admin-client",
         emailCode: true,
         password: false,
       }),

@@ -142,6 +142,7 @@ export function OperatorAdminApp({
     configuredSigninOptions?.googleClientId ?? buildTimeGoogleClientId.trim();
   const emailCodeEnabled = configuredSigninOptions?.emailCode ?? true;
   const passwordEnabled = configuredSigninOptions?.password ?? false;
+  const signinConfigLoading = signinConfig.status === "loading";
   const signinConfigFailed = signinConfig.status === "failed";
 
   useEffect(() => {
@@ -361,10 +362,12 @@ export function OperatorAdminApp({
   if (session.status === "error") {
     return (
       <SignInScreen
+        key={`signin-config-${signinConfig.status}`}
         message={session.message}
         googleConfigured={Boolean(googleClientId)}
         emailCodeEnabled={emailCodeEnabled}
         passwordEnabled={passwordEnabled}
+        signinConfigLoading={signinConfigLoading}
         signinConfigFailed={signinConfigFailed}
         fallbackBusy={false}
         onGoogle={startGoogleSignIn}
@@ -394,10 +397,12 @@ export function OperatorAdminApp({
   if (session.status === "signed-out") {
     return (
       <SignInScreen
+        key={`signin-config-${signinConfig.status}`}
         message={session.message}
         googleConfigured={Boolean(googleClientId)}
         emailCodeEnabled={emailCodeEnabled}
         passwordEnabled={passwordEnabled}
+        signinConfigLoading={signinConfigLoading}
         signinConfigFailed={signinConfigFailed}
         fallbackBusy={fallbackBusy}
         onGoogle={startGoogleSignIn}
@@ -501,6 +506,7 @@ function SignInScreen({
   googleConfigured,
   emailCodeEnabled,
   passwordEnabled,
+  signinConfigLoading,
   signinConfigFailed,
   fallbackBusy,
   onGoogle,
@@ -514,6 +520,7 @@ function SignInScreen({
   googleConfigured: boolean;
   emailCodeEnabled: boolean;
   passwordEnabled: boolean;
+  signinConfigLoading: boolean;
   signinConfigFailed: boolean;
   fallbackBusy: boolean;
   onGoogle: () => void;
@@ -540,7 +547,9 @@ function SignInScreen({
   const [emailNotice, setEmailNotice] = useState<string>();
   const [resendSeconds, setResendSeconds] = useState(0);
   const showEmailCode =
-    emailCodeEnabled && (!passwordEnabled || emailCodeExpanded);
+    !signinConfigLoading &&
+    emailCodeEnabled &&
+    (!passwordEnabled || emailCodeExpanded);
 
   useEffect(() => {
     if (
@@ -663,7 +672,12 @@ function SignInScreen({
             </button>
           </p>
         ) : null}
-        {passwordEnabled ? (
+        {signinConfigLoading ? (
+          <p className="ad-muted-note" role="status">
+            Loading sign-in options...
+          </p>
+        ) : null}
+        {passwordEnabled && !signinConfigLoading ? (
           <form
             className="ad-email-code-form"
             aria-label="Sign in with email and password"
@@ -724,7 +738,10 @@ function SignInScreen({
             ) : null}
           </form>
         ) : null}
-        {passwordEnabled && emailCodeEnabled && !emailCodeExpanded ? (
+        {passwordEnabled &&
+        !signinConfigLoading &&
+        emailCodeEnabled &&
+        !emailCodeExpanded ? (
           <button
             className="ad-email-code-resend ad-email-code-alternate"
             type="button"
@@ -848,9 +865,7 @@ function SignInScreen({
           disabled={!googleConfigured}
         >
           <GoogleIcon />
-          {googleConfigured
-            ? "Continue with Google"
-            : "Google sign-in is not configured"}
+          Continue with Google
         </button>
         <div className="ad-auth-divider">
           <span>or</span>
