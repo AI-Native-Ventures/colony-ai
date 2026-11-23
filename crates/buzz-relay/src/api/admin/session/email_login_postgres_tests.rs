@@ -675,10 +675,13 @@ async fn allowlisted_email_gets_one_code_and_the_google_equivalent_operator_cook
         "Secure",
         "HttpOnly",
         "SameSite=Strict",
-        "Max-Age=28800",
     ] {
         assert!(cookie.contains(required), "cookie must retain {required}");
     }
+    assert!(
+        cookie.contains(&format!("Max-Age={SESSION_SECS}")),
+        "cookie must retain the configured session lifetime"
+    );
 
     let (probe_status, _, probe_body) = response_json(
         cookie_probe(

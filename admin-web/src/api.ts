@@ -14,6 +14,13 @@ export class ApiFailure extends Error {
 /// - `disabled` — relay returned 200 with no auth; no credential needed
 export type AuthMode = "nip98" | "cookie" | "disabled";
 
+/// Public runtime availability for the admin sign-in methods.
+export type AdminSigninConfig = {
+  googleClientId: string | null;
+  emailCode: boolean;
+  password: boolean;
+};
+
 /// Sign a NIP-98 kind-27235 event for the given URL + method via window.nostr.
 /// Throws if window.nostr is not available or signing fails.
 ///
@@ -143,6 +150,47 @@ export async function requestOperatorProbe(
   return request<import("./admin-metrics").OperatorProbe>("/probe", authMode);
 }
 
+/// Load the public sign-in capabilities exposed by the admin-host relay.
+/// Invalid or older-relay responses deliberately reject so the caller can keep
+/// the established code and NIP-98 sign-in paths available.
+export async function requestAdminSigninConfig(): Promise<AdminSigninConfig> {
+  const response = await fetch(`${PREFIX}/session/config`, {
+    credentials: "same-origin",
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new ApiFailure(response.status, "Could not load sign-in options.");
+  }
+
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch {
+    throw new Error("The sign-in options response was not valid JSON.");
+  }
+  if (!isAdminSigninConfig(value)) {
+    throw new Error("The sign-in options response was invalid.");
+  }
+  return {
+    googleClientId:
+      value.googleClientId === null ? null : value.googleClientId.trim(),
+    emailCode: value.emailCode,
+    password: value.password,
+  };
+}
+
+function isAdminSigninConfig(value: unknown): value is AdminSigninConfig {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    (candidate.googleClientId === null ||
+      (typeof candidate.googleClientId === "string" &&
+        candidate.googleClientId.trim().length > 0)) &&
+    typeof candidate.emailCode === "boolean" &&
+    typeof candidate.password === "boolean"
+  );
+}
+
 /// Exchange the one-time Google OIDC token for the relay's HttpOnly session.
 /// This endpoint is deliberately unauthenticated; the relay validates token,
 /// nonce, origin, existing account, and operator roster before setting cookie.
@@ -181,7 +229,11 @@ type EmailCodeVerifyResponse = {
   expiresInSeconds: number;
 };
 
-async function emailCodeRequest<T>(path: string, body: unknown): Promise<T> {
+async function unauthenticatedSessionRequest<T>(
+  path: string,
+  body: unknown,
+  fallbackMessage: string,
+): Promise<T> {
   const response = await fetch(`${PREFIX}${path}`, {
     method: "POST",
     credentials: "same-origin",
@@ -192,7 +244,7 @@ async function emailCodeRequest<T>(path: string, body: unknown): Promise<T> {
     const envelope = await response.json().catch(() => null);
     throw new ApiFailure(
       response.status,
-      envelope?.error?.message ?? "The code could not be verified.",
+      envelope?.error?.message ?? fallbackMessage,
     );
   }
   return response.json() as Promise<T>;
@@ -203,9 +255,11 @@ async function emailCodeRequest<T>(path: string, body: unknown): Promise<T> {
 export function startEmailAdminSession(
   email: string,
 ): Promise<EmailCodeStartResponse> {
-  return emailCodeRequest<EmailCodeStartResponse>("/session/email/start", {
-    email,
-  });
+  return unauthenticatedSessionRequest<EmailCodeStartResponse>(
+    "/session/email/start",
+    { email },
+    "The code could not be requested.",
+  );
 }
 
 /// Exchange an emailed one-time code for the existing HttpOnly operator cookie.
@@ -213,10 +267,24 @@ export function verifyEmailAdminSession(
   email: string,
   code: string,
 ): Promise<EmailCodeVerifyResponse> {
-  return emailCodeRequest<EmailCodeVerifyResponse>("/session/email/verify", {
-    email,
-    code,
-  });
+  return unauthenticatedSessionRequest<EmailCodeVerifyResponse>(
+    "/session/email/verify",
+    { email, code },
+    "The code could not be verified.",
+  );
+}
+
+/// Exchange an operator email and Colony-account password for the existing
+/// HttpOnly admin session cookie.
+export function createPasswordAdminSession(
+  email: string,
+  password: string,
+): Promise<EmailCodeVerifyResponse> {
+  return unauthenticatedSessionRequest<EmailCodeVerifyResponse>(
+    "/session/password",
+    { email, password },
+    "Email or password not accepted.",
+  );
 }
 
 /// Clear the current HttpOnly operator session before returning to sign-in.

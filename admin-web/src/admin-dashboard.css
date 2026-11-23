@@ -1367,6 +1367,10 @@
   font-weight: 520;
 }
 
+.ad-email-code-alternate {
+  margin-top: 12px;
+}
+
 .ad-email-code-notice,
 .ad-email-code-error {
   margin: 2px 0 0;

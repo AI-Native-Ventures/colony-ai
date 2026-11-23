@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ApiFailure,
   createGoogleAdminSession,
+  createPasswordAdminSession,
   probeAuthMode,
   request,
+  requestAdminSigninConfig,
   requestOperatorProbe,
   startEmailAdminSession,
   verifyEmailAdminSession,
+  type AdminSigninConfig,
   type AuthMode,
 } from "./api";
 import type {
@@ -25,7 +34,7 @@ import { useResource } from "./useResource";
 import { ColonyAdminMark } from "./colony-admin-mark";
 import "./admin-dashboard.css";
 
-const googleClientId =
+const configuredBuildTimeGoogleClientId =
   import.meta.env.VITE_COLONY_ADMIN_GOOGLE_CLIENT_ID?.trim() ?? "";
 const nonceStorageKey = "colony_admin_oidc_nonce";
 const authModeStorageKey = "colony_admin_auth_mode";
@@ -36,6 +45,13 @@ type OperatorSession =
   | { status: "denied" }
   | { status: "error"; message: string }
   | { status: "signed-in"; authMode: AuthMode };
+
+type SigninConfigState =
+  | { status: "loading" }
+  | { status: "ready"; value: AdminSigninConfig }
+  | { status: "failed" };
+
+type SigninConfigLoader = () => Promise<AdminSigninConfig>;
 
 export function isOperatorAdminPath(path: string): boolean {
   return (
@@ -61,9 +77,13 @@ export type OperatorPageRenderer = (
 export function OperatorAdminApp({
   path,
   renderPage,
+  buildTimeGoogleClientId = configuredBuildTimeGoogleClientId,
+  signInConfigLoader = requestAdminSigninConfig,
 }: {
   path: string;
   renderPage?: OperatorPageRenderer;
+  buildTimeGoogleClientId?: string;
+  signInConfigLoader?: SigninConfigLoader;
 }) {
   const [session, setSession] = useState<OperatorSession>({
     status: "checking",
@@ -74,6 +94,56 @@ export function OperatorAdminApp({
   const isCallback = path === "/sign-in" && location.hash.length > 1;
   const callbackSession = useRef<Promise<OperatorSession> | null>(null);
   const [localHealthBadge, setLocalHealthBadge] = useState<number>();
+  const [signinConfig, setSigninConfig] = useState<SigninConfigState>({
+    status: "loading",
+  });
+  const signinConfigGeneration = useRef(0);
+  const signinConfigMounted = useRef(false);
+  const loadedSigninConfigFor = useRef<SigninConfigLoader | undefined>(
+    undefined,
+  );
+
+  const refreshSigninConfig = useCallback(async () => {
+    const generation = signinConfigGeneration.current + 1;
+    signinConfigGeneration.current = generation;
+    setSigninConfig({ status: "loading" });
+    try {
+      const value = await signInConfigLoader();
+      if (
+        signinConfigMounted.current &&
+        signinConfigGeneration.current === generation
+      ) {
+        setSigninConfig({ status: "ready", value });
+      }
+    } catch {
+      if (
+        signinConfigMounted.current &&
+        signinConfigGeneration.current === generation
+      ) {
+        setSigninConfig({ status: "failed" });
+      }
+    }
+  }, [signInConfigLoader]);
+
+  useEffect(() => {
+    signinConfigMounted.current = true;
+    if (loadedSigninConfigFor.current !== signInConfigLoader) {
+      loadedSigninConfigFor.current = signInConfigLoader;
+      void refreshSigninConfig();
+    }
+    return () => {
+      signinConfigMounted.current = false;
+    };
+  }, [refreshSigninConfig, signInConfigLoader]);
+
+  const configuredSigninOptions =
+    signinConfig.status === "ready" ? signinConfig.value : undefined;
+  const googleClientId =
+    configuredSigninOptions?.googleClientId ?? buildTimeGoogleClientId.trim();
+  const emailCodeEnabled = configuredSigninOptions?.emailCode ?? true;
+  const passwordEnabled = configuredSigninOptions?.password ?? false;
+  const signinConfigLoading = signinConfig.status === "loading";
+  const signinConfigFailed = signinConfig.status === "failed";
 
   useEffect(() => {
     let active = true;
@@ -186,13 +256,7 @@ export function OperatorAdminApp({
   }, [path, session.status]);
 
   const startGoogleSignIn = () => {
-    if (!googleClientId) {
-      setSession({
-        status: "signed-out",
-        message: "Google sign-in is not configured yet. Use NIP-98 instead.",
-      });
-      return;
-    }
+    if (!googleClientId) return;
     const nonce = randomNonce();
     sessionStorage.setItem(nonceStorageKey, nonce);
     const redirectUri = new URL("/sign-in", location.origin).toString();
@@ -258,6 +322,18 @@ export function OperatorAdminApp({
     setSession({ status: "denied" });
   };
 
+  const completePasswordSignIn = async (email: string, password: string) => {
+    await createPasswordAdminSession(email, password);
+    sessionStorage.removeItem(authModeStorageKey);
+    const probe = await requestOperatorProbe("cookie");
+    if (probe.role === "operator") {
+      setSession({ status: "signed-in", authMode: "cookie" });
+      return;
+    }
+    sessionStorage.removeItem(authModeStorageKey);
+    setSession({ status: "denied" });
+  };
+
   const authMode = session.status === "signed-in" ? session.authMode : "cookie";
   const needsRemoteBadge =
     session.status === "signed-in" &&
@@ -286,13 +362,20 @@ export function OperatorAdminApp({
   if (session.status === "error") {
     return (
       <SignInScreen
+        key={`signin-config-${signinConfig.status}`}
         message={session.message}
         googleConfigured={Boolean(googleClientId)}
+        emailCodeEnabled={emailCodeEnabled}
+        passwordEnabled={passwordEnabled}
+        signinConfigLoading={signinConfigLoading}
+        signinConfigFailed={signinConfigFailed}
         fallbackBusy={false}
         onGoogle={startGoogleSignIn}
         onNip98={signInWithNip98}
         onEmailStart={startEmailSignIn}
         onEmailVerify={completeEmailSignIn}
+        onPasswordVerify={completePasswordSignIn}
+        onSigninConfigRetry={refreshSigninConfig}
       />
     );
   }
@@ -314,13 +397,20 @@ export function OperatorAdminApp({
   if (session.status === "signed-out") {
     return (
       <SignInScreen
+        key={`signin-config-${signinConfig.status}`}
         message={session.message}
         googleConfigured={Boolean(googleClientId)}
+        emailCodeEnabled={emailCodeEnabled}
+        passwordEnabled={passwordEnabled}
+        signinConfigLoading={signinConfigLoading}
+        signinConfigFailed={signinConfigFailed}
         fallbackBusy={fallbackBusy}
         onGoogle={startGoogleSignIn}
         onNip98={signInWithNip98}
         onEmailStart={startEmailSignIn}
         onEmailVerify={completeEmailSignIn}
+        onPasswordVerify={completePasswordSignIn}
+        onSigninConfigRetry={refreshSigninConfig}
       />
     );
   }
@@ -414,28 +504,63 @@ export function AdminShell({
 function SignInScreen({
   message,
   googleConfigured,
+  emailCodeEnabled,
+  passwordEnabled,
+  signinConfigLoading,
+  signinConfigFailed,
   fallbackBusy,
   onGoogle,
   onNip98,
   onEmailStart,
   onEmailVerify,
+  onPasswordVerify,
+  onSigninConfigRetry,
 }: {
   message?: string;
   googleConfigured: boolean;
+  emailCodeEnabled: boolean;
+  passwordEnabled: boolean;
+  signinConfigLoading: boolean;
+  signinConfigFailed: boolean;
   fallbackBusy: boolean;
   onGoogle: () => void;
   onNip98: () => void;
   onEmailStart: (email: string) => Promise<{ retryAfterSeconds: number }>;
   onEmailVerify: (email: string, code: string) => Promise<void>;
+  onPasswordVerify: (email: string, password: string) => Promise<void>;
+  onSigninConfigRetry: () => Promise<void>;
 }) {
   const hasNip07 = Boolean((window as Window & { nostr?: unknown }).nostr);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState<string>();
+  const [passwordFailureCount, setPasswordFailureCount] = useState(0);
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const passwordRequestInFlight = useRef(false);
+  const refocusPasswordAfterError = useRef(false);
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"request" | "code">("request");
+  const [emailCodeExpanded, setEmailCodeExpanded] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailError, setEmailError] = useState<string>();
   const [emailNotice, setEmailNotice] = useState<string>();
   const [resendSeconds, setResendSeconds] = useState(0);
+  const showEmailCode =
+    !signinConfigLoading &&
+    emailCodeEnabled &&
+    (!passwordEnabled || emailCodeExpanded);
+
+  useEffect(() => {
+    if (
+      passwordFailureCount === 0 ||
+      !passwordError ||
+      !refocusPasswordAfterError.current
+    )
+      return;
+    passwordInput.current?.focus();
+    refocusPasswordAfterError.current = false;
+  }, [passwordError, passwordFailureCount]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -489,6 +614,36 @@ function SignInScreen({
     }
   };
 
+  const verifyPassword = async () => {
+    if (passwordRequestInFlight.current) return;
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password) {
+      showPasswordFailure();
+      return;
+    }
+
+    passwordRequestInFlight.current = true;
+    setPasswordBusy(true);
+    setPasswordError(undefined);
+    try {
+      await onPasswordVerify(normalizedEmail, password);
+    } catch {
+      showPasswordFailure();
+    } finally {
+      passwordRequestInFlight.current = false;
+      setPasswordBusy(false);
+    }
+  };
+
+  const showPasswordFailure = () => {
+    refocusPasswordAfterError.current = true;
+    setPassword("");
+    setPasswordError(
+      "Email or password not accepted. Try again, or sign in with a code.",
+    );
+    setPasswordFailureCount((count) => count + 1);
+  };
+
   return (
     <div className="ad-auth-page">
       <section className="ad-auth-card" aria-labelledby="ad-sign-in-title">
@@ -496,113 +651,210 @@ function SignInScreen({
         <p className="ad-eyebrow">Colony admin · Operator only</p>
         <h1 id="ad-sign-in-title">Sign in with your Colony account</h1>
         <p>
-          Use your approved operator email, Google account, or NIP-98 key to
-          continue.
+          {passwordEnabled
+            ? "Use your approved email and password to sign in."
+            : "Use your approved operator email, Google account, or NIP-98 key to continue."}
         </p>
         {message ? (
           <p className="ad-auth-message" role="alert">
             {message}
           </p>
         ) : null}
-        <form
-          className="ad-email-code-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (step === "request") void requestCode();
-            else void verifyCode();
-          }}
-        >
-          {step === "request" ? (
-            <>
-              <label
-                className="ad-email-code-label"
-                htmlFor="ad-operator-email"
+        {signinConfigFailed ? (
+          <p className="ad-email-code-error" role="status">
+            Could not load sign-in options.{" "}
+            <button
+              className="ad-email-code-resend"
+              type="button"
+              onClick={() => void onSigninConfigRetry()}
+            >
+              Retry
+            </button>
+          </p>
+        ) : null}
+        {signinConfigLoading ? (
+          <p className="ad-muted-note" role="status">
+            Loading sign-in options...
+          </p>
+        ) : null}
+        {passwordEnabled && !signinConfigLoading ? (
+          <form
+            className="ad-email-code-form"
+            aria-label="Sign in with email and password"
+            aria-describedby={
+              passwordError ? "ad-password-sign-in-error" : undefined
+            }
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              void verifyPassword();
+            }}
+          >
+            <label className="ad-email-code-label" htmlFor="ad-password-email">
+              Email
+            </label>
+            <input
+              id="ad-password-email"
+              className="ad-email-code-input"
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              disabled={passwordBusy}
+              required
+            />
+            <label
+              className="ad-email-code-label"
+              htmlFor="ad-password-sign-in"
+            >
+              Password
+            </label>
+            <input
+              ref={passwordInput}
+              id="ad-password-sign-in"
+              className="ad-email-code-input"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={passwordBusy}
+              required
+            />
+            <button
+              className="ad-email-code-button"
+              type="submit"
+              disabled={passwordBusy}
+            >
+              {passwordBusy ? "Signing in..." : "Sign in"}
+            </button>
+            {passwordError ? (
+              <p
+                id="ad-password-sign-in-error"
+                className="ad-email-code-error"
+                role="alert"
               >
-                Operator email address
-              </label>
-              <input
-                id="ad-operator-email"
-                className="ad-email-code-input"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                disabled={emailBusy}
-              />
-              <p className="ad-email-code-help">
-                The code goes to the operator email on the allowlist. If nothing
-                arrives, check spam or ask the coordinator.
+                {passwordError}
               </p>
-              <button
-                className="ad-email-code-button"
-                type="submit"
-                disabled={emailBusy}
-              >
-                {emailBusy ? "Sending code..." : "Email me a code"}
-              </button>
-            </>
-          ) : (
-            <>
-              <label className="ad-email-code-label" htmlFor="ad-operator-code">
-                Eight-digit code
-              </label>
-              <input
-                id="ad-operator-code"
-                className="ad-email-code-input ad-email-code-input-code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]*"
-                maxLength={8}
-                value={code}
-                onChange={(event) =>
-                  setCode(event.target.value.replace(/\D/g, ""))
-                }
-                disabled={emailBusy}
-              />
-              <button
-                className="ad-email-code-button"
-                type="submit"
-                disabled={emailBusy}
-              >
-                {emailBusy ? "Verifying code..." : "Verify code"}
-              </button>
-              <button
-                className="ad-email-code-resend"
-                type="button"
-                onClick={() => void requestCode()}
-                disabled={emailBusy || resendSeconds > 0}
-              >
-                {resendSeconds > 0
-                  ? `Resend code in ${resendSeconds}s`
-                  : "Resend code"}
-              </button>
-              <button
-                className="ad-email-code-change"
-                type="button"
-                onClick={() => {
-                  setStep("request");
-                  setCode("");
-                  setEmailError(undefined);
-                  setEmailNotice(undefined);
-                }}
-                disabled={emailBusy}
-              >
-                Use a different email
-              </button>
-            </>
-          )}
-          {emailNotice ? (
-            <p className="ad-email-code-notice" role="status">
-              {emailNotice}
-            </p>
-          ) : null}
-          {emailError ? (
-            <p className="ad-email-code-error" role="alert">
-              {emailError}
-            </p>
-          ) : null}
-        </form>
+            ) : null}
+          </form>
+        ) : null}
+        {passwordEnabled &&
+        !signinConfigLoading &&
+        emailCodeEnabled &&
+        !emailCodeExpanded ? (
+          <button
+            className="ad-email-code-resend ad-email-code-alternate"
+            type="button"
+            onClick={() => setEmailCodeExpanded(true)}
+          >
+            Sign in with a code instead
+          </button>
+        ) : null}
+        {showEmailCode ? (
+          <form
+            className="ad-email-code-form"
+            aria-label="Sign in with a code"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (step === "request") void requestCode();
+              else void verifyCode();
+            }}
+          >
+            {step === "request" ? (
+              <>
+                <label
+                  className="ad-email-code-label"
+                  htmlFor="ad-operator-email"
+                >
+                  Operator email address
+                </label>
+                <input
+                  id="ad-operator-email"
+                  className="ad-email-code-input"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  disabled={emailBusy}
+                />
+                <p className="ad-email-code-help">
+                  The code goes to the operator email on the allowlist. If
+                  nothing arrives, check spam or ask the coordinator.
+                </p>
+                <button
+                  className="ad-email-code-button"
+                  type="submit"
+                  disabled={emailBusy}
+                >
+                  {emailBusy ? "Sending code..." : "Email me a code"}
+                </button>
+              </>
+            ) : (
+              <>
+                <label
+                  className="ad-email-code-label"
+                  htmlFor="ad-operator-code"
+                >
+                  Eight-digit code
+                </label>
+                <input
+                  id="ad-operator-code"
+                  className="ad-email-code-input ad-email-code-input-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]*"
+                  maxLength={8}
+                  value={code}
+                  onChange={(event) =>
+                    setCode(event.target.value.replace(/\D/g, ""))
+                  }
+                  disabled={emailBusy}
+                />
+                <button
+                  className="ad-email-code-button"
+                  type="submit"
+                  disabled={emailBusy}
+                >
+                  {emailBusy ? "Verifying code..." : "Verify code"}
+                </button>
+                <button
+                  className="ad-email-code-resend"
+                  type="button"
+                  onClick={() => void requestCode()}
+                  disabled={emailBusy || resendSeconds > 0}
+                >
+                  {resendSeconds > 0
+                    ? `Resend code in ${resendSeconds}s`
+                    : "Resend code"}
+                </button>
+                <button
+                  className="ad-email-code-change"
+                  type="button"
+                  onClick={() => {
+                    setStep("request");
+                    setCode("");
+                    setEmailError(undefined);
+                    setEmailNotice(undefined);
+                  }}
+                  disabled={emailBusy}
+                >
+                  Use a different email
+                </button>
+              </>
+            )}
+            {emailNotice ? (
+              <p className="ad-email-code-notice" role="status">
+                {emailNotice}
+              </p>
+            ) : null}
+            {emailError ? (
+              <p className="ad-email-code-error" role="alert">
+                {emailError}
+              </p>
+            ) : null}
+          </form>
+        ) : null}
         <div className="ad-auth-divider">
           <span>or</span>
         </div>
@@ -613,15 +865,8 @@ function SignInScreen({
           disabled={!googleConfigured}
         >
           <GoogleIcon />
-          {googleConfigured
-            ? "Continue with Google"
-            : "Google sign-in is not configured"}
+          Continue with Google
         </button>
-        {!googleConfigured ? (
-          <p className="ad-muted-note">
-            NIP-98 remains available while Google sign-in is configured.
-          </p>
-        ) : null}
         <div className="ad-auth-divider">
           <span>or</span>
         </div>

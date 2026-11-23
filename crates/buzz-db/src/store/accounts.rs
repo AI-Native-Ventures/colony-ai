@@ -53,6 +53,14 @@ pub struct AccountRecord {
     pub locked_until: Option<DateTime<Utc>>,
 }
 
+/// Result of the final database fence before an admin password session is issued.
+pub enum AdminPasswordSigninAccount {
+    /// The current row still matches the verified password account and is unlocked.
+    Eligible(Box<AccountRecord>),
+    /// The current row still matches, but the normal account sign-in policy locked it.
+    Locked,
+}
+
 impl AccountRecord {
     /// Return the stored Argon2id PHC string, if this account has a password.
     pub fn password_hash(&self) -> Option<&str> {
@@ -217,6 +225,45 @@ impl Db {
     #[datastore_span(name = "account_find_by_email", system = "postgresql")]
     pub async fn account_by_email(&self, email: &str) -> Result<Option<AccountRecord>> {
         load_account_by_email(&self.pool, email).await
+    }
+
+    /// Re-read a password-authenticated account at the final admin-session fence.
+    ///
+    /// The account id, normalized email, and password hash must still match the
+    /// row that was used for the Argon2 verification. PostgreSQL evaluates the
+    /// verified-email and lock predicates at this final read. A normal account
+    /// sign-in failure committed while Argon2 runs therefore cannot mint an
+    /// admin session from the earlier unlocked snapshot.
+    #[datastore_span(name = "account_admin_password_signin_fence", system = "postgresql")]
+    pub async fn account_for_admin_password_signin(
+        &self,
+        account_id: Uuid,
+        email: &str,
+        expected_password_hash: &str,
+    ) -> Result<Option<AdminPasswordSigninAccount>> {
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT current_account.*, \
+             (current_account.locked_until IS NULL OR current_account.locked_until <= now()) \
+                 AS password_signin_eligible \
+             FROM ({ACCOUNT_SELECT} WHERE a.id = $1 AND lower(a.email) = lower($2) \
+                   AND a.email_verified_at IS NOT NULL AND a.password_hash = $3) \
+             AS current_account"
+        )))
+        .bind(account_id)
+        .bind(email)
+        .bind(expected_password_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let eligible: bool = row.try_get("password_signin_eligible")?;
+        let account = account_from_row(row)?;
+        Ok(Some(if eligible {
+            AdminPasswordSigninAccount::Eligible(Box::new(account))
+        } else {
+            AdminPasswordSigninAccount::Locked
+        }))
     }
 
     /// Find an account by its Nostr public key.

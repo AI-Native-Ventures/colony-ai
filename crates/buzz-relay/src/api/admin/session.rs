@@ -1,21 +1,18 @@
 //! "Sign in with your Colony account" for the operator admin.
 //!
-//! The browser sends the person through Google's OpenID Connect redirect
-//! (`response_type=id_token`, with a random nonce it keeps in `sessionStorage`)
-//! and posts the returned ID token and nonce to `POST /session/google`. The
-//! relay verifies the token with the same verifier the account sign-in uses,
-//! finds the Colony account for the verified email, and only when that account's
-//! public key is listed in `RELAY_OPERATOR_PUBKEYS` sets a signed, expiring,
-//! `HttpOnly` session cookie. Nothing else about the account is returned and
-//! no account is ever created here.
+//! The browser can establish a session with Google OpenID Connect, an
+//! allowlisted emailed code, or the password of an allowlisted Colony account.
+//! Each path resolves a configured operator key before it sets a signed,
+//! expiring, `HttpOnly` session cookie. Nothing else about the account is
+//! returned and no account is ever created here.
 //!
 //! The cookie is a stateless token: `v1.<payload>.<mac>` where the MAC is an
 //! HMAC-SHA256 over the payload keyed from the deployment account key
 //! (`COLONY_ACCOUNT_KEK`). Every request re-checks that the key is still in
-//! `RELAY_OPERATOR_PUBKEYS`, so removing a key ends its sessions at once. Writes
-//! made with the cookie also need the `X-Colony-Admin` header (a header only
-//! same-origin script can add) on top of `SameSite=Strict` and the existing
-//! Origin check. NIP-98 stays available as the operator fallback.
+//! `RELAY_OPERATOR_PUBKEYS`, so removing a key ends its 30-day sessions at
+//! once. Writes made with the cookie also need the `X-Colony-Admin` header (a
+//! header only same-origin script can add) on top of `SameSite=Strict` and the
+//! existing Origin check. NIP-98 stays available as the operator fallback.
 
 use std::sync::Arc;
 
@@ -23,7 +20,7 @@ use axum::{
     extract::State,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
@@ -35,8 +32,10 @@ use sha2::Sha256;
 
 use super::auth::{is_admin_host, origin_matches_host, AdminPrincipal, AdminRole, AdminSource};
 use super::error::ApiError;
+use crate::config::OperatorEmailLoginStatus;
 
 mod email;
+mod password;
 
 #[cfg(test)]
 pub(super) use email::{
@@ -48,8 +47,8 @@ pub(super) use email::{
 /// `Path=/` and no `Domain`, so the cookie cannot be set from a sibling host.
 pub(super) const COOKIE_NAME: &str = "__Host-colony_admin";
 
-/// How long a sign-in lasts.
-pub(super) const SESSION_SECS: u64 = 8 * 60 * 60;
+/// How long a browser operator sign-in lasts.
+pub(super) const SESSION_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// Header a cookie-authenticated write must carry.
 pub(super) const CSRF_HEADER: &str = "x-colony-admin";
@@ -60,10 +59,42 @@ const MAX_NONCE_LEN: usize = 200;
 
 pub(super) fn routes() -> Router<Arc<crate::state::AppState>> {
     Router::new()
+        .route("/session/config", get(signin_config))
         .route("/session/google", post(google_session))
         .route("/session/email/start", post(email::start))
         .route("/session/email/verify", post(email::verify))
+        .route("/session/password", post(password::signin))
         .route("/session/logout", post(logout))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SigninConfigResponse {
+    google_client_id: Option<String>,
+    email_code: bool,
+    password: bool,
+}
+
+/// `GET /session/config`: public, host-gated sign-in method availability for
+/// the admin page. The response deliberately contains neither allowlist data
+/// nor operator identity material.
+async fn signin_config(
+    State(state): State<Arc<crate::state::AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<SigninConfigResponse>, ApiError> {
+    if !is_admin_host(&state, &headers) {
+        return Err(ApiError::forbidden());
+    }
+
+    Ok(Json(SigninConfigResponse {
+        google_client_id: state
+            .config
+            .accounts
+            .admin_google_client_id()
+            .map(str::to_owned),
+        email_code: state.config.operator_email_login_status() == OperatorEmailLoginStatus::Enabled,
+        password: state.config.operator_password_login_enabled(),
+    }))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -296,9 +327,21 @@ async fn logout(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use axum::body::{to_bytes, Body};
+    use axum::http::{header, Request, StatusCode};
+    use tower::ServiceExt;
+
+    use crate::config::{
+        AccountConfig, AccountMailMode, AdminAuth, AdminConfig, RelayOperatorEmail,
+    };
+    use crate::state::AppState;
 
     const NOW: u64 = 1_800_000_000;
     const PK: &str = "ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34ab12cd34";
+    const THIRTY_DAYS_SECS: u64 = 30 * 24 * 60 * 60;
+    const TEST_SESSION_KEK: [u8; 32] = [0x73; 32];
 
     fn key(seed: u8) -> [u8; 32] {
         session_key(&[seed; 32]).expect("key")
@@ -311,10 +354,11 @@ mod tests {
     }
 
     #[test]
-    fn a_token_expires_after_eight_hours() {
+    fn a_token_expires_after_thirty_days() {
+        assert_eq!(SESSION_SECS, THIRTY_DAYS_SECS);
         let token = mint_token(&key(1), PK, NOW).expect("mint");
-        assert!(verify_token(&key(1), &token, NOW + SESSION_SECS - 1).is_some());
-        assert!(verify_token(&key(1), &token, NOW + SESSION_SECS).is_none());
+        assert!(verify_token(&key(1), &token, NOW + THIRTY_DAYS_SECS - 1).is_some());
+        assert!(verify_token(&key(1), &token, NOW + THIRTY_DAYS_SECS).is_none());
     }
 
     #[test]
@@ -372,9 +416,206 @@ mod tests {
         for required in ["__Host-", "Secure", "HttpOnly", "SameSite=Strict", "Path=/"] {
             assert!(text.contains(required), "{required}");
         }
+        assert!(text.contains("Max-Age=2592000"));
         assert!(!text.contains("Domain"));
+    }
+
+    async fn state_for_signin_config(
+        google_client_id: Option<&str>,
+        google_client_ids: &[&str],
+        mail_mode: Option<AccountMailMode>,
+        has_allowlist: bool,
+        account_kek: Option<[u8; 32]>,
+    ) -> Arc<AppState> {
+        let mut config = crate::config::Config::from_env().expect("default config loads");
+        config.require_relay_membership = false;
+        config.redis_url = "redis://127.0.0.1:1".to_owned();
+        config.accounts = AccountConfig::test_config(
+            account_kek,
+            mail_mode,
+            google_client_ids
+                .iter()
+                .map(|client_id| (*client_id).to_owned())
+                .collect(),
+            None,
+        )
+        .with_admin_google_client_id(google_client_id.map(str::to_owned));
+        config.relay_operator_emails = if has_allowlist {
+            vec![RelayOperatorEmail::Account(
+                "operator@example.test".to_owned(),
+            )]
+        } else {
+            Vec::new()
+        };
+        config.admin = Some(AdminConfig {
+            host: "admin.example".to_owned(),
+            auth: AdminAuth::Nip98,
+            web_dir: None,
+        });
+
+        let pool = sqlx::PgPool::connect_lazy(&config.database_url).expect("lazy pg pool");
+        let db = buzz_db::Db::from_pool(pool.clone());
+        let redis_pool = deadpool_redis::Config::from_url(&config.redis_url)
+            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
+            .expect("redis pool");
+        let pubsub = Arc::new(
+            buzz_pubsub::PubSubManager::new(&config.redis_url, redis_pool.clone())
+                .await
+                .expect("pubsub manager"),
+        );
+        let auth = buzz_auth::AuthService::new(config.auth.clone());
+        let search = buzz_search::SearchService::new(pool.clone());
+        let workflow_engine = Arc::new(buzz_workflow::WorkflowEngine::new(
+            db.clone(),
+            buzz_workflow::WorkflowConfig::default(),
+        ));
+        let media_storage = buzz_media::MediaStorage::new(&config.media).expect("media storage");
+        let (state, _audit_shutdown) = AppState::new(
+            config,
+            db,
+            redis_pool,
+            None::<buzz_audit::AuditService>,
+            pubsub,
+            auth,
+            search,
+            workflow_engine,
+            nostr::Keys::generate(),
+            media_storage,
+        );
+        Arc::new(state)
+    }
+
+    async fn signin_config_response(state: Arc<AppState>, host: &str) -> axum::response::Response {
+        let request = Request::builder()
+            .uri("/session/config")
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .expect("config request");
+        super::super::router(state)
+            .oneshot(request)
+            .await
+            .expect("config response")
+    }
+
+    async fn assert_signin_config(state: Arc<AppState>, expected: serde_json::Value) {
+        let response = signin_config_response(state, "admin.example").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL),
+            Some(&HeaderValue::from_static("no-store"))
+        );
+        let body = to_bytes(response.into_body(), 4096)
+            .await
+            .expect("read config body");
+        let actual: serde_json::Value = serde_json::from_slice(&body).expect("config JSON");
+        assert_eq!(
+            actual, expected,
+            "the public config reveals no extra fields"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_config_reports_each_signin_method_from_real_admin_router_state() {
+        assert_signin_config(
+            state_for_signin_config(
+                Some("admin-web-client"),
+                &["desktop-client", "admin-web-client"],
+                Some(AccountMailMode::Resend),
+                true,
+                Some(TEST_SESSION_KEK),
+            )
+            .await,
+            serde_json::json!({
+                "googleClientId": "admin-web-client",
+                "emailCode": true,
+                "password": true,
+            }),
+        )
+        .await;
+
+        assert_signin_config(
+            state_for_signin_config(
+                None,
+                &["desktop-client"],
+                Some(AccountMailMode::Resend),
+                true,
+                Some(TEST_SESSION_KEK),
+            )
+            .await,
+            serde_json::json!({
+                "googleClientId": null,
+                "emailCode": true,
+                "password": true,
+            }),
+        )
+        .await;
+
+        assert_signin_config(
+            state_for_signin_config(
+                Some("admin-web-client"),
+                &["admin-web-client"],
+                None,
+                true,
+                Some(TEST_SESSION_KEK),
+            )
+            .await,
+            serde_json::json!({
+                "googleClientId": "admin-web-client",
+                "emailCode": false,
+                "password": true,
+            }),
+        )
+        .await;
+
+        assert_signin_config(
+            state_for_signin_config(
+                Some("admin-web-client"),
+                &["admin-web-client"],
+                Some(AccountMailMode::Resend),
+                false,
+                Some(TEST_SESSION_KEK),
+            )
+            .await,
+            serde_json::json!({
+                "googleClientId": "admin-web-client",
+                "emailCode": false,
+                "password": false,
+            }),
+        )
+        .await;
+
+        assert_signin_config(
+            state_for_signin_config(None, &[], Some(AccountMailMode::Resend), true, None).await,
+            serde_json::json!({
+                "googleClientId": null,
+                "emailCode": false,
+                "password": false,
+            }),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn session_config_rejects_a_non_admin_host() {
+        let response = signin_config_response(
+            state_for_signin_config(
+                Some("admin-web-client"),
+                &["admin-web-client"],
+                Some(AccountMailMode::Resend),
+                true,
+                Some(TEST_SESSION_KEK),
+            )
+            .await,
+            "community.example",
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }
 
 #[cfg(test)]
 mod email_login_postgres_tests;
+
+#[cfg(test)]
+mod password_login_postgres_tests;
