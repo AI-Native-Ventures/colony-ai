@@ -181,6 +181,9 @@ pub(super) async fn handle(
                             return Err(conflict("the agent's cloud bundle was removed"));
                         }
                     };
+                    if changed && target == Home::Cloud {
+                        grant_starter_credit(&mut tx, &signer_hex).await?;
+                    }
                     (
                         head_for(&mut tx, community, &agent_key, default_model, now).await?,
                         changed,
@@ -359,6 +362,28 @@ pub(crate) async fn refresh_head(
         None,
     )
     .await;
+    Ok(())
+}
+
+/// The first time an account puts an agent in the cloud it gets a small AI
+/// credit, in the same transaction as the flip. Accounts that use the gateway
+/// free get nothing: their AI is already free and their ledger stays untouched.
+async fn grant_starter_credit(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    owner_hex: &str,
+) -> Result<(), IngestError> {
+    let Some((account, email)) = buzz_db::credits_gateway::cloud_owner_account_in(tx, owner_hex)
+        .await
+        .map_err(internal)?
+    else {
+        return Ok(());
+    };
+    if crate::api::credits_gateway_limits::policy_from_env().is_free(&email) {
+        return Ok(());
+    }
+    buzz_db::credits_gateway::grant_cloud_starter_in(tx, account)
+        .await
+        .map_err(internal)?;
     Ok(())
 }
 
@@ -993,5 +1018,52 @@ mod postgres_tests {
         );
         assert_eq!(stored(&fixture, &agent).await.generation, 1);
         assert_eq!(pending_ops(&fixture, &agent).await.len(), 1);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn first_flip_to_the_cloud_gives_the_starter_credit_exactly_once() {
+        let fixture = fixture(config(CloudMode::On)).await;
+        let agent = agent(&fixture, true).await;
+        let account = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO accounts (id, email, pubkey, email_verified_at, wrapped_dek, kek_id, \
+             sealed_nsec, nonce) VALUES ($1, $2, $3, now(), $4, 'test', $5, $6)",
+        )
+        .bind(account)
+        .bind(format!("{}@example.invalid", account.simple()))
+        .bind(fixture.owner.public_key().to_hex())
+        .bind(vec![1u8; 28])
+        .bind(vec![2u8; 16])
+        .bind(vec![3u8; 12])
+        .execute(&fixture.pool)
+        .await
+        .expect("insert account");
+        let balance = || async {
+            fixture
+                .state
+                .db
+                .account_credit_balance(account)
+                .await
+                .expect("balance")
+        };
+        assert_eq!(balance().await, 0);
+        flip(&fixture, &fixture.owner, &agent, Home::Cloud, 0)
+            .await
+            .expect("first flip");
+        assert_eq!(balance().await, 1_000_000_000, "the starter credit is $1");
+        flip(&fixture, &fixture.owner, &agent, Home::Mac, 1)
+            .await
+            .expect("back to the Mac");
+        flip(&fixture, &fixture.owner, &agent, Home::Cloud, 2)
+            .await
+            .expect("second flip");
+        assert_eq!(balance().await, 1_000_000_000, "never a second one");
+        // A refused flip grants nothing.
+        let other = self::agent(&fixture, false).await;
+        flip(&fixture, &fixture.owner, &other, Home::Cloud, 0)
+            .await
+            .expect("accepted as not cloud-ready");
+        assert_eq!(balance().await, 1_000_000_000);
     }
 }
