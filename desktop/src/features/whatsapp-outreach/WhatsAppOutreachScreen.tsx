@@ -77,42 +77,18 @@ import {
 } from "./useWhatsAppOutreachSafety";
 import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
 import { WhatsAppOutreachHeaderActions } from "./WhatsAppOutreachHeaderActions";
+import { getWhatsAppOutreachLoadFailure } from "./WhatsAppOutreachLoadFailure";
+import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import {
+  dayKey,
+  messageDayLabel,
+  windowTimeRemaining,
+} from "./whatsappOutreachFormatters";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 import "./whatsappOutreach.css";
 
-function dayKey(value: string | Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Africa/Johannesburg",
-  }).format(new Date(value));
-}
-
-function messageDayLabel(value: string): string {
-  const today = dayKey(new Date());
-  const messageDay = dayKey(value);
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  if (messageDay === today) return "Today";
-  if (messageDay === dayKey(yesterdayDate)) return "Yesterday";
-  return new Intl.DateTimeFormat("en-ZA", {
-    day: "numeric",
-    month: "long",
-    timeZone: "Africa/Johannesburg",
-  }).format(new Date(value));
-}
-
-function windowTimeRemaining(value: string | null): string {
-  if (!value) return "";
-  const minutes = Math.max(
-    0,
-    Math.ceil((Date.parse(value) - Date.now()) / 60_000),
-  );
-  if (minutes >= 60) return `${Math.ceil(minutes / 60)}h left`;
-  return `${Math.max(1, minutes)}m left`;
-}
-
 export function WhatsAppOutreachScreen({
+  active = true,
   channelId,
   initialThreadRootId,
   initialContactWaId = null,
@@ -127,15 +103,15 @@ export function WhatsAppOutreachScreen({
   const { activeCommunity } = useCommunities();
   const businessName = activeCommunity?.name.trim() || "This business";
   const isMobile = useIsMobile();
-  const statusQuery = useWhatsAppStatusQuery();
-  const contactsQuery = useWhatsAppContactsQuery();
+  const statusQuery = useWhatsAppStatusQuery(active, active);
+  const connected = statusQuery.data?.connected === true;
+  const contactsQuery = useWhatsAppContactsQuery(connected && active, active);
   const businessData = useBusinessRecords({ createIfMissing: false });
-  const templatesQuery = useWhatsAppTemplatesQuery(
-    statusQuery.data?.connected === true,
-  );
-  const draftsQuery = useWhatsAppDraftsQuery();
+  const templatesQuery = useWhatsAppTemplatesQuery(connected && active);
+  const draftsQuery = useWhatsAppDraftsQuery(connected && active, active);
   const pendingBatchesQuery = useWhatsAppPendingBatchDetailsQuery(
-    statusQuery.data?.connected === true,
+    connected && active,
+    active,
   );
   const identityQuery = useIdentityQuery();
   const profileQuery = useProfileQuery();
@@ -239,6 +215,8 @@ export function WhatsAppOutreachScreen({
     contacts.find((contact) => contact.waId === selectedWaId) ?? null;
   const threadQuery = useWhatsAppThreadQuery(
     hideSelectedConversation ? null : (selectedContact?.waId ?? null),
+    active,
+    active,
   );
   const thread = threadQuery.data;
   const sendNowBatchIds = useWhatsAppSendNowBatchIds(
@@ -248,8 +226,8 @@ export function WhatsAppOutreachScreen({
   );
   const pendingBatches = pendingBatchesQuery.data ?? [];
   const optOutSuppressionByWaId = useWhatsAppOptOutSuppressionByWaId(
-    canManage,
-    statusQuery.data?.connected === true,
+    canManage && active,
+    statusQuery.data?.connected === true && active,
   );
   const selectedPendingBatchRows = selectedContact
     ? pendingBatchRowsForContact(selectedContact, pendingBatches)
@@ -556,19 +534,15 @@ export function WhatsAppOutreachScreen({
     );
   }
 
-  if (
-    statusQuery.isError ||
-    contactsQuery.isError ||
-    (status?.connected && pendingBatchesQuery.isError)
-  ) {
-    const error =
-      statusQuery.error ?? contactsQuery.error ?? pendingBatchesQuery.error;
-    return (
-      <main className="c3wa-root c3wa-outreach-error" role="alert">
-        {error?.message ?? "WhatsApp conversations could not be loaded."}
-      </main>
-    );
-  }
+  const queryFailure = getWhatsAppOutreachLoadFailure({
+    errors: [
+      statusQuery.error,
+      contactsQuery.error,
+      status?.connected ? pendingBatchesQuery.error : null,
+    ],
+    hasStatus: status !== undefined,
+  });
+  if (queryFailure) return queryFailure;
 
   if (!status?.connected) {
     return (
@@ -598,6 +572,7 @@ export function WhatsAppOutreachScreen({
       data-testid="whatsapp-outreach"
       data-channel-id={channelId}
     >
+      {!mapDesk ? <WhatsAppRateLimitNotice /> : null}
       <aside
         className={cn(
           "c3wa-contact-panel",
@@ -875,9 +850,13 @@ export function WhatsAppOutreachScreen({
               <p className="c3wa-thread-loading">Loading messages…</p>
             ) : null}
             {threadQuery.isError ? (
-              <div className="c3wa-alert" role="alert">
-                {threadQuery.error.message}
-              </div>
+              isRelayHttpRateLimitError(threadQuery.error) ? null : (
+                <div className="c3wa-alert" role="alert">
+                  {threadQuery.error instanceof Error
+                    ? threadQuery.error.message
+                    : "Messages could not be loaded."}
+                </div>
+              )
             ) : null}
             <WhatsAppThreadContextLimitNotice
               messageCount={chronologicalMessages.length}

@@ -7,6 +7,7 @@ import {
   type RelayGifSearchInfo,
 } from "@/features/gifs/api";
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import { signRelayEvent } from "@/shared/api/tauri";
 
 const KLIPY_CUSTOMER_ID_STORAGE_KEY_PREFIX = "buzz:klipy-customer-id:v1:";
@@ -71,7 +72,7 @@ async function relayPost<T>(
 ): Promise<T> {
   const url = `${relayHttpFromWs(relayUrl).replace(/\/+$/, "")}${path}`;
   const body = JSON.stringify(payload);
-  const response = await fetch(url, {
+  const response = await fetchRelayHttp(url, async () => ({
     body,
     headers: {
       Authorization: await nip98PostHeader(url, body),
@@ -79,7 +80,7 @@ async function relayPost<T>(
     },
     method: "POST",
     signal,
-  });
+  }));
   if (!response.ok) {
     const json = (await response.json().catch(() => ({}))) as {
       error?: string;
@@ -96,7 +97,7 @@ export async function relayKlipyEndpoints(
   signal?: AbortSignal,
 ): Promise<RelayKlipyCapability | null> {
   const url = `${relayHttpFromWs(relayUrl).replace(/\/+$/, "")}/info`;
-  const response = await fetch(url, {
+  const response = await fetchRelayHttp(url, {
     headers: { Accept: "application/nostr+json" },
     signal,
   });

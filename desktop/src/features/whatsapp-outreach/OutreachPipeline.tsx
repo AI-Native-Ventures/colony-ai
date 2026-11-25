@@ -44,6 +44,8 @@ import {
   resolveOutreachContactIdentity,
 } from "./outreachDeskUtils";
 import { MapOutreachDeskHeaderAction } from "./MapOutreachDesk";
+import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 
 type Props = {
   channelIsMember: boolean;
@@ -288,11 +290,12 @@ export function OutreachPipeline({
 }: Props) {
   const { activeCommunity } = useCommunities();
   const businessName = activeCommunity?.name.trim() || "This business";
-  const contactsQuery = useWhatsAppContactsQuery();
+  const statusQuery = useWhatsAppStatusQuery(true, true);
+  const connected = statusQuery.data?.connected === true;
+  const contactsQuery = useWhatsAppContactsQuery(connected, true);
   // A failed or unavailable count leaves `null`; the columns then show the loaded numbers.
-  const stageCounts = useWhatsAppStageCountsQuery().data ?? null;
-  const draftsQuery = useWhatsAppDraftsQuery();
-  const statusQuery = useWhatsAppStatusQuery();
+  const stageCounts = useWhatsAppStageCountsQuery(connected, true).data ?? null;
+  const draftsQuery = useWhatsAppDraftsQuery(connected, true);
   const business = useBusinessRecords({ createIfMissing: false });
   const customerRecords = useCustomerRecords(true);
   const customerAccess = useCustomerRecordCapabilities();
@@ -423,10 +426,16 @@ export function OutreachPipeline({
     if (contact) void move(contact, stage);
   }
 
-  if (contactsQuery.isError) {
+  if (
+    contactsQuery.isError &&
+    !isRelayHttpRateLimitError(contactsQuery.error)
+  ) {
     return (
       <div className="c3wa-root c3wa-desk-error-panel" role="alert">
-        Pipeline could not be loaded. {contactsQuery.error.message}
+        Pipeline could not be loaded.{" "}
+        {contactsQuery.error instanceof Error
+          ? contactsQuery.error.message
+          : "Please try again."}
       </div>
     );
   }
@@ -462,6 +471,7 @@ export function OutreachPipeline({
           {pipelineSearch}
         </header>
       )}
+      {!mapDesk ? <WhatsAppRateLimitNotice /> : null}
       {statusQuery.data ? (
         <WhatsAppSendHealthBanner
           canManage={canManage}

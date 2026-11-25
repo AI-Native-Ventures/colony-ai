@@ -1,4 +1,5 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import { signRelayEvent } from "@/shared/api/tauri";
 
 import {
@@ -110,18 +111,22 @@ export async function searchDiscoveryLocations(input: {
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   try {
     let response: Response;
     try {
-      response = await fetch(url, {
-        body,
-        headers: {
-          Authorization: await nip98PostHeader(url, body),
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        signal: controller.signal,
+      response = await fetchRelayHttp(url, async () => {
+        const authorization = await nip98PostHeader(url, body);
+        timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        return {
+          body,
+          headers: {
+            Authorization: authorization,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          signal: controller.signal,
+        };
       });
     } catch (error) {
       if (signal?.aborted) throw abortError();
@@ -142,7 +147,7 @@ export async function searchDiscoveryLocations(input: {
     const json: unknown = await response.json().catch(() => null);
     return parseDiscoveryLocationSuggestions(json);
   } finally {
-    clearTimeout(timeout);
+    if (timeout !== null) clearTimeout(timeout);
     signal?.removeEventListener("abort", onAbort);
   }
 }

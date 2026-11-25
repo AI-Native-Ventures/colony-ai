@@ -1,4 +1,6 @@
 export type WhatsAppOutreachScreenProps = {
+  /** False when a mounted dock tab is hidden behind another tab. */
+  active?: boolean;
   channelId: string;
   initialThreadRootId: string | null;
   initialContactWaId?: string | null;

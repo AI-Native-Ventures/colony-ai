@@ -1,4 +1,5 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import { signRelayEvent } from "@/shared/api/tauri";
 import { actionFailureFromError } from "@/shared/lib/actionFailure";
 
@@ -143,27 +144,31 @@ export async function searchPlaces(input: {
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   try {
-    let authorization: string;
-    try {
-      authorization = await nip98PostHeader(url, body);
-    } catch (error) {
-      throw actionFailureError(error, "nip98-sign");
-    }
     let response: Response;
     try {
-      response = await fetch(url, {
-        body,
-        headers: {
-          Authorization: authorization,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        signal: controller.signal,
+      response = await fetchRelayHttp(url, async () => {
+        let authorization: string;
+        try {
+          authorization = await nip98PostHeader(url, body);
+        } catch (error) {
+          throw actionFailureError(error, "nip98-sign");
+        }
+        timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        return {
+          body,
+          headers: {
+            Authorization: authorization,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          signal: controller.signal,
+        };
       });
     } catch (error) {
       if (signal?.aborted) throw abortError();
+      if (error instanceof DiscoverySearchError) throw error;
       if (isAbort(error)) {
         throw actionFailureError(
           new DiscoverySearchError(
@@ -188,7 +193,7 @@ export async function searchPlaces(input: {
     const json: unknown = await response.json().catch(() => null);
     return parseSearchResponse(json);
   } finally {
-    clearTimeout(timeout);
+    if (timeout !== null) clearTimeout(timeout);
     signal?.removeEventListener("abort", onAbort);
   }
 }

@@ -28,7 +28,7 @@ export function OutreachDeskWorkspace({
   onTabChange: (tab: OutreachDeskTab) => void;
 }) {
   const navigate = useNavigate();
-  const statusQuery = useWhatsAppStatusQuery();
+  const statusQuery = useWhatsAppStatusQuery(true, true);
   const [selectedWaId, setSelectedWaId] = React.useState(initialContactWaId);
   const dock = useWorkAreaDock(channelId);
   const activeWhatsAppTab = dock.tabs.find(

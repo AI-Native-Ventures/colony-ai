@@ -52,12 +52,21 @@ import {
 } from "./WhatsAppSendHealthNotice";
 import { WhatsAppUnknownSendRecoveryCard } from "./WhatsAppUnknownSendRecovery";
 import { MapOutreachDeskHeaderAction } from "./MapOutreachDesk";
+import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 
 type Props = {
   channelIsMember: boolean;
   mapDesk?: boolean;
   onOpenChat: (waId: string) => void;
 };
+
+/**
+ * The first Needs cards are the most urgent, so only they fetch a thread for
+ * an inline media preview. The complete thread remains available on demand in
+ * chat, while this keeps a large Needs queue below the relay request budget.
+ */
+const NEEDS_THREAD_PREVIEW_LIMIT = 12;
 
 function formatTime(value: string | null): string | null {
   if (!value) return null;
@@ -345,6 +354,7 @@ function NeedsContactCard({
   onApproveDraft,
   busy,
   identity,
+  previewEnabled,
 }: {
   canEdit: boolean;
   contact: WhatsAppContact;
@@ -355,13 +365,11 @@ function NeedsContactCard({
   onApproveDraft: (draft: WhatsAppDraft) => void;
   busy: boolean;
   identity: ReturnType<typeof resolveOutreachContactIdentity>;
+  previewEnabled: boolean;
 }) {
   const wantsCall = contact.stage === "wants_call";
   const dateLabel = formatTime(contact.lastReplyAt ?? contact.lastInboundAt);
-  const threadQuery = useWhatsAppThreadQuery(
-    contact.waId,
-    wantsCall || contact.unanswered,
-  );
+  const threadQuery = useWhatsAppThreadQuery(contact.waId, previewEnabled);
   const lastInbound = [...(threadQuery.data?.messages ?? [])]
     .reverse()
     .find((message) => message.direction === "in");
@@ -401,12 +409,14 @@ function NeedsContactCard({
         <p className="c3wa-desk-contact-preview">
           {lastInbound ? (
             <WhatsAppMessagePreview message={lastInbound} />
-          ) : threadQuery.isError ? (
+          ) : previewEnabled && threadQuery.isError ? (
             "Latest message unavailable"
-          ) : threadQuery.isPending ? (
+          ) : previewEnabled && threadQuery.isPending ? (
             "Loading latest message…"
           ) : wantsCall ? (
             "They asked to speak with you"
+          ) : contact.lastInboundAt ? (
+            "They replied. Open chat to read their message."
           ) : (
             "Reply needed"
           )}
@@ -474,15 +484,12 @@ export function OutreachDeskNeedsYou({
   onOpenChat,
 }: Props) {
   const navigate = useNavigate();
-  const statusQuery = useWhatsAppStatusQuery();
-  const contactsQuery = useWhatsAppContactsQuery();
-  const draftsQuery = useWhatsAppDraftsQuery();
-  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(
-    statusQuery.data?.connected === true,
-  );
-  const templatesQuery = useWhatsAppTemplatesQuery(
-    statusQuery.data?.connected === true,
-  );
+  const statusQuery = useWhatsAppStatusQuery(true, true);
+  const connected = statusQuery.data?.connected === true;
+  const contactsQuery = useWhatsAppContactsQuery(connected, true);
+  const draftsQuery = useWhatsAppDraftsQuery(connected, true);
+  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(connected, true);
+  const templatesQuery = useWhatsAppTemplatesQuery(connected);
   const business = useBusinessRecords({ createIfMissing: false });
   const customerRecords = useCustomerRecords(true);
   const customerAccess = useCustomerRecordCapabilities();
@@ -502,7 +509,7 @@ export function OutreachDeskNeedsYou({
     role === "owner" ||
     role === "admin";
   const unknownSendsQuery = useWhatsAppUnknownSendsQuery(
-    canManage && statusQuery.data?.connected === true,
+    canManage && connected,
   );
   const canEdit = canManageWhatsAppContact({
     role,
@@ -518,6 +525,9 @@ export function OutreachDeskNeedsYou({
   const drafts = draftsQuery.data ?? [];
   const businessRecords = business.records;
   const items = getWhatsAppNeedsYouItems(contacts, drafts);
+  const previewWaIds = new Set(
+    items.slice(0, NEEDS_THREAD_PREVIEW_LIMIT).map((item) => item.contact.waId),
+  );
   const pendingBatches = batchesQuery.data ?? [];
   const unknownSends = unknownSendsQuery.data ?? [];
   const hasSendHealthNeed = canManage && Boolean(status?.sendHealth);
@@ -591,11 +601,14 @@ export function OutreachDeskNeedsYou({
     }
   }
 
-  if (statusQuery.isError || contactsQuery.isError) {
+  const loadError = [statusQuery.error, contactsQuery.error].find(
+    (error) => error && !isRelayHttpRateLimitError(error),
+  );
+  if (loadError) {
     return (
       <div className="c3wa-root c3wa-desk-error-panel" role="alert">
         WhatsApp needs could not be loaded.{" "}
-        {statusQuery.error?.message ?? contactsQuery.error?.message}
+        {loadError instanceof Error ? loadError.message : "Please try again."}
       </div>
     );
   }
@@ -639,6 +652,7 @@ export function OutreachDeskNeedsYou({
           {aiPlanControl}
         </header>
       )}
+      {!mapDesk ? <WhatsAppRateLimitNotice /> : null}
       {status ? (
         <WhatsAppSendHealthBanner canManage={canManage} status={status} />
       ) : null}
@@ -769,6 +783,7 @@ export function OutreachDeskNeedsYou({
                   onBookCall={(contact) => void bookCall(contact)}
                   onApproveDraft={(draft) => void sendDraft(draft)}
                   onOpenChat={onOpenChat}
+                  previewEnabled={previewWaIds.has(item.contact.waId)}
                 />
               ))}
           </section>
@@ -809,6 +824,7 @@ export function OutreachDeskNeedsYou({
                   onBookCall={(contact) => void bookCall(contact)}
                   onApproveDraft={(draft) => void sendDraft(draft)}
                   onOpenChat={onOpenChat}
+                  previewEnabled={previewWaIds.has(item.contact.waId)}
                 />
               ))}
           </section>

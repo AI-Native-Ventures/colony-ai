@@ -1,4 +1,5 @@
 import { getRelayHttpUrl, signRelayEvent } from "@/shared/api/tauri";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 
 export type CreditPack = {
   id: string;
@@ -55,33 +56,35 @@ async function request<T>(
   const url = `${(httpBase ?? (await getRelayHttpUrl())).replace(/\/+$/, "")}/api/payments${path}`;
   const method = body ? "POST" : "GET";
   const serialized = body ? JSON.stringify(body) : undefined;
-  const headers: Record<string, string> = {};
-  if (serialized) headers["Content-Type"] = "application/json";
-  if (signed) {
-    const tags = [
-      ["u", url],
-      ["method", method],
-      ["nonce", crypto.randomUUID()],
-    ];
-    if (serialized) {
-      const hash = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(serialized),
-      );
-      tags.push([
-        "payload",
-        Array.from(new Uint8Array(hash), (b) =>
-          b.toString(16).padStart(2, "0"),
-        ).join(""),
-      ]);
+  const response = await fetchRelayHttp(url, async () => {
+    const headers: Record<string, string> = {};
+    if (serialized) headers["Content-Type"] = "application/json";
+    if (signed) {
+      const tags = [
+        ["u", url],
+        ["method", method],
+        ["nonce", crypto.randomUUID()],
+      ];
+      if (serialized) {
+        const hash = await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(serialized),
+        );
+        tags.push([
+          "payload",
+          Array.from(new Uint8Array(hash), (b) =>
+            b.toString(16).padStart(2, "0"),
+          ).join(""),
+        ]);
+      }
+      headers.Authorization = `Nostr ${btoa(JSON.stringify(await signRelayEvent({ kind: 27235, content: "", tags })))}`;
     }
-    headers.Authorization = `Nostr ${btoa(JSON.stringify(await signRelayEvent({ kind: 27235, content: "", tags })))}`;
-  }
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: serialized,
-    signal: AbortSignal.timeout(15_000),
+    return {
+      method,
+      headers,
+      body: serialized,
+      signal: AbortSignal.timeout(15_000),
+    };
   });
   const result = await response.json();
   if (!response.ok)

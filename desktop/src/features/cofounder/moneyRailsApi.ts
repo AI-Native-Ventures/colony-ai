@@ -1,4 +1,5 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import { signRelayEvent } from "@/shared/api/tauri";
 import {
   KIND_MONEY_CONNECTION_ACTION,
@@ -150,16 +151,18 @@ async function postJson<T>(
   const httpBase = relayHttpFromWs(relayWsUrl).replace(/\/+$/u, "");
   const url = `${httpBase}${path}`;
   const body = JSON.stringify(payload);
-  const authorization = await nip98Header(url, body, ensureCurrent);
-  ensureCurrent?.();
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: authorization,
-      "Content-Type": "application/json",
-    },
-    body,
-    signal: AbortSignal.timeout(MONEY_RAILS_REQUEST_TIMEOUT_MS),
+  const response = await fetchRelayHttp(url, async () => {
+    const authorization = await nip98Header(url, body, ensureCurrent);
+    ensureCurrent?.();
+    return {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json",
+      },
+      body,
+      signal: AbortSignal.timeout(MONEY_RAILS_REQUEST_TIMEOUT_MS),
+    };
   });
   ensureCurrent?.();
   const raw = await response.json().catch(() => ({}));

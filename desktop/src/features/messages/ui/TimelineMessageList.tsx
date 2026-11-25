@@ -36,6 +36,8 @@ import { useVirtualizedBottomSettle } from "./useVirtualizedBottomSettle";
 
 export type TimelineVirtualizerApi = {
   cancelBottomIntent: () => void;
+  /** True while deliberate bottom settlement still owns the viewport. */
+  hasBottomIntent: () => boolean;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
   settleAtBottom: () => void;
   scrollToMessage: (
@@ -482,8 +484,11 @@ function VirtualizedTimelineRows({
     (version: number) => version + 1,
     0,
   );
-  const { cancel: cancelBottomSettle, settle: settleAtBottom } =
-    useVirtualizedBottomSettle(hostRef, listRef, itemsLengthRef);
+  const {
+    cancel: cancelBottomSettle,
+    hasBottomIntent,
+    settle: settleAtBottom,
+  } = useVirtualizedBottomSettle(hostRef, listRef, itemsLengthRef);
   const { arm: armUpwardMomentum } = useUpwardPaginationWheel(
     hostRef,
     cancelBottomSettle,
@@ -693,6 +698,7 @@ function VirtualizedTimelineRows({
     if (!onVirtualizerApiChange) return;
     const api: TimelineVirtualizerApi = {
       cancelBottomIntent: cancelBottomSettle,
+      hasBottomIntent,
       scrollToBottom() {
         settleAtBottom();
       },
@@ -707,7 +713,12 @@ function VirtualizedTimelineRows({
     };
     onVirtualizerApiChange(api);
     return () => onVirtualizerApiChange(null);
-  }, [cancelBottomSettle, onVirtualizerApiChange, settleAtBottom]);
+  }, [
+    cancelBottomSettle,
+    hasBottomIntent,
+    onVirtualizerApiChange,
+    settleAtBottom,
+  ]);
 
   React.useLayoutEffect(() => {
     const host = hostRef.current;

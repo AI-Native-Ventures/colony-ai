@@ -8,6 +8,7 @@ import {
   useWhatsAppContactsQuery,
   useWhatsAppRelayUrl,
   useWhatsAppStatusQuery,
+  retryWhatsAppQuery,
   whatsappOutreachQueryKeys,
 } from "./whatsappOutreachQueries";
 import { loadWhatsAppBatch } from "./whatsappOutreachApi";
@@ -32,7 +33,8 @@ export function useWhatsAppLeadData() {
           throw new Error("The active community relay is missing.");
         return loadWhatsAppBatch(relayUrl, batchId);
       },
-      staleTime: 10_000,
+      staleTime: 45_000,
+      retry: retryWhatsAppQuery,
     })),
   });
   const batchIdByLeadId = new Map(

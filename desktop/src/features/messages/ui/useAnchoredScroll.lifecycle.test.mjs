@@ -266,6 +266,21 @@ function BottomStateHarness({
   return null;
 }
 
+function VirtualBottomStateHarness({ hasBottomIntent, onState, refs }) {
+  const anchored = useAnchoredScroll({
+    channelId: "conversation",
+    contentRef: refs.content,
+    isLoading: false,
+    messages: [{ id: "first" }],
+    scrollContainerRef: refs.container,
+    virtualHasBottomIntent: hasBottomIntent,
+    virtualScrollToBottom: () => {},
+    virtualizerOwnsPrependAnchoring: true,
+  });
+  onState(anchored);
+  return null;
+}
+
 function VirtualTargetHarness({ refs }) {
   const didRun = React.useRef(false);
   const bottomApi = useVirtualizedBottomSettle(
@@ -373,6 +388,46 @@ test("arrival at the physical floor does not preserve a stale unread state", asy
 
   assert.equal(state.isAtBottom, true);
   assert.equal(state.newMessageCount, 0);
+  await act(async () => root.unmount());
+});
+
+test("virtual bottom settling ignores a transient non-bottom measurement", async () => {
+  const refs = {
+    container: { current: null },
+    content: { current: null },
+  };
+  const root = createRoot(document.createElement("div"));
+  const nodes = makePinnedCenterNodes();
+  refs.container.current = nodes.container;
+  refs.content.current = nodes.content;
+  let state = null;
+  let hasBottomIntent = true;
+
+  await act(async () => {
+    root.render(
+      React.createElement(VirtualBottomStateHarness, {
+        hasBottomIntent: () => hasBottomIntent,
+        onState: (nextState) => {
+          state = nextState;
+        },
+        refs,
+      }),
+    );
+  });
+
+  let accepted;
+  await act(async () => {
+    accepted = state.onVirtualizerAtBottomStateChange(false);
+  });
+  assert.equal(accepted, false);
+  assert.equal(state.isAtBottom, true);
+
+  hasBottomIntent = false;
+  await act(async () => {
+    accepted = state.onVirtualizerAtBottomStateChange(false);
+  });
+  assert.equal(accepted, true);
+  assert.equal(state.isAtBottom, false);
   await act(async () => root.unmount());
 });
 

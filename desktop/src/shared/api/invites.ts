@@ -1,4 +1,5 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import {
   getRelayHttpUrl,
   invokeTauri,
@@ -81,16 +82,15 @@ async function invitePost<T>(
   body: string,
 ): Promise<T> {
   const url = `${httpBase.replace(/\/+$/, "")}${path}`;
-  const authorization = await nip98PostHeader(url, body);
-  const response = await fetch(url, {
+  const response = await fetchRelayHttp(url, async () => ({
     method: "POST",
     headers: {
-      Authorization: authorization,
+      Authorization: await nip98PostHeader(url, body),
       "Content-Type": "application/json",
     },
     body,
     signal: AbortSignal.timeout(INVITE_REQUEST_TIMEOUT_MS),
-  });
+  }));
   const json = (await response.json().catch(() => ({}))) as Record<
     string,
     unknown
@@ -145,7 +145,10 @@ export async function getJoinPolicy(
     });
   } else {
     const base = relayHttpFromWs(relayWsUrl);
-    const response = await fetch(`${base.replace(/\/+$/, "")}/api/join-policy`);
+    const response = await fetchRelayHttp(
+      `${base.replace(/\/+$/, "")}/api/join-policy`,
+      {},
+    );
     // Relays predating join-policy support have no configured policy.
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -174,7 +177,7 @@ export async function acceptJoinPolicy(
   ageConfirmed: boolean,
 ): Promise<string> {
   const base = relayHttpFromWs(relayWsUrl);
-  const response = await fetch(
+  const response = await fetchRelayHttp(
     `${base.replace(/\/+$/, "")}/api/invites/accept-policy`,
     {
       method: "POST",

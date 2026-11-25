@@ -184,6 +184,7 @@ for (const eventType of ["pointerdown", "touchmove", "wheel", "keydown"]) {
   test(`${eventType} transfers ownership away from bottom intent`, async () => {
     const { content, refs, root, scroller, writes } = await mountHarness();
     refs.api.current.settle();
+    assert.equal(refs.api.current.hasBottomIntent(), true);
     const target = eventType === "keydown" ? window : scroller;
     target.dispatchEvent({
       altKey: false,
@@ -198,6 +199,7 @@ for (const eventType of ["pointerdown", "touchmove", "wheel", "keydown"]) {
             : undefined,
       type: eventType,
     });
+    assert.equal(refs.api.current.hasBottomIntent(), false);
 
     resizeObservers
       .find((observer) => observer.targets?.includes(content))
