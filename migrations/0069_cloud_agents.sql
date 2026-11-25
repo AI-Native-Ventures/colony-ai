@@ -65,7 +65,7 @@ CREATE TABLE cloud_agent_ops (
     claimed_until TIMESTAMPTZ,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed')),
     last_error TEXT CHECK (last_error IS NULL OR char_length(last_error) <= 500),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (community_id, id)
 );
@@ -87,9 +87,3 @@ CREATE TABLE cloud_starter_grants (
 
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('cloud_starter_grants', 'deployment-global once-per-account cloud starter credit marker');
-
--- Sessions the relay mints for a cloud agent's machine. A cloud session may choose a
--- model the owner pays for (`paid_allowed`) unless the account uses the gateway free.
-ALTER TABLE account_ai_sessions
-    ADD COLUMN cloud BOOLEAN NOT NULL DEFAULT false,
-    ADD COLUMN paid_allowed BOOLEAN NOT NULL DEFAULT false;
