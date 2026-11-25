@@ -1,4 +1,8 @@
-import type { Home, PlacementStatus } from "./placementTypes";
+import {
+  CLOUD_MODEL_FREE,
+  type Home,
+  type PlacementStatus,
+} from "./placementTypes";
 
 /**
  * The exact words of the cloud agent switch and its cards (plan, Global
@@ -47,6 +51,7 @@ export function macOffMessage(name: string): string {
 export const MAC_OFF_ACTION = "Move to the cloud";
 
 export const OUT_OF_CREDIT_MESSAGE = "Out of AI credit.";
+export const FREE_AI_BUSY_MESSAGE = "Free AI is busy right now.";
 export const TOP_UP_ACTION = "Top up";
 export const MOVE_TO_MAC_ACTION = "Move to This Mac";
 
@@ -87,6 +92,7 @@ const BRAND_WORDS: Record<string, string> = {
 
 /** "deepseek/deepseek-v4.1-flash" reads as "DeepSeek V4.1 Flash". */
 export function cloudModelLabel(modelId: string): string {
+  if (modelId === CLOUD_MODEL_FREE) return "Free (default)";
   const name = modelId.split("/").pop() ?? modelId;
   return name
     .split(/[-_]/)
@@ -102,6 +108,7 @@ export function cloudModelLabel(modelId: string): string {
 
 /** What the cloud runs an agent with, e.g. "Colony credits · DeepSeek V4.1 Flash". */
 export function cloudSetupLabel(modelId: string | null): string {
+  if (modelId === CLOUD_MODEL_FREE) return "Free AI";
   return modelId
     ? `Colony credits · ${cloudModelLabel(modelId)}`
     : "Colony credits";

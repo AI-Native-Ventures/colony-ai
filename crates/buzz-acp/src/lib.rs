@@ -13,6 +13,7 @@ mod config;
 mod connection_test;
 mod engram_fetch;
 mod filter;
+mod free_route;
 mod observer;
 mod placement;
 mod pool;
@@ -2497,6 +2498,10 @@ pub fn run() -> Result<()> {
     if result.is_ok() && placement::moved_away() {
         std::process::exit(placement::PLACEMENT_MOVED_EXIT_CODE);
     }
+    // The free route was refused: "boot me again on the other free route".
+    if result.is_ok() && free_route::refused() {
+        std::process::exit(free_route::FREE_ROUTE_REFUSED_EXIT_CODE);
+    }
     result
 }
 
@@ -4553,6 +4558,13 @@ async fn tokio_main() -> Result<()> {
         handle.abort();
     }
 
+    // The OpenCode free route was refused: tell the relay so the next boot
+    // uses the OpenRouter free route. Skipped when the agent moved home, where
+    // the relay has already cleared this machine's token.
+    if free_route::refused() && !placement::moved_away() {
+        free_route::report_refusal(&ctx.rest_client).await;
+    }
+
     // Graceful relay shutdown — sends WebSocket close frame and waits up to 5s
     // for the background task to finish, rather than aborting immediately (#40).
     relay.shutdown().await;
@@ -6224,12 +6236,23 @@ fn spawn_turn_failure_notice(
     outcome: &PromptOutcome,
     content: String,
 ) {
+    let cloud = config.placement.home == buzz_core::agent_placement::Home::Cloud;
     let (content, notice) = match outcome {
-        PromptOutcome::Error(error) => provider_failure::credit_notice(
-            error,
-            config.placement.home == buzz_core::agent_placement::Home::Cloud,
-            content,
-        ),
+        // The free chain is used up: one short card, no retry.
+        PromptOutcome::Error(error)
+            if provider_failure::free_route_notice(
+                error,
+                cloud,
+                config.cloud_route == free_route::Route::OpenrouterFree,
+            )
+            .is_some() =>
+        {
+            (
+                provider_failure::FREE_AI_BUSY_COPY.to_owned(),
+                Some(provider_failure::CreditNoticeKind::FreeAiBusy),
+            )
+        }
+        PromptOutcome::Error(error) => provider_failure::credit_notice(error, cloud, content),
         _ => (content, None),
     };
     let _ = spawn_failure_notice_task(rest_client, batch, content, notice);
@@ -6391,6 +6414,11 @@ fn handle_prompt_result_inner(
     // match arm in the death_message construction reads it.
     let mut hard_timeout_fate_suffix: Option<&'static str> = None;
     let mut free_model_exit: Option<FreeModelExit> = None;
+    // On the OpenCode free route every finished turn is judged: a refusal (or
+    // three failures in a row) ends this machine's run without a word in the
+    // chat, so the next boot can answer on the OpenRouter free route.
+    let free_route_refused = config.cloud_route == free_route::Route::OpenCodeFree
+        && free_route::judge(free_route_turn(config, &result.outcome));
 
     // Requeue BEFORE mark_complete: requeue() sets retry_after with a future
     // deadline, and mark_complete() checks for it to decide whether to preserve
@@ -6401,7 +6429,18 @@ fn handle_prompt_result_inner(
         // Don't requeue batches for channels the agent was removed from —
         // those events are stale and should be silently dropped.
         if !removed_channels.contains(&batch.channel_id) {
-            if config.managed_credits_session.is_some()
+            if free_route_refused {
+                // Post nothing and keep the message unanswered: put the batch
+                // back untouched (no retry accounting, no dead letter) so the
+                // wake ledger leaves it unhandled and the next boot replays it.
+                tracing::warn!(
+                    channel_id = %batch.channel_id,
+                    events = batch.events.len(),
+                    "OpenCode free route refused: keeping the message unanswered and stopping"
+                );
+                queue.requeue_preserve_timestamps(batch);
+                hard_timeout_fate_suffix = Some(" (kept for the next free route)");
+            } else if config.managed_credits_session.is_some()
                 && !matches!(result.outcome, PromptOutcome::Ok(_))
             {
                 // A lost ACP response, process exit, timeout or cancellation may
@@ -6801,9 +6840,36 @@ fn handle_prompt_result_inner(
             }
         }
     }
+    if free_route_refused {
+        free_route::mark_refused();
+        return LoopAction::Exit;
+    }
     match free_model_exit {
         Some(exit) => LoopAction::FreeModelEnded(exit),
         None => LoopAction::Continue,
+    }
+}
+
+/// What a finished turn means for the OpenCode free route.
+fn free_route_turn<'a>(config: &Config, outcome: &'a PromptOutcome) -> free_route::TurnResult<'a> {
+    use free_route::TurnResult;
+    match outcome {
+        PromptOutcome::Ok(_) => TurnResult::Ok,
+        PromptOutcome::Cancelled
+        | PromptOutcome::CancelDrainTimeout(_)
+        | PromptOutcome::ProjectContextIndeterminate(_) => TurnResult::Neutral,
+        PromptOutcome::Error(error) => {
+            if silent_free_limit_notice(config, outcome).is_some() {
+                TurnResult::Silent {
+                    log_shows_limit: true,
+                }
+            } else {
+                TurnResult::Error(error)
+            }
+        }
+        PromptOutcome::Timeout(_) | PromptOutcome::AgentExited => TurnResult::Silent {
+            log_shows_limit: silent_free_limit_notice(config, outcome).is_some(),
+        },
     }
 }
 
@@ -13049,6 +13115,105 @@ mod error_outcome_emission_tests {
         )
         .await;
         assert!(matches!(action, LoopAction::Continue));
+    }
+
+    /// [red-proof] A refusal on the OpenCode free route posts nothing, keeps
+    /// the message unanswered (queued, so the wake ledger leaves it unhandled)
+    /// and stops the harness for the exit-76 hand-over.
+    #[tokio::test]
+    async fn free_route_refusal_keeps_the_message_and_posts_nothing() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let rest = relay::RestClient {
+            http: reqwest::Client::new(),
+            base_url: format!("http://{}", listener.local_addr().unwrap()),
+            keys: Keys::generate(),
+            auth_tag_json: None,
+        };
+        let keys = Keys::generate();
+        let event = EventBuilder::new(Kind::Custom(9), "hello")
+            .sign_with_keys(&keys)
+            .unwrap();
+        let event_id = event.id.to_hex();
+        let channel_id = uuid::Uuid::new_v4();
+        let batch = FlushBatch {
+            channel_id,
+            scope: scope::SessionScope::Conversation { channel_id },
+            events: vec![BatchEvent {
+                event,
+                prompt_tag: "test".into(),
+                received_at: std::time::Instant::now(),
+            }],
+            cancelled_events: vec![],
+            cancel_reason: None,
+        };
+        let agent = dummy_agent(0).await;
+        let mut pool = AgentPool::from_slots(vec![None]);
+        let task_id = pool.join_set.spawn(async {}).id();
+        pool.task_map_mut().insert(
+            task_id,
+            crate::pool::TaskMeta {
+                agent_index: 0,
+                channel_id: None,
+                scope: None,
+                turn_id: "refused-turn".to_string(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let mut queue = EventQueue::new(config::DedupMode::Queue);
+        let mut config = test_config();
+        config.cloud_route = free_route::Route::OpenCodeFree;
+        let mut heartbeat_in_flight = false;
+        let removed_channels = std::collections::HashSet::new();
+        let mut crash_history = vec![SlotCircuit {
+            crash_times: Vec::new(),
+            open_until: None,
+            respawn_in_flight: false,
+        }];
+        let (respawn_tx, _respawn_rx) = mpsc::channel(8);
+        let mut respawn_tasks = tokio::task::JoinSet::new();
+        let result = PromptResult {
+            agent,
+            source: PromptSource::Channel(scope::SessionScope::Conversation { channel_id }),
+            turn_id: "refused-turn".to_string(),
+            outcome: PromptOutcome::Error(AcpError::AgentError {
+                code: -32000,
+                message: "OpenCode's free tier can only be used from within OpenCode".into(),
+            }),
+            batch: Some(batch),
+        };
+        let action = handle_prompt_result(
+            &mut pool,
+            &mut queue,
+            &config,
+            result,
+            &mut heartbeat_in_flight,
+            &removed_channels,
+            &mut crash_history,
+            &respawn_tx,
+            &mut respawn_tasks,
+            None,
+            Some(&rest),
+        );
+
+        assert!(
+            matches!(action, LoopAction::Exit),
+            "a refused free route stops the harness"
+        );
+        assert!(free_route::refused(), "the exit-76 hand-over is armed");
+        assert!(
+            queue.holds_event(&event_id),
+            "the message stays queued, so it is not lost and not dead-lettered"
+        );
+        assert_eq!(
+            queue.take_finished_turns(),
+            vec![("refused-turn".to_string(), false)],
+            "the wake ledger must not mark the message handled"
+        );
+        let posted = tokio::time::timeout(Duration::from_millis(400), listener.accept()).await;
+        assert!(posted.is_err(), "nothing is posted to the chat");
     }
 
     #[tokio::test]

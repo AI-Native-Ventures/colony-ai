@@ -183,6 +183,10 @@ pub(crate) const NOTICE_TAG_NAME: &str = "colony_notice";
 
 /// The gateway words for "balance cannot fund the request" (`CreditRefusal::OutOfCredits`).
 const OUT_OF_CREDITS_MESSAGE: &str = "Out of credits. Top up to keep your Colony Agent working.";
+/// The gateway words for an account or session at its concurrency limit
+/// (`CreditRefusal::Busy`), which is also how a pool of rate-limited free
+/// models reaches the agent (HTTP 429).
+const BUSY_MESSAGE: &str = "Your Colony Agents are busy. Try again shortly.";
 /// The gateway words for the deployment-wide daily ceiling (`CreditRefusal::DailyLimit`).
 const DAILY_LIMIT_MESSAGE: &str = "Colony AI has reached its limit for today. Try again tomorrow, or connect Claude Code, Codex or an OpenRouter key in Settings > Agents.";
 
@@ -193,6 +197,9 @@ pub(crate) enum CreditNoticeKind {
     OutOfCredit,
     /// The deployment's daily spend ceiling was reached.
     DailyLimit,
+    /// The free route has no model to give right now: the free models share
+    /// one daily allowance, or all of them are rate limited.
+    FreeAiBusy,
 }
 
 impl CreditNoticeKind {
@@ -201,6 +208,7 @@ impl CreditNoticeKind {
         match self {
             Self::OutOfCredit => "outOfCredit",
             Self::DailyLimit => "dailyLimit",
+            Self::FreeAiBusy => "freeAiBusy",
         }
     }
 }
@@ -220,6 +228,33 @@ pub(crate) fn credit_notice_kind(error: &AcpError) -> Option<CreditNoticeKind> {
         DAILY_LIMIT_MESSAGE => Some(CreditNoticeKind::DailyLimit),
         _ => None,
     }
+}
+
+/// Plain copy of the tagged notice a cloud agent on the free route posts when
+/// the free models are used up or rate limited. No em-dashes: user-facing.
+pub(crate) const FREE_AI_BUSY_COPY: &str = "Free AI is busy right now.";
+
+/// The notice for a turn that failed on the OpenRouter free route because the
+/// free chain is exhausted (the daily limit, or every free model rate limited).
+/// `None` for any other failure, or when this is not that route on a cloud
+/// machine: those keep [`credit_notice`]'s words.
+pub(crate) fn free_route_notice(
+    error: &AcpError,
+    cloud: bool,
+    on_openrouter_free_route: bool,
+) -> Option<(String, CreditNoticeKind)> {
+    if !(cloud && on_openrouter_free_route) {
+        return None;
+    }
+    let AcpError::AgentError {
+        code: -32004,
+        message,
+    } = error
+    else {
+        return None;
+    };
+    matches!(message.as_str(), DAILY_LIMIT_MESSAGE | BUSY_MESSAGE)
+        .then(|| (FREE_AI_BUSY_COPY.to_owned(), CreditNoticeKind::FreeAiBusy))
 }
 
 /// The text to post and the tag to attach for a failed turn.
@@ -533,6 +568,31 @@ mod credit_notice_tests {
     }
 
     #[test]
+    fn free_ai_busy_notice_only_on_the_openrouter_free_route() {
+        for message in [DAILY_LIMIT_MESSAGE, BUSY_MESSAGE] {
+            let (content, kind) = free_route_notice(&gateway_error(message), true, true)
+                .expect("the free chain is exhausted");
+            assert_eq!(content, "Free AI is busy right now.");
+            assert_eq!(kind.tag_value(), "freeAiBusy");
+            // Not the free route, or not a cloud machine: nothing changes.
+            assert!(free_route_notice(&gateway_error(message), true, false).is_none());
+            assert!(free_route_notice(&gateway_error(message), false, true).is_none());
+        }
+        // Out of credit and every other failure keep their own notice.
+        for error in [
+            gateway_error(OUT_OF_CREDITS_MESSAGE),
+            gateway_error("anything else"),
+            AcpError::AgentError {
+                code: -32001,
+                message: BUSY_MESSAGE.into(),
+            },
+        ] {
+            assert!(free_route_notice(&error, true, true).is_none());
+        }
+        assert!(!FREE_AI_BUSY_COPY.contains('\u{2014}'), "no em-dashes");
+    }
+
+    #[test]
     fn credit_words_match_what_the_gateway_says() {
         // These strings are the gateway's `CreditRefusal` Display text. If they
         // drift, `credits_notice` falls back to its generic line and the tag is lost.
@@ -541,5 +601,6 @@ mod credit_notice_tests {
             OUT_OF_CREDITS_MESSAGE
         );
         assert_eq!(credits_notice(DAILY_LIMIT_MESSAGE), DAILY_LIMIT_MESSAGE);
+        assert_eq!(credits_notice(BUSY_MESSAGE), BUSY_MESSAGE);
     }
 }

@@ -5,6 +5,8 @@
 //! - `PUT  /api/cloud-agents/{agent}/bundle` the agent's key and runnable config (NIP-98, owner)
 //! - `POST /api/cloud-agents/boot`           a machine trades its boot token for its environment
 //! - `DELETE /api/cloud-agents/{agent}`      the owner removes the agent's cloud copy (NIP-98, owner)
+//! - `POST /api/cloud-agents/{agent}/free-route-refused`  a machine on the OpenCode free route says
+//!   OpenCode refused it (bearer = its home token), so the next boot uses the OpenRouter free route
 //!
 //! The bundle body holds the agent's secret key. It is never logged, the key is
 //! sealed with the deployment key before it is stored, and it is cleared from
@@ -21,7 +23,7 @@ use axum::{
 };
 use buzz_core::agent_placement::{validate_config_snapshot, CloudConfigSnapshot};
 use buzz_core::tenant::TenantContext;
-use buzz_db::cloud_agents::{BundleRow, UpsertOutcome};
+use buzz_db::cloud_agents::{BundleRow, FreeRouteSwitch, UpsertOutcome};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use zeroize::Zeroizing;
@@ -46,6 +48,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/capabilities", get(capabilities))
         .route("/boot", post(boot_machine))
         .route("/{agent}", delete(remove_agent))
+        .route("/{agent}/free-route-refused", post(free_route_refused))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(
             SMALL_BODY_LIMIT,
         ));
@@ -138,7 +141,7 @@ async fn capabilities(State(state): State<Arc<AppState>>, headers: HeaderMap) ->
         "enabled": config.mode != crate::cloud_agents::config::CloudMode::Off,
         "allowed": config.allows_account(email.as_deref()),
         "maxPerAccount": config.max_per_account,
-        "models": config.allowed_models,
+        "models": config.selectable_models(),
         "defaultModel": config.default_model,
     })))
 }
@@ -299,6 +302,63 @@ async fn remove_agent(
         &"0".repeat(64),
     );
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// A machine on the OpenCode free route reports that OpenCode refused it. The
+/// relay records the switch to the OpenRouter free route (six hours) and queues
+/// the next start a few seconds out, once per wake: a report while a switch is
+/// already in force changes nothing. The caller proves it is the agent's current
+/// machine with its home token, so nobody else can move an agent's route.
+async fn free_route_refused(
+    State(state): State<Arc<AppState>>,
+    Path(agent): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let unauthorized = || api_error(StatusCode::UNAUTHORIZED, "Home token not accepted.");
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty() && token.len() <= 256)
+        .ok_or_else(unauthorized)?;
+    let agent_pubkey = nostr::PublicKey::from_hex(&agent)
+        .ok()
+        .filter(|key| key.to_hex() == agent)
+        .ok_or_else(unauthorized)?;
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    let tenant = crate::tenant::bind_community(&state.db, host)
+        .await
+        .map_err(|_| api_error(StatusCode::NOT_FOUND, "not_found"))?;
+    let outcome = state
+        .db
+        .switch_cloud_free_route(
+            tenant.community(),
+            agent_pubkey.as_bytes(),
+            &crate::cloud_agents::token_hash(token),
+            boot::FREE_ROUTE_SWITCH_HOURS,
+            boot::FREE_ROUTE_START_DELAY_SECS,
+        )
+        .await
+        .map_err(database_error)?;
+    match outcome {
+        FreeRouteSwitch::Switched { generation } => {
+            tracing::info!(generation, "cloud agent moved to the OpenRouter free route");
+            // The agent shows "waking" while the next machine starts.
+            crate::cloud_agents::refresh_head_for(
+                &state,
+                tenant.community(),
+                agent_pubkey.as_bytes(),
+            )
+            .await;
+            Ok(StatusCode::NO_CONTENT)
+        }
+        FreeRouteSwitch::AlreadySwitched => Ok(StatusCode::NO_CONTENT),
+        FreeRouteSwitch::NotCurrent => Err(unauthorized()),
+    }
 }
 
 async fn boot_machine(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult {
@@ -543,7 +603,7 @@ mod postgres_tests {
         assert_eq!(body["enabled"], true);
         assert_eq!(body["allowed"], false, "the account is not on the list yet");
         assert_eq!(body["maxPerAccount"], 2);
-        assert_eq!(body["models"], json!(["free/a"]));
+        assert_eq!(body["models"], json!(["colony-free", "free/a"]));
         assert_eq!(body["defaultModel"], "free/a");
 
         sqlx::query("UPDATE accounts SET email = $2 WHERE pubkey = $1")
@@ -820,6 +880,137 @@ mod postgres_tests {
 
         let (status, _) = send(boot_request(&token), &fixture.state).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "a boot token works once");
+    }
+
+    /// The whole free-route hand-over: a `colony-free` agent first boots on
+    /// OpenCode with no gateway session; its refusal report records one switch;
+    /// the next boot is buzz-agent on a free-only gateway session naming no
+    /// model; a second report in the same wake changes nothing.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn a_refused_free_route_boots_the_next_machine_on_the_openrouter_free_route() {
+        let mut cloud = config(CloudMode::On);
+        cloud.default_model = Some("colony-free".to_string());
+        let fixture = fixture(cloud).await;
+        let nsec = agent_nsec(&fixture.agent);
+        let (status, response) = call(
+            &fixture,
+            &fixture.owner,
+            "PUT",
+            &bundle_path(&fixture),
+            Some(bundle(&nsec, 1, &[])),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{response}");
+        let agent_key = fixture.agent.public_key().to_bytes();
+        fixture
+            .state
+            .db
+            .set_cloud_home_cas(fixture.community, &agent_key, 0, Home::Cloud)
+            .await
+            .expect("flip to cloud");
+
+        let boot_with = |token: String| {
+            Request::builder()
+                .method("POST")
+                .uri("/api/cloud-agents/boot")
+                .header(header::HOST, &fixture.host)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .expect("build request")
+        };
+        let report = |token: &str| {
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/cloud-agents/{}/free-route-refused",
+                    fixture.agent.public_key().to_hex()
+                ))
+                .header(header::HOST, &fixture.host)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .expect("build request")
+        };
+
+        // First boot: OpenCode, no gateway session.
+        let token = boot::issue(&fixture.state, fixture.community, &agent_key, 1)
+            .await
+            .expect("issue boot token");
+        let (status, body) = send(boot_with(token.to_string()), &fixture.state).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let env = &body["env"];
+        assert_eq!(env["COLONY_CLOUD_ROUTE"], "openCodeFree");
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"], "opencode");
+        assert!(env.get("COLONY_CREDITS_SESSION_ID").is_none());
+        let first_home_token = env["COLONY_CLOUD_HOME_TOKEN"]
+            .as_str()
+            .expect("home token")
+            .to_owned();
+
+        // A stranger's token moves nothing.
+        let (status, _) = send(report("not-the-machines-token"), &fixture.state).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(fixture
+            .state
+            .db
+            .cloud_free_route_until(fixture.community, &agent_key)
+            .await
+            .expect("read route")
+            .is_none());
+
+        // The machine's own token records the switch.
+        let (status, _) = send(report(&first_home_token), &fixture.state).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        assert!(fixture
+            .state
+            .db
+            .cloud_free_route_until(fixture.community, &agent_key)
+            .await
+            .expect("read route")
+            .is_some());
+
+        // Next boot: buzz-agent on the gateway, free-only, naming no model.
+        let token = boot::issue(&fixture.state, fixture.community, &agent_key, 1)
+            .await
+            .expect("issue boot token");
+        let (status, body) = send(boot_with(token.to_string()), &fixture.state).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let env = &body["env"];
+        assert_eq!(env["COLONY_CLOUD_ROUTE"], "openrouterFree");
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"], "buzz-agent");
+        assert!(env["COLONY_CREDITS_SESSION_ID"]
+            .as_str()
+            .is_some_and(|id| Uuid::parse_str(id).is_ok()));
+        assert!(env.get("BUZZ_ACP_MODEL").is_none());
+        assert!(env.get("COLONY_CREDITS_MODEL").is_none());
+        let paid_allowed: bool = sqlx::query_scalar(
+            "SELECT paid_allowed FROM account_ai_sessions \
+             WHERE agent_pubkey = $1 AND NOT revoked",
+        )
+        .bind(&agent_key[..])
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("session row");
+        assert!(
+            !paid_allowed,
+            "the free-route session can not choose a paid model"
+        );
+
+        // The old machine's token died with the new boot, and a second report
+        // with the new one changes nothing: one switch per wake.
+        let (status, _) = send(report(&first_home_token), &fixture.state).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let second_home_token = env["COLONY_CLOUD_HOME_TOKEN"].as_str().expect("home token");
+        let (status, _) = send(report(second_home_token), &fixture.state).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let starts: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM cloud_agent_ops WHERE community_id = $1 AND op = 'start'",
+        )
+        .bind(fixture.community.as_uuid())
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count starts");
+        assert_eq!(starts, 1, "a second report queues no second start");
     }
 
     #[tokio::test]

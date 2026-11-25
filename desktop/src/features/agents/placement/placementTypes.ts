@@ -19,6 +19,13 @@ export {
 /** Where an agent works. */
 export type Home = "mac" | "cloud";
 
+/**
+ * The cloud model value that means "free AI first": OpenCode's free model,
+ * then the free models on the Colony gateway. The default for new cloud
+ * agents. Mirrors the relay's `colony-free`.
+ */
+export const CLOUD_MODEL_FREE = "colony-free";
+
 /** The relay's word for what a cloud agent is doing. `null` on the Mac. */
 export type PlacementStatus =
   | "asleep"
