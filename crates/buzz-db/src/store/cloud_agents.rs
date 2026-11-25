@@ -860,7 +860,6 @@ impl Db {
                  last_error = NULL, updated_at = now() \
              WHERE community_id = $1 AND agent_pubkey = $2 AND home = 'cloud' \
                AND home_token_hash = $3 \
-               AND (free_route_until IS NULL OR free_route_until <= now()) \
              RETURNING generation",
         )
         .bind(community.as_uuid())
