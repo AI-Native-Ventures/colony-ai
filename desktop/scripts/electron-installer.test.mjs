@@ -14,6 +14,17 @@ test("release installer config uses explicit platform targets and artifact label
   assert.equal(mac.artifactName, `Colony-\${version}-arm64-SIGNED.\${ext}`);
   assert.deepEqual(mac.mac.target, ["dmg", "zip"]);
   assert.equal(mac.mac.identity, undefined);
+  // The signed disk image is stapled after the build, which changes its bytes:
+  // it must stay out of the update feed and get no blockmap.
+  assert.deepEqual(mac.dmg, { sign: false, writeUpdateInfo: false });
+  const unsignedMac = createInstallerConfig({
+    desktopPath: "/tmp/desktop",
+    platform: "darwin",
+    arch: "arm64",
+    version: "1.2.3",
+    signed: false,
+  });
+  assert.equal(unsignedMac.dmg, undefined);
 
   const windows = createInstallerConfig({
     desktopPath: "/tmp/desktop",

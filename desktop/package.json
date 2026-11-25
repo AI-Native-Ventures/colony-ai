@@ -30,6 +30,7 @@
     "test:e2e:report": "playwright show-report",
     "electron:package": "node ./scripts/electron-package.mjs",
     "electron:installer": "node ./scripts/electron-installer.mjs",
+    "electron:sign-disk-image": "node ./scripts/sign-mac-disk-image.mjs",
     "tauri:build": "node ./scripts/tauri-command.mjs build"
   },
   "dependencies": {
