@@ -301,7 +301,7 @@ jobs:
       always() && needs.plan.result == 'success' &&
       needs.plan.outputs.e2e_mode != 'none' &&
       !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no Chromium build for ubuntu-26.04 yet
     timeout-minutes: 25
     strategy:
       fail-fast: false
