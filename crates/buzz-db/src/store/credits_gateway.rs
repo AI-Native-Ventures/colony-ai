@@ -228,7 +228,7 @@ impl Db {
              JOIN accounts a ON a.pubkey = encode(c.owner_pubkey, 'hex') \
                             AND a.email_verified_at IS NOT NULL \
              WHERE c.community_id = $1 AND c.agent_pubkey = $2 AND c.generation = $3 \
-               AND c.home = 'cloud' \
+               AND c.home IN ('cloud', 'mac') \
              FOR UPDATE OF a",
         )
         .bind(community.as_uuid())
