@@ -516,6 +516,17 @@ jobs:
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true' && secrets.WINDOWS_SIGNING_CERT_PASSWORD || '' }}
         run: pnpm --dir desktop run electron:installer -- ${{ matrix.platform }} ${{ matrix.arch }}
 
+      # The app inside is already signed and notarized, but electron-builder
+      # leaves the disk image that wraps it unsigned. That disk image is the file
+      # people download, so it gets its own signature and Apple ticket here,
+      # while the signing keychain and the notary key still exist.
+      - name: Sign, notarize and staple the Mac disk image
+        if: env.COLONY_RELEASE_BUILD == 'true' && matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --dir desktop run electron:sign-disk-image
+
       # Installed Macs update by unpacking this archive and swapping the app in
       # place, so it must unpack to a Colony app whose signature verifies.
       - name: Verify the Mac update archive unpacks to a valid app
