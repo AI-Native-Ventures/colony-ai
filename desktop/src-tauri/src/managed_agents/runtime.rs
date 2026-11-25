@@ -479,6 +479,11 @@ pub fn spawn_agent_child(
     if let Some(error) = spawn_key_refusal(record) {
         return Err(error);
     }
+    // An agent that works in the cloud is never started on this Mac: two live
+    // copies would answer the same message. Every spawn path passes here.
+    if let Some(error) = super::placement_cache::placement_refusal(app, record) {
+        return Err(error);
+    }
     // Every local spawn (interactive start, launch restore, community
     // reconcile, config and install restarts, lazy pairs) passes through
     // here, so another account's agent can never start: the relay refuses
@@ -1019,6 +1024,11 @@ pub fn start_managed_agent_process(
     replay_floor_unix: Option<u64>,
     force_replace: bool,
 ) -> Result<(), String> {
+    // Before a running harness is replaced: a "Try again" for an agent that has
+    // since moved to the cloud must not stop anything or start a local copy.
+    if let Some(error) = super::placement_cache::placement_refusal(app, record) {
+        return Err(error);
+    }
     let key = bound_runtime_key(record, workspace_relay)?;
     if let Some(runtime) = runtimes.get_mut(&key) {
         let running = runtime

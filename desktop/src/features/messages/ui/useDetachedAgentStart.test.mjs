@@ -150,6 +150,12 @@ beforeEach(async () => {
     "./useDetachedAgentStart.ts"
   );
   resetDetachedAgentStarts();
+  // Placement is a module singleton too: a cloud placed agent from one test
+  // must not refuse the next test's wake.
+  const { resetPlacementStore } = await import(
+    "@/features/agents/placement/placementStore.ts"
+  );
+  resetPlacementStore();
   // So is the store of unanswered mentions: a wake registered by one test
   // would otherwise pull the next test's replay floor back.
   const { resetAgentStartWatches } = await import(
@@ -1082,5 +1088,110 @@ test("a start a send fired is tracked until it lands, so nothing stops the agent
     await settle();
   });
   assert.equal(isAgentLifecycleBusy(AGENT), false, "the start landed");
+  rendered.unmount();
+});
+
+const cloudPlacement = (generation) => ({
+  home: "cloud",
+  generation,
+  status: "asleep",
+  cloudReady: true,
+  cloudModel: null,
+  configVersion: 1,
+});
+
+test("detached_start_skips_cloud_agents: no local start, no watch, no warning", async () => {
+  const { applyPlacements } = await import(
+    "@/features/agents/placement/placementStore.ts"
+  );
+  const { getAgentStartWatches } = await import(
+    "@/features/agents/agentStartWatch.ts"
+  );
+  const { act, rendered } = await renderDetachedStart();
+  applyPlacements(new Map([[AGENT, cloudPlacement(2)]]));
+
+  let fired;
+  await act(async () => {
+    fired = rendered.result.current.startDetached(AGENT_RECORD, undefined, {
+      channelId: "welcome",
+      threadHeadId: null,
+    });
+    await settle();
+  });
+
+  assert.equal(fired, false);
+  assert.equal(
+    startCalls.length,
+    0,
+    "a cloud placed agent is never started here",
+  );
+  assert.deepEqual(
+    getAgentStartWatches("welcome"),
+    [],
+    "no Starting notice for an agent that is not starting on this Mac",
+  );
+  rendered.unmount();
+});
+
+test("detached_start_skips_cloud_agents: another agent on this Mac still starts", async () => {
+  const { applyPlacements } = await import(
+    "@/features/agents/placement/placementStore.ts"
+  );
+  const { act, rendered } = await renderDetachedStart();
+  applyPlacements(new Map([[AGENT, cloudPlacement(2)]]));
+
+  await act(async () => {
+    rendered.result.current.startDetached(OTHER_AGENT_RECORD);
+    await settle();
+  });
+
+  assert.equal(startCalls.length, 1);
+  assert.equal(startCalls[0].pubkey, OTHER_AGENT);
+  rendered.unmount();
+});
+
+test("detached_start_skips_cloud_agents: Try again after a flip does not start a local copy", async () => {
+  const { applyPlacements } = await import(
+    "@/features/agents/placement/placementStore.ts"
+  );
+  holdIdentity = true;
+  const { act, rendered } = await renderDetachedStart();
+  const { retryAgentStart } = await import(
+    "@/features/agents/agentStartWatch.ts"
+  );
+  // A wake refused for want of a scope leaves a watch with Try again.
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD, undefined, {
+      channelId: "welcome",
+      threadHeadId: null,
+    });
+    await settle();
+  });
+  for (const resolveIdentity of heldIdentity.splice(0)) resolveIdentity();
+  await waitForIdentity(act, rendered);
+  // The owner moves the agent to the cloud before pressing Try again.
+  applyPlacements(new Map([[AGENT, cloudPlacement(3)]]));
+  await act(async () => {
+    retryAgentStart(AGENT);
+    await settle();
+  });
+  assert.equal(startCalls.length, 0);
+  rendered.unmount();
+});
+
+test("an agent that flips back to the Mac is started by the next send", async () => {
+  const { applyPlacements } = await import(
+    "@/features/agents/placement/placementStore.ts"
+  );
+  const { act, rendered } = await renderDetachedStart();
+  applyPlacements(new Map([[AGENT, cloudPlacement(2)]]));
+  applyPlacements(
+    new Map([[AGENT, { ...cloudPlacement(3), home: "mac", status: null }]]),
+  );
+  await act(async () => {
+    rendered.result.current.startDetached(AGENT_RECORD);
+    await settle();
+  });
+  assert.equal(startCalls.length, 1);
   rendered.unmount();
 });

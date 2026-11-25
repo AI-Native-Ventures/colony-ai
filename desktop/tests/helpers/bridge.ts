@@ -7,6 +7,7 @@ import type {
 } from "../../src/shared/api/aiPlanUsage";
 import type {
   Colony3Extras,
+  MockAgentPlacement,
   MockCofounderLeadStatus,
   MockCofounderSettings,
   MockAgentConfigSurfaceOverride,
@@ -688,6 +689,16 @@ type MockBridgeOptions = {
   /** Hold successive co-founder settings reads for this long (ms), then answer. */
   cofounderSettingsReadDelaysMs?: number[];
   companyLeadStatus?: MockCofounderLeadStatus | null;
+  /** Relay-signed agent placement heads (kind 30682); flips mutate them. */
+  agentPlacements?: MockAgentPlacement[];
+  /** What the relay says about cloud agents; absent means switched off. */
+  cloudCapabilities?: {
+    enabled: boolean;
+    allowed: boolean;
+    maxPerAccount: number;
+    models: string[];
+    defaultModel: string | null;
+  };
   companyFunctionHeads?: MockCompanyFunctionHead[];
   companyWorkerRuns?: MockWorkerRun[];
   /** Access list, capability gap and slot hire records, signed as the relay. */
