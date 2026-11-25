@@ -162,6 +162,8 @@ export function MembersSidebar({
     ReadonlySet<string>
   >(() => new Set());
   const identityQuery = useIdentityQuery();
+  // The viewer, so an agent they own is never labelled "(teammate)".
+  const viewerPubkey = currentPubkey ?? identityQuery.data?.pubkey;
   const membersQuery = useChannelMembersQuery(channelId, open);
   const channelsQuery = useChannelsQuery({ enabled: open });
   const addMembersMutation = useAddChannelMembersMutation(channelId);
@@ -365,14 +367,14 @@ export function MembersSidebar({
       [...candidatesByPubkey.values()],
       {
         currentPubkey,
-        getLabel: formatAddCandidateName,
+        getLabel: (user) => formatAddCandidateName(user, viewerPubkey),
         preferredPubkeys: memberPubkeys,
       },
     );
 
     return rankUserCandidatesBySearch({
       candidates: coalescedCandidates,
-      getLabel: formatAddCandidateName,
+      getLabel: (user) => formatAddCandidateName(user, viewerPubkey),
       limit: Math.max(MEMBER_ADD_RESULT_LIMIT, coalescedCandidates.length),
       query: normalizedDeferredSearchQuery,
     });
@@ -386,6 +388,7 @@ export function MembersSidebar({
     normalizedDeferredSearchQuery,
     relayAgentsQuery.data,
     userSearchResults,
+    viewerPubkey,
   ]);
   const isAddSearchLoading =
     userSearchQuery.isLoading ||
@@ -815,6 +818,7 @@ export function MembersSidebar({
                         ) : null}
                         {addSearchResults.map((user) => (
                           <AddMemberSearchResultRow
+                            currentPubkey={viewerPubkey}
                             disabled={
                               addingMemberPubkeys.has(user.pubkey) || isArchived
                             }

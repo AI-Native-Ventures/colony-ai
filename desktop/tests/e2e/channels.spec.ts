@@ -1882,8 +1882,10 @@ test("channel date divider keeps the date sticky while the separator rule scroll
   if (!headerBox || !stickyPillBox) {
     throw new Error("missing channel header or sticky day divider");
   }
+  // The pinned divider sits flush under the channel header (48d3a041f moved it
+  // from the old 0.5rem inset to the header edge).
   expect(
-    Math.abs(stickyPillBox.y - (headerBox.y + headerBox.height) - 8),
+    Math.abs(stickyPillBox.y - (headerBox.y + headerBox.height)),
   ).toBeLessThanOrEqual(1);
   await expect(
     page.getByTestId("message-timeline-sticky-day-divider"),

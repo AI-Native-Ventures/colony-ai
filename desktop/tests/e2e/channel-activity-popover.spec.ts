@@ -345,11 +345,13 @@ test.describe("channel activity hover preview", () => {
     await expect(
       popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`),
     ).toContainText("Charlie");
-    // The authored name also supplies the row avatar's initials.
+    // The authored name also names the row avatar. A managed agent's avatar is
+    // its artwork (one resolver for every surface since 692d1cb2b), so the
+    // authored name is read from the image's accessible name, not from letters.
     await expect(
       popover
         .getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`)
-        .getByText("C", { exact: true }),
+        .getByRole("img", { name: /^Charlie.* avatar$/ }),
     ).toBeVisible();
     await expect(
       popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`),
@@ -379,15 +381,16 @@ test.describe("channel activity hover preview", () => {
     await expect(threadPanel).toContainText("direct thread link");
   });
 
-  test("unnamed working agents keep distinct key-tail initials, not AN", async ({
+  test("unnamed working agents never show their key, and keep word initials, not AN", async ({
     page,
   }) => {
-    // npubEncode of the fixture keys: "a"×64 → npub1424…rcaj (tail RC),
-    // "b"×64 → npub1hwa…04hu (tail 04). Neither has a seeded profile, so
-    // the rows show the generated "Agent npub1…" fallback label.
+    // Neither key has a seeded profile. Since bd00f08cd an identity with no
+    // name reads "AI employee" and never exposes any part of its key, so the
+    // rows carry no "Agent npub1..." label and no key-tail initials: the
+    // avatar abbreviates the visible label ("AE"), never "AN".
     const unnamedAgents = [
-      { initials: "RC", label: "Agent npub1424…rcaj", pubkey: "a".repeat(64) },
-      { initials: "04", label: "Agent npub1hwa…04hu", pubkey: "b".repeat(64) },
+      { initials: "AE", label: "AI employee", pubkey: "a".repeat(64) },
+      { initials: "AE", label: "AI employee", pubkey: "b".repeat(64) },
     ];
 
     await page.goto("/");
@@ -421,9 +424,12 @@ test.describe("channel activity hover preview", () => {
     for (const { initials, label, pubkey } of unnamedAgents) {
       const row = popover.getByTestId(`channel-activity-agent-${pubkey}`);
       await expect(row).toContainText(label);
-      // The avatar abbreviates its key's visible tail (UserAvatar's fallback
+      // No part of the key reaches the row: not the npub form, not its tail.
+      await expect(row).not.toContainText("npub");
+      await expect(row).not.toContainText(pubkey.slice(-4));
+      // The avatar abbreviates the visible label (UserAvatar's fallback
       // settles after its 200ms delay; expect retries past it), never the
-      // "Agent" word initials of the prefixed label.
+      // "AN" a key-prefixed label used to collapse onto.
       await expect(row.getByText(initials, { exact: true })).toBeVisible();
       await expect(row.getByText("AN", { exact: true })).toHaveCount(0);
     }
