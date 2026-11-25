@@ -19,7 +19,11 @@ import {
   KIND_COMPANY_FUNCTION_HEAD,
   KIND_WORKER_RUN_HEAD,
 } from "@/features/cofounder/cofounderRecords";
-import { KIND_COFOUNDER_LEAD_HEAD } from "@/shared/constants/kinds";
+import {
+  KIND_AGENT_PLACEMENT_ACTION,
+  KIND_AGENT_PLACEMENT_HEAD,
+  KIND_COFOUNDER_LEAD_HEAD,
+} from "@/shared/constants/kinds";
 import {
   KIND_COMPANY_ACCESS_ACTION,
   KIND_COMPANY_ACCESS_HEAD,
@@ -433,6 +437,25 @@ export type MockCofounderLeadStatus = {
   attempts: number;
   since: number;
   updatedAt: number;
+};
+
+/** One relay-signed placement head (kind 30682) of the cloud agents fixture. */
+export type MockAgentPlacement = {
+  agent: string;
+  owner: string;
+  home: "mac" | "cloud";
+  generation: number;
+  cloudReady: boolean;
+  configVersion?: number;
+  cloudModel?: string | null;
+  status?:
+    | "asleep"
+    | "waking"
+    | "working"
+    | "failed"
+    | "outOfCredit"
+    | "notCloudReady"
+    | null;
 };
 
 export type MockCompanyFunctionHead = {
@@ -1358,6 +1381,16 @@ type E2eConfig = {
     };
     /** Native credits flag; default OFF in browser fixtures too. */
     colonyCreditsGatewayEnabled?: boolean;
+    /** Relay-signed agent placement heads (kind 30682); flips mutate them. */
+    agentPlacements?: MockAgentPlacement[];
+    /** What the relay says about cloud agents; absent means switched off. */
+    cloudCapabilities?: {
+      enabled: boolean;
+      allowed: boolean;
+      maxPerAccount: number;
+      models: string[];
+      defaultModel: string | null;
+    };
     /** Explicit owner-only agent-access capability; independent of baked defaults. */
     ownerOnlyAccessBuild?: boolean;
     /** File-layer config returned by runtime id. */
@@ -7265,6 +7298,128 @@ function filterMockCofounderHeads(filter: MockFilter): RelayEvent[] {
         event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
     )
     .slice(0, filter.limit ?? 20);
+}
+
+function mockPlacementHead(placement: MockAgentPlacement): RelayEvent {
+  return createSignedMockCompanyHead(
+    KIND_AGENT_PLACEMENT_HEAD,
+    {
+      schema: 1,
+      agent: placement.agent,
+      owner: placement.owner,
+      home: placement.home,
+      generation: placement.generation,
+      cloudReady: placement.cloudReady,
+      configVersion: placement.configVersion ?? 1,
+      cloudModel: placement.cloudModel ?? null,
+      status:
+        placement.home === "cloud"
+          ? (placement.status ?? "asleep")
+          : placement.status === "notCloudReady"
+            ? "notCloudReady"
+            : null,
+      updatedAt: Math.floor(Date.now() / 1000),
+    },
+    placement.agent,
+  );
+}
+
+function filterMockAgentPlacements(filter: MockFilter): RelayEvent[] {
+  const placements = getConfig()?.mock?.agentPlacements ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return placements
+    .map(mockPlacementHead)
+    .filter((event) => !authors || authors.includes(event.pubkey.toLowerCase()))
+    .filter(
+      (event) =>
+        !dTags ||
+        event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1])),
+    )
+    .slice(0, filter.limit ?? 20);
+}
+
+/**
+ * The relay's placement broker, as far as the desktop can tell: owner only,
+ * compare-and-swap on the generation, the beta cap on cloud agents, and
+ * `notCloudReady` for an agent with no uploaded key. A flip mutates the mock
+ * head so the next read shows it.
+ */
+function acceptMockAgentPlacementAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const mock = config?.mock;
+  if (!mock || !verifyEvent(event)) {
+    reject("invalid: placement action signature or mock relay is invalid.");
+    return;
+  }
+  let action: {
+    agent?: string;
+    op?: string;
+    home?: string;
+    expectedGeneration?: number;
+    cloudModel?: string | null;
+  };
+  try {
+    action = JSON.parse(event.content) as typeof action;
+  } catch {
+    reject("invalid: placement action is not JSON.");
+    return;
+  }
+  mock.agentPlacements ??= [];
+  const placements = mock.agentPlacements;
+  const current = placements.find(
+    (placement) => placement.agent === action.agent?.toLowerCase(),
+  );
+  if (!current) {
+    reject("invalid: unknown agent.");
+    return;
+  }
+  if (current.owner.toLowerCase() !== event.pubkey.toLowerCase()) {
+    reject("restricted: only the agent's owner can move it.");
+    return;
+  }
+  if (action.expectedGeneration !== current.generation) {
+    reject("rejected: generation_conflict");
+    return;
+  }
+  if (action.op === "retryWake") {
+    current.status = "waking";
+    current.generation += 1;
+  } else if (action.op === "setCloudModel") {
+    current.cloudModel = action.cloudModel ?? null;
+    current.generation += 1;
+  } else if (action.op === "setHome" && action.home === "cloud") {
+    if (!current.cloudReady) {
+      current.status = "notCloudReady";
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+    const max = mock.cloudCapabilities?.maxPerAccount ?? 2;
+    const inCloud = placements.filter(
+      (placement) =>
+        placement.owner === current.owner && placement.home === "cloud",
+    ).length;
+    if (inCloud >= max) {
+      reject(`rejected: cloud_limit:${max}`);
+      return;
+    }
+    current.home = "cloud";
+    current.status = "asleep";
+    current.generation += 1;
+  } else if (action.op === "setHome" && action.home === "mac") {
+    current.home = "mac";
+    current.status = null;
+    current.generation += 1;
+  } else {
+    reject("invalid: placement action has an unsupported shape.");
+    return;
+  }
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
 
 function filterMockCompanyLeadStatus(filter: MockFilter): RelayEvent[] {
@@ -20664,6 +20819,14 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_AGENT_PLACEMENT_HEAD)) {
+      for (const event of filterMockAgentPlacements(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_COFOUNDER_LEAD_HEAD)) {
       for (const event of filterMockCompanyLeadStatus(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
@@ -21017,6 +21180,10 @@ function sendToMockSocket(args: {
 
     if (event.kind === KIND_MEMBER_POSITION_ACTION) {
       acceptMockMemberPositionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_AGENT_PLACEMENT_ACTION) {
+      acceptMockAgentPlacementAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_COFOUNDER_ACTION) {
@@ -25355,6 +25522,20 @@ export function maybeInstallE2eTauriMocks() {
         return (config?.mock?.bakedBuildEnv ?? []).map((entry) => entry.key);
       case "colony_credits_gateway_enabled":
         return config?.mock?.colonyCreditsGatewayEnabled ?? false;
+      case "set_placement_cache":
+        return null;
+      case "get_cloud_capabilities":
+        return (
+          config?.mock?.cloudCapabilities ?? {
+            enabled: false,
+            allowed: false,
+            maxPerAccount: 0,
+            models: [],
+            defaultModel: null,
+          }
+        );
+      case "upload_cloud_bundle":
+        return { result: "unchanged" };
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
       case "update_managed_agent":

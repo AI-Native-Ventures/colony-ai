@@ -12,6 +12,8 @@ mod rejection;
 pub mod api;
 /// WebSocket audio relay for huddle voice channels.
 pub mod audio;
+/// Cloud agents: placement fence, configuration and (later slices) the machine lifecycle.
+pub mod cloud_agents;
 /// Wakes for Scout in co-founder mode: daily start and event wakes.
 pub mod cofounder_wake;
 /// Relay configuration from environment variables.

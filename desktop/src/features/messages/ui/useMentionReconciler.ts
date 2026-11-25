@@ -29,6 +29,7 @@ import {
   type TenantScope,
 } from "@/features/agents/mentionReconciler";
 import { setMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
+import { isCloudPlaced } from "@/features/agents/placement/placementStore";
 import { setStartFloorLookup } from "@/features/agents/startFloorLookup";
 import { findUnansweredMentions } from "@/features/agents/unansweredMentions";
 import { isDetachedStartInFlight } from "./useDetachedAgentStart";
@@ -97,6 +98,7 @@ export function useMentionReconciler(): void {
           forceRestart: attempt.force,
         }),
       isStartInFlight: isDetachedStartInFlight,
+      isCloudPlaced,
       watch: (input) => {
         registerAgentStartWatch(input);
       },

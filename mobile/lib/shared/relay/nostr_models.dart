@@ -117,6 +117,8 @@ abstract final class EventKind {
   static const workerRunAction = 47062;
   static const companyAccessHead = 30676;
   static const companyAccessAction = 47066;
+  static const agentPlacementHead = 30682;
+  static const agentPlacementAction = 47071;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.

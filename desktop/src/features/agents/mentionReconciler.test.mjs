@@ -57,6 +57,8 @@ function rig(overrides = {}) {
     findError: null,
     startError: null,
     handBackError: null,
+    /** Agents the relay's placement head puts in the cloud. */
+    cloud: new Set(),
     /** The harness the start spawns is gone again at once. */
     diesAfterStart: false,
   };
@@ -127,6 +129,7 @@ function rig(overrides = {}) {
       return agentRecord;
     },
     isStartInFlight: () => state.inFlight,
+    isCloudPlaced: (pubkey) => state.cloud.has(pubkey),
     watch: (input) => log.watches.push(input),
     resolve: (pubkey, before) => {
       log.resolved.push(pubkey);
@@ -301,6 +304,77 @@ describe("after a send", () => {
     assert.equal(r.log.starts.length, 1);
     assert.deepEqual(r.log.failed, [{ pubkey: SCOUT, reason: "spawn failed" }]);
     assert.equal(r.pending(), 0);
+  });
+});
+
+describe("cloud placed agents", () => {
+  it("reconciler_skips_cloud_agents: a send never starts, watches or reads for one", async () => {
+    const r = rig();
+    r.state.cloud.add(SCOUT);
+    r.reconciler.noteMentionSent([SCOUT]);
+    await r.advance(10 * 60_000);
+    assert.equal(r.log.finds.length, 0);
+    assert.equal(r.log.starts.length, 0);
+    assert.equal(r.log.watches.length, 0);
+    assert.equal(r.log.stops.length, 0);
+    assert.equal(r.pending(), 0);
+  });
+
+  it("reconciler_skips_cloud_agents: the launch pass leaves a cloud agent to the cloud", async () => {
+    const r = rig();
+    r.state.agents = [agent(SCOUT, "stopped"), agent(NOVA, "stopped")];
+    r.state.unanswered.set(NOVA, [mention("n1", FIRST)]);
+    r.state.cloud.add(SCOUT);
+    r.reconciler.catchUpOnLaunch();
+    await r.advance(10 * 60_000);
+    assert.deepEqual(
+      r.log.starts.map((start) => start.pubkey),
+      [NOVA],
+    );
+    assert.ok(r.log.finds.every((find) => find.pubkey === NOVA));
+  });
+
+  it("reconciler_skips_cloud_agents: a flip that lands between the look and the start wins", async () => {
+    const r = rig({
+      findUnanswered: async (pubkey) => {
+        // The owner flips Scout to the cloud while the relay read is out.
+        r.state.cloud.add(pubkey);
+        return [mention("a27e49a5", FIRST)];
+      },
+    });
+    r.reconciler.noteMentionSent([SCOUT]);
+    await r.advance(SENT_CHECK_DELAYS_MS[0]);
+    assert.equal(r.log.starts.length, 0);
+    assert.equal(r.log.handBacks.length, 0);
+  });
+
+  it("reconciler_skips_cloud_agents: Try again does not start a local copy", async () => {
+    const r = rig();
+    r.state.cloud.add(SCOUT);
+    await assert.rejects(
+      r.reconciler.retryAgent(SCOUT, FIRST),
+      /agent placed in the cloud/,
+    );
+    assert.equal(r.log.starts.length, 0);
+  });
+
+  it("reconciler_skips_cloud_agents: the start-floor lookup does not hand mentions back for one", async () => {
+    const r = rig();
+    r.state.cloud.add(SCOUT);
+    assert.equal(await r.reconciler.prepareStart(SCOUT), undefined);
+    assert.equal(r.log.finds.length, 0);
+  });
+
+  it("an agent that flips back to the Mac is handled as before", async () => {
+    const r = rig();
+    r.state.cloud.add(SCOUT);
+    r.reconciler.noteMentionSent([SCOUT]);
+    await r.advance(SENT_CHECK_DELAYS_MS[0]);
+    assert.equal(r.log.starts.length, 0);
+    r.state.cloud.delete(SCOUT);
+    r.reconciler.noteMentionSent([SCOUT]);
+    await r.advance(SENT_CHECK_DELAYS_MS[0]);
+    assert.equal(r.log.starts.length, 1);
   });
 });
 
@@ -696,6 +770,7 @@ describe("a look at the relay that began before the person's mention was sent (G
         exclusive: async (_pubkey, _label, work) => work(),
         startAgent: async () => {},
         isStartInFlight: () => false,
+        isCloudPlaced: () => false,
         watch: registerAgentStartWatch,
         resolve: (pubkey, registeredBefore) =>
           resolveAgentStartWatches(pubkey, { registeredBefore }),

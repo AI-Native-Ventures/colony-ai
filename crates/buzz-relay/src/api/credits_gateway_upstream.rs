@@ -186,6 +186,10 @@ pub(super) struct Upstream {
     /// Models tried in order when the one before them cannot answer. Empty
     /// means the single-model behaviour, byte for byte.
     fallbacks: Vec<ChainModel>,
+    /// Paid models only a paying cloud session may choose. They sit after the
+    /// fallbacks in [`Upstream::chain`] but never in the default route, so Mac
+    /// agents and free accounts never reach them.
+    cloud_models: Vec<ChainModel>,
     policy: Policy,
     context_tokens: i64,
     /// Longest one attempt may take.
@@ -274,6 +278,24 @@ impl Upstream {
             }
             _ => Vec::new(),
         };
+        // Paid models for paying cloud sessions only, as a JSON array. Unset or
+        // blank is none: a cloud session then chooses only among the route's models.
+        let cloud_models = match var("COLONY_CREDITS_CLOUD_MODELS") {
+            Some(raw) if !raw.trim().is_empty() => {
+                let names: Vec<String> = serde_json::from_str(&raw).ok()?;
+                names
+                    .into_iter()
+                    .map(|name| {
+                        let prices = match &table {
+                            Some(table) => Some(table.get(&name)?.clone()),
+                            None => None,
+                        };
+                        Some(ChainModel { name, prices })
+                    })
+                    .collect::<Option<Vec<_>>>()?
+            }
+            _ => Vec::new(),
+        };
         Self::new(
             key,
             origin.trim_end_matches('/').into(),
@@ -286,6 +308,8 @@ impl Upstream {
         )
         .ok()?
         .with_fallbacks(fallbacks)
+        .ok()?
+        .with_cloud_models(cloud_models)
         .ok()
     }
 
@@ -321,8 +345,36 @@ impl Upstream {
         std::iter::once((self.model.as_str(), self.prices.as_ref())).chain(
             self.fallbacks
                 .iter()
+                .chain(self.cloud_models.iter())
                 .map(|fallback| (fallback.name.as_str(), fallback.prices.as_ref())),
         )
+    }
+
+    /// Sets the paid models a paying cloud session may choose. Each is held to
+    /// what a fallback is held to, and may not repeat a model of the route.
+    fn with_cloud_models(mut self, cloud_models: Vec<ChainModel>) -> Result<Self, ()> {
+        if cloud_models.len() >= MAX_CHAIN {
+            return Err(());
+        }
+        for (index, model) in cloud_models.iter().enumerate() {
+            self.policy.check_model(&model.name)?;
+            if model.name.is_empty()
+                || model.name.len() > 200
+                || model.name == self.model
+                || self.fallbacks.iter().any(|o| o.name == model.name)
+                || cloud_models[..index].iter().any(|o| o.name == model.name)
+            {
+                return Err(());
+            }
+            if let Some(prices) = &model.prices {
+                prices.validate()?;
+            }
+            if !self.openrouter && model.prices.is_none() {
+                return Err(());
+            }
+        }
+        self.cloud_models = cloud_models;
+        Ok(self)
     }
 
     /// Models customers may choose in the Colony free-AI picker. The answer is
@@ -352,9 +404,7 @@ impl Upstream {
         self.policy
             .check_model(selected)
             .map_err(|_| "model_not_allowed")?;
-        let start = all
-            .iter()
-            .copied()
+        let start = (0..self.chain().count())
             .find(|index| {
                 self.chain()
                     .nth(*index)
@@ -421,6 +471,7 @@ impl Upstream {
             openrouter,
             prices,
             fallbacks: Vec::new(),
+            cloud_models: Vec::new(),
             policy,
             context_tokens,
             timeout,
@@ -482,7 +533,20 @@ impl Upstream {
         openrouter: bool,
         models: &[(&str, Option<TokenPrices>)],
     ) -> Self {
-        let names: Vec<String> = models.iter().map(|(name, _)| (*name).into()).collect();
+        Self::fake_chain_with_cloud(origin, openrouter, models, &[])
+    }
+
+    /// [`Upstream::fake_chain`] plus paid models only a paying cloud session may
+    /// choose. They are on the allowed list but not in the default route.
+    #[cfg(test)]
+    pub(super) fn fake_chain_with_cloud(
+        origin: String,
+        openrouter: bool,
+        models: &[(&str, Option<TokenPrices>)],
+        cloud: &[(&str, Option<TokenPrices>)],
+    ) -> Self {
+        let mut names: Vec<String> = models.iter().map(|(name, _)| (*name).into()).collect();
+        names.extend(cloud.iter().map(|(name, _)| String::from(*name)));
         let first = names[0].clone();
         let policy = Policy::new(
             &first,
@@ -491,6 +555,13 @@ impl Upstream {
             openrouter.then(|| "synthetic-customer-hmac-key-at-least-32-bytes".into()),
         )
         .unwrap();
+        let cloud_models = cloud
+            .iter()
+            .map(|(name, prices)| ChainModel {
+                name: (*name).into(),
+                prices: prices.clone(),
+            })
+            .collect();
         let fallbacks = models[1..]
             .iter()
             .map(|(name, prices)| ChainModel {
@@ -510,23 +581,43 @@ impl Upstream {
         )
         .unwrap()
         .with_fallbacks(fallbacks)
+        .unwrap()
+        .with_cloud_models(cloud_models)
         .unwrap();
         upstream.retry = RetryPolicy::FAST;
         upstream
     }
 
+    /// [`Upstream::request_for`] for a session on the owner's Mac: an explicit
+    /// model choice must be a free one.
+    #[cfg(test)]
     pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), Refusal> {
+        self.request_for(request, ModelAccess::Mac)
+    }
+
+    /// Check and price a managed request for a session with `access`.
+    pub(super) fn request_for(
+        &self,
+        request: &ManagedRequest,
+        access: ModelAccess,
+    ) -> Result<(Value, i64), Refusal> {
         for (model, _) in self.chain() {
             self.policy
                 .check_model(model)
                 .map_err(|_| "model_not_allowed")?;
         }
-        let ordered = self.ordered_chain(request.model.as_deref(), true)?;
+        // A free account's cloud session does not choose a model: it gets the
+        // configured chain, so a paid choice is neither honored nor refused.
+        let selected = match access {
+            ModelAccess::CloudFree => None,
+            ModelAccess::Mac | ModelAccess::CloudPaid => request.model.as_deref(),
+        };
+        let ordered = self.ordered_chain(selected, access == ModelAccess::Mac)?;
         let (primary, prices) = self.chain().nth(ordered[0]).ok_or("model_not_configured")?;
         let (body, mut reserve) =
             request.upstream_body(primary, self.openrouter, prices, self.context_tokens)?;
         let mut body = body;
-        if request.model.is_some() {
+        if selected.is_some() && access == ModelAccess::Mac {
             body["_colony_free_model_selection"] = json!(true);
         }
         // OpenRouter holds at the price ceiling for every model. A direct
@@ -1020,6 +1111,20 @@ fn names_unusable_model(body: &[u8]) -> bool {
             ]
             .iter()
             .any(|phrase| text.contains(phrase)))
+}
+
+/// What a session may do about the model of a request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ModelAccess {
+    /// A session opened by the owner for an agent on their Mac: an explicit
+    /// choice must be a free model.
+    Mac,
+    /// A cloud session of an account that pays for its AI: any model the relay
+    /// allows and has in its chain, charged at cost plus the margin.
+    CloudPaid,
+    /// A cloud session of an account that uses the gateway free: the choice is
+    /// ignored and the configured chain answers.
+    CloudFree,
 }
 
 /// Private managed workflow, deliberately not an OpenAI request passthrough.

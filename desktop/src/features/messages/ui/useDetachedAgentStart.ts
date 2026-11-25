@@ -13,6 +13,8 @@ import {
   lowerFloorFromRelay,
 } from "@/features/agents/startFloorLookup";
 import { useStartManagedAgentMutation } from "@/features/agents/hooks";
+import { CLOUD_PLACED_ERROR } from "@/features/agents/mentionReconciler";
+import { isCloudPlaced } from "@/features/agents/placement/placementStore";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { matchesDetachedToastScope } from "@/features/messages/lib/detachedToastScope";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -196,6 +198,9 @@ export function useDetachedAgentStart(): (
       expectedRelayUrl: string;
       expectedSignerPubkey: string;
     }) => {
+      // The owner may have moved the agent to the cloud since the wake that
+      // registered this watch: Try again must not start a second copy.
+      if (isCloudPlaced(input.pubkey)) throw new Error(CLOUD_PLACED_ERROR);
       if (input.force) {
         const retried = await retryAgentWithMentions(
           input.pubkey,
@@ -219,6 +224,10 @@ export function useDetachedAgentStart(): (
       replayFloorUnix?: number,
       scope?: { channelId: string | null; threadHeadId: string | null },
     ) => {
+      // A cloud agent is woken by the relay, never by this Mac (spec 5.2). No
+      // watch either: nothing here is starting, so a "Starting" notice would
+      // never clear.
+      if (isCloudPlaced(agent.pubkey)) return false;
       if (!expectedRelayUrl || !expectedSignerPubkey) {
         // Fail closed: an unscoped start resolves the relay and the signing
         // identity at execution time, so it can land on whichever tenant is

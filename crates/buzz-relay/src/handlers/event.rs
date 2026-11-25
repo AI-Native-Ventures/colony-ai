@@ -517,6 +517,10 @@ async fn dispatch_persistent_event_inner(
         .await;
     }
 
+    // Cloud agents: a message that could need a sleeping cloud agent wakes it.
+    // Free when the feature is off; never blocks or fails the message.
+    crate::cloud_agents::doorbell::on_stored(state, tenant, stored_event);
+
     // Skip workflow triggering for workflow-execution kinds and relay-signed workflow messages.
     let is_relay_workflow_msg = stored_event.event.pubkey == state.relay_keypair.public_key()
         && stored_event

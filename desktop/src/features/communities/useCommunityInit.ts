@@ -42,6 +42,7 @@ import {
 import { resetAgentRuntimeSwitchState } from "@/features/agents/agentRuntimeSwitchStore";
 import { resetAgentStartWatches } from "@/features/agents/agentStartWatch";
 import { resetMentionReconciler } from "@/features/agents/mentionReconcilerHandle";
+import { resetPlacementStore } from "@/features/agents/placement/placementStore";
 import { resetScoutStartState } from "@/features/cofounder/scoutKeepAlive";
 import { resetCompanyMapOpenPart } from "@/features/cofounder/companyMapOpenPart";
 import { resetPrebuiltHireRunFence } from "@/features/cofounder/prebuiltHireRunFence";
@@ -101,6 +102,8 @@ async function resetCommunityState({
   // from reaching the next one.
   resetAgentStartWatches();
   resetMentionReconciler();
+  // Where each agent works is the relay's word for this community only.
+  resetPlacementStore();
   // The Scout start state (failures, back-off) belongs to the community it was
   // counted in.
   resetScoutStartState();

@@ -41,13 +41,15 @@ pub(crate) enum AuthOutcome {
     AllowlistDenied,
     RelayMembershipCheckError,
     NotRelayMember,
+    HomeFenceDenied,
+    HomeFenceCheckError,
     Timeout,
     Disconnect,
     Shutdown,
 }
 
 impl AuthOutcome {
-    pub(crate) const ALL: [Self; 11] = [
+    pub(crate) const ALL: [Self; 13] = [
         Self::Success,
         Self::Invalid,
         Self::Banned,
@@ -56,6 +58,8 @@ impl AuthOutcome {
         Self::AllowlistDenied,
         Self::RelayMembershipCheckError,
         Self::NotRelayMember,
+        Self::HomeFenceDenied,
+        Self::HomeFenceCheckError,
         Self::Timeout,
         Self::Disconnect,
         Self::Shutdown,
@@ -71,6 +75,8 @@ impl AuthOutcome {
             Self::AllowlistDenied => "allowlist_denied",
             Self::RelayMembershipCheckError => "relay_membership_check_error",
             Self::NotRelayMember => "not_relay_member",
+            Self::HomeFenceDenied => "home_fence_denied",
+            Self::HomeFenceCheckError => "home_fence_check_error",
             Self::Timeout => "timeout",
             Self::Disconnect => "disconnect",
             Self::Shutdown => "shutdown",
@@ -1065,9 +1071,9 @@ mod contract_tests {
                     || line.starts_with("buzz_ws_authenticated_connections_active ")
             })
             .collect::<Vec<_>>();
-        // 1 challenge + 11 outcomes + 2 post-terminal states + 1 active gauge +, for each outcome,
+        // 1 challenge + 13 outcomes + 2 post-terminal states + 1 active gauge +, for each outcome,
         // 11 histogram buckets (including +Inf), sum, and count.
-        assert_eq!(raw_series.len(), 158, "unexpected raw scrape:\n{scrape}");
+        assert_eq!(raw_series.len(), 186, "unexpected raw scrape:\n{scrape}");
 
         for line in raw_series {
             let keys = label_keys(line);

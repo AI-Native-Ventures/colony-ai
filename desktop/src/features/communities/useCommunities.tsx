@@ -211,6 +211,15 @@ export function useCommunities(): UseCommunitiesReturn {
   return ctx;
 }
 
+/**
+ * The active community, or `null` outside a `CommunitiesProvider`. For hooks
+ * that scope their queries to the community but may be rendered where none is
+ * mounted (a dialog under test); everything else uses `useCommunities`.
+ */
+export function useOptionalActiveCommunity(): Community | null {
+  return useContext(CommunitiesContext)?.activeCommunity ?? null;
+}
+
 function useCommunitiesInternal(): UseCommunitiesReturn {
   const [communities, setCommunitiesState] =
     useState<Community[]>(loadCommunities);

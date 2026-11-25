@@ -2,6 +2,7 @@ mod agent_workspace;
 pub use agent_workspace::*;
 mod agent_access;
 mod agent_auth;
+mod agent_cloud;
 mod agent_config;
 mod agent_discovery;
 mod agent_logs;
@@ -89,6 +90,7 @@ mod workspace;
 
 pub use agent_access::*;
 pub use agent_auth::*;
+pub use agent_cloud::*;
 pub use agent_config::*;
 pub use agent_discovery::*;
 pub use agent_logs::*;

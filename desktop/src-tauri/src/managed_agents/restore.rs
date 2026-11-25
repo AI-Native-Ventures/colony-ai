@@ -356,7 +356,13 @@ pub async fn restore_managed_agents_on_launch(
                                         })
                                     })
                                     .unwrap_or(false);
-                                if already_live {
+                                // An agent that works in the cloud is not this
+                                // Mac's to start: skip it quietly rather than
+                                // record a start failure on it.
+                                if already_live
+                                    || super::placement_cache::placement_refusal(app, record)
+                                        .is_some()
+                                {
                                     SpawnOutcome::Skipped
                                 } else {
                                     match super::terminate_untracked_pair_runtime(app, &key)

@@ -202,8 +202,27 @@ END $$;
 -- bootstrap if the live catalog does not contain the guard.
 SELECT attach_community_write_fence('business_proposal_conversion_claims');
 SELECT attach_community_write_fence('company_work_watchdog_deliveries');
+SELECT attach_community_write_fence('cloud_agents');
+SELECT attach_community_write_fence('cloud_agent_ops');
 SELECT attach_community_write_fence('cofounder_wakes');
 SELECT attach_community_write_fence('discovery_usage');
+
+DO $$
+DECLARE
+    cloud_fenced TEXT;
+BEGIN
+    FOREACH cloud_fenced IN ARRAY ARRAY['cloud_agents', 'cloud_agent_ops'] LOOP
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_trigger
+            WHERE tgrelid = cloud_fenced::regclass
+              AND tgname = 'community_write_fence_' || cloud_fenced
+              AND NOT tgisinternal
+        ) THEN
+            RAISE EXCEPTION '% must have its community write fence after pgschema apply', cloud_fenced;
+        END IF;
+    END LOOP;
+END $$;
 
 DO $$
 BEGIN

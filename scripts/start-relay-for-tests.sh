@@ -144,7 +144,7 @@ if [[ "${SKIP_BUILD}" == "true" ]]; then
   log "Skipping relay build (--no-build); using existing target/${CARGO_PROFILE}/ binaries"
 else
   log "Building relay (profile: ${CARGO_PROFILE})..."
-  cargo build --profile "${CARGO_PROFILE}" -p buzz-relay -p git-credential-nostr
+  cargo build --profile "${CARGO_PROFILE}" -p buzz-relay -p git-credential-nostr --features buzz-relay/test-fakes
   ok "Relay built"
 fi
 
@@ -167,6 +167,22 @@ if [[ "${BUZZ_REQUIRE_RELAY_MEMBERSHIP:-}" == "true" ]]; then
   log "Membership gating enabled (NIP-43)"
 fi
 
+# Cloud agents (the e2e_cloud_agents suite): the feature on, machines in memory.
+# `COLONY_CLOUD_HOST=fake` only takes effect in a relay built with the
+# `buzz-relay/test-fakes` feature; any other build ignores it and cloud agents
+# stay off for the other suites. The Fly values are inert placeholders: the fake
+# host never calls Fly. The account key is 32 bytes of 'a', base64-encoded.
+CLOUD_ENV=(
+  COLONY_CLOUD_AGENTS=on
+  COLONY_CLOUD_HOST=fake
+  COLONY_CLOUD_FAKE_DIR=/tmp/colony-fake-host
+  COLONY_CLOUD_FLY_API_TOKEN=fake-token-not-used
+  COLONY_CLOUD_AGENT_IMAGE=registry.fly.io/colony-agents@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  COLONY_CLOUD_DEFAULT_MODEL=free/a
+  COLONY_CREDITS_ALLOWED_MODELS='["free/a"]'
+  COLONY_ACCOUNT_KEK=YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
+)
+
 nohup env \
   DATABASE_URL=postgres://buzz:buzz_dev@localhost:5432/buzz \
   REDIS_URL=redis://localhost:6379 \
@@ -176,6 +192,7 @@ nohup env \
   BUZZ_REQUIRE_AUTH_TOKEN=false \
   BUZZ_RECONCILE_CHANNELS=true \
   BUZZ_GIT_PROBE_WRITERS=8 \
+  "${CLOUD_ENV[@]}" \
   ${MEMBERSHIP_ENV[@]+"${MEMBERSHIP_ENV[@]}"} \
   "./target/${CARGO_PROFILE}/buzz-relay" > /tmp/buzz-relay.log 2>&1 &
 echo $! > /tmp/buzz-relay.pid
