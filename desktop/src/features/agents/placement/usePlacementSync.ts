@@ -13,6 +13,7 @@ import { listManagedAgents } from "@/shared/api/tauri";
 import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
+import { setPlacementCache } from "./placementCacheApi";
 import { planPlacementActions } from "./placementEnforcement";
 import { usePlacements } from "./placementQueries";
 import { getPlacement, subscribePlacements } from "./placementStore";
@@ -50,6 +51,19 @@ export function usePlacementSync(): void {
 
   React.useEffect(() => {
     const handle = async (changes: PlacementChange[]) => {
+      // The native spawn gate learns the new homes first, so nothing below (or
+      // a launch restore racing it) can start a copy the relay moved away.
+      try {
+        await setPlacementCache(
+          changes.map((change) => ({
+            agent: change.pubkey,
+            home: change.after.home,
+            generation: change.after.generation,
+          })),
+        );
+      } catch (error) {
+        console.warn("[placement] could not update the native cache", error);
+      }
       let agents: Awaited<ReturnType<typeof listManagedAgents>>;
       try {
         agents = await queryClient.fetchQuery({

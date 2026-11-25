@@ -25355,6 +25355,8 @@ export function maybeInstallE2eTauriMocks() {
         return (config?.mock?.bakedBuildEnv ?? []).map((entry) => entry.key);
       case "colony_credits_gateway_enabled":
         return config?.mock?.colonyCreditsGatewayEnabled ?? false;
+      case "set_placement_cache":
+        return null;
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
       case "update_managed_agent":

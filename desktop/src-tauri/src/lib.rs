@@ -785,6 +785,7 @@ pub fn run() {
             release_wake_events,
             create_managed_agent,
             start_managed_agent,
+            set_placement_cache,
             stop_managed_agent,
             set_agent_managed_profiles,
             set_managed_agent_start_on_app_launch,

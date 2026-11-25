@@ -34,6 +34,7 @@ pub(crate) mod parallelism;
 mod persona_avatars;
 pub(crate) mod persona_events;
 mod personas;
+pub(crate) mod placement_cache;
 #[cfg(windows)]
 mod process_lifecycle;
 pub(crate) mod readiness;
