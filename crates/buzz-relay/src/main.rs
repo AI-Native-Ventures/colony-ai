@@ -533,7 +533,7 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to initialize media storage: {e}"))?;
     info!("Media storage connected");
 
-    let (app_state, audit_shutdown) = AppState::new(
+    let (mut app_state, audit_shutdown) = AppState::new(
         config.clone(),
         db,
         redis_health_pool,
@@ -545,6 +545,31 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         relay_keypair,
         media_storage,
     );
+    // Cloud agents: machines run on Fly when the relay is given a token and a
+    // digest-pinned image. Without them the feature has no host and stays idle.
+    #[cfg(feature = "test-fakes")]
+    let fake_host = std::env::var("COLONY_CLOUD_HOST").as_deref() == Ok("fake");
+    #[cfg(not(feature = "test-fakes"))]
+    let fake_host = false;
+    if fake_host {
+        // End-to-end tests only (a build with the `test-fakes` feature): machines
+        // are in memory and every start leaves a file for the test to play the
+        // machine from. Never present in a production build.
+        #[cfg(feature = "test-fakes")]
+        {
+            let dir = std::env::var("COLONY_CLOUD_FAKE_DIR")
+                .unwrap_or_else(|_| "/tmp/colony-fake-host".to_owned());
+            app_state.cloud_host = Some(Arc::new(
+                buzz_relay::cloud_agents::fake_host::FakeHost::with_start_dir(dir.into()),
+            ));
+            info!("Cloud agents host is the in-memory FAKE host (test build)");
+        }
+    } else if let Some(fly) = config.cloud_agents.fly.clone() {
+        let host = buzz_relay::cloud_agents::fly::FlyHost::new(fly)
+            .map_err(|e| anyhow::anyhow!("cloud agents host: {e}"))?;
+        app_state.cloud_host = Some(Arc::new(host));
+        info!("Cloud agents host configured (Fly Machines)");
+    }
     let state = Arc::new(app_state);
 
     // Inter-relay mesh (BUZZ_MESH seam). `boot_mesh` returns None when the
@@ -863,6 +888,10 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         tokio::spawn(async move { buzz_relay::cofounder_wake::run(wake_state).await });
         info!("Co-founder wake worker started");
     }
+
+    // Cloud agents: durable journal of Fly operations (idle without a host).
+    buzz_relay::cloud_agents::ops::spawn_ops_worker(Arc::clone(&state));
+    buzz_relay::cloud_agents::reconcile::spawn_reconciler(Arc::clone(&state));
 
     // Operator admin metrics: counter flush every minute, rollups every 15 minutes.
     {

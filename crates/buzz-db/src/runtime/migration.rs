@@ -725,7 +725,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 69);
+        assert_eq!(migrations.len(), 70);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -783,6 +783,11 @@ mod postgres_tests {
                 "cloud agents migration must create {table}"
             );
         }
+        assert_eq!(migrations[69].version, 70);
+        assert!(migrations[69]
+            .sql
+            .as_str()
+            .contains("ADD COLUMN paid_allowed"));
         assert!(migrations[54]
             .sql
             .as_str()

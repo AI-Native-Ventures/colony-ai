@@ -480,16 +480,29 @@ impl Db {
         Ok(id)
     }
 
+    /// Claim up to `limit` due operations of any community. See
+    /// [`Db::claim_due_cloud_ops_for`].
+    pub async fn claim_due_cloud_ops(&self, limit: i64) -> Result<Vec<OpRow>> {
+        self.claim_due_cloud_ops_for(None, limit).await
+    }
+
     /// Claim up to `limit` due operations, at most one per agent and always the
     /// agent's oldest pending one, so an agent's operations run in order. A
     /// claim leases the operation for [`OP_LEASE_SECS`] and counts as an
     /// attempt, so a crash is bounded by the attempt limit like any failure.
-    pub async fn claim_due_cloud_ops(&self, limit: i64) -> Result<Vec<OpRow>> {
+    /// `community` narrows the claim to one community (tests; production
+    /// passes `None`).
+    pub async fn claim_due_cloud_ops_for(
+        &self,
+        community: Option<CommunityId>,
+        limit: i64,
+    ) -> Result<Vec<OpRow>> {
         let rows = sqlx::query(
             "WITH heads AS ( \
                  SELECT DISTINCT ON (community_id, agent_pubkey) \
                         community_id, id, next_attempt_at, claimed_until \
-                 FROM cloud_agent_ops WHERE status = 'pending' \
+                 FROM cloud_agent_ops \
+                 WHERE status = 'pending' AND ($3::uuid IS NULL OR community_id = $3) \
                  ORDER BY community_id, agent_pubkey, created_at, id \
              ), due AS ( \
                  SELECT o.community_id, o.id \
@@ -509,6 +522,7 @@ impl Db {
         )
         .bind(limit)
         .bind(OP_LEASE_SECS)
+        .bind(community.map(|c| *c.as_uuid()))
         .fetch_all(&self.pool)
         .await?;
         rows.iter()
@@ -520,6 +534,295 @@ impl Db {
                     op: CloudOp::parse(&row.try_get::<String, _>("op")?)?,
                     generation: row.try_get("generation")?,
                     attempt: row.try_get("attempt")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Record the host's ids for an agent's machine and volume. Returns `false`
+    /// when the agent has no row any more.
+    pub async fn set_cloud_machine(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        machine_id: &str,
+        volume_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE cloud_agents SET fly_machine_id = $3, fly_volume_id = $4, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(machine_id)
+        .bind(volume_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Set the status of an agent that is still placed in the cloud at
+    /// `generation` (and set `last_error`, or clear it with `None`). A stale
+    /// caller changes nothing and gets `false`: a result that arrives after the
+    /// agent moved must never write over the new placement.
+    pub async fn set_cloud_status(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        status: PlacementStatus,
+        last_error: Option<&str>,
+    ) -> Result<bool> {
+        let Some(status) = status_str(status) else {
+            return Err(DbError::InvalidData("status has no stored form".into()));
+        };
+        let result = sqlx::query(
+            "UPDATE cloud_agents SET status = $4, last_error = $5, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND generation = $3 AND home = 'cloud'",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(status)
+        .bind(last_error.map(|text| text.chars().take(500).collect::<String>()))
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Mark a claimed operation done.
+    pub async fn finish_cloud_op(&self, community: CommunityId, id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE cloud_agent_ops SET status = 'done', claimed_until = NULL, updated_at = now() \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Give a claimed operation back to the journal to run again after
+    /// `delay_secs`, remembering why it failed.
+    pub async fn reschedule_cloud_op(
+        &self,
+        community: CommunityId,
+        id: Uuid,
+        delay_secs: i64,
+        error: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE cloud_agent_ops SET claimed_until = NULL, last_error = $4, updated_at = now(), \
+                 next_attempt_at = now() + make_interval(secs => $3::double precision) \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(id)
+        .bind(delay_secs)
+        .bind(error.chars().take(500).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Give up on every other pending operation of an agent's generation after
+    /// one of its steps failed for good, so a later step (a start after a failed
+    /// create) cannot quietly undo the failure. Returns how many were failed.
+    pub async fn fail_pending_cloud_ops(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        error: &str,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            "UPDATE cloud_agent_ops SET status = 'failed', claimed_until = NULL, last_error = $4, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND generation = $3 \
+               AND status = 'pending' AND op IN ('ensure', 'start')",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(error.chars().take(500).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Give up on a claimed operation. It stays in the journal as `failed`
+    /// with its reason.
+    pub async fn fail_cloud_op(&self, community: CommunityId, id: Uuid, error: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE cloud_agent_ops SET status = 'failed', claimed_until = NULL, last_error = $3, \
+                 updated_at = now() WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(id)
+        .bind(error.chars().take(500).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Take one agent out of service and queue its machine's destruction. See
+    /// [`begin_cloud_teardown_in`]. Returns `false` when the agent has no row.
+    pub async fn begin_cloud_teardown(
+        &self,
+        owner: &[u8],
+        community: CommunityId,
+        agent: &[u8],
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let affected = begin_cloud_teardown_in(&mut tx, owner, Some((community, agent))).await?;
+        tx.commit().await?;
+        Ok(affected > 0)
+    }
+
+    /// Forget a machine the host no longer has, so the next wake creates a new
+    /// one. Guarded by the machine id: a machine recorded after the check is
+    /// never forgotten by mistake. Returns `false` when nothing matched.
+    pub async fn clear_cloud_machine(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        machine_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE cloud_agents SET fly_machine_id = NULL, fly_volume_id = NULL, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND fly_machine_id = $3",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(machine_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Journal counts for the daily report: `(machines created, wakes, failed
+    /// operations)` over the last `hours`.
+    pub async fn cloud_op_counts_since(&self, hours: i64) -> Result<(i64, i64, i64)> {
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT \
+                 count(*) FILTER (WHERE op = 'ensure' AND status = 'done'), \
+                 count(*) FILTER (WHERE op = 'start' AND status = 'done'), \
+                 count(*) FILTER (WHERE status = 'failed') \
+             FROM cloud_agent_ops \
+             WHERE updated_at >= now() - make_interval(hours => $1::int)",
+        )
+        .bind(hours)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Cloud-placed agents a stored message might wake: the ones it names in a
+    /// `p` tag, and the ones that belong to the direct-message channel it was
+    /// posted in. `author` (the agent that wrote it, if any) is never a
+    /// candidate, so an agent's own reply does not wake it again.
+    pub async fn cloud_wake_candidates(
+        &self,
+        community: CommunityId,
+        dm_channel: Option<Uuid>,
+        mentioned: &[Vec<u8>],
+        author: &[u8],
+    ) -> Result<Vec<WakeCandidate>> {
+        let rows = sqlx::query(
+            "SELECT c.agent_pubkey, c.generation, c.status, c.fly_machine_id IS NOT NULL AS has_machine, \
+                    c.last_wake_at \
+             FROM cloud_agents c \
+             WHERE c.community_id = $1 AND c.home = 'cloud' AND c.agent_pubkey <> $4 AND ( \
+                 c.agent_pubkey = ANY($3) \
+                 OR ($2::uuid IS NOT NULL AND EXISTS ( \
+                     SELECT 1 FROM channels ch \
+                     JOIN channel_members m ON m.community_id = ch.community_id AND m.channel_id = ch.id \
+                     WHERE ch.community_id = c.community_id AND ch.id = $2 \
+                       AND ch.channel_type = 'dm' AND ch.deleted_at IS NULL \
+                       AND m.pubkey = c.agent_pubkey AND m.removed_at IS NULL)))",
+        )
+        .bind(community.as_uuid())
+        .bind(dm_channel)
+        .bind(mentioned)
+        .bind(author)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let status: Option<String> = row.try_get("status")?;
+                Ok(WakeCandidate {
+                    agent_pubkey: row.try_get("agent_pubkey")?,
+                    generation: row.try_get("generation")?,
+                    status: status.as_deref().map(parse_status).transpose()?,
+                    has_machine: row.try_get("has_machine")?,
+                    last_wake_at: row.try_get("last_wake_at")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Begin a wake: in one transaction the agent becomes `waking` and the
+    /// operations that start it are journaled (`ensure` when it has no machine
+    /// yet, then `start`), all for its current generation. Returns `false` when
+    /// nothing was started: the agent moved since `generation`, or a wake is
+    /// already in flight (`waking` with a wake request newer than
+    /// `debounce_secs`). A new wake clears a failure and its error.
+    pub async fn begin_cloud_wake(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        debounce_secs: i64,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let row: Option<(bool,)> = sqlx::query_as(
+            "UPDATE cloud_agents SET status = 'waking', last_wake_at = now(), wake_attempts = 0, \
+                 last_error = NULL, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND generation = $3 AND home = 'cloud' \
+               AND NOT (status = 'waking' AND last_wake_at > now() - make_interval(secs => $4::double precision)) \
+             RETURNING fly_machine_id IS NOT NULL",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(debounce_secs)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((has_machine,)) = row else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        if !has_machine {
+            insert_op(&mut tx, community, agent, CloudOp::Ensure, generation).await?;
+        }
+        insert_op(&mut tx, community, agent, CloudOp::Start, generation).await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    /// Every agent that has a machine on the host.
+    pub async fn list_cloud_machine_rows(&self) -> Result<Vec<MachineRow>> {
+        let rows = sqlx::query(
+            "SELECT community_id, agent_pubkey, fly_machine_id, fly_volume_id, home, generation, \
+                    status, updated_at \
+             FROM cloud_agents WHERE fly_machine_id IS NOT NULL AND fly_volume_id IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let status: Option<String> = row.try_get("status")?;
+                Ok(MachineRow {
+                    community: CommunityId::from_uuid(row.try_get("community_id")?),
+                    agent_pubkey: row.try_get("agent_pubkey")?,
+                    machine_id: row.try_get("fly_machine_id")?,
+                    volume_id: row.try_get("fly_volume_id")?,
+                    home: parse_home(&row.try_get::<String, _>("home")?)?,
+                    generation: row.try_get("generation")?,
+                    status: status.as_deref().map(parse_status).transpose()?,
+                    updated_at: row.try_get("updated_at")?,
                 })
             })
             .collect()
@@ -571,6 +874,90 @@ impl Db {
         tx.commit().await?;
         Ok(deleted.rows_affected() == 1)
     }
+}
+
+/// One agent that has a machine on the host, as reconcile reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineRow {
+    /// Community the agent belongs to.
+    pub community: CommunityId,
+    /// Agent pubkey, 32 bytes.
+    pub agent_pubkey: Vec<u8>,
+    /// Host machine id.
+    pub machine_id: String,
+    /// Host volume id.
+    pub volume_id: String,
+    /// Current home.
+    pub home: Home,
+    /// Current placement generation.
+    pub generation: i64,
+    /// Cloud machine state; `None` when `home` is `mac`.
+    pub status: Option<PlacementStatus>,
+    /// Last change time.
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Take an agent out of service and queue the destruction of its machine, on an
+/// existing transaction: the agent is moved to the Mac at a new generation
+/// (so the home fence refuses the machine and the doorbell never wakes it),
+/// its tokens and AI sessions are voided, and a `destroy` is journaled. The
+/// sealed key stays until the host confirms the machine is gone. Returns the
+/// number of agents affected. `agent` narrows it to one agent of the owner.
+pub async fn begin_cloud_teardown_in(
+    conn: &mut sqlx::PgConnection,
+    owner: &[u8],
+    agent: Option<(CommunityId, &[u8])>,
+) -> Result<u64> {
+    let (community, agent_key) = match agent {
+        Some((community, key)) => (Some(*community.as_uuid()), Some(key.to_vec())),
+        None => (None, None),
+    };
+    sqlx::query(
+        "UPDATE account_ai_sessions s SET revoked = true FROM cloud_agents c \
+         WHERE c.owner_pubkey = $1 AND s.community_id = c.community_id \
+           AND s.agent_pubkey = c.agent_pubkey AND NOT s.revoked \
+           AND ($2::uuid IS NULL OR (c.community_id = $2 AND c.agent_pubkey = $3))",
+    )
+    .bind(owner)
+    .bind(community)
+    .bind(&agent_key)
+    .execute(&mut *conn)
+    .await?;
+    let result = sqlx::query(
+        "WITH gone AS ( \
+             UPDATE cloud_agents SET home = 'mac', generation = generation + 1, status = NULL, \
+                 home_token_hash = NULL, boot_token_hash = NULL, boot_token_expires_at = NULL, \
+                 wake_attempts = 0, updated_at = now() \
+             WHERE owner_pubkey = $1 \
+               AND ($2::uuid IS NULL OR (community_id = $2 AND agent_pubkey = $3)) \
+             RETURNING community_id, agent_pubkey, generation \
+         ) \
+         INSERT INTO cloud_agent_ops (community_id, agent_pubkey, op, generation) \
+         SELECT community_id, agent_pubkey, 'destroy', generation FROM gone \
+         ON CONFLICT (community_id, agent_pubkey, op, generation) WHERE status = 'pending' \
+         DO NOTHING",
+    )
+    .bind(owner)
+    .bind(community)
+    .bind(&agent_key)
+    .execute(&mut *conn)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// A cloud-placed agent a message might need to wake.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WakeCandidate {
+    /// Agent pubkey, 32 bytes.
+    pub agent_pubkey: Vec<u8>,
+    /// Current placement generation.
+    pub generation: i64,
+    /// Cloud machine state.
+    pub status: Option<PlacementStatus>,
+    /// Whether the agent already has a machine on the host.
+    pub has_machine: bool,
+    /// Time of the last wake request.
+    pub last_wake_at: Option<DateTime<Utc>>,
 }
 
 /// Load one cloud agent on an existing connection or transaction. With
@@ -1125,7 +1512,7 @@ mod postgres_tests {
             None
         );
         let first: Vec<_> = db
-            .claim_due_cloud_ops(10_000)
+            .claim_due_cloud_ops_for(Some(community), 10_000)
             .await
             .unwrap()
             .into_iter()
@@ -1136,7 +1523,7 @@ mod postgres_tests {
         assert_eq!(first[0].attempt, 1);
         // The lease hides it from a second worker, and `start` waits for `ensure`.
         let second: Vec<_> = db
-            .claim_due_cloud_ops(10_000)
+            .claim_due_cloud_ops_for(Some(community), 10_000)
             .await
             .unwrap()
             .into_iter()

@@ -4,6 +4,7 @@
 //! - `GET  /api/cloud-agents/capabilities`  what this account may do (NIP-98, owner)
 //! - `PUT  /api/cloud-agents/{agent}/bundle` the agent's key and runnable config (NIP-98, owner)
 //! - `POST /api/cloud-agents/boot`           a machine trades its boot token for its environment
+//! - `DELETE /api/cloud-agents/{agent}`      the owner removes the agent's cloud copy (NIP-98, owner)
 //!
 //! The bundle body holds the agent's secret key. It is never logged, the key is
 //! sealed with the deployment key before it is stored, and it is cleared from
@@ -15,7 +16,7 @@ use axum::{
     body::Bytes,
     extract::{Path, State},
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use buzz_core::agent_placement::{validate_config_snapshot, CloudConfigSnapshot};
@@ -44,6 +45,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let small = Router::new()
         .route("/capabilities", get(capabilities))
         .route("/boot", post(boot_machine))
+        .route("/{agent}", delete(remove_agent))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(
             SMALL_BODY_LIMIT,
         ));
@@ -256,6 +258,46 @@ async fn put_bundle(
             );
             unavailable()
         })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The owner removes an agent's cloud copy: the machine is destroyed and the
+/// sealed key deleted once the host confirms. Another account's agent, and an
+/// agent that never had a cloud copy, are both `404`.
+async fn remove_agent(
+    State(state): State<Arc<AppState>>,
+    Path(agent): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let path = format!("/api/cloud-agents/{agent}");
+    let (tenant, owner) = authenticate_member(&state, &headers, "DELETE", &path, None).await?;
+    let not_found = || api_error(StatusCode::NOT_FOUND, "No cloud copy of this agent.");
+    let agent_pubkey = nostr::PublicKey::from_hex(&agent)
+        .ok()
+        .filter(|key| key.to_hex() == agent)
+        .ok_or_else(not_found)?;
+    let removed = state
+        .db
+        .begin_cloud_teardown(
+            owner.as_bytes(),
+            tenant.community(),
+            agent_pubkey.as_bytes(),
+        )
+        .await
+        .map_err(database_error)?;
+    if !removed {
+        return Err(not_found());
+    }
+    // The agent is on the Mac now: tell every device. The journal destroys the
+    // machine whether or not this succeeds.
+    crate::cloud_agents::refresh_head_for(&state, tenant.community(), agent_pubkey.as_bytes())
+        .await;
+    crate::cloud_agents::disconnect_agent_connections(
+        &state,
+        &tenant,
+        agent_pubkey.as_bytes(),
+        &"0".repeat(64),
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -821,5 +863,47 @@ mod postgres_tests {
                 .is_err(),
             "a Mac-placed agent gets no boot token"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn delete_removes_the_cloud_copy_for_its_owner_only() {
+        let fixture = fixture(config(CloudMode::On)).await;
+        let path = bundle_path(&fixture);
+        let (status, _) = call(
+            &fixture,
+            &fixture.owner,
+            "PUT",
+            &path,
+            Some(bundle(&agent_nsec(&fixture.agent), 1, &[])),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let agent_path = format!("/api/cloud-agents/{}", fixture.agent.public_key().to_hex());
+
+        let stranger = Keys::generate();
+        let (status, _) = call(&fixture, &stranger, "DELETE", &agent_path, None).await;
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "another account cannot see it"
+        );
+        assert_eq!(stored_rows(&fixture).await, 1);
+
+        let (status, _) = call(&fixture, &fixture.owner, "DELETE", &agent_path, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let pending: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM cloud_agent_ops WHERE community_id = $1 AND op = 'destroy' AND status = 'pending'",
+        )
+        .bind(fixture.community.as_uuid())
+        .fetch_one(&fixture.pool)
+        .await
+        .expect("count destroy ops");
+        assert_eq!(
+            pending, 1,
+            "the journal will destroy the machine and then the key"
+        );
+        let (status, _) = call(&fixture, &fixture.owner, "DELETE", &agent_path, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "removing twice is harmless");
     }
 }

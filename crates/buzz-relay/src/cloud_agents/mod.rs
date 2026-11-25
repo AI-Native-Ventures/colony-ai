@@ -7,7 +7,17 @@
 
 pub mod boot;
 pub mod config;
+pub mod doorbell;
+#[cfg(any(test, feature = "test-fakes"))]
+pub mod fake_host;
 pub mod fence;
+pub mod fly;
+pub mod host;
+pub mod ops;
+pub mod presence;
+pub mod reconcile;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 use std::sync::Arc;
 
@@ -61,6 +71,32 @@ pub fn placement_head(row: &CloudAgentRow, default_model: Option<&str>, now: i64
             .or_else(|| default_model.map(str::to_owned)),
         status: row.status,
         updated_at: now,
+    }
+}
+
+/// Re-publishes an agent's placement head from its stored row. Logs and
+/// returns `false` on failure so a background caller can keep its own retry
+/// record instead of treating the head as current.
+pub(crate) async fn refresh_head_for(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    agent_pubkey: &[u8],
+) -> bool {
+    let host = match state.db.lookup_community_host(community).await {
+        Ok(Some(host)) => host,
+        Ok(None) => return true, // community is gone, nothing to publish to
+        Err(error) => {
+            tracing::warn!(%error, "placement head not refreshed: community lookup failed");
+            return false;
+        }
+    };
+    let tenant = buzz_core::tenant::TenantContext::resolved(community, host);
+    match crate::handlers::agent_placement::refresh_head(state, &tenant, agent_pubkey).await {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(?error, "placement head not refreshed");
+            false
+        }
     }
 }
 

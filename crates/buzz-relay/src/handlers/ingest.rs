@@ -524,6 +524,9 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         // storage/fanout; reports are signals, never enforcement triggers.
         KIND_REPORT | KIND_PRODUCT_FEEDBACK => Ok(Scope::MessagesWrite),
         k if buzz_core::kind::is_business_record_kind(k) => Ok(Scope::MessagesWrite),
+        // Agent placement: the owner's command is a member write (the broker checks that
+        // the signer owns the agent); the head is relay-only and refused before this point.
+        buzz_core::kind::KIND_AGENT_PLACEMENT_ACTION | buzz_core::kind::KIND_AGENT_PLACEMENT_HEAD => Ok(Scope::MessagesWrite),
         // Company records (goals and asks): member commands; the broker owns authority.
         k if buzz_core::kind::COMPANY_RECORD_KINDS.contains(&k) => Ok(Scope::MessagesWrite),
         // WhatsApp outreach commands: the handler owns role and Outreach membership checks.
@@ -4029,6 +4032,23 @@ mod postgres_tests {
                 !requires_h_channel_scope(kind),
                 "kind {kind} must not require an h tag"
             );
+        }
+    }
+
+    #[test]
+    fn agent_placement_kinds_are_global_only_message_writes() {
+        let event = make_dummy_event();
+        for kind in [
+            buzz_core::kind::KIND_AGENT_PLACEMENT_ACTION,
+            buzz_core::kind::KIND_AGENT_PLACEMENT_HEAD,
+        ] {
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "kind {kind} must be accepted as a message write"
+            );
+            assert!(is_global_only_kind(kind), "kind {kind} must be global-only");
+            assert!(!requires_h_channel_scope(kind));
         }
     }
 
