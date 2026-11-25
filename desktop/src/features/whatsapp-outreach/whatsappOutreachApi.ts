@@ -98,6 +98,8 @@ declare global {
     __BUZZ_E2E_WHATSAPP__?: (
       request: WhatsAppApiTestRequest,
     ) => Promise<unknown>;
+    /** Test build only. Makes a mock exercise the production HTTP scheduler. */
+    __BUZZ_E2E_PACE_RELAY_HTTP__?: boolean;
   }
 }
 
@@ -185,6 +187,15 @@ function testHook(
   return dependencies.testHook ?? testHookFromWindow();
 }
 
+function shouldPaceWindowTestHook(dependencies: ApiDependencies): boolean {
+  return (
+    dependencies.testHook === undefined &&
+    import.meta.env?.MODE === "e2e" &&
+    typeof window !== "undefined" &&
+    window.__BUZZ_E2E_PACE_RELAY_HTTP__ === true
+  );
+}
+
 /** One authenticated JSON POST. The request body is never persisted or logged. */
 export async function postWhatsAppJson<T>(
   relayUrl: string,
@@ -194,9 +205,10 @@ export async function postWhatsAppJson<T>(
 ): Promise<T> {
   const hook = testHook(dependencies);
   if (hook) {
-    // Injected hooks are unit-test transport seams. The E2E window hook takes
-    // the production route below so browser proofs include real pacing.
-    const useSharedBudget = dependencies.testHook === undefined;
+    // Ordinary E2E mocks are zero-latency transport stubs. The dedicated
+    // rate-limit proof opts in to the shared gate so it exercises the same
+    // scheduling and 429 recovery seams as production.
+    const useSharedBudget = shouldPaceWindowTestHook(dependencies);
     if (useSharedBudget) await acquireRelayHttpRequest();
     try {
       return (await hook({ action: "post", path, body })) as T;

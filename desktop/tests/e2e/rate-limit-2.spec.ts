@@ -46,6 +46,7 @@ type RateLimitMockState = {
 
 type RateLimitWindow = Window & {
   __RATE_LIMIT_2_MOCK__?: RateLimitMockState;
+  __BUZZ_E2E_PACE_RELAY_HTTP__?: boolean;
   __BUZZ_E2E_WHATSAPP__?: (request: {
     action: "command" | "post";
     body?: Record<string, unknown>;
@@ -189,6 +190,7 @@ async function installRateLimitMap(
         startedAt: Date.now(),
       };
       rateLimitWindow.__RATE_LIMIT_2_MOCK__ = state;
+      rateLimitWindow.__BUZZ_E2E_PACE_RELAY_HTTP__ = true;
       rateLimitWindow.__BUZZ_E2E_WHATSAPP__ = async (request) => {
         if (request.action !== "post") return {};
         const body = request.body ?? {};
