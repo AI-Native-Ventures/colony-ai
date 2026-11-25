@@ -15,6 +15,8 @@ import {
 } from "./cofounder-map-fixtures";
 
 const ONE_MINUTE_MS = 60_000;
+const RELAY_HTTP_BUDGET_PER_MINUTE = 240;
+const RELAY_HTTP_BURST_ALLOWANCE = 30;
 const MAP_VIEWPORT = { height: 900, width: 1440 };
 const PROOF_VIEWPORTS = [
   { height: 900, label: "1440x900", width: 1440 },
@@ -46,7 +48,6 @@ type RateLimitMockState = {
 
 type RateLimitWindow = Window & {
   __RATE_LIMIT_2_MOCK__?: RateLimitMockState;
-  __BUZZ_E2E_PACE_RELAY_HTTP__?: boolean;
   __BUZZ_E2E_WHATSAPP__?: (request: {
     action: "command" | "post";
     body?: Record<string, unknown>;
@@ -132,7 +133,10 @@ async function installRateLimitMap(
       referenceWorkspaceOutreachSidebar: true,
       visualChannels: [{ id: MAP_CHANNEL_ID, name: "Outreach" }],
     },
-    { previewFeatureOverrides: { map_home: true } },
+    {
+      forceRelayPacing: true,
+      previewFeatureOverrides: { map_home: true },
+    },
   );
   await seedCompanyMapBusiness(page);
   await seedCompanyMapMoneyRails(page);
@@ -190,7 +194,6 @@ async function installRateLimitMap(
         startedAt: Date.now(),
       };
       rateLimitWindow.__RATE_LIMIT_2_MOCK__ = state;
-      rateLimitWindow.__BUZZ_E2E_PACE_RELAY_HTTP__ = true;
       rateLimitWindow.__BUZZ_E2E_WHATSAPP__ = async (request) => {
         if (request.action !== "post") return {};
         const body = request.body ?? {};
@@ -457,7 +460,7 @@ test.describe("rate-limit regression", () => {
     ).toBeVisible();
   });
 
-  test("map Outreach HTTP callers remain below the per-minute screen targets", async ({
+  test("map Outreach HTTP callers stay within screen targets and bounded bursts", async ({
     page,
   }) => {
     test.setTimeout(120_000);
@@ -503,8 +506,23 @@ test.describe("rate-limit regression", () => {
       ).toBeLessThan(scenario.targetPerMinute);
       expect(
         Math.max(0, ...perMillisecond.values()),
-        `${scenario.name} started more than one HTTP call in the same millisecond`,
-      ).toBeLessThanOrEqual(1);
+        `${scenario.name} exceeded the ${RELAY_HTTP_BURST_ALLOWANCE}-request HTTP burst allowance`,
+      ).toBeLessThanOrEqual(RELAY_HTTP_BURST_ALLOWANCE);
+
+      const startedAt = calls
+        .map((call) => call.at)
+        .sort((left, right) => left - right);
+      for (
+        let requestIndex = RELAY_HTTP_BUDGET_PER_MINUTE;
+        requestIndex < startedAt.length;
+        requestIndex += 1
+      ) {
+        expect(
+          startedAt[requestIndex] -
+            startedAt[requestIndex - RELAY_HTTP_BUDGET_PER_MINUTE],
+          `${scenario.name} exceeded ${RELAY_HTTP_BUDGET_PER_MINUTE} HTTP starts in a rolling minute`,
+        ).toBeGreaterThanOrEqual(ONE_MINUTE_MS);
+      }
     }
   });
 });

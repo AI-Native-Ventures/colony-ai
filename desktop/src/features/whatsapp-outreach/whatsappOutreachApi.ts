@@ -4,6 +4,7 @@ import {
   acquireRelayHttpRequest,
   fetchRelayHttp,
   relayHttpRateLimitError,
+  shouldPaceRelayHttpRequests,
 } from "@/shared/api/relayHttpRequestGate";
 import { signRelayEvent } from "@/shared/api/tauri";
 import {
@@ -98,8 +99,6 @@ declare global {
     __BUZZ_E2E_WHATSAPP__?: (
       request: WhatsAppApiTestRequest,
     ) => Promise<unknown>;
-    /** Test build only. Makes a mock exercise the production HTTP scheduler. */
-    __BUZZ_E2E_PACE_RELAY_HTTP__?: boolean;
   }
 }
 
@@ -188,12 +187,7 @@ function testHook(
 }
 
 function shouldPaceWindowTestHook(dependencies: ApiDependencies): boolean {
-  return (
-    dependencies.testHook === undefined &&
-    import.meta.env?.MODE === "e2e" &&
-    typeof window !== "undefined" &&
-    window.__BUZZ_E2E_PACE_RELAY_HTTP__ === true
-  );
+  return dependencies.testHook === undefined && shouldPaceRelayHttpRequests();
 }
 
 /** One authenticated JSON POST. The request body is never persisted or logged. */

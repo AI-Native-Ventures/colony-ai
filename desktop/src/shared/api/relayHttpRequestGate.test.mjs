@@ -43,11 +43,15 @@ const {
 
 const originalDateNow = Date.now;
 
-function newGate({ budget = 240, interval = 250, windowMs = 60_000 } = {}) {
+function newGate({
+  budget = 240,
+  burstAllowance = 30,
+  windowMs = 60_000,
+} = {}) {
   return new RelayHttpRequestGate({
     budget,
+    burstAllowance,
     maxQueue: 300,
-    requestIntervalMs: interval,
     scheduler: {
       clearTimeout: clearFakeTimeout,
       now: () => fakeNow,
@@ -69,32 +73,67 @@ test.after(() => {
   Date.now = originalDateNow;
 });
 
-test("HTTP gate spaces starts and never exceeds its fixed-window budget", async () => {
-  reset({ budget: 3, interval: 1, windowMs: 10 });
+test("HTTP gate admits a bounded burst and never exceeds its rolling budget", async () => {
+  reset({ budget: 6, burstAllowance: 3, windowMs: 60 });
   const started = [];
   const fetcher = async () => {
     started.push(fakeNow);
     return new Response(null, { status: 204 });
   };
 
-  const requests = Array.from({ length: 4 }, () =>
+  const requests = Array.from({ length: 7 }, () =>
     fetchRelayHttp("https://relay.test/query", { method: "POST" }, fetcher),
   );
 
   await Promise.resolve();
-  assert.deepEqual(started, [0]);
-  tickTo(1);
-  await Promise.resolve();
-  tickTo(2);
-  await Promise.resolve();
-  assert.deepEqual(started, [0, 1, 2]);
-
-  tickTo(9);
-  await Promise.resolve();
-  assert.deepEqual(started, [0, 1, 2]);
+  assert.deepEqual(started, [0, 0, 0]);
   tickTo(10);
+  await Promise.resolve();
+  assert.deepEqual(started, [0, 0, 0, 10]);
+  tickTo(20);
+  await Promise.resolve();
+  assert.deepEqual(started, [0, 0, 0, 10, 20]);
+  tickTo(30);
+  await Promise.resolve();
+  assert.deepEqual(started, [0, 0, 0, 10, 20, 30]);
+
+  tickTo(59);
+  await Promise.resolve();
+  assert.deepEqual(started, [0, 0, 0, 10, 20, 30]);
+  tickTo(60);
   await Promise.all(requests);
-  assert.deepEqual(started, [0, 1, 2, 10]);
+  assert.deepEqual(started, [0, 0, 0, 10, 20, 30, 60]);
+});
+
+test("synthetic E2E transport bypasses the HTTP gate unless the bridge opts in", async () => {
+  reset({ budget: 1, burstAllowance: 1, windowMs: 100 });
+  window.__BUZZ_E2E_USES_REAL_RELAY__ = false;
+  window.__BUZZ_E2E_FORCE_RELAY_PACING__ = false;
+  const started = [];
+  const fetcher = async () => {
+    started.push(fakeNow);
+    return new Response(null, { status: 204 });
+  };
+
+  await Promise.all(
+    Array.from({ length: 3 }, () =>
+      fetchRelayHttp("https://relay.test/query", { method: "POST" }, fetcher),
+    ),
+  );
+  assert.deepEqual(started, [0, 0, 0]);
+
+  window.__BUZZ_E2E_FORCE_RELAY_PACING__ = true;
+  const paced = Array.from({ length: 2 }, () =>
+    fetchRelayHttp("https://relay.test/query", { method: "POST" }, fetcher),
+  );
+  await Promise.resolve();
+  assert.deepEqual(started, [0, 0, 0, 0]);
+  tickTo(100);
+  await Promise.all(paced);
+  assert.deepEqual(started, [0, 0, 0, 0, 100]);
+
+  delete window.__BUZZ_E2E_USES_REAL_RELAY__;
+  delete window.__BUZZ_E2E_FORCE_RELAY_PACING__;
 });
 
 test("HTTP gate holds queued calls through a 429 retry window and then releases them", async () => {

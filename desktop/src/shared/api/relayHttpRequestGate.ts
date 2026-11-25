@@ -9,9 +9,7 @@
 
 export const RELAY_HTTP_REQUEST_BUDGET = 240;
 export const RELAY_HTTP_BUDGET_WINDOW_MS = 60_000;
-export const RELAY_HTTP_REQUEST_INTERVAL_MS = Math.ceil(
-  RELAY_HTTP_BUDGET_WINDOW_MS / RELAY_HTTP_REQUEST_BUDGET,
-);
+export const RELAY_HTTP_REQUEST_BURST_ALLOWANCE = 30;
 export const MAX_RELAY_HTTP_QUEUE = RELAY_HTTP_REQUEST_BUDGET;
 export const MAX_RELAY_HTTP_RETRY_SECONDS = 300;
 
@@ -32,8 +30,8 @@ type QueuedRequest = Readonly<{
 
 type GateOptions = Readonly<{
   budget?: number;
+  burstAllowance?: number;
   maxQueue?: number;
-  requestIntervalMs?: number;
   scheduler?: Scheduler;
   windowMs?: number;
 }>;
@@ -98,35 +96,39 @@ export function parseRetryAfter(
 }
 
 /**
- * A bounded, FIFO request queue. Starts are spaced at the configured budget
- * rate and never exceed its fixed local window. A server backoff supersedes
- * local scheduling until the final retry window expires.
+ * A bounded, FIFO request queue. It admits a small startup burst, then
+ * replenishes admission credit at the configured budget rate. A timestamped
+ * rolling window is the final ceiling, so a burst never increases the total
+ * number of starts permitted in any local budget window. A server backoff
+ * supersedes local scheduling until the final retry window expires.
  */
 export class RelayHttpRequestGate {
   private readonly budget: number;
+  private readonly burstAllowance: number;
   private readonly maxQueue: number;
-  private readonly requestIntervalMs: number;
   private readonly scheduler: Scheduler;
   private readonly windowMs: number;
   private readonly waiters: QueuedRequest[] = [];
   private readonly changeListeners = new Set<() => void>();
   private readonly recoveryListeners = new Set<() => void>();
-  private windowStartedAt: number;
-  private requestsInWindow = 0;
-  private nextRequestAt: number;
+  private readonly requestStartedAt: number[] = [];
+  private availableCredit: number;
+  private creditUpdatedAt: number;
   private retryUntil = 0;
   private timer: TimerId | null = null;
 
   constructor(options: GateOptions = {}) {
     this.budget = options.budget ?? RELAY_HTTP_REQUEST_BUDGET;
+    this.burstAllowance = Math.min(
+      options.burstAllowance ?? RELAY_HTTP_REQUEST_BURST_ALLOWANCE,
+      this.budget,
+    );
     this.maxQueue = options.maxQueue ?? MAX_RELAY_HTTP_QUEUE;
-    this.requestIntervalMs =
-      options.requestIntervalMs ?? RELAY_HTTP_REQUEST_INTERVAL_MS;
     this.scheduler = options.scheduler ?? browserScheduler();
     this.windowMs = options.windowMs ?? RELAY_HTTP_BUDGET_WINDOW_MS;
     const now = this.scheduler.now();
-    this.windowStartedAt = now;
-    this.nextRequestAt = now;
+    this.availableCredit = this.burstAllowance;
+    this.creditUpdatedAt = now;
   }
 
   acquire(): Promise<void> {
@@ -181,17 +183,27 @@ export class RelayHttpRequestGate {
     const error = new RelayHttpRequestSupersededError();
     for (const waiter of this.waiters.splice(0)) waiter.reject(error);
     const now = this.scheduler.now();
-    this.windowStartedAt = now;
-    this.requestsInWindow = 0;
-    this.nextRequestAt = now;
+    this.requestStartedAt.splice(0);
+    this.availableCredit = this.burstAllowance;
+    this.creditUpdatedAt = now;
     this.retryUntil = 0;
     this.notifyChanged();
   }
 
-  private refreshWindow(now: number): void {
-    if (now < this.windowStartedAt + this.windowMs) return;
-    this.windowStartedAt = now;
-    this.requestsInWindow = 0;
+  private refreshAdmissionState(now: number): void {
+    const windowStart = now - this.windowMs;
+    while (this.requestStartedAt[0] !== undefined) {
+      if ((this.requestStartedAt[0] ?? now) > windowStart) break;
+      this.requestStartedAt.shift();
+    }
+
+    const elapsedMs = Math.max(0, now - this.creditUpdatedAt);
+    if (elapsedMs === 0) return;
+    this.availableCredit = Math.min(
+      this.burstAllowance,
+      this.availableCredit + (elapsedMs * this.budget) / this.windowMs,
+    );
+    this.creditUpdatedAt = now;
   }
 
   private finishRetryWindowIfReady(): void {
@@ -204,12 +216,17 @@ export class RelayHttpRequestGate {
   }
 
   private nextAllowedAt(now: number): number {
-    this.refreshWindow(now);
+    this.refreshAdmissionState(now);
     const budgetAt =
-      this.requestsInWindow >= this.budget
-        ? this.windowStartedAt + this.windowMs
+      this.requestStartedAt.length >= this.budget
+        ? (this.requestStartedAt[0] ?? now) + this.windowMs
         : now;
-    return Math.max(this.retryUntil, this.nextRequestAt, budgetAt);
+    const creditAt =
+      this.availableCredit >= 1
+        ? now
+        : now +
+          Math.ceil(((1 - this.availableCredit) * this.windowMs) / this.budget);
+    return Math.max(this.retryUntil, creditAt, budgetAt);
   }
 
   private schedule(delayMs: number): void {
@@ -228,23 +245,24 @@ export class RelayHttpRequestGate {
   private drain(): void {
     this.finishRetryWindowIfReady();
     const now = this.scheduler.now();
-    const allowedAt = this.nextAllowedAt(now);
 
     if (this.waiters.length === 0) {
       if (this.retryUntil > now) this.schedule(this.retryUntil - now);
       return;
     }
-    if (allowedAt > now) {
-      this.schedule(allowedAt - now);
-      return;
-    }
 
-    const waiter = this.waiters.shift();
-    if (!waiter) return;
-    this.requestsInWindow += 1;
-    this.nextRequestAt = now + this.requestIntervalMs;
-    waiter.resolve();
-    if (this.waiters.length > 0) this.schedule(this.requestIntervalMs);
+    while (this.waiters.length > 0) {
+      const allowedAt = this.nextAllowedAt(now);
+      if (allowedAt > now) {
+        this.schedule(allowedAt - now);
+        return;
+      }
+      const waiter = this.waiters.shift();
+      if (!waiter) return;
+      this.availableCredit -= 1;
+      this.requestStartedAt.push(now);
+      waiter.resolve();
+    }
   }
 
   private notifyChanged(): void {
@@ -254,7 +272,22 @@ export class RelayHttpRequestGate {
 
 let activeGate = new RelayHttpRequestGate();
 
+/**
+ * Synthetic browser tests use an in-memory relay and must not accumulate
+ * production pacing delays while they exercise unrelated routes. Dedicated
+ * pacing tests opt in through the existing bridge flag; real relays always
+ * remain gated.
+ */
+export function shouldPaceRelayHttpRequests(): boolean {
+  return !(
+    typeof window !== "undefined" &&
+    window.__BUZZ_E2E_USES_REAL_RELAY__ === false &&
+    window.__BUZZ_E2E_FORCE_RELAY_PACING__ !== true
+  );
+}
+
 export function acquireRelayHttpRequest(): Promise<void> {
+  if (!shouldPaceRelayHttpRequests()) return Promise.resolve();
   return activeGate.acquire();
 }
 
@@ -283,7 +316,7 @@ export function noteRelayHttpRateLimit(
   response: Pick<Response, "headers" | "status">,
   message = "",
 ): boolean {
-  if (response.status !== 429) return false;
+  if (response.status !== 429 || !shouldPaceRelayHttpRequests()) return false;
   const hint = parseRelayHttpRetryHint(message);
   const retryAfter = parseRetryAfter(response.headers.get("Retry-After"));
   activeGate.rateLimited(
