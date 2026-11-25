@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { useCommunities } from "@/features/communities/useCommunities";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 import {
   loadWhatsAppBatch,
   loadWhatsAppBatches,
@@ -20,10 +21,29 @@ import {
 } from "./whatsappOutreachApi";
 
 const ROOT_QUERY_KEY = ["whatsapp-outreach"] as const;
-const STATUS_REFETCH_MS = 15_000;
-const THREAD_REFETCH_MS = 8_000;
+/** Active Outreach reads refresh once per minute. Hidden windows do not poll. */
+const OUTREACH_REFETCH_MS = 60_000;
+const THREAD_REFETCH_MS = 30_000;
 /** Counting reads the whole contact list on the relay, so it polls far less than the list. */
-const STAGE_COUNTS_REFETCH_MS = 60_000;
+const STAGE_COUNTS_REFETCH_MS = 120_000;
+
+/** A 429 is retried once by the shared gate after its server window clears. */
+export function retryWhatsAppQuery(failureCount: number, error: unknown) {
+  return !isRelayHttpRateLimitError(error) && failureCount < 1;
+}
+
+const PASSIVE_OUTREACH_QUERY = {
+  refetchIntervalInBackground: false,
+  refetchOnWindowFocus: false,
+  retry: retryWhatsAppQuery,
+} as const;
+
+/** Only a visible Outreach surface asks the relay for a periodic refresh. */
+function outreachPolling(poll = false, interval = OUTREACH_REFETCH_MS) {
+  return poll
+    ? { ...PASSIVE_OUTREACH_QUERY, refetchInterval: interval }
+    : PASSIVE_OUTREACH_QUERY;
+}
 
 export const whatsappOutreachQueryKeys = {
   all: ROOT_QUERY_KEY,
@@ -54,7 +74,7 @@ export function useWhatsAppRelayUrl(): string | null {
   return activeCommunity?.relayUrl ?? null;
 }
 
-export function useWhatsAppStatusQuery(enabled = true) {
+export function useWhatsAppStatusQuery(enabled = true, poll = false) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -63,10 +83,8 @@ export function useWhatsAppStatusQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppStatus(relayUrl);
     },
-    staleTime: 5_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
@@ -80,11 +98,11 @@ export function useWhatsAppTemplatesQuery(enabled = true) {
       return loadWhatsAppTemplates(relayUrl);
     },
     staleTime: 30_000,
-    retry: 1,
+    ...PASSIVE_OUTREACH_QUERY,
   });
 }
 
-export function useWhatsAppContactsQuery(enabled = true) {
+export function useWhatsAppContactsQuery(enabled = true, poll = false) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -93,15 +111,13 @@ export function useWhatsAppContactsQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppContacts(relayUrl);
     },
-    staleTime: 5_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
 /** True stage counts over every contact. Data is `null` on a relay that cannot count. */
-export function useWhatsAppStageCountsQuery(enabled = true) {
+export function useWhatsAppStageCountsQuery(enabled = true, poll = false) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -110,14 +126,16 @@ export function useWhatsAppStageCountsQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppStageCounts(relayUrl);
     },
-    staleTime: 15_000,
-    refetchInterval: STAGE_COUNTS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 60_000,
+    ...outreachPolling(poll, STAGE_COUNTS_REFETCH_MS),
   });
 }
 
-export function useWhatsAppBatchesQuery(state?: string, enabled = true) {
+export function useWhatsAppBatchesQuery(
+  state?: string,
+  enabled = true,
+  poll = false,
+) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -126,14 +144,15 @@ export function useWhatsAppBatchesQuery(state?: string, enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppBatches(relayUrl, state);
     },
-    staleTime: 5_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
-export function useWhatsAppPendingBatchDetailsQuery(enabled = true) {
+export function useWhatsAppPendingBatchDetailsQuery(
+  enabled = true,
+  poll = false,
+) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -145,14 +164,15 @@ export function useWhatsAppPendingBatchDetailsQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppPendingBatchDetails(relayUrl);
     },
-    staleTime: 10_000,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
-export function useWhatsAppApprovedBatchDetailsQuery(enabled = true) {
+export function useWhatsAppApprovedBatchDetailsQuery(
+  enabled = true,
+  poll = false,
+) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -164,14 +184,12 @@ export function useWhatsAppApprovedBatchDetailsQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppApprovedBatchDetails(relayUrl);
     },
-    staleTime: 5_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
-export function useWhatsAppBatchQuery(batchId: string | null) {
+export function useWhatsAppBatchQuery(batchId: string | null, poll = false) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: relayUrl !== null && batchId !== null,
@@ -182,14 +200,12 @@ export function useWhatsAppBatchQuery(batchId: string | null) {
       }
       return loadWhatsAppBatch(relayUrl, batchId);
     },
-    staleTime: 3_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
-export function useWhatsAppDraftsQuery(enabled = true) {
+export function useWhatsAppDraftsQuery(enabled = true, poll = false) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null,
@@ -198,14 +214,16 @@ export function useWhatsAppDraftsQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppDrafts(relayUrl);
     },
-    staleTime: 3_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 45_000,
+    ...outreachPolling(poll),
   });
 }
 
-export function useWhatsAppThreadQuery(waId: string | null, enabled = true) {
+export function useWhatsAppThreadQuery(
+  waId: string | null,
+  enabled = true,
+  poll = false,
+) {
   const relayUrl = useWhatsAppRelayUrl();
   return useQuery({
     enabled: enabled && relayUrl !== null && waId !== null,
@@ -215,10 +233,8 @@ export function useWhatsAppThreadQuery(waId: string | null, enabled = true) {
         throw new Error("The WhatsApp contact is missing.");
       return loadWhatsAppThread(relayUrl, waId);
     },
-    staleTime: 2_000,
-    refetchInterval: THREAD_REFETCH_MS,
-    refetchOnWindowFocus: true,
-    retry: 1,
+    staleTime: 15_000,
+    ...outreachPolling(poll, THREAD_REFETCH_MS),
   });
 }
 
@@ -232,9 +248,8 @@ export function useWhatsAppSafetyLedgerQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppSafetyLedger(relayUrl);
     },
-    staleTime: 5_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    ...PASSIVE_OUTREACH_QUERY,
     retry: false,
   });
 }
@@ -249,9 +264,8 @@ export function useWhatsAppUnknownSendsQuery(enabled = true) {
       if (!relayUrl) throw new Error("The active community relay is missing.");
       return loadWhatsAppUnknownSends(relayUrl);
     },
-    staleTime: 3_000,
-    refetchInterval: STATUS_REFETCH_MS,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    ...PASSIVE_OUTREACH_QUERY,
     retry: false,
   });
 }

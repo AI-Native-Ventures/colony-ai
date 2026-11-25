@@ -29,7 +29,6 @@ import {
   useWhatsAppPendingBatchDetailsQuery,
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
-  useWhatsAppThreadQuery,
   useWhatsAppUnknownSendsQuery,
 } from "./whatsappOutreachQueries";
 import {
@@ -37,7 +36,6 @@ import {
   canManageWhatsAppContact,
 } from "./whatsappContactAccess";
 import { aiPlanReserveChipLabel, useAiPlanReserveQuery } from "./aiPlanUsage";
-import { WhatsAppMessagePreview } from "./WhatsAppMessageMedia";
 import {
   getWhatsAppNeedsYouItems,
   WHATSAPP_STAGE_LABELS,
@@ -52,6 +50,8 @@ import {
 } from "./WhatsAppSendHealthNotice";
 import { WhatsAppUnknownSendRecoveryCard } from "./WhatsAppUnknownSendRecovery";
 import { MapOutreachDeskHeaderAction } from "./MapOutreachDesk";
+import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 
 type Props = {
   channelIsMember: boolean;
@@ -358,13 +358,6 @@ function NeedsContactCard({
 }) {
   const wantsCall = contact.stage === "wants_call";
   const dateLabel = formatTime(contact.lastReplyAt ?? contact.lastInboundAt);
-  const threadQuery = useWhatsAppThreadQuery(
-    contact.waId,
-    wantsCall || contact.unanswered,
-  );
-  const lastInbound = [...(threadQuery.data?.messages ?? [])]
-    .reverse()
-    .find((message) => message.direction === "in");
   return (
     <article
       className="c3wa-desk-contact-card"
@@ -399,17 +392,11 @@ function NeedsContactCard({
           {dateLabel ? ` · ${dateLabel}` : ""}
         </p>
         <p className="c3wa-desk-contact-preview">
-          {lastInbound ? (
-            <WhatsAppMessagePreview message={lastInbound} />
-          ) : threadQuery.isError ? (
-            "Latest message unavailable"
-          ) : threadQuery.isPending ? (
-            "Loading latest message…"
-          ) : wantsCall ? (
-            "They asked to speak with you"
-          ) : (
-            "Reply needed"
-          )}
+          {wantsCall
+            ? "They asked to speak with you"
+            : contact.lastInboundAt
+              ? "They replied. Open chat to read their message."
+              : "Reply needed"}
         </p>
         {hasDraft && !wantsCall && draft ? (
           <div className="c3wa-desk-draft-preview">
@@ -474,15 +461,12 @@ export function OutreachDeskNeedsYou({
   onOpenChat,
 }: Props) {
   const navigate = useNavigate();
-  const statusQuery = useWhatsAppStatusQuery();
-  const contactsQuery = useWhatsAppContactsQuery();
-  const draftsQuery = useWhatsAppDraftsQuery();
-  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(
-    statusQuery.data?.connected === true,
-  );
-  const templatesQuery = useWhatsAppTemplatesQuery(
-    statusQuery.data?.connected === true,
-  );
+  const statusQuery = useWhatsAppStatusQuery(true, true);
+  const connected = statusQuery.data?.connected === true;
+  const contactsQuery = useWhatsAppContactsQuery(connected, true);
+  const draftsQuery = useWhatsAppDraftsQuery(connected, true);
+  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(connected, true);
+  const templatesQuery = useWhatsAppTemplatesQuery(connected);
   const business = useBusinessRecords({ createIfMissing: false });
   const customerRecords = useCustomerRecords(true);
   const customerAccess = useCustomerRecordCapabilities();
@@ -502,7 +486,7 @@ export function OutreachDeskNeedsYou({
     role === "owner" ||
     role === "admin";
   const unknownSendsQuery = useWhatsAppUnknownSendsQuery(
-    canManage && statusQuery.data?.connected === true,
+    canManage && connected,
   );
   const canEdit = canManageWhatsAppContact({
     role,
@@ -591,11 +575,14 @@ export function OutreachDeskNeedsYou({
     }
   }
 
-  if (statusQuery.isError || contactsQuery.isError) {
+  const loadError = [statusQuery.error, contactsQuery.error].find(
+    (error) => error && !isRelayHttpRateLimitError(error),
+  );
+  if (loadError) {
     return (
       <div className="c3wa-root c3wa-desk-error-panel" role="alert">
         WhatsApp needs could not be loaded.{" "}
-        {statusQuery.error?.message ?? contactsQuery.error?.message}
+        {loadError instanceof Error ? loadError.message : "Please try again."}
       </div>
     );
   }
@@ -639,6 +626,7 @@ export function OutreachDeskNeedsYou({
           {aiPlanControl}
         </header>
       )}
+      {!mapDesk ? <WhatsAppRateLimitNotice /> : null}
       {status ? (
         <WhatsAppSendHealthBanner canManage={canManage} status={status} />
       ) : null}

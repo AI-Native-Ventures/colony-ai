@@ -363,6 +363,7 @@ export default defineConfig({
         "**/leads-table-polish.spec.ts",
         "**/whatsapp-outreach.spec.ts",
         "**/whatsapp-outreach.visual.spec.ts",
+        "**/rate-limit-2.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],

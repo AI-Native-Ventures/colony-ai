@@ -1,5 +1,10 @@
 import { relayHttpFromWs } from "@/shared/api/inviteHelpers";
 import { relayClient } from "@/shared/api/relayClient";
+import {
+  acquireRelayHttpRequest,
+  fetchRelayHttp,
+  relayHttpRateLimitError,
+} from "@/shared/api/relayHttpRequestGate";
 import { signRelayEvent } from "@/shared/api/tauri";
 import {
   KIND_WHATSAPP_BATCH,
@@ -48,6 +53,12 @@ export const WHATSAPP_THREAD_VISIBLE_LIMIT = 200;
 const CONTACT_PAGE_LIMIT = 200;
 /** Pages one contact load follows (5,000 contacts), so a relay fault cannot loop for ever. */
 export const WHATSAPP_CONTACT_MAX_PAGES = 25;
+
+const contactLoadOwners = new WeakMap<
+  object,
+  Map<string, Promise<WhatsAppContactLoad>>
+>();
+const defaultContactLoadOwner = {};
 
 /** A paged contact result that keeps consumers honest when the bounded load stops early. */
 export type WhatsAppContactLoad = readonly WhatsAppContact[] &
@@ -146,6 +157,28 @@ function safeErrorText(body: unknown, status: number): string {
   return `WhatsApp request failed (${status}).`;
 }
 
+/** Matches the relay's accepted WhatsApp phone input before requesting a thread. */
+function normalizeWhatsAppWaId(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 40) return null;
+  let digits = "";
+  for (const [index, character] of [...trimmed].entries()) {
+    if (/^\d$/u.test(character)) {
+      digits += character;
+      continue;
+    }
+    if (character === "+" && index === 0) continue;
+    if (" -().\u00a0".includes(character)) continue;
+    return null;
+  }
+  const explicitInternational = trimmed.startsWith("+");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  else if (!explicitInternational && digits.startsWith("0")) {
+    digits = `27${digits.slice(1)}`;
+  }
+  return /^\d{8,15}$/u.test(digits) && !digits.startsWith("0") ? digits : null;
+}
+
 function testHook(
   dependencies: ApiDependencies,
 ): Window["__BUZZ_E2E_WHATSAPP__"] {
@@ -161,30 +194,56 @@ export async function postWhatsAppJson<T>(
 ): Promise<T> {
   const hook = testHook(dependencies);
   if (hook) {
-    return (await hook({ action: "post", path, body })) as T;
+    // Injected hooks are unit-test transport seams. The E2E window hook takes
+    // the production route below so browser proofs include real pacing.
+    const useSharedBudget = dependencies.testHook === undefined;
+    if (useSharedBudget) await acquireRelayHttpRequest();
+    try {
+      return (await hook({ action: "post", path, body })) as T;
+    } catch (error) {
+      if (
+        useSharedBudget &&
+        (error as { status?: unknown } | null)?.status === 429
+      ) {
+        const message =
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "rate-limited: quota exceeded";
+        throw relayHttpRateLimitError(
+          new Response(null, { status: 429 }),
+          message,
+        );
+      }
+      throw error;
+    }
   }
 
   const url = `${relayHttpFromWs(relayUrl).replace(/\/+$/u, "")}${path}`;
   const jsonBody = JSON.stringify(body);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timeout: ReturnType<typeof setTimeout> | null = null;
   try {
-    const fetcher = dependencies.fetcher ?? fetch;
-    const authorization = await buildWhatsAppNip98Header(url, jsonBody, {
-      signer: dependencies.signer,
-      nonce: dependencies.nonce,
-    });
-    let response: Response;
-    try {
-      response = await fetcher(url, {
-        method: "POST",
+    const requestInit = async () => {
+      const authorization = await buildWhatsAppNip98Header(url, jsonBody, {
+        signer: dependencies.signer,
+        nonce: dependencies.nonce,
+      });
+      timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      return {
+        body: jsonBody,
         headers: {
           Authorization: authorization,
           "Content-Type": "application/json",
         },
-        body: jsonBody,
+        method: "POST",
         signal: controller.signal,
-      });
+      };
+    };
+    let response: Response;
+    try {
+      response = dependencies.fetcher
+        ? await dependencies.fetcher(url, await requestInit())
+        : await fetchRelayHttp(url, requestInit);
     } catch (error) {
       if (controller.signal.aborted) {
         throw new Error("WhatsApp took too long to respond. Try again.");
@@ -196,14 +255,19 @@ export async function postWhatsAppJson<T>(
       );
     }
     const responseBody: unknown = await response.json().catch(() => null);
-    if (!response.ok)
-      throw new Error(safeErrorText(responseBody, response.status));
+    if (!response.ok) {
+      const message = safeErrorText(responseBody, response.status);
+      if (response.status === 429) {
+        throw relayHttpRateLimitError(response, message);
+      }
+      throw new Error(message);
+    }
     if (responseBody === null || typeof responseBody !== "object") {
       throw new Error("The WhatsApp relay returned an unreadable response.");
     }
     return responseBody as T;
   } finally {
-    clearTimeout(timeout);
+    if (timeout !== null) clearTimeout(timeout);
   }
 }
 
@@ -263,7 +327,7 @@ function contactLoad(
   }) as unknown as WhatsAppContactLoad;
 }
 
-export async function loadWhatsAppContacts(
+async function loadWhatsAppContactsPageByPage(
   relayUrl: string,
   dependencies?: ApiDependencies,
 ): Promise<WhatsAppContactLoad> {
@@ -312,6 +376,39 @@ export async function loadWhatsAppContacts(
     before = next;
   }
   return contactLoad(contacts, truncated);
+}
+
+/**
+ * Shares one in-flight paged contact read between every active Outreach view.
+ * React Query normally provides this sharing, but this seam keeps the same
+ * invariant when a route transition briefly mounts two consumers at once.
+ */
+export function loadWhatsAppContacts(
+  relayUrl: string,
+  dependencies?: ApiDependencies,
+): Promise<WhatsAppContactLoad> {
+  const owner = dependencies ?? defaultContactLoadOwner;
+  let loads = contactLoadOwners.get(owner);
+  if (!loads) {
+    loads = new Map();
+    contactLoadOwners.set(owner, loads);
+  }
+  const existing = loads.get(relayUrl);
+  if (existing) return existing;
+  const load = loadWhatsAppContactsPageByPage(relayUrl, dependencies).finally(
+    () => {
+      if (loads?.get(relayUrl) !== load) return;
+      loads.delete(relayUrl);
+      if (loads.size === 0) contactLoadOwners.delete(owner);
+    },
+  );
+  loads.set(relayUrl, load);
+  return load;
+}
+
+/** Clears relay-scoped in-flight contact ownership on a community switch. */
+export function resetWhatsAppContactLoads(): void {
+  contactLoadOwners.delete(defaultContactLoadOwner);
 }
 
 /**
@@ -437,10 +534,18 @@ export async function loadWhatsAppThread(
   waId: string,
   dependencies?: ApiDependencies,
 ): Promise<WhatsAppThread> {
+  const normalizedWaId = normalizeWhatsAppWaId(waId);
+  if (!normalizedWaId) {
+    throw new Error("This WhatsApp contact has an invalid phone number.");
+  }
   return parseWhatsAppThread(
     await queryWhatsApp(
       relayUrl,
-      { what: "thread", waId, limit: WHATSAPP_THREAD_VISIBLE_LIMIT },
+      {
+        what: "thread",
+        waId: normalizedWaId,
+        limit: WHATSAPP_THREAD_VISIBLE_LIMIT,
+      },
       dependencies,
     ),
   );

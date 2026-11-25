@@ -4,6 +4,7 @@ import { isMacPlatform } from "@/shared/lib/platform";
 
 import { relayClient } from "@/shared/api/relayClient";
 import { resetRateLimitGate } from "@/shared/api/relayRateLimitGate";
+import { resetRelayHttpRequestGate } from "@/shared/api/relayHttpRequestGate";
 import { resetRelayWebSocketOperationPacer } from "@/shared/api/relayWebSocketOperationPacer";
 import {
   autoConnectDefaultRelayEnabled,
@@ -63,6 +64,7 @@ import { initWorkAreaStore } from "@/features/workarea/dock/workAreaStore";
 import { resetWorkAreaState } from "@/features/workarea/dock/resetWorkAreaState";
 import { resetMembershipDenialGate } from "./membershipDenialGate";
 import { resetWhatsAppUnknownMessageStateWarning } from "@/features/whatsapp-outreach/whatsappOutreachModels";
+import { resetWhatsAppContactLoads } from "@/features/whatsapp-outreach/whatsappOutreachApi";
 
 import {
   initFirstCommunity,
@@ -87,6 +89,8 @@ async function resetCommunityState({
   resetRelayWebSocketOperationPacer();
   await resetNavigationDeepLinkDrain();
   resetRateLimitGate();
+  resetRelayHttpRequestGate();
+  resetWhatsAppContactLoads();
   clearAllDrafts();
   resetAgentObserverStore();
   resetActiveAgentTurnsStore();

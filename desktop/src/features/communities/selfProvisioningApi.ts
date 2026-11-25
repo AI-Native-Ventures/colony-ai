@@ -1,4 +1,5 @@
 import { getRelayHttpUrl, signRelayEvent } from "@/shared/api/tauri";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 
 import type { RawCommunityProvisioningConfig } from "./selfProvisioning";
 
@@ -109,15 +110,16 @@ async function requestJson<T>(
   signed = false,
 ): Promise<T> {
   const url = `${httpBase.replace(/\/+$/, "")}${path}`;
-  const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (signed) headers.Authorization = await nip98Header(url, method, body);
-
-  const response = await fetch(url, {
-    method,
-    headers,
-    body,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  const response = await fetchRelayHttp(url, async () => {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (signed) headers.Authorization = await nip98Header(url, method, body);
+    return {
+      method,
+      headers,
+      body,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    };
   });
   const payload = (await response.json().catch(() => ({}))) as Record<
     string,

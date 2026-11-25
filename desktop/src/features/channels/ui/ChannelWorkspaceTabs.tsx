@@ -32,9 +32,23 @@ export function ChannelWorkspaceTabs({
   outreachTab = "discussion",
   onOutreachTabChange,
 }: ChannelWorkspaceTabsProps) {
-  const contactsQuery = useWhatsAppContactsQuery(isOutreach);
-  const draftsQuery = useWhatsAppDraftsQuery(isOutreach);
-  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(isOutreach);
+  const outreachSummaryVisible =
+    isOutreach &&
+    (outreachTab === "needs-you" ||
+      outreachTab === "pipeline" ||
+      outreachTab === "chats");
+  const contactsQuery = useWhatsAppContactsQuery(
+    outreachSummaryVisible,
+    outreachSummaryVisible,
+  );
+  const draftsQuery = useWhatsAppDraftsQuery(
+    outreachSummaryVisible,
+    outreachSummaryVisible,
+  );
+  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(
+    outreachSummaryVisible,
+    outreachSummaryVisible,
+  );
   const needsYouCount =
     getWhatsAppNeedsYouItems(contactsQuery.data ?? [], draftsQuery.data ?? [])
       .length + (batchesQuery.data?.length ?? 0);

@@ -1,4 +1,5 @@
 import { getRelayHttpUrl, invokeTauri } from "@/shared/api/tauri";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import { readCredits, type CreditSnapshot } from "./accountPayments";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
 import type { GlobalAgentConfig } from "@/shared/api/types";
@@ -27,9 +28,10 @@ export async function readConfiguredFreeAiModels(
 ): Promise<string[]> {
   if (!(await deps.enabled())) return [];
   const base = (await deps.relay()).replace(/\/+$/, "");
-  const response = await deps.fetch(
+  const response = await fetchRelayHttp(
     `${base}/api/credits-gateway/capabilities`,
-    { signal: AbortSignal.timeout(8_000), redirect: "error" },
+    () => ({ signal: AbortSignal.timeout(8_000), redirect: "error" }),
+    deps.fetch,
   );
   if (response.status === 404) return [];
   if (!response.ok)
@@ -64,10 +66,14 @@ export async function readCreditsGateway(
   if (!(await deps.enabled())) return { configured: false };
   const base = (await deps.relay()).replace(/\/+$/, "");
   const read = async (path: string) => {
-    const response = await deps.fetch(`${base}/api/${path}`, {
-      signal: AbortSignal.timeout(15_000),
-      redirect: "error",
-    });
+    const response = await fetchRelayHttp(
+      `${base}/api/${path}`,
+      () => ({
+        signal: AbortSignal.timeout(15_000),
+        redirect: "error",
+      }),
+      deps.fetch,
+    );
     // Older relays do not have the gateway route. Other failures remain retryable.
     if (response.status === 404) return null;
     if (!response.ok)

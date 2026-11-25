@@ -1,5 +1,6 @@
 import { relayClient } from "@/shared/api/relayClient";
 import { getRelayHttpUrl, signRelayEvent } from "@/shared/api/tauri";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 import {
   KIND_MODERATION_BAN,
   KIND_MODERATION_RESOLVE_REPORT,
@@ -236,10 +237,9 @@ async function nip98GetHeader(url: string): Promise<string> {
 async function moderationGet<T>(pathWithQuery: string): Promise<T> {
   const base = (await getRelayHttpUrl()).replace(/\/+$/, "");
   const url = `${base}${pathWithQuery}`;
-  const authorization = await nip98GetHeader(url);
-  const response = await fetch(url, {
-    headers: { Authorization: authorization },
-  });
+  const response = await fetchRelayHttp(url, async () => ({
+    headers: { Authorization: await nip98GetHeader(url) },
+  }));
   if (!response.ok) {
     throw new Error(
       `Moderation request failed (${response.status}): ${pathWithQuery}`,

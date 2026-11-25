@@ -3,6 +3,7 @@ import {
   invokeTauri,
   signRelayEvent,
 } from "@/shared/api/tauri";
+import { fetchRelayHttp } from "@/shared/api/relayHttpRequestGate";
 
 /**
  * Whether this signed-in account may use the Colony Agent through the relay
@@ -49,9 +50,10 @@ export async function readFreeAiAccess(
     const base = relayUrl
       ? httpBase(relayUrl)
       : (await deps.relay()).replace(/\/+$/, "");
-    const capabilities = await deps.fetch(
+    const capabilities = await fetchRelayHttp(
       `${base}/api/credits-gateway/capabilities`,
-      { signal: AbortSignal.timeout(8_000), redirect: "error" },
+      () => ({ signal: AbortSignal.timeout(8_000), redirect: "error" }),
+      deps.fetch,
     );
     // Older relays do not have the gateway route at all.
     if (capabilities.status === 404) return "off";
@@ -67,20 +69,26 @@ export async function readFreeAiAccess(
     // No free account configured: skip the signed call entirely.
     if (gateway.freeAiConfigured !== true) return "not-free";
     const url = `${base}/api/credits-gateway/access`;
-    const event = await deps.sign({
-      kind: 27235,
-      content: "",
-      tags: [
-        ["u", url],
-        ["method", "GET"],
-        ["nonce", deps.nonce()],
-      ],
-    });
-    const access = await deps.fetch(url, {
-      headers: { Authorization: `Nostr ${btoa(JSON.stringify(event))}` },
-      signal: AbortSignal.timeout(8_000),
-      redirect: "error",
-    });
+    const access = await fetchRelayHttp(
+      url,
+      async () => {
+        const event = await deps.sign({
+          kind: 27235,
+          content: "",
+          tags: [
+            ["u", url],
+            ["method", "GET"],
+            ["nonce", deps.nonce()],
+          ],
+        });
+        return {
+          headers: { Authorization: `Nostr ${btoa(JSON.stringify(event))}` },
+          signal: AbortSignal.timeout(8_000),
+          redirect: "error",
+        };
+      },
+      deps.fetch,
+    );
     if (!access.ok) return "unreachable";
     return (await access.json())?.freeAi === true ? "free" : "not-free";
   } catch {
