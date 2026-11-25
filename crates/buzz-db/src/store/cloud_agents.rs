@@ -626,6 +626,31 @@ impl Db {
         Ok(())
     }
 
+    /// Give up on every other pending operation of an agent's generation after
+    /// one of its steps failed for good, so a later step (a start after a failed
+    /// create) cannot quietly undo the failure. Returns how many were failed.
+    pub async fn fail_pending_cloud_ops(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        error: &str,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            "UPDATE cloud_agent_ops SET status = 'failed', claimed_until = NULL, last_error = $4, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND generation = $3 \
+               AND status = 'pending' AND op IN ('ensure', 'start')",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(error.chars().take(500).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Give up on a claimed operation. It stays in the journal as `failed`
     /// with its reason.
     pub async fn fail_cloud_op(&self, community: CommunityId, id: Uuid, error: &str) -> Result<()> {
@@ -692,6 +717,89 @@ impl Db {
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
+    }
+
+    /// Cloud-placed agents a stored message might wake: the ones it names in a
+    /// `p` tag, and the ones that belong to the direct-message channel it was
+    /// posted in. `author` (the agent that wrote it, if any) is never a
+    /// candidate, so an agent's own reply does not wake it again.
+    pub async fn cloud_wake_candidates(
+        &self,
+        community: CommunityId,
+        dm_channel: Option<Uuid>,
+        mentioned: &[Vec<u8>],
+        author: &[u8],
+    ) -> Result<Vec<WakeCandidate>> {
+        let rows = sqlx::query(
+            "SELECT c.agent_pubkey, c.generation, c.status, c.fly_machine_id IS NOT NULL AS has_machine, \
+                    c.last_wake_at \
+             FROM cloud_agents c \
+             WHERE c.community_id = $1 AND c.home = 'cloud' AND c.agent_pubkey <> $4 AND ( \
+                 c.agent_pubkey = ANY($3) \
+                 OR ($2::uuid IS NOT NULL AND EXISTS ( \
+                     SELECT 1 FROM channels ch \
+                     JOIN channel_members m ON m.community_id = ch.community_id AND m.channel_id = ch.id \
+                     WHERE ch.community_id = c.community_id AND ch.id = $2 \
+                       AND ch.channel_type = 'dm' AND ch.deleted_at IS NULL \
+                       AND m.pubkey = c.agent_pubkey AND m.removed_at IS NULL)))",
+        )
+        .bind(community.as_uuid())
+        .bind(dm_channel)
+        .bind(mentioned)
+        .bind(author)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let status: Option<String> = row.try_get("status")?;
+                Ok(WakeCandidate {
+                    agent_pubkey: row.try_get("agent_pubkey")?,
+                    generation: row.try_get("generation")?,
+                    status: status.as_deref().map(parse_status).transpose()?,
+                    has_machine: row.try_get("has_machine")?,
+                    last_wake_at: row.try_get("last_wake_at")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Begin a wake: in one transaction the agent becomes `waking` and the
+    /// operations that start it are journaled (`ensure` when it has no machine
+    /// yet, then `start`), all for its current generation. Returns `false` when
+    /// nothing was started: the agent moved since `generation`, or a wake is
+    /// already in flight (`waking` with a wake request newer than
+    /// `debounce_secs`). A new wake clears a failure and its error.
+    pub async fn begin_cloud_wake(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        debounce_secs: i64,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let row: Option<(bool,)> = sqlx::query_as(
+            "UPDATE cloud_agents SET status = 'waking', last_wake_at = now(), wake_attempts = 0, \
+                 last_error = NULL, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND generation = $3 AND home = 'cloud' \
+               AND NOT (status = 'waking' AND last_wake_at > now() - make_interval(secs => $4::double precision)) \
+             RETURNING fly_machine_id IS NOT NULL",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(debounce_secs)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((has_machine,)) = row else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+        if !has_machine {
+            insert_op(&mut tx, community, agent, CloudOp::Ensure, generation).await?;
+        }
+        insert_op(&mut tx, community, agent, CloudOp::Start, generation).await?;
+        tx.commit().await?;
+        Ok(true)
     }
 
     /// Every agent that has a machine on the host.
@@ -835,6 +943,21 @@ pub async fn begin_cloud_teardown_in(
     .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected())
+}
+
+/// A cloud-placed agent a message might need to wake.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WakeCandidate {
+    /// Agent pubkey, 32 bytes.
+    pub agent_pubkey: Vec<u8>,
+    /// Current placement generation.
+    pub generation: i64,
+    /// Cloud machine state.
+    pub status: Option<PlacementStatus>,
+    /// Whether the agent already has a machine on the host.
+    pub has_machine: bool,
+    /// Time of the last wake request.
+    pub last_wake_at: Option<DateTime<Utc>>,
 }
 
 /// Load one cloud agent on an existing connection or transaction. With

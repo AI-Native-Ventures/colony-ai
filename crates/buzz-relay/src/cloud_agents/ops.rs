@@ -147,6 +147,18 @@ async fn note_failure(state: &Arc<AppState>, op: &OpRow, error: &str) {
     if !matches!(op.op, CloudOp::Ensure | CloudOp::Start) {
         return;
     }
+    if let Err(db_error) = state
+        .db
+        .fail_pending_cloud_ops(
+            op.community,
+            &op.agent_pubkey,
+            op.generation,
+            "an earlier step failed",
+        )
+        .await
+    {
+        tracing::error!(error = %db_error, "later steps of a failed wake not cancelled");
+    }
     match state
         .db
         .set_cloud_status(

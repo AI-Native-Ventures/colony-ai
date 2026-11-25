@@ -65,7 +65,7 @@ CREATE TABLE cloud_agent_ops (
     claimed_until TIMESTAMPTZ,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'failed')),
     last_error TEXT CHECK (last_error IS NULL OR char_length(last_error) <= 500),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (community_id, id)
 );
