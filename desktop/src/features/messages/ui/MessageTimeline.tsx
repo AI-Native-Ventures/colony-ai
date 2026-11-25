@@ -352,6 +352,7 @@ const MessageTimelineBase = React.forwardRef<
     splitPanelOpen: splitThreadPanelOpen,
     targetMessageId,
     virtualCancelBottomIntent: timelineVirtualizerApi?.cancelBottomIntent,
+    virtualHasBottomIntent: timelineVirtualizerApi?.hasBottomIntent,
     virtualScrollToMessage: timelineVirtualizerApi?.scrollToMessage,
     virtualScrollToBottom: timelineVirtualizerApi?.scrollToBottom,
     virtualSettleAtBottom: timelineVirtualizerApi?.settleAtBottom,
@@ -389,13 +390,13 @@ const MessageTimelineBase = React.forwardRef<
   );
   const handleVirtualizerAtBottomStateChange = React.useCallback(
     (atBottom: boolean) => {
+      if (!onVirtualizerAtBottomStateChange(atBottom)) return;
       // Virtua can emit an intermediate non-bottom offset while its initial
       // scroll-to-end is still converging. Do not turn that mount transient
       // into a semantic dataset freeze: wait until this channel has reached a
       // confirmed bottom once, then track genuine bottom -> history movement.
       if (atBottom) {
         hasConfirmedVirtualizerBottomRef.current = true;
-        onVirtualizerAtBottomStateChange(true);
         if (suppressNextSemanticBottomRef.current) {
           // Freezing the tail shortens Virtua's model and can itself make the
           // current offset report "at bottom". That synthetic transition must
@@ -405,7 +406,6 @@ const MessageTimelineBase = React.forwardRef<
           queueSemanticBottom(true);
         }
       } else if (hasConfirmedVirtualizerBottomRef.current) {
-        onVirtualizerAtBottomStateChange(false);
         if (semanticAtBottomRef.current) {
           suppressNextSemanticBottomRef.current = true;
           queueSemanticBottom(false);
