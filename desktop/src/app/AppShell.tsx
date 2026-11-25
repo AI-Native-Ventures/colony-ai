@@ -56,6 +56,7 @@ import { useAgentsDataRefresh } from "@/features/agents/lib/useAgentsDataRefresh
 import { useManagedAgentRuntimeReconciliation } from "@/features/agents/useManagedAgentRuntimeReconciliation";
 import { useAutoRestartPolicy } from "@/features/agents/lib/useAutoRestartPolicy";
 import { useCofounderScoutKeepAlive } from "@/features/cofounder/useCofounderScoutKeepAlive";
+import { usePlacementSync } from "@/features/agents/placement/usePlacementSync";
 import { useMentionReconciler } from "@/features/messages/ui/useMentionReconciler";
 import { usePersonaSync } from "@/features/agents/lib/usePersonaSync";
 import { useAgentObserverIngestion } from "@/features/agents/useAgentObserverIngestion";
@@ -246,6 +247,9 @@ export function AppShell() {
   // The relay-side check that no mention to a local agent goes unanswered,
   // whatever the send path did (GATE-303), and the catch-up at launch.
   useMentionReconciler();
+  // Where each agent works (This Mac or the cloud): keeps this Mac from running
+  // a second copy of an agent that works in the cloud.
+  usePlacementSync();
   // Co-founder mode starts Scout by itself: the owner never messages it first.
   useCofounderScoutKeepAlive();
   // Owner-global observer ingestion: receives + decrypts agent observer
