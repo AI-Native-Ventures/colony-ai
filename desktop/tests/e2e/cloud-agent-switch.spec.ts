@@ -249,7 +249,7 @@ test("the profile has a Where Scout works section that moves the agent", async (
     "true",
   );
   await expect(section.getByTestId("agent-home-settings-status")).toContainText(
-    "Asleep · wakes when you message",
+    "Wakes when you message",
   );
   await waitForAnimations(page);
 });

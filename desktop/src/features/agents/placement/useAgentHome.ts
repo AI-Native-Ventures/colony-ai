@@ -5,12 +5,17 @@ import {
   useManagedAgentsQuery,
   useRelayAgentsQuery,
 } from "@/features/agents/hooks";
-import { simpleModelLabel } from "@/features/agents/ui/simpleAgentAi";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 import { useCloudCapabilities } from "./cloudQueries";
-import { capMessage, notCloudReadyMessage, statusLabel } from "./placementCopy";
+import {
+  capMessage,
+  cloudModelLabel,
+  cloudSetupLabel,
+  notCloudReadyMessage,
+  statusLabel,
+} from "./placementCopy";
 import { usePlacement } from "./placementQueries";
 import { getPlacement } from "./placementStore";
 import { classifyPlacementError, publishPlacement } from "./publishPlacement";
@@ -44,8 +49,6 @@ export type AgentHomeModel = {
   chooseModel: (model: string) => Promise<void>;
   retryWake: () => Promise<void>;
 };
-
-const CLOUD_PROVIDER_LABEL = "Colony credits";
 
 /**
  * Where one agent works and how to move it (spec 5.5). The agent's owner only:
@@ -96,13 +99,11 @@ export function useAgentHome(
     () =>
       capabilities.models.map((id) => ({
         id,
-        label: simpleModelLabel(id),
+        label: cloudModelLabel(id),
       })),
     [capabilities.models],
   );
-  const cloudLabel = cloudModelId
-    ? `${CLOUD_PROVIDER_LABEL} · ${simpleModelLabel(cloudModelId)}`
-    : CLOUD_PROVIDER_LABEL;
+  const cloudLabel = cloudSetupLabel(cloudModelId);
   const notCloudReady =
     placement.status === "notCloudReady" ||
     (!placement.cloudReady && !localHere);

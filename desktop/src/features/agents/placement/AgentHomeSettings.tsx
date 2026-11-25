@@ -29,6 +29,13 @@ export function AgentHomeSettingsSection({
   const statusLine = cloudStatusLine(placement.status);
   return (
     <div className="space-y-2" data-testid="agent-home-settings">
+      <p
+        aria-hidden="true"
+        className="text-sm font-medium text-foreground"
+        data-testid="agent-home-settings-title"
+      >
+        {settingsTitle(model.name)}
+      </p>
       <SegmentedControl<Home>
         disabled={model.pending}
         legend={settingsTitle(model.name)}

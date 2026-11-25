@@ -862,11 +862,13 @@ export const ChannelPane = React.memo(function ChannelPane({
                         {welcomeKickoffStage}
                       </WelcomeComposerGuidanceLayer>
                     ) : null}
-                    <ChannelAgentHomeNotices
-                      channel={activeChannel}
-                      currentPubkey={currentPubkey}
-                    />
                     <ComposerDockBackdrop gutterClassName="inset-x-5" />
+                    <div className="relative z-10">
+                      <ChannelAgentHomeNotices
+                        channel={activeChannel}
+                        currentPubkey={currentPubkey}
+                      />
+                    </div>
                     <MessageComposer
                       channelId={activeChannel?.id ?? null}
                       channelName={activeChannel?.name ?? "channel"}

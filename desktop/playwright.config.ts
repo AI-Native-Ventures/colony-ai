@@ -237,6 +237,7 @@ export default defineConfig({
         "**/edit-agent.spec.ts",
         "**/agent-runtime-switch.spec.ts",
         "**/cloud-agent-switch.spec.ts",
+        "**/cloud-agent-switch-screenshots.spec.ts",
         "**/harness-model-list.spec.ts",
         "**/codex-adapter-provision.spec.ts",
         "**/doctor-cta-screenshots.spec.ts",

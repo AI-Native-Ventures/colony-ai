@@ -65,16 +65,44 @@ export function cloudStatusLine(
 ): string | null {
   switch (status) {
     case "asleep":
-      return "Asleep · wakes when you message";
+      return "Wakes when you message";
     case "waking":
-      return "Waking";
+      return "Starting up";
     case "working":
-      return "Working";
+      return "Answering now";
     case "failed":
-      return "Could not start";
+      return "Try again, or move back to This Mac";
     case "outOfCredit":
-      return "Out of AI credit";
+      return "Top up to keep going";
     default:
       return null;
   }
+}
+
+const BRAND_WORDS: Record<string, string> = {
+  deepseek: "DeepSeek",
+  openai: "OpenAI",
+  gpt: "GPT",
+};
+
+/** "deepseek/deepseek-v4.1-flash" reads as "DeepSeek V4.1 Flash". */
+export function cloudModelLabel(modelId: string): string {
+  const name = modelId.split("/").pop() ?? modelId;
+  return name
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (BRAND_WORDS[lower]) return BRAND_WORDS[lower];
+      if (/^v\d/.test(lower)) return `V${word.slice(1)}`;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+/** What the cloud runs an agent with, e.g. "Colony credits · DeepSeek V4.1 Flash". */
+export function cloudSetupLabel(modelId: string | null): string {
+  return modelId
+    ? `Colony credits · ${cloudModelLabel(modelId)}`
+    : "Colony credits";
 }
