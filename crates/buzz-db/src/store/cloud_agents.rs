@@ -28,10 +28,16 @@ use crate::{Db, DbError, Result};
 /// crashed worker's operation is retried within a minute.
 pub const OP_LEASE_SECS: i64 = 60;
 
-const AGENT_COLUMNS: &str = "community_id, agent_pubkey, owner_pubkey, home, generation, \
-     cloud_model, status, wrapped_dek, sealed_nsec, nonce, kek_id, auth_tag, config, \
-     config_version, fly_machine_id, fly_volume_id, home_token_hash, wake_attempts, \
-     last_wake_at, last_error, created_at, updated_at";
+/// Column list of a full agent row, as a literal so every statement built from
+/// it stays a `&'static str` (sqlx refuses dynamically built SQL).
+macro_rules! agent_columns {
+    () => {
+        "community_id, agent_pubkey, owner_pubkey, home, generation, \
+         cloud_model, status, wrapped_dek, sealed_nsec, nonce, kek_id, auth_tag, config, \
+         config_version, fly_machine_id, fly_volume_id, home_token_hash, wake_attempts, \
+         last_wake_at, last_error, created_at, updated_at"
+    };
+}
 
 /// The sealed key and runnable config an agent's owner uploaded.
 #[derive(Clone)]
@@ -423,11 +429,12 @@ impl Db {
         &self,
         token_hash: &[u8],
     ) -> Result<Option<CloudAgentRow>> {
-        let row = sqlx::query(&format!(
+        let row = sqlx::query(concat!(
             "UPDATE cloud_agents SET boot_token_hash = NULL, boot_token_expires_at = NULL, \
                  updated_at = now() \
              WHERE boot_token_hash = $1 AND boot_token_expires_at > now() AND home = 'cloud' \
-             RETURNING {AGENT_COLUMNS}"
+             RETURNING ",
+            agent_columns!()
         ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
@@ -574,15 +581,24 @@ pub async fn get_cloud_agent_in(
     agent: &[u8],
     lock: bool,
 ) -> Result<Option<CloudAgentRow>> {
-    let lock = if lock { " FOR UPDATE" } else { "" };
-    let row = sqlx::query(&format!(
-        "SELECT {AGENT_COLUMNS} FROM cloud_agents \
-         WHERE community_id = $1 AND agent_pubkey = $2{lock}"
-    ))
-    .bind(community.as_uuid())
-    .bind(agent)
-    .fetch_optional(conn)
-    .await?;
+    let sql = if lock {
+        concat!(
+            "SELECT ",
+            agent_columns!(),
+            " FROM cloud_agents WHERE community_id = $1 AND agent_pubkey = $2 FOR UPDATE"
+        )
+    } else {
+        concat!(
+            "SELECT ",
+            agent_columns!(),
+            " FROM cloud_agents WHERE community_id = $1 AND agent_pubkey = $2"
+        )
+    };
+    let row = sqlx::query(sql)
+        .bind(community.as_uuid())
+        .bind(agent)
+        .fetch_optional(conn)
+        .await?;
     row.as_ref().map(agent_from_row).transpose()
 }
 
