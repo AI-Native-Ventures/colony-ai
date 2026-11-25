@@ -19,7 +19,9 @@ use uuid::Uuid;
 
 use super::{
     api_error, bridge,
-    credits_gateway_upstream::{CompletionFailure, ManagedRequest, Upstream, MAX_BODY},
+    credits_gateway_upstream::{
+        CompletionFailure, ManagedRequest, ModelAccess, Upstream, MAX_BODY,
+    },
     relay_members,
 };
 use crate::state::AppState;
@@ -300,6 +302,40 @@ async fn create_session(
     ))
 }
 
+/// Mints the AI session of a cloud agent's machine at `generation`, with no
+/// owner signature: the authority is the stored placement (the agent is in the
+/// cloud at exactly that generation), the ownership record and the owner's
+/// verified account. See [`buzz_db::Db::create_cloud_credit_session`].
+pub(crate) async fn mint_cloud_session(
+    state: &AppState,
+    community: buzz_core::tenant::CommunityId,
+    agent_pubkey: &[u8],
+    generation: i64,
+) -> Result<buzz_db::credits_gateway::CloudCreditSession, buzz_db::DbError> {
+    state
+        .db
+        .create_cloud_credit_session(
+            community,
+            agent_pubkey,
+            generation,
+            &super::credits_gateway_limits::policy_from_env(),
+        )
+        .await
+}
+
+/// Revokes every open AI session of one agent (a flip, a removal). Spending
+/// already admitted still settles.
+pub(crate) async fn revoke_agent_sessions(
+    state: &AppState,
+    community: buzz_core::tenant::CommunityId,
+    agent_pubkey: &[u8],
+) -> Result<u64, buzz_db::DbError> {
+    state
+        .db
+        .revoke_agent_credit_sessions(community, agent_pubkey)
+        .await
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RevokeRequest {
@@ -385,7 +421,20 @@ async fn start_inference(
         );
         api_error(StatusCode::BAD_REQUEST, "Invalid Colony Agent request.")
     })?;
-    let (mut upstream_body, reserve) = upstream.request(&request).map_err(|check| {
+    // A cloud agent's session says how it may choose a model; every other
+    // session is the owner's Mac's and may only choose a free one.
+    let access = match gateway
+        .relay
+        .db
+        .credit_ai_session_mode(request.session_id, agent.as_bytes())
+        .await
+    {
+        Ok(Some((true, true))) => ModelAccess::CloudPaid,
+        Ok(Some((true, false))) => ModelAccess::CloudFree,
+        Ok(_) => ModelAccess::Mac,
+        Err(_) => return Err(unavailable()),
+    };
+    let (mut upstream_body, reserve) = upstream.request_for(&request, access).map_err(|check| {
         tracing::warn!(
             check,
             body_bytes = body.len(),

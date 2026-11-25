@@ -2792,7 +2792,9 @@ CREATE TABLE account_ai_sessions (
     community_id UUID NOT NULL REFERENCES communities(id) ON DELETE RESTRICT,
     agent_pubkey BYTEA NOT NULL CHECK (octet_length(agent_pubkey) = 32),
     expires_at TIMESTAMPTZ NOT NULL,
-    revoked BOOLEAN NOT NULL DEFAULT false
+    revoked BOOLEAN NOT NULL DEFAULT false,
+    cloud BOOLEAN NOT NULL DEFAULT false,
+    paid_allowed BOOLEAN NOT NULL DEFAULT false
 );
 CREATE INDEX account_ai_active_sessions ON account_ai_sessions(account_id, expires_at) WHERE NOT revoked;
 CREATE TABLE account_ai_requests (

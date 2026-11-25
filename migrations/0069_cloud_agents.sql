@@ -87,3 +87,9 @@ CREATE TABLE cloud_starter_grants (
 
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('cloud_starter_grants', 'deployment-global once-per-account cloud starter credit marker');
+
+-- Sessions the relay mints for a cloud agent's machine. A cloud session may choose a
+-- model the owner pays for (`paid_allowed`) unless the account uses the gateway free.
+ALTER TABLE account_ai_sessions
+    ADD COLUMN cloud BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN paid_allowed BOOLEAN NOT NULL DEFAULT false;

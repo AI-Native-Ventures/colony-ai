@@ -107,3 +107,24 @@ So a 409 that used to leave nothing in the log now names which of `admission_pen
 - **When the budget ends first** with a free model still generating, the request ends as the usual clear 503, never unclear: the hold is released and the row settled at zero at once, so the next mention runs. The log says the body was cut and not that nothing came: `Colony gateway upstream did not finish an answer` with `upstream_status=200`, `upstream_message="answer not finished within N ms"` and `free=true`, and `models_tried` shows `model(200/timeout)`. A paid model in the same position stays unclear (the hold stays for the recovery worker).
 - **The request budget stays 90 s.** The managed client stops waiting for a request after 100 s in total (`CreditsGateway::new`, a reqwest timeout that the keep-alive whitespace does not reset; the keep-alive only stops the proxy from closing an idle connection), so a longer budget would be spent after the client has gone, and the session would be busy for the extra time. Going past 90 s needs a client change and an app release first.
 - **A model that sends headers and then nothing ever** holds the request until the budget ends, then ends clear. It cannot be told from a slow one, and no other model can be asked in the time left.
+
+## Cloud agents: relay-minted sessions, paid models and the starter credit
+
+**What it is.** An agent placed in the cloud runs on its own machine, with no owner key at hand. The relay mints that machine's AI session itself, on the strength of the stored placement.
+
+**Sessions.**
+
+- `mint_cloud_session` (relay) and `Db::create_cloud_credit_session` (store) open a session only when the agent is placed in the cloud at exactly the generation asked for, the user row of the agent names the same owner as the stored bundle, and the owner has a verified account. Anything else is refused: an agent on the Mac, an older generation, a missing bundle.
+- A cloud session lasts 24 hours (`CLOUD_SESSION_TTL_HOURS`), replaces the agent's earlier sessions and is bound to the agent's key and host like any other. The relay mints a new one on every boot of the machine.
+- Every placement change revokes the agent's open sessions in the same transaction (`set_cloud_home_cas`), and removing the agent revokes them too. A request on a revoked session is the usual 403. Spending already admitted still settles.
+- `account_ai_sessions` has two new columns: `cloud` and `paid_allowed`. Sessions the owner opens for an agent on their Mac keep both `false` and behave exactly as before.
+
+**Models.**
+
+- A Mac session may only choose a free model (`model_not_free` otherwise). Nothing changed.
+- A cloud session of an account that pays (`paid_allowed`) may choose any model that is on `COLONY_CREDITS_ALLOWED_MODELS` and that the relay has a route for. It is held and charged like every request: the provider's cost plus 20 percent, from the owner's balance. If the chosen model cannot answer, the free route answers after it.
+- A cloud session of an account listed in `COLONY_FREE_AI_ACCOUNTS` never pays: its model choice is ignored (not refused) and the configured route answers, and its ledger stays untouched.
+- **`COLONY_CREDITS_CLOUD_MODELS`** is a JSON array of the paid models a paying cloud session may choose, for example `["deepseek/deepseek-v4.1-flash"]`. They are not part of the default route, so Mac agents, free accounts and requests with no model choice never reach them and Colony pays nothing extra. Each must be on `COLONY_CREDITS_ALLOWED_MODELS` and, with a direct provider, in `COLONY_CREDITS_MODEL_PRICES`; a wrong entry disables the gateway at startup, like a wrong fallback. Unset means none.
+- The owner sets `COLONY_CLOUD_DEFAULT_MODEL` to one of them; it must also be on `COLONY_CREDITS_ALLOWED_MODELS`. Adding a model needs the model-terms review first.
+
+**Starter credit.** The first time an account puts an agent in the cloud it gets `+1_000_000_000` nanoUSD ($1), once. The `cloud_starter_grants` row and the ledger row (entry type `adjustment`, source `cloud-starter:<account>`) are written in the same transaction as the flip, so a crash never leaves one without the other. Accounts in `COLONY_FREE_AI_ACCOUNTS` get none.

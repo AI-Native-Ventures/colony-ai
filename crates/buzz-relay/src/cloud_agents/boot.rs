@@ -130,16 +130,15 @@ pub async fn redeem(
     }
 
     let owner_hex = hex::encode(&row.owner_pubkey);
-    let session = state
-        .db
-        .create_credit_ai_session_with_policy(
-            &owner_hex,
-            row.community,
-            &row.agent_pubkey,
-            &crate::api::credits_gateway_limits::policy_from_env(),
-        )
-        .await
-        .map_err(|error| unavailable(format!("AI session not opened: {error}")))?;
+    let session = crate::api::credits_gateway::mint_cloud_session(
+        state,
+        row.community,
+        &row.agent_pubkey,
+        row.generation,
+    )
+    .await
+    .map_err(|error| unavailable(format!("AI session not opened: {error}")))?
+    .id;
 
     Ok(build_env(&EnvInputs {
         nsec: &nsec,
