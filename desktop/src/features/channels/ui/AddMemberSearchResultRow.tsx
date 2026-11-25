@@ -9,21 +9,31 @@ import { UserAvatar } from "@/shared/ui/UserAvatar";
 const MEMBER_ROW_INSET_DIVIDER_CLASS =
   "after:pointer-events-none after:absolute after:bottom-0 after:left-[3.75rem] after:right-0 after:h-px after:bg-border/60 after:content-[''] last:after:hidden";
 
-export function formatAddCandidateName(user: UserSearchResult) {
+/**
+ * The visible name of an add-member candidate. `currentPubkey` is the viewer:
+ * without it an agent the viewer owns would be labelled "(teammate)".
+ */
+export function formatAddCandidateName(
+  user: UserSearchResult,
+  currentPubkey?: string,
+) {
   return resolveIdentityLabel({
     pubkey: user.pubkey,
     fallbackName: user.displayName ?? user.nip05Handle,
     isAgent: user.isAgent,
     ownerPubkey: user.ownerPubkey,
+    currentPubkey,
   }).text;
 }
 
 export function AddMemberSearchResultRow({
+  currentPubkey,
   disabled,
   onSelect,
   ownerLabel,
   user,
 }: {
+  currentPubkey?: string;
   disabled: boolean;
   onSelect: (user: UserSearchResult) => void;
   ownerLabel?: string | null;
@@ -38,7 +48,7 @@ export function AddMemberSearchResultRow({
       data-testid={`channel-user-search-result-${user.pubkey}`}
     >
       <button
-        aria-label={`Select ${formatAddCandidateName(user)}`}
+        aria-label={`Select ${formatAddCandidateName(user, currentPubkey)}`}
         className="absolute inset-0 z-0 cursor-pointer focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
         disabled={disabled}
         onClick={() => onSelect(user)}
@@ -47,7 +57,7 @@ export function AddMemberSearchResultRow({
       <UserAvatar
         avatarUrl={user.avatarUrl}
         className="pointer-events-none relative z-10 h-8 w-8 text-xs shadow-none"
-        displayName={formatAddCandidateName(user)}
+        displayName={formatAddCandidateName(user, currentPubkey)}
         pubkey={user.pubkey}
         shape={user.isAgent ? "squircle" : "circle"}
         size="sm"
@@ -57,7 +67,7 @@ export function AddMemberSearchResultRow({
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-sm font-medium tracking-tight">
-                {formatAddCandidateName(user)}
+                {formatAddCandidateName(user, currentPubkey)}
               </span>
               <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                 <Bot aria-hidden="true" className="h-4 w-4" />
@@ -76,7 +86,7 @@ export function AddMemberSearchResultRow({
           </div>
         ) : (
           <span className="block truncate text-sm font-medium tracking-tight">
-            {formatAddCandidateName(user)}
+            {formatAddCandidateName(user, currentPubkey)}
           </span>
         )}
       </div>
