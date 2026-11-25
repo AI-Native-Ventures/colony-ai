@@ -1529,6 +1529,22 @@ pub(crate) mod tests {
         build_test_state(config, pool).await
     }
 
+    /// Replay guard that never refuses, for routes that sign several requests.
+    struct AlwaysFreshReplayGuard;
+
+    impl buzz_auth::Nip98ReplayGuard for AlwaysFreshReplayGuard {
+        fn try_mark_in_scope<'a>(
+            &'a self,
+            _scope: &'a str,
+            _event_id: &'a nostr::EventId,
+            _ttl_secs: u64,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<bool, buzz_auth::AuthError>> + Send + 'a>,
+        > {
+            Box::pin(async { Ok(true) })
+        }
+    }
+
     /// Test state for the cloud agents HTTP routes: cloud agents configured, an
     /// account key for sealing agent keys, NIP-98 replays never refused, and a
     /// secure relay URL so signed request URLs use `https`. Real database.
@@ -1552,7 +1568,7 @@ pub(crate) mod tests {
             .connect_lazy(&config.database_url)
             .expect("lazy pg pool");
         build_test_state_with(config, pool, |state| {
-            state.nip98_replay = Arc::new(buzz_auth::AlwaysFreshReplayGuard);
+            state.nip98_replay = Arc::new(AlwaysFreshReplayGuard);
         })
         .await
     }

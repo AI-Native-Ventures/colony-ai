@@ -2835,6 +2835,8 @@ CREATE TABLE cloud_starter_grants (
     account_id UUID PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     granted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+INSERT INTO _operator_global_tables (table_name, reason) VALUES
+    ('cloud_starter_grants', 'deployment-global once-per-account cloud starter credit marker');
 
 -- Operator admin: precomputed counts for the admin boards (docs/admin-api-contract.md).
 --

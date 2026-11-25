@@ -511,6 +511,7 @@ mod postgres_tests {
             "metrics_gateway_outcomes_hourly",
             "relay_operator_read_audit",
             "relay_operator_email_login_audit",
+            "cloud_starter_grants",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
