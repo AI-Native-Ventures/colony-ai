@@ -6198,7 +6198,29 @@ fn spawn_failure_notice(
     batch: &FlushBatch,
     content: String,
 ) {
-    let _ = spawn_failure_notice_task(rest_client, batch, content);
+    let _ = spawn_failure_notice_task(rest_client, batch, content, None);
+}
+
+/// [`spawn_failure_notice`] for a failed turn: a credit refusal is posted once,
+/// with its `colony_notice` tag (and, on a cloud machine, the short card copy).
+/// The batch is dead-lettered by the caller, so there is no retry and no second
+/// notice for the same turn.
+fn spawn_turn_failure_notice(
+    rest_client: Option<&relay::RestClient>,
+    config: &Config,
+    batch: &FlushBatch,
+    outcome: &PromptOutcome,
+    content: String,
+) {
+    let (content, notice) = match outcome {
+        PromptOutcome::Error(error) => provider_failure::credit_notice(
+            error,
+            config.placement.home == buzz_core::agent_placement::Home::Cloud,
+            content,
+        ),
+        _ => (content, None),
+    };
+    let _ = spawn_failure_notice_task(rest_client, batch, content, notice);
 }
 
 /// Like `spawn_failure_notice`, but returns the task so a caller that is about
@@ -6207,6 +6229,7 @@ fn spawn_failure_notice_task(
     rest_client: Option<&relay::RestClient>,
     batch: &FlushBatch,
     content: String,
+    notice: Option<provider_failure::CreditNoticeKind>,
 ) -> Option<tokio::task::JoinHandle<()>> {
     let rest = rest_client?.clone();
     let thread_tags = batch
@@ -6216,7 +6239,7 @@ fn spawn_failure_notice_task(
         .unwrap_or_default();
     let channel_id = batch.channel_id;
     Some(tokio::spawn(async move {
-        pool::post_failure_notice(&rest, channel_id, &thread_tags, &content).await;
+        pool::post_failure_notice_tagged(&rest, channel_id, &thread_tags, &content, notice).await;
     }))
 }
 
@@ -6377,7 +6400,7 @@ fn handle_prompt_result_inner(
                     _ => None,
                 }
                 .unwrap_or_else(|| provider_failure::credits_interrupted_notice().to_owned());
-                spawn_failure_notice(rest_client, &batch, notice);
+                spawn_turn_failure_notice(rest_client, config, &batch, &result.outcome, notice);
                 hard_timeout_fate_suffix = Some(" (automatic replay stopped for Colony credits)");
             } else if matches!(
                 result.outcome,
@@ -6462,7 +6485,7 @@ fn handle_prompt_result_inner(
                 );
                 free_model_exit = Some(FreeModelExit {
                     error,
-                    notice: spawn_failure_notice_task(rest_client, &batch, content),
+                    notice: spawn_failure_notice_task(rest_client, &batch, content, None),
                 });
             } else if matches!(
                 &result.outcome,
@@ -6486,7 +6509,7 @@ fn handle_prompt_result_inner(
                 _ => None,
             } {
                 // Permanent provider failures cannot recover through backoff.
-                spawn_failure_notice(rest_client, &batch, content);
+                spawn_turn_failure_notice(rest_client, config, &batch, &result.outcome, content);
             } else if matches!(&result.outcome, PromptOutcome::Error(e) if is_auth_error(e)) {
                 // Auth errors are non-retryable: the token won't self-repair
                 // between retries, so requeueing only wastes attempt slots and

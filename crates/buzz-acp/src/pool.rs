@@ -5496,6 +5496,18 @@ pub(crate) async fn post_failure_notice(
     thread_tags: &ThreadTags,
     content: &str,
 ) {
+    post_failure_notice_tagged(rest, channel_id, thread_tags, content, None).await;
+}
+
+/// Build the signed kind:9 failure notice. A credit refusal carries
+/// `["colony_notice", "outOfCredit" | "dailyLimit"]` so the app can show its card.
+pub(crate) fn build_failure_notice(
+    keys: &nostr::Keys,
+    channel_id: Uuid,
+    thread_tags: &ThreadTags,
+    content: &str,
+    notice: Option<crate::provider_failure::CreditNoticeKind>,
+) -> Result<nostr::Event, String> {
     let thread_ref = thread_tags.root_event_id.as_deref().and_then(|root| {
         let root_id = nostr::EventId::from_hex(root).ok()?;
         let parent_id = thread_tags
@@ -5508,7 +5520,7 @@ pub(crate) async fn post_failure_notice(
             parent_event_id: parent_id,
         })
     });
-    let builder = match buzz_sdk::build_message(
+    let mut builder = buzz_sdk::build_message(
         channel_id,
         content,
         thread_ref.as_ref(),
@@ -5516,17 +5528,30 @@ pub(crate) async fn post_failure_notice(
         false,
         &[],
         &[],
-    ) {
-        Ok(b) => b,
+    )
+    .map_err(|e| format!("build failed: {e}"))?;
+    if let Some(kind) = notice {
+        let tag = nostr::Tag::parse([crate::provider_failure::NOTICE_TAG_NAME, kind.tag_value()])
+            .map_err(|e| format!("notice tag failed: {e}"))?;
+        builder = builder.tags([tag]);
+    }
+    builder
+        .sign_with_keys(keys)
+        .map_err(|e| format!("sign failed: {e}"))
+}
+
+/// [`post_failure_notice`] with an optional credit-notice tag.
+pub(crate) async fn post_failure_notice_tagged(
+    rest: &crate::relay::RestClient,
+    channel_id: Uuid,
+    thread_tags: &ThreadTags,
+    content: &str,
+    notice: Option<crate::provider_failure::CreditNoticeKind>,
+) {
+    let event = match build_failure_notice(&rest.keys, channel_id, thread_tags, content, notice) {
+        Ok(event) => event,
         Err(e) => {
-            tracing::warn!(channel = %channel_id, "failure notice: build failed: {e}");
-            return;
-        }
-    };
-    let event = match builder.sign_with_keys(&rest.keys) {
-        Ok(e) => e,
-        Err(e) => {
-            tracing::warn!(channel = %channel_id, "failure notice: sign failed: {e}");
+            tracing::warn!(channel = %channel_id, "failure notice: {e}");
             return;
         }
     };
@@ -12393,3 +12418,65 @@ mod pi_prompt_tests;
 #[cfg(all(test, unix))]
 #[path = "pool/turn_reply_tests.rs"]
 mod turn_reply_tests;
+
+#[cfg(test)]
+mod failure_notice_tests {
+    use super::*;
+    use crate::provider_failure::CreditNoticeKind;
+
+    fn tag_rows(event: &nostr::Event) -> Vec<Vec<String>> {
+        event.tags.iter().map(|t| t.as_slice().to_vec()).collect()
+    }
+
+    #[test]
+    fn credit_notice_event_carries_the_colony_notice_tag() {
+        let keys = nostr::Keys::generate();
+        let channel = Uuid::new_v4();
+        let event = build_failure_notice(
+            &keys,
+            channel,
+            &ThreadTags::default(),
+            "Out of AI credit.",
+            Some(CreditNoticeKind::OutOfCredit),
+        )
+        .expect("notice event");
+        assert_eq!(event.kind.as_u16(), 9);
+        assert_eq!(event.content, "Out of AI credit.");
+        let rows = tag_rows(&event);
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.first().map(String::as_str) == Some("colony_notice"))
+                .collect::<Vec<_>>(),
+            vec![&vec!["colony_notice".to_owned(), "outOfCredit".to_owned()]],
+            "exactly one colony_notice tag"
+        );
+        assert!(rows.contains(&vec!["h".to_owned(), channel.to_string()]));
+
+        let daily = build_failure_notice(
+            &keys,
+            channel,
+            &ThreadTags::default(),
+            "Out of AI credit.",
+            Some(CreditNoticeKind::DailyLimit),
+        )
+        .expect("daily notice");
+        assert!(
+            tag_rows(&daily).contains(&vec!["colony_notice".to_owned(), "dailyLimit".to_owned()])
+        );
+    }
+
+    #[test]
+    fn plain_failure_notice_has_no_notice_tag() {
+        let event = build_failure_notice(
+            &nostr::Keys::generate(),
+            Uuid::new_v4(),
+            &ThreadTags::default(),
+            "⚠️ plain",
+            None,
+        )
+        .expect("plain event");
+        assert!(tag_rows(&event)
+            .iter()
+            .all(|row| row.first().map(String::as_str) != Some("colony_notice")));
+    }
+}
