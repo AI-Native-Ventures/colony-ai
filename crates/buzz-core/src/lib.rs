@@ -5,6 +5,8 @@
 //! Provides [`StoredEvent`], filter matching, kind constants, and event
 //! verification. All other Buzz crates depend on this one.
 
+/// Agent placement: where a managed agent works (This Mac or Cloud), commands, heads and the cloud config snapshot.
+pub mod agent_placement;
 /// NIP-AM: Agent Turn Metric — payload type and encrypt/decrypt helpers.
 pub mod agent_turn_metric;
 /// Colony business-record schemas, scoped identifiers, and version checks.
