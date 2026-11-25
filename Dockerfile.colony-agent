@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1.7
+# Colony cloud agent image: the box one Fly Machine runs for one cloud agent.
+#
+# Built from the Sprig stages (buzz-acp, buzz-agent, buzz-dev-mcp, rg, tree,
+# the Colony CLI and the git signing helpers in one multicall binary) plus jq.
+# It carries no Claude Code, Codex, OpenCode or plan credentials, and no
+# secrets of any kind: the machine boots with a single-use token and the
+# harness fetches its configuration from the relay (see crates/buzz-acp
+# cloud_boot). Cloud machines are linux/amd64 (Fly shared-cpu-1x).
+#
+# Keep both bases pinned to the same manifest-list digests as Dockerfile.sprig.
+FROM rust:1.95-alpine3.22@sha256:064dfc925d68d1a63f4fd2871bd7dc6e6ea56692989a487185855d62885d90aa AS builder
+
+RUN apk add --no-cache \
+      build-base \
+      cmake \
+      git \
+      musl-dev \
+      openssl-dev \
+      openssl-libs-static \
+      perl \
+      pkgconf \
+      protoc
+WORKDIR /build
+COPY . .
+RUN cargo build --locked --profile sprig -p sprig \
+    && strip target/sprig/sprig
+
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+
+# The agent's home and workspace live on the Fly volume mounted at /data, so
+# they survive sleep and image updates. /data/home and /data/workspace are
+# created here for runs without a volume and again by the entrypoint for a
+# fresh (root-owned) volume.
+RUN apk add --no-cache bash ca-certificates curl git jq su-exec \
+    && adduser -D -h /data/home agent \
+    && install -d -o agent -g agent /data /data/home /data/workspace \
+    && git config --system gpg.format x509 \
+    && git config --system gpg.x509.program /usr/local/bin/git-sign-nostr \
+    && git config --system commit.gpgSign true \
+    && git config --system tag.gpgSign true
+
+COPY --from=builder --chmod=0755 /build/target/sprig/sprig /usr/local/bin/sprig
+COPY --chmod=0755 scripts/colony-agent-entrypoint.sh /usr/local/bin/colony-agent-entrypoint
+RUN for name in \
+      buzz-acp buzz-agent buzz-dev-mcp rg tree buzz colony \
+      git-credential-nostr git-sign-nostr; do \
+        ln -s sprig "/usr/local/bin/$name"; \
+    done
+
+ENV HOME=/data/home \
+    PATH=/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+# WORKDIR is / on purpose: /data is shadowed by the volume mount, so a working
+# directory under it may not exist when the runtime starts the process. The
+# entrypoint creates /data/workspace and changes into it.
+WORKDIR /
+# No USER line: the entrypoint starts as root only to prepare the volume, then
+# drops to the unprivileged `agent` user with su-exec before the harness runs.
+ENTRYPOINT ["/usr/local/bin/colony-agent-entrypoint"]
