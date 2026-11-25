@@ -86,9 +86,7 @@ jobs:
         env:
           RUSTC_WRAPPER: sccache
         run: |
-          # test-fakes adds the in-memory cloud host the cloud agents e2e selects with
-          # COLONY_CLOUD_HOST=fake. Nothing uses it unless that variable is set.
-          cargo build --profile ci -p buzz-relay -p git-credential-nostr --features buzz-relay/test-fakes
+          cargo build --profile ci -p buzz-relay -p git-credential-nostr
           cargo nextest archive \
             --cargo-profile ci \
             -p buzz-db \
@@ -111,6 +109,11 @@ jobs:
             --lib \
             --tests \
             --archive-file target/ci/postgres-tests.tar.zst
+          # The relay binary again, last, with `test-fakes`: it adds the in-memory
+          # cloud host the cloud agents e2e selects with COLONY_CLOUD_HOST=fake, and
+          # nothing uses it unless that variable is set. It must come after the test
+          # archives, which rebuild target/ci/buzz-relay without the feature.
+          cargo build --profile ci -p buzz-relay --features buzz-relay/test-fakes
       - name: Save relay artifacts cache
         # PR-scoped exact-source entries cannot warm main or other PRs and churn
         # the shared cache pool. sccache provides read-only PR reuse instead.
