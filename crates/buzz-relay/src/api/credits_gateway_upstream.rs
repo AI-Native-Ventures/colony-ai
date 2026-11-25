@@ -590,6 +590,7 @@ impl Upstream {
 
     /// [`Upstream::request_for`] for a session on the owner's Mac: an explicit
     /// model choice must be a free one.
+    #[cfg(test)]
     pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), Refusal> {
         self.request_for(request, ModelAccess::Mac)
     }

@@ -323,19 +323,6 @@ pub(crate) async fn mint_cloud_session(
         .await
 }
 
-/// Revokes every open AI session of one agent (a flip, a removal). Spending
-/// already admitted still settles.
-pub(crate) async fn revoke_agent_sessions(
-    state: &AppState,
-    community: buzz_core::tenant::CommunityId,
-    agent_pubkey: &[u8],
-) -> Result<u64, buzz_db::DbError> {
-    state
-        .db
-        .revoke_agent_credit_sessions(community, agent_pubkey)
-        .await
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RevokeRequest {
