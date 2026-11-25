@@ -3,10 +3,12 @@
 #
 # Built from the Sprig stages (buzz-acp, buzz-agent, buzz-dev-mcp, rg, tree,
 # the Colony CLI and the git signing helpers in one multicall binary) plus jq.
-# It carries no Claude Code, Codex, OpenCode or plan credentials, and no
-# secrets of any kind: the machine boots with a single-use token and the
-# harness fetches its configuration from the relay (see crates/buzz-acp
-# cloud_boot). Cloud machines are linux/amd64 (Fly shared-cpu-1x).
+# It also carries OpenCode, pinned by release and checked by SHA-256, for the
+# free route only (the machine runs `opencode acp` on OpenCode's free model).
+# It carries no Claude Code, Codex or plan credentials, and no secrets of any
+# kind: the machine boots with a single-use token and the harness fetches its
+# configuration from the relay (see crates/buzz-acp cloud_boot). Cloud machines
+# are linux/amd64 (Fly shared-cpu-1x), so only the x64 musl build is installed.
 #
 # Keep both bases pinned to the same manifest-list digests as Dockerfile.sprig.
 FROM rust:1.95-alpine3.22@sha256:064dfc925d68d1a63f4fd2871bd7dc6e6ea56692989a487185855d62885d90aa AS builder
@@ -26,13 +28,30 @@ COPY . .
 RUN cargo build --locked --profile sprig -p sprig \
     && strip target/sprig/sprig
 
+# OpenCode release, checked before it is unpacked. A wrong checksum fails the
+# build. To bump: take the new tag's opencode-linux-x64-musl.tar.gz digest from
+# the release page and change both values (and the version in
+# scripts/test-colony-agent-image.sh).
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce AS opencode
+ARG OPENCODE_VERSION=1.19.6
+ARG OPENCODE_SHA256=2a22da39d0b69681272f4daeb51316244eda5c3d606d9e507d61bbf5c1b868a2
+RUN apk add --no-cache ca-certificates curl tar
+WORKDIR /opencode
+RUN curl --fail --silent --show-error --location --retry 3 \
+      --output opencode.tar.gz \
+      "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-x64-musl.tar.gz" \
+    && echo "${OPENCODE_SHA256}  opencode.tar.gz" | sha256sum -c - \
+    && tar -xzf opencode.tar.gz opencode \
+    && chmod 0755 opencode
+
 FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 
 # The agent's home and workspace live on the Fly volume mounted at /data, so
 # they survive sleep and image updates. /data/home and /data/workspace are
 # created here for runs without a volume and again by the entrypoint for a
 # fresh (root-owned) volume.
-RUN apk add --no-cache bash ca-certificates curl git jq su-exec \
+# libstdc++ and libgcc: the OpenCode musl build links libstdc++.so.6.
+RUN apk add --no-cache bash ca-certificates curl git jq libgcc libstdc++ su-exec \
     && adduser -D -h /data/home agent \
     && install -d -o agent -g agent /data /data/home /data/workspace \
     && git config --system gpg.format x509 \
@@ -41,6 +60,7 @@ RUN apk add --no-cache bash ca-certificates curl git jq su-exec \
     && git config --system tag.gpgSign true
 
 COPY --from=builder --chmod=0755 /build/target/sprig/sprig /usr/local/bin/sprig
+COPY --from=opencode --chmod=0755 /opencode/opencode /usr/local/bin/opencode
 COPY --chmod=0755 scripts/colony-agent-entrypoint.sh /usr/local/bin/colony-agent-entrypoint
 RUN for name in \
       buzz-acp buzz-agent buzz-dev-mcp rg tree buzz colony \

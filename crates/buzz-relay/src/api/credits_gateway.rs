@@ -323,6 +323,25 @@ pub(crate) async fn mint_cloud_session(
         .await
 }
 
+/// [`mint_cloud_session`] for a machine on the free route: the session may
+/// never choose a paid model, whoever pays for the account's AI.
+pub(crate) async fn mint_cloud_free_session(
+    state: &AppState,
+    community: buzz_core::tenant::CommunityId,
+    agent_pubkey: &[u8],
+    generation: i64,
+) -> Result<buzz_db::credits_gateway::CloudCreditSession, buzz_db::DbError> {
+    state
+        .db
+        .create_cloud_free_credit_session(
+            community,
+            agent_pubkey,
+            generation,
+            &super::credits_gateway_limits::policy_from_env(),
+        )
+        .await
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RevokeRequest {

@@ -227,6 +227,15 @@ pub fn install_home_token(token: &str) {
     }
 }
 
+/// The home fence token, or `None` when this process is not a cloud harness.
+/// Used to prove which machine is asking when it reports to the relay.
+pub fn home_token() -> Option<String> {
+    HOME_TOKEN
+        .get()
+        .map(|token| token.as_str().to_owned())
+        .filter(|token| !token.is_empty())
+}
+
 /// The `["colony_home", token]` tag for the AUTH event, or `None` when this
 /// process is not a cloud harness.
 pub fn home_tag() -> Option<nostr::Tag> {

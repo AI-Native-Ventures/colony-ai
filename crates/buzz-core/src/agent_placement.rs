@@ -24,6 +24,12 @@ use crate::company_records::is_hex_id;
 
 /// Wire schema version of placement actions, heads and snapshots.
 pub const PLACEMENT_SCHEMA_VERSION: u32 = 1;
+
+/// The cloud model value that means "free AI first": OpenCode's free model,
+/// then the OpenRouter free models behind the Colony gateway. It is the default
+/// for new cloud agents and is never a gateway model name, so it is always
+/// allowed and never needs a place on the credits gateway's allow list.
+pub const CLOUD_MODEL_FREE: &str = "colony-free";
 /// Longest cloud model identifier, in characters.
 pub const MAX_CLOUD_MODEL_CHARS: usize = 120;
 /// Longest agent display name in a snapshot, in characters.

@@ -2251,6 +2251,47 @@ async fn paid_model_refused_for_mac_session() {
     );
 }
 
+/// [red-proof] A machine on the free route can not spend the owner's credit:
+/// its session is free-only even though the account pays for its AI.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn free_route_session_refuses_a_paid_model_for_a_paying_account() {
+    use buzz_core::agent_placement::Home;
+    let f = fixture(upstream_response()).await;
+    store_bundle(&f).await;
+    let generation = place(&f, 0, Home::Cloud).await;
+    let community = community_of(&f).await;
+    let session = f
+        .gateway
+        .relay
+        .db
+        .create_cloud_free_credit_session(
+            community,
+            &f.agent.public_key().to_bytes(),
+            generation,
+            &GatewayPolicy::default(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        !session.paid_allowed,
+        "a free-route session never picks a paid model"
+    );
+    let model = primary_model(&f);
+    let (status, _) = call(&f, &model_body(session.id, Some(&model)), "free-route-paid").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        f.calls.load(Ordering::SeqCst),
+        0,
+        "refused before any upstream call"
+    );
+    assert_eq!(
+        balance(&f).await,
+        1_000_000_000,
+        "nothing is held or charged"
+    );
+}
+
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
 async fn free_account_cloud_session_uses_free_chain() {
