@@ -614,6 +614,9 @@ impl AcpClient {
                 "codex" | "codex-acp" => Some(StandardAdapterKind::Codex),
                 _ => None,
             };
+        // The home fence token is the harness's own credential; the agent and
+        // anything it runs must never see it.
+        cmd.env_remove(crate::cloud_boot::HOME_TOKEN_VAR);
         if !own_process_group {
             cmd.env_remove("COLONY_CONNECTION_MODEL");
             cmd.env_remove("COLONY_CONNECTION_CANCEL_PATH");

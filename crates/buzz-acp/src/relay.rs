@@ -3610,6 +3610,42 @@ fn extract_h_tag_uuid(event: &nostr::Event) -> Option<Uuid> {
     })
 }
 
+/// Build the signed NIP-42 AUTH event.
+///
+/// Carries the optional NIP-OA owner attestation (`auth_tag`) and, on a Colony
+/// cloud machine only, the home fence tag `["colony_home", token]`
+/// (`home_tag`). A harness on the Mac passes `None` and sends exactly the AUTH
+/// event it always has.
+fn build_auth_event(
+    challenge: &str,
+    relay_url: &str,
+    keys: &Keys,
+    auth_tag: Option<&nostr::Tag>,
+    home_tag: Option<&nostr::Tag>,
+) -> Result<nostr::Event, RelayError> {
+    if auth_tag.is_none() && home_tag.is_none() {
+        let relay_nostr_url = RelayUrl::parse(relay_url)
+            .map_err(|e| RelayError::Http(format!("invalid relay URL: {e}")))?;
+        return Ok(EventBuilder::auth(challenge, relay_nostr_url).sign_with_keys(keys)?);
+    }
+    // Cannot use the EventBuilder::auth() shortcut: it doesn't accept extra tags.
+    let mut tags = vec![
+        nostr::Tag::parse(["relay", relay_url])
+            .map_err(|e| RelayError::Http(format!("tag parse error: {e}")))?,
+        nostr::Tag::parse(["challenge", challenge])
+            .map_err(|e| RelayError::Http(format!("tag parse error: {e}")))?,
+    ];
+    if let Some(tag) = auth_tag {
+        tags.push(tag.clone());
+    }
+    if let Some(tag) = home_tag {
+        tags.push(tag.clone());
+    }
+    Ok(EventBuilder::new(nostr::Kind::Authentication, "")
+        .tags(tags)
+        .sign_with_keys(keys)?)
+}
+
 /// Build and send a NIP-42 AUTH response event.
 ///
 /// If `auth_tag` is provided (NIP-OA owner attestation), it is included in the
@@ -3621,24 +3657,13 @@ async fn send_auth_response(
     keys: &Keys,
     auth_tag: Option<&nostr::Tag>,
 ) -> Result<(), RelayError> {
-    let relay_nostr_url = RelayUrl::parse(relay_url)
-        .map_err(|e| RelayError::Http(format!("invalid relay URL: {e}")))?;
-
-    let auth_event = if let Some(tag) = auth_tag {
-        // Cannot use EventBuilder::auth() shortcut — it doesn't accept extra tags.
-        let tags = vec![
-            nostr::Tag::parse(["relay", relay_url])
-                .map_err(|e| RelayError::Http(format!("tag parse error: {e}")))?,
-            nostr::Tag::parse(["challenge", challenge])
-                .map_err(|e| RelayError::Http(format!("tag parse error: {e}")))?,
-            tag.clone(),
-        ];
-        EventBuilder::new(nostr::Kind::Authentication, "")
-            .tags(tags)
-            .sign_with_keys(keys)?
-    } else {
-        EventBuilder::auth(challenge, relay_nostr_url).sign_with_keys(keys)?
-    };
+    let auth_event = build_auth_event(
+        challenge,
+        relay_url,
+        keys,
+        auth_tag,
+        crate::cloud_boot::home_tag().as_ref(),
+    )?;
 
     let auth_msg = serde_json::to_string(&json!(["AUTH", auth_event]))?;
     ws_send_timeout(ws, Message::Text(auth_msg.into()), WS_SEND_TIMEOUT_SECS).await?;
@@ -7019,5 +7044,72 @@ mod tests {
             !state.channel_dropped_since.contains_key(&channel_id),
             "channel_dropped_since must be cleared on successful drain"
         );
+    }
+}
+
+#[cfg(test)]
+mod home_fence_tests {
+    use super::*;
+
+    fn tag_values(event: &nostr::Event, name: &str) -> Vec<Vec<String>> {
+        event
+            .tags
+            .iter()
+            .map(|t| t.as_slice().to_vec())
+            .filter(|t| t.first().map(String::as_str) == Some(name))
+            .collect()
+    }
+
+    #[test]
+    fn auth_event_carries_home_tag_only_when_cloud() {
+        let keys = Keys::generate();
+        let relay = "wss://relay.example.test";
+
+        // Mac harness: no home tag, and the event is the plain NIP-42 AUTH event.
+        let plain = build_auth_event("c1", relay, &keys, None, None).expect("plain");
+        assert!(tag_values(&plain, "colony_home").is_empty());
+        assert_eq!(
+            tag_values(&plain, "challenge"),
+            vec![vec!["challenge", "c1"]]
+        );
+        assert!(plain.verify().is_ok());
+
+        // The Mac path is byte-for-byte what EventBuilder::auth produces.
+        let relay_url = RelayUrl::parse(relay).expect("relay url");
+        let reference = EventBuilder::auth("c1", relay_url)
+            .sign_with_keys(&keys)
+            .expect("reference");
+        assert_eq!(
+            plain
+                .tags
+                .iter()
+                .map(|t| t.as_slice().to_vec())
+                .collect::<Vec<_>>(),
+            reference
+                .tags
+                .iter()
+                .map(|t| t.as_slice().to_vec())
+                .collect::<Vec<_>>()
+        );
+
+        // Cloud harness: the home tag rides along, signed into the event.
+        let home = crate::cloud_boot::home_tag_for(Some("home-token-1"));
+        let cloud = build_auth_event("c1", relay, &keys, None, home.as_ref()).expect("cloud");
+        assert_eq!(
+            tag_values(&cloud, "colony_home"),
+            vec![vec!["colony_home", "home-token-1"]]
+        );
+        assert_eq!(
+            tag_values(&cloud, "challenge"),
+            vec![vec!["challenge", "c1"]]
+        );
+        assert_eq!(tag_values(&cloud, "relay"), vec![vec!["relay", relay]]);
+        assert!(cloud.verify().is_ok());
+
+        // With an owner attestation too: both extra tags are present.
+        let owner = nostr::Tag::parse(["auth", "owner", "{}"]).expect("owner tag");
+        let both = build_auth_event("c1", relay, &keys, Some(&owner), home.as_ref()).expect("both");
+        assert_eq!(tag_values(&both, "auth").len(), 1);
+        assert_eq!(tag_values(&both, "colony_home").len(), 1);
     }
 }

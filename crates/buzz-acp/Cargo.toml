@@ -56,6 +56,9 @@ hmac = { workspace = true }
 base64 = "0.22"
 hex = { workspace = true }
 
+# Zeroize cloud boot secrets
+zeroize = { workspace = true }
+
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
