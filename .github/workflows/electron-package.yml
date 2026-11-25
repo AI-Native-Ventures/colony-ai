@@ -257,11 +257,13 @@ jobs:
           # An unsigned (ad-hoc) Mac app cannot read the Keychain item the
           # previous release created, because the Keychain trusts the code
           # hash and every release has a new one. That signed the owner out on
-          # every update. Unsigned Mac builds therefore leave out the system
-          # keyring and keep secrets in owner-only files; a signed build keeps
-          # the Keychain. The marker check below proves which one was built.
+          # every update, so since 3.0.23 every Mac install keeps its secrets
+          # in owner-only files. Signed Mac builds keep that same file storage:
+          # switching an installed Mac from files to the Keychain needs its own
+          # proven migration, and signing alone must never move anyone's keys.
+          # The marker check below proves which one was built.
           keyring_flags=""
-          if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ] && [ "$MAC_SIGNED" != "true" ]; then
+          if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ]; then
             keyring_flags="--no-default-features"
           fi
           # Without a build-time relay the host defaults to ws://localhost:3000, so a
@@ -292,7 +294,7 @@ jobs:
           host="$target_dir/release/colony-native-host"
           if [ ! -f "$host" ]; then host="$host.exe"; fi
           expected="colony-secret-storage=keychain"
-          if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ] && [ "$MAC_SIGNED" != "true" ]; then
+          if [ "$COLONY_PACKAGE_PLATFORM" = "darwin" ]; then
             expected="colony-secret-storage=file"
           fi
           # LC_ALL=C: BSD grep on macOS rejects binary data under a UTF-8 locale.
