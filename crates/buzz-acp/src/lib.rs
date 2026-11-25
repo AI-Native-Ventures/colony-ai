@@ -2681,13 +2681,23 @@ async fn tokio_main() -> Result<()> {
         startup_watch::WATCHDOG_TICK,
         startup_watch::exit_on_stall,
     );
-    let mut relay = startup_watch::bounded(
+    let relay = startup_watch::bounded(
         "relay_connect",
         startup_watch::RELAY_CONNECT_BUDGET,
         HarnessRelay::connect(&config.relay_url, &config.keys, &pubkey_hex, relay_auth_tag),
     )
-    .await?
-    .map_err(|e| anyhow::anyhow!("relay connect error: {e}"))?;
+    .await?;
+    let mut relay = match relay {
+        Ok(relay) => relay,
+        // The relay refused this agent because it works in another home now:
+        // not a failure to retry or to report. Leave with the moved-away code.
+        Err(e) if relay::is_home_fence_error(&e) => {
+            tracing::info!("relay says this agent works in another home - exiting");
+            placement::mark_moved_away();
+            return Ok(());
+        }
+        Err(e) => return Err(anyhow::anyhow!("relay connect error: {e}")),
+    };
 
     // Tell the relay background task the watermark so it can use
     // `since = watermark - 5s` on the first REQ instead of `since=now`.
@@ -3095,15 +3105,18 @@ async fn tokio_main() -> Result<()> {
         });
     }
 
-    // Placement watch: leave when the agent is placed in another home. A move
-    // stops new messages and new turns at once, lets the running turn finish,
-    // then shuts down through the normal path (offline presence included).
+    // Placement watch: a cloud harness leaves when the agent is placed in
+    // another home. A move stops new messages and new turns at once, lets the
+    // running turn finish, then shuts down through the normal path (offline
+    // presence included). A Mac harness runs no recurring poll: the relay
+    // closes its connection and refuses its next AUTH when the agent moves
+    // (see `relay::is_home_fence_refusal`), and it read the head once at start.
     let mut placement_rx = placement::spawn_watch(
         relay_rest_client.clone(),
         config.keys.public_key(),
         config.placement.home,
     );
-    let mut placement_rx_open = true;
+    let mut placement_rx_open = placement_rx.is_some();
     let mut placement_exit_timer: Option<tokio::time::Interval> = None;
 
     // Track the newest membership notification timestamp per channel.
@@ -4031,10 +4044,9 @@ async fn tokio_main() -> Result<()> {
                     None
                 }
                 head = async {
-                    if placement_watching {
-                        placement_rx.recv().await
-                    } else {
-                        std::future::pending().await
+                    match placement_rx.as_mut() {
+                        Some(rx) if placement_watching => rx.recv().await,
+                        _ => std::future::pending().await,
                     }
                 } => {
                     let _ = result_rx;

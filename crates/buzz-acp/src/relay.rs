@@ -2556,8 +2556,16 @@ async fn handle_ws_message(
             }
             true
         }
-        Message::Close(_) => {
+        Message::Close(frame) => {
             debug!("relay sent Close frame");
+            // A placement move closes the connection with a reason. Remember
+            // it: the reconnect loops then stop instead of dialling again.
+            if frame
+                .as_ref()
+                .is_some_and(|frame| is_home_fence_refusal(&frame.reason))
+            {
+                crate::placement::mark_moved_away();
+            }
             false
         }
         // Binary, Pong, Frame — ignore
@@ -3098,6 +3106,10 @@ async fn try_autonomous_reconnect(
 
     let mut attempt = 0usize;
     while attempt < backoffs.len() {
+        // The agent moved to another home: never dial again.
+        if crate::placement::moved_away() {
+            return ReconnectOutcome::Shutdown;
+        }
         info!(
             "autonomous reconnect attempt {}/{} to {relay_url}…",
             attempt + 1,
@@ -3155,6 +3167,13 @@ async fn try_autonomous_reconnect(
                     return ReconnectOutcome::Shutdown;
                 }
                 continue; // retry WITHOUT incrementing attempt
+            }
+            // The home fence refused this agent: it works in another home now.
+            // Retrying cannot help and would only hammer the relay.
+            Err(e) if is_home_fence_error(&e) => {
+                warn!("autonomous reconnect refused, the agent works in another home: {e}");
+                crate::placement::mark_moved_away();
+                return ReconnectOutcome::Shutdown;
             }
             Err(e) => {
                 warn!("autonomous reconnect attempt {} failed: {e}", attempt + 1);
@@ -3241,6 +3260,10 @@ async fn wait_for_reconnect(
     ];
     let mut attempt = state.backoff_step;
     loop {
+        // The agent moved to another home: never dial again.
+        if crate::placement::moved_away() {
+            return ReconnectOutcome::Shutdown;
+        }
         info!("attempting relay reconnect to {relay_url}…");
         match do_connect(relay_url, keys, auth_tag).await {
             Ok((new_ws, handshake_buffer)) => {
@@ -3292,6 +3315,12 @@ async fn wait_for_reconnect(
                     return ReconnectOutcome::Shutdown;
                 }
                 continue; // retry without incrementing attempt
+            }
+            // The home fence refused this agent: it works in another home now.
+            Err(e) if is_home_fence_error(&e) => {
+                warn!("relay reconnect refused, the agent works in another home: {e}");
+                crate::placement::mark_moved_away();
+                return ReconnectOutcome::Shutdown;
             }
             Err(e) => {
                 warn!("relay reconnect failed: {e}");
@@ -3964,6 +3993,21 @@ fn is_terminal_rustls_io_error(err: &std::io::Error) -> bool {
             | rustls::Error::UnsupportedNameType
             | rustls::Error::PeerIncompatible(_)
     )
+}
+
+/// The words the relay uses when it refuses this agent because the agent works
+/// in another home (a placement move closes its connections, then every AUTH is
+/// refused with `restricted: this agent works in another home`).
+const HOME_FENCE_PHRASE: &str = "works in another home";
+
+/// Whether a relay refusal or close reason says this agent works in another home.
+pub(crate) fn is_home_fence_refusal(message: &str) -> bool {
+    message.to_ascii_lowercase().contains(HOME_FENCE_PHRASE)
+}
+
+/// Whether a connect error is the home fence refusing this agent.
+pub(crate) fn is_home_fence_error(err: &RelayError) -> bool {
+    matches!(err, RelayError::AuthFailed(message) if is_home_fence_refusal(message))
 }
 
 /// Whether a relay's `OK false <message>` denial during NIP-42 auth is
@@ -7111,5 +7155,141 @@ mod home_fence_tests {
         let both = build_auth_event("c1", relay, &keys, Some(&owner), home.as_ref()).expect("both");
         assert_eq!(tag_values(&both, "auth").len(), 1);
         assert_eq!(tag_values(&both, "colony_home").len(), 1);
+    }
+
+    #[test]
+    fn refusal_text_is_recognised() {
+        for yes in [
+            "restricted: this agent works in another home",
+            "RESTRICTED: This agent works in another home.",
+        ] {
+            assert!(is_home_fence_refusal(yes), "{yes}");
+            assert!(is_home_fence_error(&RelayError::AuthFailed(yes.into())));
+        }
+        for no in [
+            "restricted: not a relay member",
+            "blocked: you are banned from this community",
+            "error: internal error checking restriction state",
+        ] {
+            assert!(!is_home_fence_refusal(no), "{no}");
+            assert!(!is_home_fence_error(&RelayError::AuthFailed(no.into())));
+        }
+        assert!(!is_home_fence_error(&RelayError::ConnectionClosed));
+    }
+
+    /// A relay that completes the handshake and then refuses AUTH with the
+    /// home-fence words, counting every connection it accepts.
+    async fn fence_refusing_relay() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind fence relay");
+        let url = format!("ws://{}", listener.local_addr().expect("addr"));
+        let accepted = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = accepted.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let Ok(mut ws) = tokio_tungstenite::accept_async(stream).await else {
+                        return;
+                    };
+                    let challenge = serde_json::json!(["AUTH", "challenge-1"]).to_string();
+                    let _ = ws.send(Message::Text(challenge.into())).await;
+                    // Read the client's AUTH, then refuse it.
+                    let Some(Ok(frame)) = ws.next().await else {
+                        return;
+                    };
+                    let id =
+                        serde_json::from_str::<serde_json::Value>(frame.to_text().unwrap_or("[]"))
+                            .ok()
+                            .and_then(|v| v[1]["id"].as_str().map(str::to_owned))
+                            .unwrap_or_default();
+                    let refusal = serde_json::json!([
+                        "OK",
+                        id,
+                        false,
+                        "restricted: this agent works in another home"
+                    ])
+                    .to_string();
+                    let _ = ws.send(Message::Text(refusal.into())).await;
+                    let _ = ws.close(None).await;
+                });
+            }
+        });
+        (url, accepted)
+    }
+
+    #[tokio::test]
+    async fn fence_refusal_exits_moved_without_reconnect() {
+        crate::placement::reset_moved_away_for_test();
+        let (url, accepted) = fence_refusing_relay().await;
+        let keys = Keys::generate();
+
+        // Initial connect: terminal refusal, one connection, recognised as the fence.
+        let err = match do_connect(&url, &keys, None).await {
+            Ok(_) => panic!("the fence must refuse AUTH"),
+            Err(err) => err,
+        };
+        assert!(is_home_fence_error(&err), "got {err}");
+        assert!(is_terminal_connect_error(&err));
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // Post-startup reconnect loop: stops at the first refusal. No ladder,
+        // no backoff sleep, no second dial; the harness is marked moved away.
+        let (client, _server) = super::tests::test_ws_pair().await;
+        let mut client = client;
+        let (_cmd_tx, mut cmd_rx) = mpsc::channel(1);
+        let (event_tx, _event_rx) = mpsc::channel(1);
+        let (observer_tx, _observer_rx) = mpsc::channel(1);
+        let mut state = BgState::new();
+        let before = accepted.load(std::sync::atomic::Ordering::SeqCst);
+        let outcome = timeout(
+            Duration::from_secs(5),
+            wait_for_reconnect(
+                &mut client,
+                &mut cmd_rx,
+                &mut state,
+                &keys,
+                &url,
+                &keys.public_key().to_hex(),
+                &event_tx,
+                &observer_tx,
+                true,
+                None,
+            ),
+        )
+        .await
+        .expect("must not back off or loop after a fence refusal");
+        assert!(matches!(outcome, ReconnectOutcome::Shutdown));
+        assert_eq!(
+            accepted.load(std::sync::atomic::Ordering::SeqCst) - before,
+            1,
+            "exactly one dial, no reconnect storm"
+        );
+        assert!(crate::placement::moved_away());
+
+        // And the bounded startup ladder refuses to dial once moved away.
+        let (url2, accepted2) = fence_refusing_relay().await;
+        crate::placement::reset_moved_away_for_test();
+        let outcome = timeout(
+            Duration::from_secs(5),
+            try_autonomous_reconnect(
+                &mut client,
+                &mut cmd_rx,
+                &mut state,
+                &keys,
+                &url2,
+                &keys.public_key().to_hex(),
+                &event_tx,
+                &observer_tx,
+                None,
+            ),
+        )
+        .await
+        .expect("must not back off after a fence refusal");
+        assert!(matches!(outcome, ReconnectOutcome::Shutdown));
+        assert_eq!(accepted2.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(crate::placement::moved_away());
+        crate::placement::reset_moved_away_for_test();
     }
 }

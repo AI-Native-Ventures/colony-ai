@@ -14,10 +14,11 @@
 //!   4. publishes offline presence through the normal shutdown path, and
 //!   5. exits with [`PLACEMENT_MOVED_EXIT_CODE`].
 //!
-//! The head is read by a bounded poll of the relay's `/query` endpoint rather
-//! than a new subscription: the relay also fences authentication by generation
-//! and disconnects the old home on every flip, so the poll only has to be quick
-//! enough for a harness that was never disconnected (a Mac harness).
+//! A cloud harness reads the head by a bounded poll of the relay's `/query`
+//! endpoint every 15 s. A Mac harness reads it once at start and never polls:
+//! the relay closes every agent connection on a home change and refuses the
+//! next AUTH with "works in another home", which `relay.rs` turns into the same
+//! moved-away exit (see `relay::is_home_fence_refusal`).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -33,12 +34,12 @@ use crate::relay::RestClient;
 /// `EX_TEMPFAIL`): "do not restart me on your own".
 pub const PLACEMENT_MOVED_EXIT_CODE: i32 = 75;
 
-/// How often a cloud harness reads the head. The machine is the cheap, fenced
-/// copy, so it checks often.
-const CLOUD_POLL: Duration = Duration::from_secs(5);
-/// How often a Mac harness reads the head. The desktop also gates local starts
-/// and the relay fences authentication, so this is the last line only.
-const MAC_POLL: Duration = Duration::from_secs(30);
+/// How often a cloud harness reads the head. Cloud machines are capped, so
+/// this is bounded load. A Mac harness runs no recurring poll at all: every
+/// local agent of every user would hit `/query` on a timer even with cloud
+/// agents switched off. It reads the head once at start, and the relay's home
+/// fence (connection closed, next AUTH refused) does the rest.
+const CLOUD_POLL: Duration = Duration::from_secs(15);
 /// Longest one head query may take.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Most heads buffered between the poller and the listener.
@@ -187,18 +188,21 @@ pub(crate) async fn poll_once(
 /// Poll the head until the receiver is dropped. Each successful read is sent
 /// as `Some(head)` or `None` (no head); a failed read is logged and skipped, so
 /// a flaky relay never moves a harness.
+///
+/// Only a cloud harness polls. A Mac harness gets `None`: it must not add a
+/// recurring query per local agent (see [`CLOUD_POLL`]).
 pub(crate) fn spawn_watch(
     rest: RestClient,
     agent: PublicKey,
     home: Home,
-) -> mpsc::Receiver<Option<PlacementHead>> {
+) -> Option<mpsc::Receiver<Option<PlacementHead>>> {
+    if home != Home::Cloud {
+        return None;
+    }
     let (tx, rx) = mpsc::channel(CHANNEL_DEPTH);
-    let period = match home {
-        Home::Cloud => CLOUD_POLL,
-        Home::Mac => MAC_POLL,
-    };
     tokio::spawn(async move {
-        let mut timer = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+        let mut timer =
+            tokio::time::interval_at(tokio::time::Instant::now() + CLOUD_POLL, CLOUD_POLL);
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut failing = false;
         loop {
@@ -223,7 +227,14 @@ pub(crate) fn spawn_watch(
             }
         }
     });
-    rx
+    Some(rx)
+}
+
+/// Test-only: clear the moved-away flag so one test cannot leak into another
+/// when the runner shares a process.
+#[cfg(test)]
+pub(crate) fn reset_moved_away_for_test() {
+    MOVED_AWAY.store(false, Ordering::SeqCst);
 }
 
 #[cfg(test)]
