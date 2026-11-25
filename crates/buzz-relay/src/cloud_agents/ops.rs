@@ -196,7 +196,9 @@ async fn run_op(state: &Arc<AppState>, host: &dyn CloudHost, op: &OpRow) -> Resu
         return Ok(());
     };
     // Fence by generation: an operation written for an older placement is moot.
-    if op.op != CloudOp::Destroy && op.generation < row.generation {
+    // RED PROOF: the generation fence is disabled.
+    let fenced = false;
+    if fenced && op.op != CloudOp::Destroy && op.generation < row.generation {
         tracing::info!(
             op = op.op.as_str(),
             op_generation = op.generation,
