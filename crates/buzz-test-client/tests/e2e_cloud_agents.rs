@@ -567,12 +567,11 @@ async fn mention_around_flip_answered_once() {
     assert!(accepted(&flipped), "flip back refused: {flipped}");
     let mut cut_off = false;
     for _ in 0..20 {
-        match machine.recv_event(Duration::from_millis(500)).await {
-            Err(TestClientError::ConnectionClosed | TestClientError::WebSocket(_)) => {
-                cut_off = true;
-                break;
-            }
-            _ => {}
+        if let Err(TestClientError::ConnectionClosed | TestClientError::WebSocket(_)) =
+            machine.recv_event(Duration::from_millis(500)).await
+        {
+            cut_off = true;
+            break;
         }
     }
     assert!(
