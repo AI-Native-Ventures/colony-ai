@@ -52,6 +52,8 @@ type UseAnchoredScrollOptions = {
     messageId: string,
     options?: { behavior?: ScrollBehavior },
   ) => boolean;
+  /** Reads whether virtual bottom settlement still owns the viewport. */
+  virtualHasBottomIntent?: () => boolean;
   /** Imperative virtualizer-owned bottom jump, used only when virtualizer mode is active. */
   virtualScrollToBottom?: (behavior?: ScrollBehavior) => void;
   virtualSettleAtBottom?: () => void;
@@ -85,8 +87,10 @@ type UseAnchoredScrollResult = {
     messageId: string,
     options?: { highlight?: boolean; behavior?: ScrollBehavior },
   ) => boolean;
-  /** Syncs the hook's bottom affordances from a virtualizer-owned scroller. */
-  onVirtualizerAtBottomStateChange: (atBottom: boolean) => void;
+  /** Syncs the hook's bottom affordances from a virtualizer-owned scroller.
+   * Returns false when a transient virtualizer offset must not update reader
+   * state while a deliberate bottom settle still owns the viewport. */
+  onVirtualizerAtBottomStateChange: (atBottom: boolean) => boolean;
 };
 
 function isAtBottomNow(
@@ -162,6 +166,7 @@ export function useAnchoredScroll({
   onTargetSettled,
   virtualCancelBottomIntent,
   virtualScrollToMessage,
+  virtualHasBottomIntent,
   virtualScrollToBottom,
   virtualSettleAtBottom,
   virtualizerOwnsPrependAnchoring = false,
@@ -626,6 +631,16 @@ export function useAnchoredScroll({
         scrollToBottomImperative("auto");
         mountPinRafIdRef.current = requestAnimationFrame(() => {
           mountPinRafIdRef.current = null;
+          // A reader can take the virtual scroller before its follow-up frame
+          // runs. Do not re-arm a cancelled bottom settle and pull them back
+          // to the newest row after that deliberate navigation.
+          if (
+            virtualizerOwnsPrependAnchoring &&
+            virtualHasBottomIntent &&
+            !virtualHasBottomIntent()
+          ) {
+            return;
+          }
           scrollToBottomImperative("auto");
         });
       };
@@ -771,6 +786,7 @@ export function useAnchoredScroll({
     scrollToBottomImperative,
     scrollToMessageImperative,
     targetMessageId,
+    virtualHasBottomIntent,
     virtualScrollToBottom,
     virtualSettleAtBottom,
     virtualizerOwnsPrependAnchoring,
@@ -949,15 +965,21 @@ export function useAnchoredScroll({
 
   const onVirtualizerAtBottomStateChange = React.useCallback(
     (atBottom: boolean) => {
-      if (!virtualizerOwnsPrependAnchoring) return;
+      if (!virtualizerOwnsPrependAnchoring) return false;
+      // A bottom settle deliberately follows Virtua's late row measurements.
+      // During that intent, Virtua can briefly report a gap before it re-pins
+      // to the physical floor. Treating that transient as reader navigation
+      // would freeze the semantic timeline and strand its release pill.
+      if (!atBottom && virtualHasBottomIntent?.()) return false;
       virtualizerAtBottomRef.current = atBottom;
       if (atBottom) {
         anchorRef.current = { kind: "at-bottom" };
         setNewMessageCount(0);
       }
       setIsAtBottom(atBottom);
+      return true;
     },
-    [virtualizerOwnsPrependAnchoring],
+    [virtualHasBottomIntent, virtualizerOwnsPrependAnchoring],
   );
 
   return {

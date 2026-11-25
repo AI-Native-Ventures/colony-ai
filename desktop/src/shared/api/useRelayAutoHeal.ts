@@ -9,6 +9,10 @@ import {
 } from "@/shared/api/relayClientShared";
 import { isRelayDependentQuery } from "@/shared/api/relayQueryInvalidation";
 import {
+  isRelayHttpRateLimited,
+  subscribeToRelayHttpRateLimitRecovery,
+} from "@/shared/api/relayHttpRequestGate";
+import {
   isRateLimited,
   subscribeToRateLimitRecovery,
 } from "@/shared/api/relayRateLimitGate";
@@ -167,7 +171,7 @@ export function useRelayAutoHeal(): void {
   if (schedulerRef.current === null) {
     schedulerRef.current = new RelayAutoHealScheduler(
       () => {
-        if (isRateLimited()) {
+        if (isRateLimited() || isRelayHttpRateLimited()) {
           // The rate-limit recovery subscription below retries only failed
           // active queries after the shared window clears. A whole-cache
           // invalidate here would turn a healthy busy screen into another
@@ -218,7 +222,7 @@ export function useRelayAutoHeal(): void {
       }
       recovery.observeQuery(event.query);
     });
-    const unsubscribeRecovery = subscribeToRateLimitRecovery(() => {
+    const recoverRateLimitedQueries = () => {
       const queryHashes = recovery.takeErroredActiveQueryHashes(
         queryClient.getQueryCache().getAll(),
       );
@@ -229,10 +233,17 @@ export function useRelayAutoHeal(): void {
           query.state.status === "error" &&
           query.isActive(),
       });
-    });
+    };
+    const unsubscribeRecovery = subscribeToRateLimitRecovery(
+      recoverRateLimitedQueries,
+    );
+    const unsubscribeHttpRecovery = subscribeToRelayHttpRateLimitRecovery(
+      recoverRateLimitedQueries,
+    );
     return () => {
       unsubscribeCache();
       unsubscribeRecovery();
+      unsubscribeHttpRecovery();
     };
   }, [queryClient]);
 }

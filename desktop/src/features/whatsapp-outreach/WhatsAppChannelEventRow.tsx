@@ -30,6 +30,11 @@ import {
   type WhatsAppContact,
 } from "./whatsappOutreachModels";
 import { canSendNowWhatsAppBatch } from "./whatsappSendNowEligibility";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
+
+function queryErrorText(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function tagValue(message: TimelineMessage, name: string): string | null {
   return message.tags?.find((tag) => tag[0] === name)?.[1]?.trim() || null;
@@ -329,7 +334,12 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
     const missingText = batchesQuery.isPending
       ? "Finding the WhatsApp batch…"
       : batchesQuery.isError
-        ? batchesQuery.error.message
+        ? isRelayHttpRateLimitError(batchesQuery.error)
+          ? "Busy, trying again shortly."
+          : queryErrorText(
+              batchesQuery.error,
+              "The WhatsApp batch could not be loaded.",
+            )
         : matches.length > 1
           ? "This notice matches more than one batch. Refresh the channel."
           : "This batch is no longer available.";
@@ -543,9 +553,21 @@ function PendingBatchCard({ message }: { message: TimelineMessage }) {
         {isPending ? (
           <>
             {batchesQuery.isError ? (
-              <p className="m-0 text-sm text-colony-danger" role="alert">
-                {batchesQuery.error.message}
-              </p>
+              isRelayHttpRateLimitError(batchesQuery.error) ? (
+                <p
+                  className="m-0 text-sm text-colony-fg-secondary"
+                  role="status"
+                >
+                  Busy, trying again shortly.
+                </p>
+              ) : (
+                <p className="m-0 text-sm text-colony-danger" role="alert">
+                  {queryErrorText(
+                    batchesQuery.error,
+                    "The WhatsApp batch could not be loaded.",
+                  )}
+                </p>
+              )
             ) : ambiguousPendingMatches ? (
               <p className="m-0 text-sm text-colony-danger" role="alert">
                 This notice matches more than one pending batch. Refresh the
