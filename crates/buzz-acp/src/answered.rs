@@ -27,6 +27,7 @@ pub(crate) fn replay_floor(now: u64) -> u64 {
 }
 
 /// What to do with a message the wake ledger let through.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CatchUpVerdict {
     /// Run the turn.
@@ -57,10 +58,9 @@ where
     if !replayed {
         return CatchUpVerdict::Run;
     }
-    match answered().await {
-        Some(true) => CatchUpVerdict::SkipAnswered,
-        Some(false) | None => CatchUpVerdict::Run,
-    }
+    // RED PROOF: relay-answered guard removed.
+    let _ = answered().await;
+    CatchUpVerdict::Run
 }
 
 #[cfg(test)]
