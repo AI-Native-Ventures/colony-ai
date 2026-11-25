@@ -7,7 +7,11 @@
 
 pub mod boot;
 pub mod config;
+#[cfg(any(test, feature = "test-fakes"))]
+pub mod fake_host;
 pub mod fence;
+pub mod fly;
+pub mod host;
 
 use std::sync::Arc;
 
