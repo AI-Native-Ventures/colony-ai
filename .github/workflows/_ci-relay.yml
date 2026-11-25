@@ -86,7 +86,9 @@ jobs:
         env:
           RUSTC_WRAPPER: sccache
         run: |
-          cargo build --profile ci -p buzz-relay -p git-credential-nostr
+          # test-fakes adds the in-memory cloud host the cloud agents e2e selects with
+          # COLONY_CLOUD_HOST=fake. Nothing uses it unless that variable is set.
+          cargo build --profile ci -p buzz-relay -p git-credential-nostr --features buzz-relay/test-fakes
           cargo nextest archive \
             --cargo-profile ci \
             -p buzz-db \
@@ -635,6 +637,7 @@ jobs:
           cargo test -p buzz-test-client --test e2e_company_workers agent_writes_own_worker_record -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_company_workers agent_cannot_write_another_agents_worker_record -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_company_workers worker_record_never_appears_in_team_list -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_cloud_agents -- --ignored --nocapture --test-threads=1
           cargo test -p buzz-test-client --test e2e_relay invite -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay nip43_membership_snapshots_are_rejected -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay nip29_departure_wire -- --ignored --nocapture
