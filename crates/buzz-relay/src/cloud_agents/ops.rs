@@ -205,28 +205,17 @@ async fn run_op(state: &Arc<AppState>, host: &dyn CloudHost, op: &OpRow) -> Resu
         );
         return Ok(());
     }
+    // The generation fence above is the one guard that decides whether an
+    // operation still applies: an operation is written in the same transaction as
+    // the placement change that made it, so one at the current generation always
+    // matches the current home.
     match op.op {
-        CloudOp::Ensure => {
-            if row.home != buzz_core::agent_placement::Home::Cloud {
-                return Ok(());
-            }
-            ensure_machine(state, host, &row).await.map(|_| ())
-        }
-        CloudOp::Start => {
-            if row.home != buzz_core::agent_placement::Home::Cloud {
-                return Ok(());
-            }
-            start_machine(state, host, &row, op).await
-        }
-        CloudOp::Stop => {
-            if row.home == buzz_core::agent_placement::Home::Cloud {
-                return Ok(());
-            }
-            match machine_of(&row) {
-                Some(machine) => host.stop(&machine).await.map_err(OpError::from),
-                None => Ok(()),
-            }
-        }
+        CloudOp::Ensure => ensure_machine(state, host, &row).await.map(|_| ()),
+        CloudOp::Start => start_machine(state, host, &row, op).await,
+        CloudOp::Stop => match machine_of(&row) {
+            Some(machine) => host.stop(&machine).await.map_err(OpError::from),
+            None => Ok(()),
+        },
         CloudOp::Destroy => {
             if let Some(machine) = machine_of(&row) {
                 host.destroy(&machine).await?;
@@ -382,6 +371,50 @@ mod postgres_tests {
         let journal = f.journal().await;
         assert_eq!(journal[0], ("ensure".into(), 1, "done".into(), 1));
         assert!(f.row().await.fly_machine_id.is_none());
+    }
+
+    /// A stop written for an old generation must not stop the machine of the
+    /// new one: the agent went Mac, then back to the cloud, and its machine is
+    /// running for the new generation.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn stale_stop_does_not_stop_the_new_generations_machine() {
+        use crate::cloud_agents::host::{BootEnvelope, CloudHost, MachineRef, MachineState};
+        let f = fixture().await;
+        f.flip(0, Home::Cloud).await;
+        f.pass().await; // ensure for generation 1
+        let row = f.row().await;
+        let machine = MachineRef {
+            machine_id: row.fly_machine_id.clone().expect("machine"),
+            volume_id: row.fly_volume_id.clone().expect("volume"),
+        };
+        f.host
+            .start(
+                &machine,
+                &BootEnvelope {
+                    boot_url: "https://x".into(),
+                    boot_token: zeroize::Zeroizing::new("t".into()),
+                },
+            )
+            .await
+            .expect("start");
+        f.flip(1, Home::Mac).await; // stop for generation 2
+        f.flip(2, Home::Cloud).await; // back in the cloud at generation 3
+        f.pass().await; // the old stop is claimed first
+        assert!(
+            !f.host
+                .calls()
+                .iter()
+                .any(|c| matches!(c, FakeCall::Stop(_))),
+            "the stale stop must not reach the host: {:?}",
+            f.host.calls()
+        );
+        assert_eq!(
+            f.host.machine_state(&machine.machine_id),
+            MachineState::Started
+        );
+        let journal = f.journal().await;
+        assert_eq!(journal[1], ("stop".into(), 2, "done".into(), 1));
     }
 
     #[tokio::test]
