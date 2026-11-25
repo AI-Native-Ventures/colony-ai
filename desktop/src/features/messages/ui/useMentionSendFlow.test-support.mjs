@@ -180,6 +180,14 @@ export async function setup({ lifecycle = false, ...startup } = {}) {
       noteMentionSentToAgents: (pubkeys) => control.notes.push([...pubkeys]),
       retryAgentWithMentions: async () => false,
     },
+    // Nothing is placed in the cloud in these suites, and the reconciler's
+    // refusal text is only read when a Try again reaches a cloud agent.
+    "@/features/agents/mentionReconciler": {
+      CLOUD_PLACED_ERROR: "agent placed in the cloud",
+    },
+    "@/features/agents/placement/placementStore": {
+      isCloudPlaced: () => false,
+    },
     // Starts are tracked so a reconcile waits for them; no reconcile here.
     "@/features/agents/agentLifecycle": {
       trackAgentStart: noop,

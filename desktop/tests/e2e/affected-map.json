@@ -185,6 +185,7 @@
         "colony3-agents-proof.spec.ts",
         "edit-agent.spec.ts",
         "agent-runtime-switch.spec.ts",
+        "cloud-agent-switch.spec.ts",
         "harness-model-list.spec.ts",
         "codex-adapter-provision.spec.ts",
         "edit-agent-run-on.spec.ts",

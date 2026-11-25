@@ -33,6 +33,25 @@ pub enum Admission {
     DailyLimit,
 }
 
+/// How long a cloud agent's AI session lasts. The relay renews it on every
+/// wake, so a machine that sleeps and wakes always holds a fresh one.
+pub const CLOUD_SESSION_TTL_HOURS: i64 = 24;
+
+/// The starter credit every account gets once, the first time it puts an agent
+/// in the cloud, in nanoUSD ($1).
+pub const CLOUD_STARTER_NANOUSD: i64 = 1_000_000_000;
+
+/// A session minted for a cloud agent's machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudCreditSession {
+    /// The session id the machine puts in every request.
+    pub id: Uuid,
+    /// Whether the session may choose a paid model.
+    pub paid_allowed: bool,
+    /// When the session ends.
+    pub expires_at: DateTime<Utc>,
+}
+
 /// Regular accounts may hold this many unresolved requests at once.
 const MAX_IN_FLIGHT: i64 = 4;
 /// Regular accounts may hold this many live managed sessions at once.
@@ -161,6 +180,147 @@ impl Db {
             .bind(id).bind(account).bind(community.as_uuid()).bind(agent).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(id)
+    }
+
+    /// The verified account behind an owner pubkey: `(account id, email)`.
+    pub async fn verified_account_for_owner(
+        &self,
+        owner_hex: &str,
+    ) -> Result<Option<(Uuid, String)>> {
+        let mut conn = self.pool.acquire().await?;
+        cloud_owner_account_in(&mut conn, owner_hex).await
+    }
+
+    /// Give an account its one-time cloud starter credit. Returns `false` when
+    /// it already had it. See [`grant_cloud_starter_in`].
+    pub async fn grant_cloud_starter(&self, account: Uuid) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let granted = grant_cloud_starter_in(&mut tx, account).await?;
+        tx.commit().await?;
+        Ok(granted)
+    }
+
+    /// Mint the AI session of a cloud agent's machine. No owner signature is
+    /// involved: the authority is the stored placement (the agent is in the cloud
+    /// at exactly `generation`) together with the ownership record (the user row
+    /// of the agent names the same owner as the bundle) and the owner's verified
+    /// account. The session lasts [`CLOUD_SESSION_TTL_HOURS`], replaces the
+    /// agent's earlier ones, and belongs to the agent's key like any session.
+    ///
+    /// Accounts the policy lists as free get a session that may not choose a
+    /// paid model; every other account gets one that may (and pays for it).
+    pub async fn create_cloud_credit_session(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        policy: &GatewayPolicy,
+    ) -> Result<CloudCreditSession> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT assert_community_write_allowed($1)")
+            .bind(community.as_uuid())
+            .execute(&mut *tx)
+            .await?;
+        let account: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT a.id, a.email FROM cloud_agents c \
+             JOIN users u ON u.community_id = c.community_id AND u.pubkey = c.agent_pubkey \
+                         AND u.agent_owner_pubkey = c.owner_pubkey \
+             JOIN accounts a ON a.pubkey = encode(c.owner_pubkey, 'hex') \
+                            AND a.email_verified_at IS NOT NULL \
+             WHERE c.community_id = $1 AND c.agent_pubkey = $2 AND c.generation = $3 \
+               AND c.home = 'cloud' \
+             FOR UPDATE OF a",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let (account, email) = account.ok_or_else(|| {
+            DbError::NotFound("cloud placement and verified owner required".into())
+        })?;
+        let free = policy.is_free(&email);
+        let session_limit = if free {
+            FREE_AI_MAX_SESSIONS
+        } else {
+            MAX_SESSIONS
+        };
+        sqlx::query(
+            "UPDATE account_ai_sessions SET revoked = true \
+             WHERE account_id = $1 AND community_id = $2 AND agent_pubkey = $3",
+        )
+        .bind(account)
+        .bind(community.as_uuid())
+        .bind(agent)
+        .execute(&mut *tx)
+        .await?;
+        let active: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM account_ai_sessions WHERE account_id = $1 AND NOT revoked AND expires_at > now()",
+        )
+        .bind(account)
+        .fetch_one(&mut *tx)
+        .await?;
+        if active >= session_limit {
+            return Err(DbError::InvalidData("managed session limit reached".into()));
+        }
+        let id = Uuid::new_v4();
+        let paid_allowed = !free;
+        let expires_at: DateTime<Utc> = sqlx::query_scalar(
+            "INSERT INTO account_ai_sessions \
+                 (id, account_id, community_id, agent_pubkey, expires_at, cloud, paid_allowed) \
+             VALUES ($1, $2, $3, $4, now() + make_interval(hours => $5::int), true, $6) \
+             RETURNING expires_at",
+        )
+        .bind(id)
+        .bind(account)
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(CLOUD_SESSION_TTL_HOURS as i32)
+        .bind(paid_allowed)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(CloudCreditSession {
+            id,
+            paid_allowed,
+            expires_at,
+        })
+    }
+
+    /// Whether a live session is a cloud session, and whether it may choose a
+    /// paid model: `(cloud, paid_allowed)`. `None` for an unknown, revoked or
+    /// expired session, or one that belongs to another agent.
+    pub async fn credit_ai_session_mode(
+        &self,
+        session: Uuid,
+        agent: &[u8],
+    ) -> Result<Option<(bool, bool)>> {
+        Ok(sqlx::query_as(
+            "SELECT cloud, paid_allowed FROM account_ai_sessions \
+             WHERE id = $1 AND agent_pubkey = $2 AND NOT revoked AND expires_at > now()",
+        )
+        .bind(session)
+        .bind(agent)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    /// Revoke every open AI session of one agent. Spending already admitted
+    /// still settles. Returns how many sessions were revoked.
+    pub async fn revoke_agent_credit_sessions(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            "UPDATE account_ai_sessions SET revoked = true \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND NOT revoked",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Whether the verified account owning this signer uses the gateway
@@ -478,6 +638,49 @@ fn recovery_from_row(row: sqlx::postgres::PgRow) -> Result<RecoveryRequest> {
         upstream_id: row.try_get("upstream_id")?,
         created_at: row.try_get("created_at")?,
     })
+}
+
+/// The verified account behind an owner pubkey, on an existing connection or
+/// transaction: `(account id, email)`.
+pub async fn cloud_owner_account_in(
+    conn: &mut sqlx::PgConnection,
+    owner_hex: &str,
+) -> Result<Option<(Uuid, String)>> {
+    Ok(sqlx::query_as(
+        "SELECT id, email FROM accounts WHERE pubkey = $1 AND email_verified_at IS NOT NULL",
+    )
+    .bind(owner_hex)
+    .fetch_optional(conn)
+    .await?)
+}
+
+/// Give an account its one-time cloud starter credit inside the caller's
+/// transaction: the marker row and the ledger grant land together or not at all,
+/// so a crash never leaves a credit without its marker (a second credit later)
+/// or a marker without its credit. Returns `false` when already granted.
+pub async fn grant_cloud_starter_in(conn: &mut sqlx::PgConnection, account: Uuid) -> Result<bool> {
+    let marked: Option<Uuid> = sqlx::query_scalar(
+        "INSERT INTO cloud_starter_grants (account_id) VALUES ($1) \
+         ON CONFLICT (account_id) DO NOTHING RETURNING account_id",
+    )
+    .bind(account)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if marked.is_none() {
+        return Ok(false);
+    }
+    sqlx::query(
+        "INSERT INTO account_credit_ledger \
+             (account_id, entry_type, amount_nanousd, source_id, description) \
+         VALUES ($1, 'adjustment', $2, $3, 'Colony cloud starter credit') \
+         ON CONFLICT (account_id, source_id) DO NOTHING",
+    )
+    .bind(account)
+    .bind(CLOUD_STARTER_NANOUSD)
+    .bind(format!("cloud-starter:{account}"))
+    .execute(&mut *conn)
+    .await?;
+    Ok(true)
 }
 
 #[cfg(test)]

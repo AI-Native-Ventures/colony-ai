@@ -2021,3 +2021,285 @@ async fn a_paid_model_that_hangs_keeps_its_hold_and_the_session_stays_busy() {
     let (status, value) = call(&f, &body(&f, Uuid::new_v4()), "paid-next").await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{value}");
 }
+
+// ---------------------------------------------------------------------------
+// Cloud agents: sessions the relay mints for a cloud machine, and paid models.
+// ---------------------------------------------------------------------------
+
+async fn community_of(f: &Fixture) -> buzz_core::CommunityId {
+    f.gateway
+        .relay
+        .db
+        .lookup_community_by_host(&f.host)
+        .await
+        .unwrap()
+        .expect("fixture community")
+        .id
+}
+
+/// Stores a bundle for the fixture's agent (owned by the fixture's owner).
+async fn store_bundle(f: &Fixture) {
+    let community = community_of(f).await;
+    f.gateway
+        .relay
+        .db
+        .upsert_cloud_bundle(&buzz_db::cloud_agents::BundleRow {
+            community,
+            agent_pubkey: f.agent.public_key().to_bytes().to_vec(),
+            owner_pubkey: f.owner.public_key().to_bytes().to_vec(),
+            wrapped_dek: vec![1; 28],
+            sealed_nsec: vec![2; 48],
+            nonce: vec![3; 12],
+            kek_id: "test-kek".into(),
+            auth_tag: None,
+            config: json!({"name": "Scout"}),
+            config_version: 1,
+        })
+        .await
+        .unwrap();
+}
+
+/// Moves the fixture's agent to `home` and returns the new generation.
+async fn place(f: &Fixture, expected: i64, home: buzz_core::agent_placement::Home) -> i64 {
+    let community = community_of(f).await;
+    match f
+        .gateway
+        .relay
+        .db
+        .set_cloud_home_cas(community, &f.agent.public_key().to_bytes(), expected, home)
+        .await
+        .unwrap()
+    {
+        buzz_db::cloud_agents::CasOutcome::Applied { generation, .. } => generation,
+        other => panic!("placement refused: {other:?}"),
+    }
+}
+
+async fn mint(
+    f: &Fixture,
+    generation: i64,
+    policy: &GatewayPolicy,
+) -> Result<buzz_db::credits_gateway::CloudCreditSession, buzz_db::DbError> {
+    let community = community_of(f).await;
+    f.gateway
+        .relay
+        .db
+        .create_cloud_credit_session(
+            community,
+            &f.agent.public_key().to_bytes(),
+            generation,
+            policy,
+        )
+        .await
+}
+
+fn model_body(session: Uuid, model: Option<&str>) -> String {
+    let mut request = json!({
+        "session_id": session,
+        "request_id": Uuid::new_v4(),
+        "messages": [{"role": "user", "content": "Hello Colony"}],
+    });
+    if let Some(model) = model {
+        request["model"] = json!(model);
+    }
+    request.to_string()
+}
+
+fn primary_model(f: &Fixture) -> String {
+    f.gateway.upstream.as_ref().unwrap().model.clone()
+}
+
+/// [red-proof] An agent that is not placed in the cloud gets no cloud session,
+/// whatever it claims: the minting authority is the stored placement.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn cloud_session_requires_cloud_placement() {
+    use buzz_core::agent_placement::Home;
+    let f = fixture(upstream_response()).await;
+    let policy = GatewayPolicy::default();
+    assert!(
+        mint(&f, 0, &policy).await.is_err(),
+        "no bundle, no cloud placement"
+    );
+    store_bundle(&f).await;
+    assert!(
+        mint(&f, 0, &policy).await.is_err(),
+        "a bundle alone does not make the agent a cloud agent"
+    );
+    let generation = place(&f, 0, Home::Cloud).await;
+    let session = mint(&f, generation, &policy)
+        .await
+        .expect("cloud placement mints");
+    assert!(
+        session.paid_allowed,
+        "an account that pays may use paid models"
+    );
+    let hours = (session.expires_at - chrono::Utc::now()).num_hours();
+    assert!(
+        (23..=24).contains(&hours),
+        "a cloud session lasts a day, got {hours} h"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn cloud_session_rejected_for_stale_generation() {
+    use buzz_core::agent_placement::Home;
+    let f = fixture(upstream_response()).await;
+    store_bundle(&f).await;
+    let first = place(&f, 0, Home::Cloud).await;
+    let second = place(&f, first, Home::Mac).await;
+    let third = place(&f, second, Home::Cloud).await;
+    let policy = GatewayPolicy::default();
+    assert!(
+        mint(&f, first, &policy).await.is_err(),
+        "a machine started for an older generation never gets a session"
+    );
+    assert!(mint(&f, third, &policy).await.is_ok());
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn flip_revokes_sessions() {
+    use buzz_core::agent_placement::Home;
+    let f = fixture(upstream_response()).await;
+    store_bundle(&f).await;
+    let generation = place(&f, 0, Home::Cloud).await;
+    let session = mint(&f, generation, &GatewayPolicy::default())
+        .await
+        .unwrap();
+    let agent = f.agent.public_key().to_bytes();
+    let db = &f.gateway.relay.db;
+    assert_eq!(
+        db.credit_ai_session_mode(session.id, &agent).await.unwrap(),
+        Some((true, true))
+    );
+    place(&f, generation, Home::Mac).await;
+    assert_eq!(
+        db.credit_ai_session_mode(session.id, &agent).await.unwrap(),
+        None,
+        "moving the agent revokes its sessions in the same transaction"
+    );
+    // The inference route then refuses what that session was still holding.
+    let (status, _) = call(&f, &model_body(session.id, None), "revoked").await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(f.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn paid_model_allowed_for_paying_cloud_session() {
+    use buzz_core::agent_placement::Home;
+    let f = fixture(upstream_response()).await;
+    store_bundle(&f).await;
+    let generation = place(&f, 0, Home::Cloud).await;
+    let session = mint(&f, generation, &GatewayPolicy::default())
+        .await
+        .unwrap();
+    let model = primary_model(&f);
+    let (status, value) = call(&f, &model_body(session.id, Some(&model)), "cloud-paid").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(f.sent.lock().unwrap()[0]["model"], json!(model));
+    // A model the relay does not allow is still refused before any spend.
+    let (status, _) = call(
+        &f,
+        &model_body(session.id, Some("not/allowed")),
+        "cloud-unknown",
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn paid_request_charges_cost_plus_20_percent() {
+    use buzz_core::agent_placement::Home;
+    let f = fixture(upstream_response()).await;
+    store_bundle(&f).await;
+    let generation = place(&f, 0, Home::Cloud).await;
+    let session = mint(&f, generation, &GatewayPolicy::default())
+        .await
+        .unwrap();
+    let before = balance(&f).await;
+    let model = primary_model(&f);
+    let (status, value) = call(&f, &model_body(session.id, Some(&model)), "cloud-charge").await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    // The provider reported a cost of $0.01: the owner pays that plus 20 percent.
+    assert_eq!(value["chargedNanousd"], "12000000");
+    assert_eq!(before - balance(&f).await, 12_000_000);
+}
+
+/// The Mac's session is unchanged: an explicit model choice must be free.
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn paid_model_refused_for_mac_session() {
+    let f = fixture(upstream_response()).await;
+    let model = primary_model(&f);
+    let (status, _) = call(&f, &model_body(f.session, Some(&model)), "mac-paid").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        f.calls.load(Ordering::SeqCst),
+        0,
+        "refused before any upstream call"
+    );
+    assert_eq!(
+        balance(&f).await,
+        1_000_000_000,
+        "nothing is held or charged"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn free_account_cloud_session_uses_free_chain() {
+    use buzz_core::agent_placement::Home;
+    let mut f = fixture(upstream_response()).await;
+    sqlx::query("DELETE FROM account_credit_ledger WHERE account_id = $1")
+        .bind(f.account)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let policy = GatewayPolicy {
+        free_ai_accounts: vec![account_email(&f).await],
+        ..GatewayPolicy::default()
+    };
+    f.gateway.policy = Arc::new(policy.clone());
+    store_bundle(&f).await;
+    let generation = place(&f, 0, Home::Cloud).await;
+    let session = mint(&f, generation, &policy).await.unwrap();
+    assert!(
+        !session.paid_allowed,
+        "a free account never picks a paid model"
+    );
+    // The choice is ignored, not refused: the configured chain answers.
+    let (status, value) = call(
+        &f,
+        &model_body(session.id, Some("some/paid-model-it-asked-for")),
+        "cloud-free",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(f.sent.lock().unwrap()[0]["model"], json!(primary_model(&f)));
+    assert_eq!(
+        ledger_rows(&f).await,
+        0,
+        "a free account's ledger stays untouched"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn starter_grant_once_per_account() {
+    let f = fixture(upstream_response()).await;
+    let db = &f.gateway.relay.db;
+    let before = balance(&f).await;
+    assert!(db.grant_cloud_starter(f.account).await.unwrap());
+    assert!(
+        !db.grant_cloud_starter(f.account).await.unwrap(),
+        "the second flip gets nothing"
+    );
+    assert_eq!(balance(&f).await - before, 1_000_000_000);
+}

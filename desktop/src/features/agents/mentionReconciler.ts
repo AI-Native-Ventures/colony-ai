@@ -59,6 +59,10 @@ export const SENT_LOOKBACK_SECONDS = 15 * 60;
 /** How far back the check when the community opens looks. */
 export const LAUNCH_LOOKBACK_SECONDS = 24 * 60 * 60;
 
+/** What a start path says when the agent works in the cloud. The desktop
+ * backend refuses with the same words. */
+export const CLOUD_PLACED_ERROR = "agent placed in the cloud";
+
 export type ReconcileReason = "sent" | "launch";
 
 export type TenantScope = {
@@ -97,6 +101,10 @@ export type MentionReconcilerDeps = {
   ) => Promise<unknown>;
   /** Whether a start for this agent is already running (a send-flow wake). */
   isStartInFlight: (agentPubkey: string) => boolean;
+  /** Whether the relay places this agent in the cloud. A cloud agent is the
+   * cloud's to wake: this Mac never starts, stops, hands back for or waits on
+   * it (spec 5.2: one live copy at a time). */
+  isCloudPlaced: (agentPubkey: string) => boolean;
   /** Records a wait on the agent so the conversation can say so. */
   watch: (input: {
     pubkey: string;
@@ -271,6 +279,7 @@ export function createMentionReconciler(
         (candidate) => normalizePubkey(candidate.pubkey) === pubkey,
       );
       if (!agent || !isLocal(agent) || agent.status === "running") return;
+      if (deps.isCloudPlaced(pubkey)) return;
       const found = await deps.findUnanswered(pubkey, SENT_LOOKBACK_SECONDS);
       await handBackQueued(pubkey, found);
       await deps.startAgent(
@@ -297,6 +306,7 @@ export function createMentionReconciler(
       if (!agent || !isLocal(agent)) {
         throw new Error("This agent is not one of your local agents.");
       }
+      if (deps.isCloudPlaced(pubkey)) throw new Error(CLOUD_PLACED_ERROR);
       let found: UnansweredMention[] = [];
       try {
         found = await deps.findUnanswered(pubkey, SENT_LOOKBACK_SECONDS);
@@ -342,7 +352,7 @@ export function createMentionReconciler(
       );
       if (stale()) return;
       // Not one of this person's local agents: nothing here to wake.
-      if (!agent || !isLocal(agent)) return;
+      if (!agent || !isLocal(agent) || deps.isCloudPlaced(pubkey)) return;
       found = await deps.findUnanswered(pubkey, lookbackSeconds);
     } catch (error) {
       if (stale()) return;
@@ -359,6 +369,8 @@ export function createMentionReconciler(
       return;
     }
     if (stale()) return;
+    // The owner may have moved the agent to the cloud while the read was out.
+    if (deps.isCloudPlaced(pubkey)) return;
     run.retries = 0;
 
     // A launch pass starts an agent for a given mention once; a mention it
@@ -409,6 +421,8 @@ export function createMentionReconciler(
         for (const mention of waiting) deps.caughtUp.add(mention.id);
         try {
           await deps.exclusive(pubkey, "mention reconcile", async () => {
+            // Waiting for the lifecycle lock is long enough for a flip.
+            if (deps.isCloudPlaced(pubkey)) return;
             await handBackQueued(pubkey, replayable);
             await deps.startAgent(
               agent,
@@ -473,6 +487,7 @@ export function createMentionReconciler(
         for (const agent of agents) {
           const pubkey = normalizePubkey(agent.pubkey);
           if (!isLocal(agent) || (wanted && !wanted.has(pubkey))) continue;
+          if (deps.isCloudPlaced(pubkey)) continue;
           trigger(pubkey, 0, lookbackSeconds, reason);
         }
       })();
@@ -495,6 +510,7 @@ export function createMentionReconciler(
     },
     async prepareStart(agentPubkey) {
       const pubkey = normalizePubkey(agentPubkey);
+      if (deps.isCloudPlaced(pubkey)) return undefined;
       const found = await deps.findUnanswered(pubkey, SENT_LOOKBACK_SECONDS);
       await handBackQueued(pubkey, found);
       return found[0]?.createdAt;

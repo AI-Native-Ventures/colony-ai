@@ -14,6 +14,7 @@ pub(crate) use agent_description::{effective_agent_description, record_effective
 mod backend;
 pub(crate) mod bestie_assignment;
 pub(crate) mod claude_config;
+pub(crate) mod cloud_bundle;
 mod colony_command;
 pub(crate) mod config_bridge;
 pub(crate) mod credits_gateway;
@@ -34,6 +35,7 @@ pub(crate) mod parallelism;
 mod persona_avatars;
 pub(crate) mod persona_events;
 mod personas;
+pub(crate) mod placement_cache;
 #[cfg(windows)]
 mod process_lifecycle;
 pub(crate) mod readiness;

@@ -2,7 +2,7 @@ import type * as React from "react";
 import { MessageCircle } from "lucide-react";
 
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
-import { AgentRuntimeHeaderStatus } from "@/features/agents/ui/AgentRuntimeHeaderStatus";
+import { AgentHomeHeader } from "@/features/agents/placement/AgentHomeHeader";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
 import { getChannelDetail } from "@/features/channels/lib/channelDescription";
@@ -363,7 +363,7 @@ export function ChannelScreenHeader({
             ephemeralDisplay={activeChannelEphemeralDisplay}
           />
           {!isGroupDm && activeDmParticipant?.isAgent ? (
-            <AgentRuntimeHeaderStatus pubkey={activeDmParticipant.pubkey} />
+            <AgentHomeHeader pubkey={activeDmParticipant.pubkey} />
           ) : null}
           {!isGroupDm && activeDmParticipant ? (
             <AgentManagementMarker

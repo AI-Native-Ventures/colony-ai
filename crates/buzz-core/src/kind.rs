@@ -841,6 +841,14 @@ pub const KIND_QUALIFY_OBSERVATION_HEAD: u32 = 30681;
 /// Member or agent qualification observation write, brokered by the business relay.
 pub const KIND_QUALIFY_OBSERVATION_ACTION: u32 = 47070;
 
+// Cloud agents: where a managed agent works ("This Mac" or "Cloud").
+// Contract: docs/superpowers/plans/2026-11-25-cloud-agents.md. These two numbers were
+// reserved by the outreach-lists block ("30682 to 30683 and 47071 to 47074 stay free").
+/// Relay-authored agent placement head (`d` = the agent's pubkey hex; one per agent).
+pub const KIND_AGENT_PLACEMENT_HEAD: u32 = 30682;
+/// Owner-signed agent placement command (flip home, retry wake, set cloud model), brokered by the relay.
+pub const KIND_AGENT_PLACEMENT_ACTION: u32 = 47071;
+
 // Money rails payment kinds. 30680 is the co-founder lead head, 30681 and 47070 belong to
 // qualification, and 30684, 30685, 47075 and 47076 belong to outreach lists, so these four sit after them. Only the payment
 // kinds are defined; signing and booking get their own numbers in their own PRs.
@@ -855,7 +863,7 @@ pub const KIND_MONEY_CONNECTION_HEAD: u32 = 30687;
 pub const KIND_MONEY_CONNECTION_ACTION: u32 = 47078;
 
 // Outreach lists and shared Discovery campaigns (Sales channel scope, business broker).
-// Contract: docs/outreach-lists-contract.md. 30682 to 30683 and 47071 to 47074 stay free;
+// Contract: docs/outreach-lists-contract.md. 30683 and 47072 to 47074 stay free (agent placement owns 30682 and 47071);
 // money rails owns 30686, 30687, 47077 and 47078.
 /// Relay-authored outreach list head (business channel, one per list; `d` = the list's coordinate).
 pub const KIND_OUTREACH_LIST_HEAD: u32 = 30684;
@@ -1399,6 +1407,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_COFOUNDER_LEAD_HEAD,
     KIND_QUALIFY_OBSERVATION_HEAD,
     KIND_QUALIFY_OBSERVATION_ACTION,
+    KIND_AGENT_PLACEMENT_HEAD,
+    KIND_AGENT_PLACEMENT_ACTION,
     KIND_OUTREACH_LIST_HEAD,
     KIND_OUTREACH_LIST_ACTION,
     KIND_DISCOVERY_CAMPAIGN_HEAD,
@@ -1486,6 +1496,7 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_MONEY_FOLLOW_UP
             | KIND_COMPANY_WORK_TRACKING_ACTION
             | KIND_QUALIFY_OBSERVATION_ACTION
+            | KIND_AGENT_PLACEMENT_ACTION
             | KIND_OUTREACH_LIST_ACTION
             | KIND_DISCOVERY_CAMPAIGN_ACTION
             | KIND_GOAL_ACTION
@@ -1547,6 +1558,7 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_INVOICE_HEAD
             | KIND_PROSPECT_HEAD
             | KIND_QUALIFY_OBSERVATION_HEAD
+            | KIND_AGENT_PLACEMENT_HEAD
             | KIND_OUTREACH_LIST_HEAD
             | KIND_DISCOVERY_CAMPAIGN_HEAD
             | KIND_MONEY_FOLLOW_UP_HEAD
@@ -1636,6 +1648,7 @@ const _: () = assert!(is_parameterized_replaceable(KIND_PAYMENT_LINK_HEAD)); // 
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_CONNECTION_HEAD)); // 30687 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_COFOUNDER_LEAD_HEAD)); // 30680 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_QUALIFY_OBSERVATION_HEAD)); // 30681 in 30000..=39999
+const _: () = assert!(is_parameterized_replaceable(KIND_AGENT_PLACEMENT_HEAD)); // 30682 in 30000..=39999
 const _: () = assert!(is_parameterized_replaceable(KIND_OUTREACH_LIST_HEAD)); // 30684 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_DISCOVERY_CAMPAIGN_HEAD)); // 30685 ∈ 30000–39999
 
@@ -1754,6 +1767,21 @@ mod tests {
         assert!(is_business_command_kind(KIND_QUALIFY_OBSERVATION_ACTION));
         assert!(is_command_kind(KIND_QUALIFY_OBSERVATION_ACTION));
         assert!(!is_relay_only_kind(KIND_QUALIFY_OBSERVATION_ACTION));
+    }
+
+    #[test]
+    fn agent_placement_kinds_have_expected_write_authority() {
+        assert_eq!(KIND_AGENT_PLACEMENT_HEAD, 30682);
+        assert_eq!(KIND_AGENT_PLACEMENT_ACTION, 47071);
+        assert!(is_relay_only_kind(KIND_AGENT_PLACEMENT_HEAD));
+        assert!(!is_command_kind(KIND_AGENT_PLACEMENT_HEAD));
+        assert!(is_command_kind(KIND_AGENT_PLACEMENT_ACTION));
+        assert!(!is_relay_only_kind(KIND_AGENT_PLACEMENT_ACTION));
+        // Placement is per agent, not a company or business record.
+        assert!(!COMPANY_RECORD_KINDS.contains(&KIND_AGENT_PLACEMENT_HEAD));
+        assert!(!is_business_record_kind(KIND_AGENT_PLACEMENT_HEAD));
+        assert!(ALL_KINDS.contains(&KIND_AGENT_PLACEMENT_HEAD));
+        assert!(ALL_KINDS.contains(&KIND_AGENT_PLACEMENT_ACTION));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 /// NIP-42 authentication handler.
 pub mod admin_action_worker;
 pub mod admin_outbox_worker;
+/// Broker for agent placement commands (This Mac or Cloud), kind 47071.
+pub(crate) mod agent_placement;
 pub mod auth;
 /// Nostr-first broker for business-record contracts.
 pub mod business_records;
