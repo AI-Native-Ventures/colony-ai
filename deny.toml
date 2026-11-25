@@ -27,6 +27,38 @@ ignore = [
     { id = "RUSTSEC-2026-0367", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip" },
     { id = "RUSTSEC-2026-0368", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip" },
     { id = "RUSTSEC-2026-0369", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip" },
+    # Added 25 Nov 2026 after the advisory database moved. Review all of these by
+    # 2026-12-25. hickory-net, hickory-proto and hickory-resolver (a dozen DNSSEC
+    # and parsing advisories), pulldown-cmark and url were fixed by bumping the
+    # lockfile instead of being ignored.
+    # chrono 0.4.45 and chrono-tz 0.10.4: unmaintained notices, no vulnerability.
+    # Used all over (buzz-acp, buzz-workflow, kube, sqlx); no replacement is
+    # available, so nothing to upgrade to.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained notice only; used workspace-wide, no safe upgrade available; review by 2026-12-25" },
+    { id = "RUSTSEC-2026-0555", reason = "chrono-tz unmaintained notice only; used by buzz-acp and buzz-workflow, no safe upgrade available; review by 2026-12-25" },
+    # humantime 2.3.0: unmaintained notice only. Reached through xet-runtime and
+    # hf-hub in mesh-llm, a buzz-relay dev-dependency, so it never ships.
+    { id = "RUSTSEC-2026-0542", reason = "humantime unmaintained notice only; mesh-llm dev-dependency of buzz-relay, not shipped; review by 2026-12-25" },
+    # libsqlite3-sys 0.35.0 (bundled SQLite CVE): only via mesh-llm-log-store in
+    # mesh-llm, a buzz-relay dev-dependency, so it never ships. The fix needs
+    # libsqlite3-sys >= 0.39, which rusqlite in mesh-llm does not allow yet.
+    { id = "RUSTSEC-2026-0459", reason = "libsqlite3-sys via mesh-llm dev-dependency only; not shipped; fix needs mesh-llm to bump rusqlite; review by 2026-12-25" },
+    # kube-client 2.0.1: openssl-tls trusts the default OpenSSL CA store. Colony
+    # builds kube with default-features = false and only client + rustls-tls
+    # (Cargo.toml), so the openssl-tls feature is not compiled. kube is used only
+    # by buzz-backend-kubernetes. The fix is a two-major bump (>= 4.2.1).
+    { id = "RUSTSEC-2026-0600", reason = "openssl-tls feature not enabled (kube uses rustls-tls); only buzz-backend-kubernetes; fix needs kube 4.x; review by 2026-12-25" },
+    # rmcp 1.8.0: unbounded buffering in Streamable HTTP clients. The shipped
+    # harness (sprig: buzz-agent, buzz-dev-mcp) builds rmcp with client,
+    # transport-child-process, server and transport-io only, with no streamable
+    # HTTP client. The fix is a two-major bump (>= 3.9.0).
+    { id = "RUSTSEC-2026-0462", reason = "streamable HTTP client feature not enabled in buzz-agent or buzz-dev-mcp (child-process and stdio only); fix needs rmcp 3.x; review by 2026-12-25" },
+    # zip 2.4.2: three more advisories on the same mesh-llm dev-dependency path as
+    # the zip ignores above (extract and streaming reader). Not shipped; fix needs
+    # zip >= 9 / 9.0.5.
+    { id = "RUSTSEC-2026-0429", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip; review by 2026-12-25" },
+    { id = "RUSTSEC-2026-0545", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip; review by 2026-12-25" },
+    { id = "RUSTSEC-2026-0548", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip; review by 2026-12-25" },
 ]
 
 [licenses]
