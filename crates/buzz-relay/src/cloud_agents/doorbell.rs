@@ -315,6 +315,7 @@ mod postgres_tests {
 
     use super::*;
     use crate::cloud_agents::fake_host::FakeCall;
+    use crate::cloud_agents::host::HostError;
     use crate::cloud_agents::presence::FakePresence;
     use crate::cloud_agents::test_support::{fixture, fixture_with, Fixture};
 
