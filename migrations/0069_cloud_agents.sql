@@ -37,7 +37,9 @@ CREATE TABLE cloud_agents (
     CHECK ((boot_token_hash IS NULL) = (boot_token_expires_at IS NULL))
 );
 
-CREATE UNIQUE INDEX cloud_agents_boot_token_key
+-- Boot tokens are looked up by hash alone (the machine knows no community), so this
+-- index does not lead with community_id. It is not unique: tokens are 256 random bits.
+CREATE INDEX cloud_agents_boot_token_lookup
     ON cloud_agents (boot_token_hash)
     WHERE boot_token_hash IS NOT NULL;
 CREATE INDEX cloud_agents_owner_cloud

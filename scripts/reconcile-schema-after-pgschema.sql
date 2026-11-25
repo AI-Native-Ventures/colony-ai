@@ -209,17 +209,17 @@ SELECT attach_community_write_fence('discovery_usage');
 
 DO $$
 DECLARE
-    fenced TEXT;
+    cloud_fenced TEXT;
 BEGIN
-    FOREACH fenced IN ARRAY ARRAY['cloud_agents', 'cloud_agent_ops'] LOOP
+    FOREACH cloud_fenced IN ARRAY ARRAY['cloud_agents', 'cloud_agent_ops'] LOOP
         IF NOT EXISTS (
             SELECT 1
             FROM pg_trigger
-            WHERE tgrelid = fenced::regclass
-              AND tgname = 'community_write_fence_' || fenced
+            WHERE tgrelid = cloud_fenced::regclass
+              AND tgname = 'community_write_fence_' || cloud_fenced
               AND NOT tgisinternal
         ) THEN
-            RAISE EXCEPTION '% must have its community write fence after pgschema apply', fenced;
+            RAISE EXCEPTION '% must have its community write fence after pgschema apply', cloud_fenced;
         END IF;
     END LOOP;
 END $$;
