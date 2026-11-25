@@ -249,6 +249,16 @@ pub(super) async fn handle(
             &event.id.to_hex(),
         );
     }
+    // A flip to the cloud wakes the agent so it answers anything that went
+    // unanswered while its Mac was off; `Try again` starts a failed wake over.
+    let wake = match (action.op, action.home) {
+        (PlacementOp::RetryWake, _) => true,
+        (PlacementOp::SetHome, Some(Home::Cloud)) => changed,
+        _ => false,
+    };
+    if wake {
+        crate::cloud_agents::doorbell::wake_now(state, community, &agent_key).await;
+    }
     Ok(result)
 }
 

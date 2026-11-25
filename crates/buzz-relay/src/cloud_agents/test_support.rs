@@ -30,12 +30,20 @@ pub(crate) async fn fixture() -> Fixture {
 
 /// A fixture with the given feature mode.
 pub(crate) async fn fixture_in(mode: CloudMode) -> Fixture {
+    fixture_with(mode, |_| {}).await
+}
+
+/// A fixture whose cloud agents configuration is adjusted by `adjust`.
+pub(crate) async fn fixture_with(
+    mode: CloudMode,
+    adjust: impl FnOnce(&mut CloudAgentsConfig),
+) -> Fixture {
     let database_url = std::env::var("BUZZ_TEST_DATABASE_URL")
         .expect("BUZZ_TEST_DATABASE_URL must name the disposable test database");
     let pool = sqlx::PgPool::connect(&database_url)
         .await
         .expect("connect to the disposable test database");
-    let cloud = CloudAgentsConfig {
+    let mut cloud = CloudAgentsConfig {
         mode,
         fly: Some(FlyConfig::new(
             "colony-agents".into(),
@@ -48,8 +56,11 @@ pub(crate) async fn fixture_in(mode: CloudMode) -> Fixture {
         )),
         default_model: Some("free/a".into()),
         allowed_models: vec!["free/a".into()],
+        // The cap is global and tests share one database: keep it out of the way.
+        max_machines: 1_000_000,
         ..CloudAgentsConfig::default()
     };
+    adjust(&mut cloud);
     let state = crate::state::tests::test_state_with_cloud_agents(&database_url, cloud).await;
     let community = Uuid::new_v4();
     sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")

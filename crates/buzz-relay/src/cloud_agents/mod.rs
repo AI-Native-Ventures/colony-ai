@@ -7,6 +7,7 @@
 
 pub mod boot;
 pub mod config;
+pub mod doorbell;
 #[cfg(any(test, feature = "test-fakes"))]
 pub mod fake_host;
 pub mod fence;
