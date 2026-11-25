@@ -406,90 +406,103 @@ test.describe("rate-limit proof captures", () => {
   });
 });
 
-test("Pipeline keeps its data through a 429 and reloads after the relay window", async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await page.clock.install({ time: new Date("2026-11-25T08:00:00.000Z") });
-  await installRateLimitMap(page, 700, true);
-  await openOutreachFromMap(page);
-  await advanceClock(page, 12_000);
-  await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
-
-  await page.getByTestId("map-outreach-tab-pipeline").click();
-  await advanceClock(page, 8_000);
-  const pipeline = page.getByTestId("outreach-desk-pipeline");
-  await expect(pipeline).toBeVisible();
-  await expect(
-    pipeline.getByTestId(/^outreach-pipeline-card-/u).first(),
-  ).toBeVisible();
-  await expect(page.getByTestId("relay-http-rate-limit-notice")).toContainText(
-    /Busy, trying again in (?:[1-3]\d) s/u,
+test.describe("rate-limit regression", () => {
+  test.skip(
+    process.env.RATE_LIMIT_2_CAPTURE === "1",
+    "capture tests own the persistent browser fixture",
   );
-  await expect(page.getByText("Pipeline could not be loaded.")).toHaveCount(0);
-  await captureIfRequested(page, "pipeline-429-light-1440x900");
 
-  await advanceClock(page, 36_000);
-  await expect(page.getByTestId("relay-http-rate-limit-notice")).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as RateLimitWindow).__RATE_LIMIT_2_MOCK__
-            ?.stageCountRequests ?? 0,
-      ),
-    )
-    .toBeGreaterThan(1);
-  await expect(
-    pipeline.getByTestId(/^outreach-pipeline-card-/u).first(),
-  ).toBeVisible();
-});
-
-test("map Outreach HTTP callers remain below the per-minute screen targets", async ({
-  page,
-}) => {
-  test.setTimeout(120_000);
-  await page.clock.install({ time: new Date("2026-11-25T08:00:00.000Z") });
-  for (const scenario of scenarios) {
-    await installRateLimitMap(page, scenario.contactCount);
-    await page.goto(scenario.route);
-    if (scenario.closeOutreachBeforeMeasuring) {
-      await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
-      await page.getByTestId("cofounder-map-sales").click();
-      await page.getByTestId("cofounder-map-job-sales-outreach").click();
-      await expect(page.getByTestId("map-outreach-desk-header")).toBeVisible();
-      await page.goto("/#/");
-      await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
-    }
+  test("Pipeline keeps its data through a 429 and reloads after the relay window", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.clock.install({ time: new Date("2026-11-25T08:00:00.000Z") });
+    await installRateLimitMap(page, 700, true);
+    await openOutreachFromMap(page);
     await advanceClock(page, 12_000);
-    await expect(page.getByTestId(scenario.screenTestId)).toBeVisible();
-    const measured = await page.evaluate(() => {
-      const state = (window as RateLimitWindow).__RATE_LIMIT_2_MOCK__;
-      if (!state) throw new Error("Rate-limit mock is unavailable.");
-      return { startedAt: state.startedAt };
-    });
-    await advanceClock(page, ONE_MINUTE_MS - 12_000);
-    const calls = await page.evaluate(
-      ({ startedAt, windowMs }) => {
+    await expect(page.getByTestId("outreach-desk-needs-you")).toBeVisible();
+
+    await page.getByTestId("map-outreach-tab-pipeline").click();
+    await advanceClock(page, 8_000);
+    const pipeline = page.getByTestId("outreach-desk-pipeline");
+    await expect(pipeline).toBeVisible();
+    await expect(
+      pipeline.getByTestId(/^outreach-pipeline-card-/u).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId("relay-http-rate-limit-notice"),
+    ).toContainText(/Busy, trying again in (?:[1-3]\d) s/u);
+    await expect(page.getByText("Pipeline could not be loaded.")).toHaveCount(
+      0,
+    );
+    await captureIfRequested(page, "pipeline-429-light-1440x900");
+
+    await advanceClock(page, 36_000);
+    await expect(page.getByTestId("relay-http-rate-limit-notice")).toHaveCount(
+      0,
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as RateLimitWindow).__RATE_LIMIT_2_MOCK__
+              ?.stageCountRequests ?? 0,
+        ),
+      )
+      .toBeGreaterThan(1);
+    await expect(
+      pipeline.getByTestId(/^outreach-pipeline-card-/u).first(),
+    ).toBeVisible();
+  });
+
+  test("map Outreach HTTP callers remain below the per-minute screen targets", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.clock.install({ time: new Date("2026-11-25T08:00:00.000Z") });
+    for (const scenario of scenarios) {
+      await installRateLimitMap(page, scenario.contactCount);
+      await page.goto(scenario.route);
+      if (scenario.closeOutreachBeforeMeasuring) {
+        await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+        await page.getByTestId("cofounder-map-sales").click();
+        await page.getByTestId("cofounder-map-job-sales-outreach").click();
+        await expect(
+          page.getByTestId("map-outreach-desk-header"),
+        ).toBeVisible();
+        await page.goto("/#/");
+        await expect(page.getByTestId("cofounder-company-map")).toBeVisible();
+      }
+      await advanceClock(page, 12_000);
+      await expect(page.getByTestId(scenario.screenTestId)).toBeVisible();
+      const measured = await page.evaluate(() => {
         const state = (window as RateLimitWindow).__RATE_LIMIT_2_MOCK__;
         if (!state) throw new Error("Rate-limit mock is unavailable.");
-        return state.calls.filter(
-          (call) => call.at >= startedAt && call.at < startedAt + windowMs,
-        );
-      },
-      { startedAt: measured.startedAt, windowMs: ONE_MINUTE_MS },
-    );
-    const perMillisecond = new Map<number, number>();
-    for (const call of calls) {
-      perMillisecond.set(call.at, (perMillisecond.get(call.at) ?? 0) + 1);
+        return { startedAt: state.startedAt };
+      });
+      await advanceClock(page, ONE_MINUTE_MS - 12_000);
+      const calls = await page.evaluate(
+        ({ startedAt, windowMs }) => {
+          const state = (window as RateLimitWindow).__RATE_LIMIT_2_MOCK__;
+          if (!state) throw new Error("Rate-limit mock is unavailable.");
+          return state.calls.filter(
+            (call) => call.at >= startedAt && call.at < startedAt + windowMs,
+          );
+        },
+        { startedAt: measured.startedAt, windowMs: ONE_MINUTE_MS },
+      );
+      const perMillisecond = new Map<number, number>();
+      for (const call of calls) {
+        perMillisecond.set(call.at, (perMillisecond.get(call.at) ?? 0) + 1);
+      }
+      expect(
+        calls.length,
+        `${scenario.name} made ${calls.length} HTTP calls in its virtual minute`,
+      ).toBeLessThan(scenario.targetPerMinute);
+      expect(
+        Math.max(0, ...perMillisecond.values()),
+        `${scenario.name} started more than one HTTP call in the same millisecond`,
+      ).toBeLessThanOrEqual(1);
     }
-    expect(
-      calls.length,
-      `${scenario.name} made ${calls.length} HTTP calls in its virtual minute`,
-    ).toBeLessThan(scenario.targetPerMinute);
-    expect(
-      Math.max(0, ...perMillisecond.values()),
-      `${scenario.name} started more than one HTTP call in the same millisecond`,
-    ).toBeLessThanOrEqual(1);
-  }
+  });
 });
