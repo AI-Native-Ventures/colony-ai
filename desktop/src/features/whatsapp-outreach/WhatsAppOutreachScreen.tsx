@@ -77,42 +77,15 @@ import {
 } from "./useWhatsAppOutreachSafety";
 import type { WhatsAppOutreachScreenProps } from "./whatsappOutreachScreenProps";
 import { WhatsAppOutreachHeaderActions } from "./WhatsAppOutreachHeaderActions";
+import { getWhatsAppOutreachLoadFailure } from "./WhatsAppOutreachLoadFailure";
 import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import {
+  dayKey,
+  messageDayLabel,
+  windowTimeRemaining,
+} from "./whatsappOutreachFormatters";
 import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 import "./whatsappOutreach.css";
-
-function dayKey(value: string | Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Africa/Johannesburg",
-  }).format(new Date(value));
-}
-
-function messageDayLabel(value: string): string {
-  const today = dayKey(new Date());
-  const messageDay = dayKey(value);
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  if (messageDay === today) return "Today";
-  if (messageDay === dayKey(yesterdayDate)) return "Yesterday";
-  return new Intl.DateTimeFormat("en-ZA", {
-    day: "numeric",
-    month: "long",
-    timeZone: "Africa/Johannesburg",
-  }).format(new Date(value));
-}
-
-function windowTimeRemaining(value: string | null): string {
-  if (!value) return "";
-  const minutes = Math.max(
-    0,
-    Math.ceil((Date.parse(value) - Date.now()) / 60_000),
-  );
-  if (minutes >= 60) return `${Math.ceil(minutes / 60)}h left`;
-  return `${Math.max(1, minutes)}m left`;
-}
 
 export function WhatsAppOutreachScreen({
   active = true,
@@ -561,34 +534,15 @@ export function WhatsAppOutreachScreen({
     );
   }
 
-  const loadError = [
-    statusQuery.error,
-    contactsQuery.error,
-    status?.connected ? pendingBatchesQuery.error : null,
-  ].find((error) => error && !isRelayHttpRateLimitError(error));
-  if (loadError) {
-    return (
-      <main className="c3wa-root c3wa-outreach-error" role="alert">
-        {loadError instanceof Error
-          ? loadError.message
-          : "WhatsApp conversations could not be loaded."}
-      </main>
-    );
-  }
-
-  const waitingForRateLimit = [
-    statusQuery.error,
-    contactsQuery.error,
-    pendingBatchesQuery.error,
-  ].some(isRelayHttpRateLimitError);
-  if (waitingForRateLimit && !status) {
-    return (
-      <main className="c3wa-root c3wa-outreach-empty">
-        <WhatsAppRateLimitNotice />
-        <p>Recent WhatsApp conversations will reload shortly.</p>
-      </main>
-    );
-  }
+  const queryFailure = getWhatsAppOutreachLoadFailure({
+    errors: [
+      statusQuery.error,
+      contactsQuery.error,
+      status?.connected ? pendingBatchesQuery.error : null,
+    ],
+    hasStatus: status !== undefined,
+  });
+  if (queryFailure) return queryFailure;
 
   if (!status?.connected) {
     return (

@@ -30,7 +30,7 @@ import {
   useWhatsAppTemplatesQuery,
   whatsappOutreachQueryKeys,
 } from "./whatsappOutreachQueries";
-import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import { WhatsAppSettingsRateLimitState } from "./WhatsAppSettingsRateLimitState";
 import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 import {
   aiPlanReserveChipLabel,
@@ -586,15 +586,7 @@ export function WhatsAppSettingsPanel() {
 
   if (statusQuery.isError) {
     if (isRelayHttpRateLimitError(statusQuery.error)) {
-      return (
-        <section
-          className="c3wa-root c3wa-settings"
-          data-testid="whatsapp-settings"
-        >
-          <WhatsAppRateLimitNotice />
-          <p>WhatsApp settings will reload shortly.</p>
-        </section>
-      );
+      return <WhatsAppSettingsRateLimitState />;
     }
     return (
       <section
