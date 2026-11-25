@@ -242,6 +242,35 @@ test("safety, recovery, and thread review use the relay's additive contract", as
   );
 });
 
+test("thread review normalizes a phone locally and never sends an invalid waId", async () => {
+  const bodies = [];
+  const contact = rawContact("27821237135");
+  const dependencies = {
+    testHook: async ({ body }) => {
+      bodies.push(body);
+      return { contact, messages: [] };
+    },
+  };
+
+  await loadWhatsAppThread(
+    "wss://relay.example",
+    "+27 82 123 7135",
+    dependencies,
+  );
+  await assert.rejects(
+    loadWhatsAppThread("wss://relay.example", "not-a-phone", dependencies),
+    /invalid phone number/u,
+  );
+  assert.deepEqual(bodies, [
+    {
+      what: "thread",
+      waId: "27821237135",
+      limit: WHATSAPP_THREAD_VISIBLE_LIMIT,
+      capabilities: ["whatsapp-outreach-stage-queued"],
+    },
+  ]);
+});
+
 test("HTTP failures surface relay copy and malformed success bodies fail closed", async () => {
   const common = {
     signer: async (event) => ({
@@ -486,6 +515,31 @@ test("an owner-scale 500-contact load makes three bounded WhatsApp reads", async
       { what: "contacts", limit: 200, before: "page-3" },
     ],
   );
+});
+
+test("concurrent Outreach consumers share one in-flight contacts loader", async () => {
+  let calls = 0;
+  let release;
+  const response = new Promise((resolve) => {
+    release = resolve;
+  });
+  const dependencies = {
+    testHook: async () => {
+      calls += 1;
+      return response;
+    },
+  };
+
+  const first = loadWhatsAppContacts("wss://relay.example", dependencies);
+  const second = loadWhatsAppContacts("wss://relay.example", dependencies);
+  await Promise.resolve();
+  assert.equal(calls, 1);
+
+  release({ contacts: [rawContact("27820000001")], nextCursor: null });
+  const [firstContacts, secondContacts] = await Promise.all([first, second]);
+  assert.equal(firstContacts.length, 1);
+  assert.equal(secondContacts.length, 1);
+  assert.equal(firstContacts, secondContacts);
 });
 
 test("an older relay without nextCursor is one request, as before", async () => {

@@ -1,10 +1,11 @@
-# Contributing to Buzz
+# Contributing to Colony
 
-Welcome, and thank you for your interest in contributing! Buzz is an
+Welcome, and thank you for your interest in contributing! Colony is an
 open-source project and we're glad you're here. This guide will help you
 get from zero to a merged pull request.
 
-If you have questions that aren't answered here, [open an issue](https://github.com/block/buzz/issues/new).
+If you have a question that isn't answered here, open a draft pull request in
+[this repository](https://github.com/AI-Native-Ventures/colony-ai/pulls) and ask it there.
 
 If you believe you found a security vulnerability, do not open a public issue.
 Follow our [security policy](SECURITY.md) to submit a private vulnerability
@@ -33,17 +34,18 @@ report instead.
 
 This project follows the [Contributor Covenant v2.1](CODE_OF_CONDUCT.md).
 By participating you agree to uphold these standards. Please report
-unacceptable behavior to **conduct@buzz-relay.org**.
+unacceptable behavior in private through
+[this report form](https://github.com/AI-Native-Ventures/colony-ai/security/advisories/new) and say that it is about conduct.
 
 ---
 
 ## Before You Open a PR
 
-Before starting, search [open PRs](https://github.com/block/buzz/pulls) and [open issues](https://github.com/block/buzz/issues) for duplicates — someone may already be working on the same thing. When you open your PR, link the closest existing one in the description (or say "none found").
+Before starting, search the [open PRs](https://github.com/AI-Native-Ventures/colony-ai/pulls) for duplicates: someone may already be working on the same thing. When you open your PR, link the closest existing one in the description (or say "none found").
 
-For anything beyond a small fix, opening an issue first is strongly recommended. Describe the problem and proposed solution so a maintainer can acknowledge the approach before you build — it avoids two people building the same thing in parallel.
+For anything beyond a small fix, opening a draft pull request first is strongly recommended. Describe the problem and proposed solution so a maintainer can acknowledge the approach before you build: it avoids two people building the same thing in parallel.
 
-Buzz is an agent platform, so AI-assisted PRs are welcome. No need to disclose the tools you used, but you own and must have reviewed the final code. Submissions that are clearly unreviewed may be closed with a pointer here.
+Colony is an agent platform, so AI-assisted PRs are welcome. No need to disclose the tools you used, but you own and must have reviewed the final code. Submissions that are clearly unreviewed may be closed with a pointer here.
 
 We squash-merge, so your PR title becomes the commit subject in `main`. Use [Conventional Commits](https://www.conventionalcommits.org/) format: `feat(mcp): add get_feed_actions tool`. The type prefix (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`) is required. See the [Commit Messages](#commit-messages) section for the full reference.
 
@@ -137,8 +139,8 @@ clippy`, `just test-unit`, and `just test` need no GTK.
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/block/buzz.git
-cd buzz
+git clone https://github.com/AI-Native-Ventures/colony-ai.git
+cd colony-ai
 
 # 2. Activate Hermit (optional but recommended)
 . ./bin/activate-hermit
@@ -475,21 +477,18 @@ to existing clients.
 
 ## Ecosystem
 
-Buzz is developed across multiple repositories. This repo (`block/buzz`)
-is the open-source home for all application code — the relay, desktop app,
-mobile app, CLI, and agent harness. Internal repositories handle
-enterprise-signed builds and infrastructure deployment.
+Colony lives in this one repository
+([AI-Native-Ventures/colony-ai](https://github.com/AI-Native-Ventures/colony-ai)):
+the server (relay), the desktop app, the mobile app, the command line tool,
+the agent harness and the colony.global website.
 
-See [AGENTS.md § Ecosystem](AGENTS.md#ecosystem) for the full repo table and
-dependency diagram.
+Colony is built on the open source [Buzz](https://github.com/block/buzz)
+project by Block, Inc., which is why many crates, commands and environment
+variables still start with `buzz`.
 
-**External contributors:** Fork `block/buzz`, open a PR, and CI runs
-automatically. No special access is required.
-
-**Block team members:** See the internal
-[sprout-releases CONTRIBUTING.md](https://github.com/squareup/sprout-releases/blob/main/CONTRIBUTING.md)
-for team access setup, onboarding, and the full repo inventory. See
-[RELEASING.md](RELEASING.md) for the release process.
+**Contributors:** Fork this repository, open a PR, and CI runs automatically.
+No special access is required. See [RELEASING.md](RELEASING.md) for the
+release process.
 
 ---
 
@@ -599,7 +598,7 @@ If an HTTP endpoint is still necessary:
 
 ## License and CLA
 
-Buzz is licensed under the **Apache License, Version 2.0**. See
+Colony is licensed under the **Apache License, Version 2.0**. See
 [LICENSE](LICENSE) for the full text.
 
 By submitting a pull request, you agree that your contribution is licensed
@@ -610,5 +609,5 @@ their sign-off. When in doubt, check with your legal team.
 
 ---
 
-*Thank you for contributing to Buzz. Every bug report, documentation fix,
-and code contribution makes the project better for everyone. 🐝*
+*Thank you for contributing to Colony. Every bug report, documentation fix,
+and code contribution makes the project better for everyone.*

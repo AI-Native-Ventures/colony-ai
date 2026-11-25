@@ -1,0 +1,165 @@
+name: Colony agent image
+
+# Builds the image one Fly Machine runs for one cloud agent (Dockerfile.colony-agent),
+# smoke-tests it, and on develop pushes it to Fly's registry. The relay is told
+# which build to run through COLONY_CLOUD_AGENT_IMAGE, which must be the
+# digest-pinned reference printed in this job's summary. This workflow never
+# deploys anything and never touches the relay or any running machine.
+#
+# Triggers:
+#   - pull_request (paths-filtered) -> build + smoke only, never pushes
+#   - push to develop (paths-filtered) -> build + smoke + push by digest
+#   - workflow_dispatch -> build + smoke; pushes only when run on develop
+#
+# Push needs the repository secret COLONY_CLOUD_FLY_API_TOKEN (a Fly token scoped
+# to the agent app only). Without it the job still builds and smoke-tests and
+# reports that the push was skipped. The app name comes from the repository
+# variable COLONY_CLOUD_FLY_APP (default colony-agents).
+# Setup: deploy/fly/agents/README.md.
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - Dockerfile.colony-agent
+      - scripts/colony-agent-entrypoint.sh
+      - scripts/test-colony-agent-image.sh
+      - .github/workflows/colony-agent-image.yml
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/sprig/**
+      - crates/buzz-acp/**
+      - crates/buzz-agent/**
+      - crates/buzz-dev-mcp/**
+      - crates/buzz-cli/**
+      - crates/buzz-persona/**
+      - crates/buzz-ws-client/**
+      - crates/buzz-core/**
+      - crates/buzz-sdk/**
+      - crates/git-credential-nostr/**
+      - crates/git-sign-nostr/**
+  pull_request:
+    paths:
+      - Dockerfile.colony-agent
+      - scripts/colony-agent-entrypoint.sh
+      - scripts/test-colony-agent-image.sh
+      - .github/workflows/colony-agent-image.yml
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/sprig/**
+      - crates/buzz-acp/**
+      - crates/buzz-agent/**
+      - crates/buzz-dev-mcp/**
+      - crates/buzz-cli/**
+      - crates/buzz-persona/**
+      - crates/buzz-ws-client/**
+      - crates/buzz-core/**
+      - crates/buzz-sdk/**
+      - crates/git-credential-nostr/**
+      - crates/git-sign-nostr/**
+  workflow_dispatch:
+
+concurrency:
+  group: colony-agent-image-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  LOCAL_TAG: colony-agent:ci
+
+jobs:
+  build:
+    name: Build and smoke (linux/amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        with:
+          # Same OOM cap as sprig-image.yml: Rust compiles blow the 7GB runner
+          # at buildkit's default parallelism of 4.
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
+
+      - name: Build image into the local daemon
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile.colony-agent
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.LOCAL_TAG }}
+          cache-from: type=gha,scope=colony-agent-image
+          # Pull requests only read the cache; pushes to develop write it.
+          cache-to: ${{ github.event_name == 'pull_request' && '' || 'type=gha,scope=colony-agent-image,mode=max' }}
+
+      - name: Smoke test
+        run: SKIP_BUILD=1 scripts/test-colony-agent-image.sh "$LOCAL_TAG"
+
+      - name: Decide whether to push
+        id: gate
+        env:
+          FLY_TOKEN: ${{ secrets.COLONY_CLOUD_FLY_API_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          push=false
+          reason=""
+          if [[ "$EVENT" == "pull_request" ]]; then
+            reason="pull requests never push"
+          elif [[ "$REF" != "refs/heads/develop" ]]; then
+            reason="only develop pushes images (ref is $REF)"
+          elif [[ -z "$FLY_TOKEN" ]]; then
+            reason="repository secret COLONY_CLOUD_FLY_API_TOKEN is not set"
+          else
+            push=true
+          fi
+          echo "push=$push" >> "$GITHUB_OUTPUT"
+          if [[ "$push" == false ]]; then
+            echo "### Colony agent image built and smoke-tested, not pushed" >> "$GITHUB_STEP_SUMMARY"
+            echo "Reason: $reason" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Log in to Fly registry
+        if: steps.gate.outputs.push == 'true'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: registry.fly.io
+          username: x
+          password: ${{ secrets.COLONY_CLOUD_FLY_API_TOKEN }}
+
+      - name: Push the smoke-tested image and print its digest
+        if: steps.gate.outputs.push == 'true'
+        env:
+          FLY_APP: ${{ vars.COLONY_CLOUD_FLY_APP != '' && vars.COLONY_CLOUD_FLY_APP || 'colony-agents' }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          repo="registry.fly.io/${FLY_APP}"
+          tag="${repo}:sha-${SHA::7}"
+          docker tag "$LOCAL_TAG" "$tag"
+          docker push "$tag"
+          pinned="$(docker image inspect "$tag" --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep "^${repo}@sha256:" | head -n1)"
+          if [[ -z "$pinned" ]]; then
+            echo "push finished but no digest was reported for $tag" >&2
+            exit 1
+          fi
+          {
+            echo "### Colony agent image published"
+            echo "Set this as \`COLONY_CLOUD_AGENT_IMAGE\` on the relay (coordinator step, not automatic):"
+            echo '```'
+            echo "$pinned"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

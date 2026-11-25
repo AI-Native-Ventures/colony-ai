@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
 // Unsigned (ad-hoc) Mac apps lose access to their own Keychain items on every
-// release, which signed the owner out after every update. The native host of an
-// unsigned Mac build must be built without the system keyring (secrets in
-// owner-only files); a signed build keeps the Keychain. These tests pin that
-// choice and the marker check that proves it on the built binary.
+// release, which signed the owner out after every update. Since 3.0.23 every Mac
+// native host is built without the system keyring (secrets in owner-only files).
+// A signed Mac build keeps that file storage too: signing must never move an
+// installed Mac's keys, and a move to the Keychain needs its own proven
+// migration. These tests pin that choice and the marker check that proves it on
+// the built binary.
 
 const packageWorkflowPath = fileURLToPath(
   new URL("../../.github/workflows/electron-package.yml", import.meta.url),
@@ -77,9 +79,9 @@ test("an unsigned Mac native host is built without the system keyring", async ()
   assert.equal(flagsFor(build.run, "darwin", ""), "--no-default-features");
 });
 
-test("a signed Mac native host keeps the Keychain", async () => {
+test("a signed Mac native host keeps the same file storage", async () => {
   const { build } = await packageSteps();
-  assert.equal(flagsFor(build.run, "darwin", "true"), "");
+  assert.equal(flagsFor(build.run, "darwin", "true"), "--no-default-features");
 });
 
 test("Windows and Linux native hosts are unchanged", async () => {
@@ -145,7 +147,7 @@ test("the built host is checked for the secret storage it was meant to have", as
     );
   assert.equal(expectedFor("darwin", "false"), FILE);
   assert.equal(expectedFor("darwin", ""), FILE);
-  assert.equal(expectedFor("darwin", "true"), KEYCHAIN);
+  assert.equal(expectedFor("darwin", "true"), FILE);
   assert.equal(expectedFor("win32", "false"), KEYCHAIN);
   assert.equal(expectedFor("linux", "false"), KEYCHAIN);
   // It must also refuse a host that carries both markers.

@@ -7,9 +7,9 @@ request, discussion, or other public channel.**
 
 Use GitHub's private vulnerability reporting form instead:
 
-**[Report a vulnerability privately](https://github.com/block/buzz/security/advisories/new)**
+**[Report a vulnerability privately](https://github.com/AI-Native-Ventures/colony-ai/security/advisories/new)**
 
-Submitting the form starts a private security advisory with the Buzz
+Submitting the form starts a private security advisory with the Colony
 maintainers. Use that advisory for vulnerability details, follow-up questions,
 and coordinated remediation. Include as much detail as possible:
 
@@ -18,12 +18,11 @@ and coordinated remediation. Include as much detail as possible:
 - The affected version(s) or commit range
 - Any suggested mitigations you've identified
 
-If GitHub's private reporting form is unavailable to you, email
-**buzz@block.xyz** and do not include vulnerability details in a public issue.
+The form needs a GitHub account. Please do not send vulnerability details any
+other way.
 
-You will receive an acknowledgment within **48 hours**. We aim to provide a
-full response — including a timeline for a fix — within **7 days** of initial
-contact. We'll keep you informed as we work toward a resolution.
+We read every report and answer inside the advisory, and we keep you informed
+there as we work toward a fix.
 
 We ask that you:
 
@@ -39,11 +38,12 @@ We will credit reporters in release notes unless you prefer to remain anonymous.
 
 | Version | Supported |
 |---------|-----------|
-| `main` (latest) | ✅ Active |
-| Previous releases | ⚠️ Best-effort; upgrade recommended |
+| The latest Colony release | Yes |
+| Earlier releases | No. Update to the latest release |
 
-Buzz is pre-1.0. We do not maintain long-term support branches at this stage.
-All security fixes land on `main` first.
+Security fixes ship in a new Colony release. Colony offers the update inside
+the app, and every release is listed on the
+[releases page](https://github.com/AI-Native-Ventures/colony-ai/releases).
 
 ---
 

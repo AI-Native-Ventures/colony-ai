@@ -37,6 +37,8 @@ import {
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
 } from "./whatsappOutreachQueries";
+import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 import { findWhatsAppBatchCreatorChannel } from "./whatsappBatchNavigation";
 import { BATCH_MANAGE_NOTE } from "./whatsappContactAccess";
 import "./whatsappOutreach.css";
@@ -302,9 +304,19 @@ export function WhatsAppBatchScreen({
     );
   }
   if (batchQuery.isError) {
+    if (isRelayHttpRateLimitError(batchQuery.error)) {
+      return (
+        <main className="c3wa-root c3wa-batch-error">
+          <WhatsAppRateLimitNotice />
+          <p>Batch details will reload shortly.</p>
+        </main>
+      );
+    }
     return (
       <main className="c3wa-root c3wa-batch-error" role="alert">
-        {batchQuery.error.message}
+        {batchQuery.error instanceof Error
+          ? batchQuery.error.message
+          : "Batch details could not be loaded."}
       </main>
     );
   }

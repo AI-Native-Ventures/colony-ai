@@ -29,9 +29,14 @@ export function WhatsAppUnreadBadge({
   );
 }
 
-export function WorkAreaWhatsAppTab({ channelId, tab }: WorkAreaTabPanelProps) {
+export function WorkAreaWhatsAppTab({
+  active,
+  channelId,
+  tab,
+}: WorkAreaTabPanelProps) {
   return (
     <WhatsAppOutreachScreen
+      active={active}
       channelId={channelId}
       initialContactWaId={tab.contactWaId ?? null}
       initialThreadRootId={null}

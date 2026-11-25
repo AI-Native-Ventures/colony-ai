@@ -30,6 +30,8 @@ import {
   useWhatsAppTemplatesQuery,
   whatsappOutreachQueryKeys,
 } from "./whatsappOutreachQueries";
+import { WhatsAppSettingsRateLimitState } from "./WhatsAppSettingsRateLimitState";
+import { isRelayHttpRateLimitError } from "@/shared/api/relayHttpRequestGate";
 import {
   aiPlanReserveChipLabel,
   useAiPlanReserveOverride,
@@ -583,13 +585,18 @@ export function WhatsAppSettingsPanel() {
   }
 
   if (statusQuery.isError) {
+    if (isRelayHttpRateLimitError(statusQuery.error)) {
+      return <WhatsAppSettingsRateLimitState />;
+    }
     return (
       <section
         className="c3wa-root c3wa-settings"
         data-testid="whatsapp-settings"
       >
         <div className="c3wa-alert" role="alert">
-          {statusQuery.error.message}
+          {statusQuery.error instanceof Error
+            ? statusQuery.error.message
+            : "WhatsApp settings could not be loaded."}
         </div>
         <Button
           onClick={() => void statusQuery.refetch()}

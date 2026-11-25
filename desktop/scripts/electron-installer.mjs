@@ -72,6 +72,14 @@ export function createInstallerConfig({
       hardenedRuntime: signed,
       gatekeeperAssess: false,
     };
+    if (signed) {
+      // A signed release signs, notarizes and staples the disk image after
+      // electron-builder is done (scripts/sign-mac-disk-image.mjs). Stapling
+      // rewrites the file, so its checksum must not be recorded here: keep the
+      // disk image out of the update feed and build no blockmap for it. Macs
+      // update from the zip, which stays in the feed.
+      config.dmg = { sign: false, writeUpdateInfo: false };
+    }
   }
   if (platform === "linux") {
     config.linux.category = "Network;InstantMessaging;";

@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { UpdateIndicator } from "@/features/settings/UpdateIndicator";
 import { useMapShellEnabled } from "@/features/map-shell/useMapShellEnabled";
 import { useMediaBreakpoint } from "@/shared/hooks/use-mobile";
+import { WhatsAppRateLimitNotice } from "./WhatsAppRateLimitNotice";
 import {
   useWhatsAppContactsQuery,
   useWhatsAppDraftsQuery,
@@ -155,9 +156,11 @@ export function MapOutreachDeskHeader({
   const [moreOpen, setMoreOpen] = React.useState(false);
   const { href } = useLocation();
   const previousHref = React.useRef(href);
-  const contactsQuery = useWhatsAppContactsQuery();
-  const draftsQuery = useWhatsAppDraftsQuery();
-  const batchesQuery = useWhatsAppPendingBatchDetailsQuery();
+  const statusQuery = useWhatsAppStatusQuery(true, true);
+  const connected = statusQuery.data?.connected === true;
+  const contactsQuery = useWhatsAppContactsQuery(connected, true);
+  const draftsQuery = useWhatsAppDraftsQuery(connected, true);
+  const batchesQuery = useWhatsAppPendingBatchDetailsQuery(connected, true);
   const needsYouCount =
     getWhatsAppNeedsYouItems(contactsQuery.data ?? [], draftsQuery.data ?? [])
       .length + (batchesQuery.data?.length ?? 0);
@@ -284,6 +287,7 @@ export function MapOutreachDeskHeader({
             ) : null}
           </div>
         </nav>
+        <WhatsAppRateLimitNotice />
       </header>
     </div>
   );
