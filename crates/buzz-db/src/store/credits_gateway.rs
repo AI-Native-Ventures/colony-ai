@@ -290,7 +290,8 @@ impl Db {
             return Err(DbError::InvalidData("managed session limit reached".into()));
         }
         let id = Uuid::new_v4();
-        let paid_allowed = !free && !free_only;
+        let _ = free_only;
+        let paid_allowed = !free;
         let expires_at: DateTime<Utc> = sqlx::query_scalar(
             "INSERT INTO account_ai_sessions \
                  (id, account_id, community_id, agent_pubkey, expires_at, cloud, paid_allowed) \
