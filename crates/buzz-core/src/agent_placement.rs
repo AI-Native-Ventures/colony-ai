@@ -275,17 +275,24 @@ pub fn validate_config_snapshot(snapshot: &CloudConfigSnapshot) -> Result<(), Pl
     check_env_vars(&snapshot.env_vars)
 }
 
-/// Checks a cloud model identifier such as `deepseek/deepseek-v4.1-flash`.
-/// Whether the model is allowlisted is the relay's decision.
-fn validate_cloud_model(model: &str) -> Result<(), PlacementError> {
+/// Returns `true` when `model` looks like a model identifier such as
+/// `deepseek/deepseek-v4.1-flash`: 1 to [`MAX_CLOUD_MODEL_CHARS`] characters
+/// from letters, digits and `/ . - _ :`. Whether the model is allowlisted is the
+/// relay's decision.
+pub fn is_valid_cloud_model(model: &str) -> bool {
     let chars = model.chars().count();
     let safe = model
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | ':'));
-    if chars == 0 || chars > MAX_CLOUD_MODEL_CHARS || !safe {
-        return Err(PlacementError::InvalidCloudModel);
+    chars > 0 && chars <= MAX_CLOUD_MODEL_CHARS && safe
+}
+
+fn validate_cloud_model(model: &str) -> Result<(), PlacementError> {
+    if is_valid_cloud_model(model) {
+        Ok(())
+    } else {
+        Err(PlacementError::InvalidCloudModel)
     }
-    Ok(())
 }
 
 fn check_text(field: &'static str, value: Option<&str>) -> Result<(), PlacementError> {

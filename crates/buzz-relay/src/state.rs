@@ -1529,6 +1529,25 @@ pub(crate) mod tests {
         build_test_state(config, pool).await
     }
 
+    /// Test state with cloud agents configured, against a real database.
+    pub(crate) async fn test_state_with_cloud_agents(
+        database_url: &str,
+        cloud_agents: crate::cloud_agents::config::CloudAgentsConfig,
+    ) -> Arc<AppState> {
+        let mut config = crate::config::Config::from_env().expect("default config loads");
+        config.require_relay_membership = false;
+        config.redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:1".to_string());
+        config.database_url = database_url.to_owned();
+        config.read_database_url = None;
+        config.cloud_agents = cloud_agents;
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_secs(10))
+            .connect_lazy(&config.database_url)
+            .expect("lazy pg pool");
+        build_test_state(config, pool).await
+    }
+
     /// Build test state around a caller-owned writer pool. Production-path
     /// lifecycle tests use this to hold the sole connection as a deterministic
     /// barrier while AUTH waits in the real database acquisition path.

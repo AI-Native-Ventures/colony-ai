@@ -133,6 +133,9 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
     // The tag is integrity-protected by the event's Schnorr signature — if
     // tampered, NIP-42 verification will fail before we ever inspect it.
     let auth_tag_json = extract_auth_tag_json(&event);
+    // Cloud agents: the home token a cloud machine presents in its signed AUTH
+    // event. Mac connections carry none.
+    let home_token = crate::cloud_agents::fence::extract_home_token(&event);
     let signed_auth_created_at = event.created_at.as_secs();
     // The desktop names its own version in the signed AUTH event (admin metrics only).
     let client_version = crate::metrics_collect::client_version_from_auth(&event);
@@ -225,6 +228,36 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
                     conn.cancel.cancel();
                     return;
                 }
+            }
+
+            // Cloud agents home fence (NIP-42 seam). An agent works in one home at
+            // a time: while it is placed in the cloud only the machine holding the
+            // current home token may authenticate as it, and while it is on the Mac
+            // nothing may present a cloud token. This is what stops an older app, or
+            // an old machine, from answering for an agent that moved. Fail closed.
+            if let Err(refusal) = crate::cloud_agents::fence::check_agent_auth(
+                &state,
+                conn.tenant.community(),
+                pubkey.as_bytes(),
+                home_token.as_deref(),
+            )
+            .await
+            {
+                let (metric_reason, outcome) = match refusal {
+                    crate::cloud_agents::fence::FenceRefusal::Unavailable => {
+                        ("home_fence_check_error", AuthOutcome::HomeFenceCheckError)
+                    }
+                    _ => ("home_fence_denied", AuthOutcome::HomeFenceDenied),
+                };
+                warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), reason = metric_reason,
+                      "agent denied at the home fence");
+                metrics::counter!("buzz_auth_failures_total", "reason" => metric_reason)
+                    .increment(1);
+                if !conn.reject_auth(outcome) {
+                    return;
+                }
+                conn.send(RelayMessage::ok(&event_id_hex, false, refusal.message()));
+                return;
             }
 
             // Pubkey allowlist gate — only for pubkey-only auth.

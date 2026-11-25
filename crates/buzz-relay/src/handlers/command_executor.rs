@@ -68,6 +68,9 @@ pub async fn handle_command(
     if buzz_core::kind::is_whatsapp_command_kind(kind) {
         return super::whatsapp_commands::handle(tenant, state, event, auth).await;
     }
+    if kind == buzz_core::kind::KIND_AGENT_PLACEMENT_ACTION {
+        return super::agent_placement::handle(tenant, state, event, auth).await;
+    }
     if kind == KIND_MEMBER_POSITION_ACTION {
         return super::company_member_records::handle(tenant, state, event, auth).await;
     }

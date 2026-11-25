@@ -368,6 +368,16 @@ impl Db {
         Ok(outcome)
     }
 
+    /// The fence columns of one agent. See [`cloud_agent_fence_state`].
+    pub async fn cloud_fence_state(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+    ) -> Result<Option<FenceState>> {
+        let mut conn = self.pool.acquire().await?;
+        cloud_agent_fence_state(&mut conn, community, agent).await
+    }
+
     /// Store a fresh boot token hash for a cloud-placed agent at `generation`.
     ///
     /// Returns `false` when the agent is not placed in the cloud at that
@@ -567,6 +577,100 @@ pub async fn get_cloud_agent_in(
     .fetch_optional(conn)
     .await?;
     row.as_ref().map(agent_from_row).transpose()
+}
+
+/// What the NIP-42 fence needs to know about an agent: no sealed key material.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FenceState {
+    /// Current home.
+    pub home: Home,
+    /// Current placement generation.
+    pub generation: i64,
+    /// SHA-256 of the current home token, once a machine has booted.
+    pub home_token_hash: Option<Vec<u8>>,
+}
+
+/// Load only the fence columns of one agent (a primary-key read that never
+/// pulls the sealed key into memory). `None` means the agent has no bundle,
+/// which is the Mac at generation 0.
+pub async fn cloud_agent_fence_state(
+    conn: &mut sqlx::PgConnection,
+    community: CommunityId,
+    agent: &[u8],
+) -> Result<Option<FenceState>> {
+    let row: Option<(String, i64, Option<Vec<u8>>)> = sqlx::query_as(
+        "SELECT home, generation, home_token_hash FROM cloud_agents \
+         WHERE community_id = $1 AND agent_pubkey = $2",
+    )
+    .bind(community.as_uuid())
+    .bind(agent)
+    .fetch_optional(conn)
+    .await?;
+    row.map(
+        |(home, generation, home_token_hash)| -> Result<FenceState> {
+            Ok(FenceState {
+                home: parse_home(&home)?,
+                generation,
+                home_token_hash,
+            })
+        },
+    )
+    .transpose()
+}
+
+/// Set the cloud model of an agent that has a bundle. Returns `false` when the
+/// agent has none. The caller checks the model against the allowlist.
+pub async fn set_cloud_model_in(
+    conn: &mut sqlx::PgConnection,
+    community: CommunityId,
+    agent: &[u8],
+    model: &str,
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE cloud_agents SET cloud_model = $3, updated_at = now() \
+         WHERE community_id = $1 AND agent_pubkey = $2",
+    )
+    .bind(community.as_uuid())
+    .bind(agent)
+    .bind(model)
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// Clear a failed wake so the next message or `Try again` starts fresh: the
+/// attempt counter and error go to zero and a `failed` status goes back to
+/// `asleep`. Returns `false` unless the agent is placed in the cloud.
+pub async fn reset_cloud_wake_in(
+    conn: &mut sqlx::PgConnection,
+    community: CommunityId,
+    agent: &[u8],
+) -> Result<bool> {
+    let result = sqlx::query(
+        "UPDATE cloud_agents SET wake_attempts = 0, last_error = NULL, last_wake_at = NULL, \
+             status = CASE WHEN status = 'failed' THEN 'asleep' ELSE status END, \
+             updated_at = now() \
+         WHERE community_id = $1 AND agent_pubkey = $2 AND home = 'cloud'",
+    )
+    .bind(community.as_uuid())
+    .bind(agent)
+    .execute(conn)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// The verified account email behind an owner pubkey (64 hex characters), or
+/// `None` when no verified account has that key. Used for the beta allowlist.
+pub async fn verified_account_email(
+    conn: &mut sqlx::PgConnection,
+    owner_hex: &str,
+) -> Result<Option<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT email FROM accounts WHERE pubkey = $1 AND email_verified_at IS NOT NULL",
+    )
+    .bind(owner_hex)
+    .fetch_optional(conn)
+    .await?)
 }
 
 /// Agents of one owner that are placed in the cloud, on an existing
