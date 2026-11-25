@@ -874,6 +874,7 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
 
     // Cloud agents: durable journal of Fly operations (idle without a host).
     buzz_relay::cloud_agents::ops::spawn_ops_worker(Arc::clone(&state));
+    buzz_relay::cloud_agents::reconcile::spawn_reconciler(Arc::clone(&state));
 
     // Operator admin metrics: counter flush every minute, rollups every 15 minutes.
     {

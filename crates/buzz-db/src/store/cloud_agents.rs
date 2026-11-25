@@ -641,6 +641,85 @@ impl Db {
         Ok(())
     }
 
+    /// Take one agent out of service and queue its machine's destruction. See
+    /// [`begin_cloud_teardown_in`]. Returns `false` when the agent has no row.
+    pub async fn begin_cloud_teardown(
+        &self,
+        owner: &[u8],
+        community: CommunityId,
+        agent: &[u8],
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let affected = begin_cloud_teardown_in(&mut tx, owner, Some((community, agent))).await?;
+        tx.commit().await?;
+        Ok(affected > 0)
+    }
+
+    /// Forget a machine the host no longer has, so the next wake creates a new
+    /// one. Guarded by the machine id: a machine recorded after the check is
+    /// never forgotten by mistake. Returns `false` when nothing matched.
+    pub async fn clear_cloud_machine(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        machine_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE cloud_agents SET fly_machine_id = NULL, fly_volume_id = NULL, \
+                 updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND fly_machine_id = $3",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(machine_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Journal counts for the daily report: `(machines created, wakes, failed
+    /// operations)` over the last `hours`.
+    pub async fn cloud_op_counts_since(&self, hours: i64) -> Result<(i64, i64, i64)> {
+        let row: (i64, i64, i64) = sqlx::query_as(
+            "SELECT \
+                 count(*) FILTER (WHERE op = 'ensure' AND status = 'done'), \
+                 count(*) FILTER (WHERE op = 'start' AND status = 'done'), \
+                 count(*) FILTER (WHERE status = 'failed') \
+             FROM cloud_agent_ops \
+             WHERE updated_at >= now() - make_interval(hours => $1::int)",
+        )
+        .bind(hours)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Every agent that has a machine on the host.
+    pub async fn list_cloud_machine_rows(&self) -> Result<Vec<MachineRow>> {
+        let rows = sqlx::query(
+            "SELECT community_id, agent_pubkey, fly_machine_id, fly_volume_id, home, generation, \
+                    status, updated_at \
+             FROM cloud_agents WHERE fly_machine_id IS NOT NULL AND fly_volume_id IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let status: Option<String> = row.try_get("status")?;
+                Ok(MachineRow {
+                    community: CommunityId::from_uuid(row.try_get("community_id")?),
+                    agent_pubkey: row.try_get("agent_pubkey")?,
+                    machine_id: row.try_get("fly_machine_id")?,
+                    volume_id: row.try_get("fly_volume_id")?,
+                    home: parse_home(&row.try_get::<String, _>("home")?)?,
+                    generation: row.try_get("generation")?,
+                    status: status.as_deref().map(parse_status).transpose()?,
+                    updated_at: row.try_get("updated_at")?,
+                })
+            })
+            .collect()
+    }
+
     /// Agents of one owner that are placed in the cloud (the per-account cap).
     pub async fn count_cloud_agents_for_owner(&self, owner: &[u8]) -> Result<i64> {
         let mut conn = self.pool.acquire().await?;
@@ -687,6 +766,75 @@ impl Db {
         tx.commit().await?;
         Ok(deleted.rows_affected() == 1)
     }
+}
+
+/// One agent that has a machine on the host, as reconcile reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineRow {
+    /// Community the agent belongs to.
+    pub community: CommunityId,
+    /// Agent pubkey, 32 bytes.
+    pub agent_pubkey: Vec<u8>,
+    /// Host machine id.
+    pub machine_id: String,
+    /// Host volume id.
+    pub volume_id: String,
+    /// Current home.
+    pub home: Home,
+    /// Current placement generation.
+    pub generation: i64,
+    /// Cloud machine state; `None` when `home` is `mac`.
+    pub status: Option<PlacementStatus>,
+    /// Last change time.
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Take an agent out of service and queue the destruction of its machine, on an
+/// existing transaction: the agent is moved to the Mac at a new generation
+/// (so the home fence refuses the machine and the doorbell never wakes it),
+/// its tokens and AI sessions are voided, and a `destroy` is journaled. The
+/// sealed key stays until the host confirms the machine is gone. Returns the
+/// number of agents affected. `agent` narrows it to one agent of the owner.
+pub async fn begin_cloud_teardown_in(
+    conn: &mut sqlx::PgConnection,
+    owner: &[u8],
+    agent: Option<(CommunityId, &[u8])>,
+) -> Result<u64> {
+    let (community, agent_key) = match agent {
+        Some((community, key)) => (Some(*community.as_uuid()), Some(key.to_vec())),
+        None => (None, None),
+    };
+    sqlx::query(
+        "UPDATE account_ai_sessions s SET revoked = true FROM cloud_agents c \
+         WHERE c.owner_pubkey = $1 AND s.community_id = c.community_id \
+           AND s.agent_pubkey = c.agent_pubkey AND NOT s.revoked \
+           AND ($2::uuid IS NULL OR (c.community_id = $2 AND c.agent_pubkey = $3))",
+    )
+    .bind(owner)
+    .bind(community)
+    .bind(&agent_key)
+    .execute(&mut *conn)
+    .await?;
+    let result = sqlx::query(
+        "WITH gone AS ( \
+             UPDATE cloud_agents SET home = 'mac', generation = generation + 1, status = NULL, \
+                 home_token_hash = NULL, boot_token_hash = NULL, boot_token_expires_at = NULL, \
+                 wake_attempts = 0, updated_at = now() \
+             WHERE owner_pubkey = $1 \
+               AND ($2::uuid IS NULL OR (community_id = $2 AND agent_pubkey = $3)) \
+             RETURNING community_id, agent_pubkey, generation \
+         ) \
+         INSERT INTO cloud_agent_ops (community_id, agent_pubkey, op, generation) \
+         SELECT community_id, agent_pubkey, 'destroy', generation FROM gone \
+         ON CONFLICT (community_id, agent_pubkey, op, generation) WHERE status = 'pending' \
+         DO NOTHING",
+    )
+    .bind(owner)
+    .bind(community)
+    .bind(&agent_key)
+    .execute(&mut *conn)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 /// Load one cloud agent on an existing connection or transaction. With
