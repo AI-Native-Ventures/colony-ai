@@ -2252,7 +2252,8 @@ async fn paid_model_refused_for_mac_session() {
 }
 
 /// [red-proof] A machine on the free route can not spend the owner's credit:
-/// its session is free-only even though the account pays for its AI.
+/// its session is free-only even though the account pays for its AI, so a
+/// model it names is ignored and the configured free chain answers.
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
 async fn free_route_session_refuses_a_paid_model_for_a_paying_account() {
@@ -2277,19 +2278,26 @@ async fn free_route_session_refuses_a_paid_model_for_a_paying_account() {
         !session.paid_allowed,
         "a free-route session never picks a paid model"
     );
-    let model = primary_model(&f);
-    let (status, _) = call(&f, &model_body(session.id, Some(&model)), "free-route-paid").await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(
-        f.calls.load(Ordering::SeqCst),
-        0,
-        "refused before any upstream call"
+        f.gateway
+            .relay
+            .db
+            .credit_ai_session_mode(session.id, &f.agent.public_key().to_bytes())
+            .await
+            .unwrap(),
+        Some((true, false)),
+        "stored as a cloud session that may not choose a model"
     );
-    assert_eq!(
-        balance(&f).await,
-        1_000_000_000,
-        "nothing is held or charged"
-    );
+    // The choice is ignored, not honoured: the configured chain answers.
+    let (status, value) = call(
+        &f,
+        &model_body(session.id, Some("some/paid-model-it-asked-for")),
+        "free-route-paid",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(f.sent.lock().unwrap()[0]["model"], json!(primary_model(&f)));
 }
 
 #[tokio::test]
