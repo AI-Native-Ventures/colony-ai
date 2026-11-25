@@ -29,6 +29,7 @@ import {
   useWhatsAppPendingBatchDetailsQuery,
   useWhatsAppStatusQuery,
   useWhatsAppTemplatesQuery,
+  useWhatsAppThreadQuery,
   useWhatsAppUnknownSendsQuery,
 } from "./whatsappOutreachQueries";
 import {
@@ -36,6 +37,7 @@ import {
   canManageWhatsAppContact,
 } from "./whatsappContactAccess";
 import { aiPlanReserveChipLabel, useAiPlanReserveQuery } from "./aiPlanUsage";
+import { WhatsAppMessagePreview } from "./WhatsAppMessageMedia";
 import {
   getWhatsAppNeedsYouItems,
   WHATSAPP_STAGE_LABELS,
@@ -58,6 +60,13 @@ type Props = {
   mapDesk?: boolean;
   onOpenChat: (waId: string) => void;
 };
+
+/**
+ * The first Needs cards are the most urgent, so only they fetch a thread for
+ * an inline media preview. The complete thread remains available on demand in
+ * chat, while this keeps a large Needs queue below the relay request budget.
+ */
+const NEEDS_THREAD_PREVIEW_LIMIT = 12;
 
 function formatTime(value: string | null): string | null {
   if (!value) return null;
@@ -345,6 +354,7 @@ function NeedsContactCard({
   onApproveDraft,
   busy,
   identity,
+  previewEnabled,
 }: {
   canEdit: boolean;
   contact: WhatsAppContact;
@@ -355,9 +365,14 @@ function NeedsContactCard({
   onApproveDraft: (draft: WhatsAppDraft) => void;
   busy: boolean;
   identity: ReturnType<typeof resolveOutreachContactIdentity>;
+  previewEnabled: boolean;
 }) {
   const wantsCall = contact.stage === "wants_call";
   const dateLabel = formatTime(contact.lastReplyAt ?? contact.lastInboundAt);
+  const threadQuery = useWhatsAppThreadQuery(contact.waId, previewEnabled);
+  const lastInbound = [...(threadQuery.data?.messages ?? [])]
+    .reverse()
+    .find((message) => message.direction === "in");
   return (
     <article
       className="c3wa-desk-contact-card"
@@ -392,11 +407,19 @@ function NeedsContactCard({
           {dateLabel ? ` · ${dateLabel}` : ""}
         </p>
         <p className="c3wa-desk-contact-preview">
-          {wantsCall
-            ? "They asked to speak with you"
-            : contact.lastInboundAt
-              ? "They replied. Open chat to read their message."
-              : "Reply needed"}
+          {lastInbound ? (
+            <WhatsAppMessagePreview message={lastInbound} />
+          ) : previewEnabled && threadQuery.isError ? (
+            "Latest message unavailable"
+          ) : previewEnabled && threadQuery.isPending ? (
+            "Loading latest message…"
+          ) : wantsCall ? (
+            "They asked to speak with you"
+          ) : contact.lastInboundAt ? (
+            "They replied. Open chat to read their message."
+          ) : (
+            "Reply needed"
+          )}
         </p>
         {hasDraft && !wantsCall && draft ? (
           <div className="c3wa-desk-draft-preview">
@@ -502,6 +525,9 @@ export function OutreachDeskNeedsYou({
   const drafts = draftsQuery.data ?? [];
   const businessRecords = business.records;
   const items = getWhatsAppNeedsYouItems(contacts, drafts);
+  const previewWaIds = new Set(
+    items.slice(0, NEEDS_THREAD_PREVIEW_LIMIT).map((item) => item.contact.waId),
+  );
   const pendingBatches = batchesQuery.data ?? [];
   const unknownSends = unknownSendsQuery.data ?? [];
   const hasSendHealthNeed = canManage && Boolean(status?.sendHealth);
@@ -757,6 +783,7 @@ export function OutreachDeskNeedsYou({
                   onBookCall={(contact) => void bookCall(contact)}
                   onApproveDraft={(draft) => void sendDraft(draft)}
                   onOpenChat={onOpenChat}
+                  previewEnabled={previewWaIds.has(item.contact.waId)}
                 />
               ))}
           </section>
@@ -797,6 +824,7 @@ export function OutreachDeskNeedsYou({
                   onBookCall={(contact) => void bookCall(contact)}
                   onApproveDraft={(draft) => void sendDraft(draft)}
                   onOpenChat={onOpenChat}
+                  previewEnabled={previewWaIds.has(item.contact.waId)}
                 />
               ))}
           </section>
