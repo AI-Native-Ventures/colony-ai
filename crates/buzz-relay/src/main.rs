@@ -547,7 +547,24 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
     );
     // Cloud agents: machines run on Fly when the relay is given a token and a
     // digest-pinned image. Without them the feature has no host and stays idle.
-    if let Some(fly) = config.cloud_agents.fly.clone() {
+    #[cfg(feature = "test-fakes")]
+    let fake_host = std::env::var("COLONY_CLOUD_HOST").as_deref() == Ok("fake");
+    #[cfg(not(feature = "test-fakes"))]
+    let fake_host = false;
+    if fake_host {
+        // End-to-end tests only (a build with the `test-fakes` feature): machines
+        // are in memory and every start leaves a file for the test to play the
+        // machine from. Never present in a production build.
+        #[cfg(feature = "test-fakes")]
+        {
+            let dir = std::env::var("COLONY_CLOUD_FAKE_DIR")
+                .unwrap_or_else(|_| "/tmp/colony-fake-host".to_owned());
+            app_state.cloud_host = Some(Arc::new(
+                buzz_relay::cloud_agents::fake_host::FakeHost::with_start_dir(dir.into()),
+            ));
+            info!("Cloud agents host is the in-memory FAKE host (test build)");
+        }
+    } else if let Some(fly) = config.cloud_agents.fly.clone() {
         let host = buzz_relay::cloud_agents::fly::FlyHost::new(fly)
             .map_err(|e| anyhow::anyhow!("cloud agents host: {e}"))?;
         app_state.cloud_host = Some(Arc::new(host));
