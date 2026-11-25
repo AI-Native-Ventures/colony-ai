@@ -5,6 +5,7 @@ mod business_context;
 mod business_profile;
 
 mod acp;
+mod answered;
 #[cfg(test)]
 mod brand_guard_tests;
 mod cloud_boot;
@@ -13,6 +14,7 @@ mod connection_test;
 mod engram_fetch;
 mod filter;
 mod observer;
+mod placement;
 mod pool;
 mod pool_lifecycle;
 mod private_folders;
@@ -2488,7 +2490,14 @@ pub fn run() -> Result<()> {
     // token. Redeem it before anything reads the environment.
     cloud_boot::run_boot_if_requested().context("cloud boot failed")?;
     config::propagate_legacy_env_vars();
-    tokio_main()
+    let result = tokio_main();
+    // Placed in another home: exit with the code that says "do not restart me".
+    // Done here, not in `main`, so every launcher (the buzz-acp binary and the
+    // Sprig multicall) reports it.
+    if result.is_ok() && placement::moved_away() {
+        std::process::exit(placement::PLACEMENT_MOVED_EXIT_CODE);
+    }
+    result
 }
 
 #[tokio::main]
@@ -2638,6 +2647,13 @@ async fn tokio_main() -> Result<()> {
             }
         }
     }
+    // The wake ledger is a local file per home and does not travel between
+    // "This Mac" and "Cloud". The relay knows which messages another home left
+    // unanswered, so every start replays at least the last 24 hours and checks
+    // each replayed message against the relay before it runs (see `answered`).
+    if let Some(ledger) = handled_wakes.as_mut() {
+        ledger.widen_catch_up(answered::replay_floor(now_unix));
+    }
     let catch_up_since = handled_wakes
         .as_ref()
         .and_then(wake_ledger::WakeLedger::catch_up_since);
@@ -2684,6 +2700,29 @@ async fn tokio_main() -> Result<()> {
     tracing::info!("connected to relay at {}", config.relay_url);
 
     let relay_rest_client = relay.rest_client();
+
+    // Where does this agent work now? A Mac harness started while the agent is
+    // placed in the cloud, or a cloud machine left over from an older
+    // generation, must not take a single message.
+    let mut placement_watch = placement::PlacementWatch::new(config.placement);
+    match placement::poll_once(&relay_rest_client, &config.keys.public_key()).await {
+        Ok(head) => {
+            placement_watch.observe(head.as_ref());
+        }
+        Err(error) => tracing::warn!(
+            %error,
+            "placement head could not be read at start; the watch keeps trying"
+        ),
+    }
+    if placement_watch.is_moved() {
+        tracing::info!(
+            home = ?config.placement.home,
+            "agent is placed in another home - exiting before taking any message"
+        );
+        placement::mark_moved_away();
+        return Ok(());
+    }
+
     startup.enter("author_gate");
     let mut author_gate_ctx =
         InboundAuthorGate::connect(&relay_rest_client, &pubkey_hex, "startup").await;
@@ -3056,6 +3095,17 @@ async fn tokio_main() -> Result<()> {
         });
     }
 
+    // Placement watch: leave when the agent is placed in another home. A move
+    // stops new messages and new turns at once, lets the running turn finish,
+    // then shuts down through the normal path (offline presence included).
+    let mut placement_rx = placement::spawn_watch(
+        relay_rest_client.clone(),
+        config.keys.public_key(),
+        config.placement.home,
+    );
+    let mut placement_rx_open = true;
+    let mut placement_exit_timer: Option<tokio::time::Interval> = None;
+
     // Track the newest membership notification timestamp per channel.
     // On reconnect the relay replays events newest-first, so the first event
     // per channel is authoritative. Any later event with ts < newest is stale.
@@ -3121,6 +3171,7 @@ async fn tokio_main() -> Result<()> {
         // (possibly past) `retry_at` until the next wake, so sleeping on it
         // unconditionally would complete instantly on every iteration — a
         // busy spin — whenever the queued work drained after a failed wake.
+        let placement_watching = placement_rx_open && !placement_watch.is_moved();
         let mut lazy_wake_work_pending = false;
         if config.lazy_pool && !pool_ready {
             lazy_wake_work_pending = queue.has_flushable_work();
@@ -3526,6 +3577,18 @@ async fn tokio_main() -> Result<()> {
                                 continue;
                             }
 
+                            // The agent works in another home now: take nothing.
+                            // The event is not admitted to the wake ledger, so the
+                            // new home still finds it unanswered on the relay.
+                            if placement_watch.is_moved() {
+                                tracing::debug!(
+                                    channel_id = %buzz_event.channel_id,
+                                    event_id = %buzz_event.event.id.to_hex(),
+                                    "agent moved to another home - leaving the event for it"
+                                );
+                                continue;
+                            }
+
                             // Restart catch-up: skip an event this employee
                             // already handled, and drop a control command that
                             // only arrived because the subscription replayed
@@ -3550,39 +3613,46 @@ async fn tokio_main() -> Result<()> {
                                 continue;
                             }
 
-                            // A restart delivered this mention again because its
-                            // turn was cut off. If the agent had already answered
-                            // before the process went away, settle it instead of
-                            // answering twice. A relay that cannot be asked means
-                            // one possible duplicate, never silence.
+                            // A message that arrived by replay (this home started
+                            // after it was sent, or a restart delivered it again
+                            // after its turn was cut off) may already have been
+                            // answered, here or by the agent's other home. The
+                            // relay knows. A relay that cannot be asked means one
+                            // possible duplicate, never silence.
                             let event_id_hex = buzz_event.event.id.to_hex();
-                            if handled_wakes
-                                .as_ref()
-                                .is_some_and(|ledger| ledger.is_redelivery(&event_id_hex))
-                            {
-                                let is_dm =
-                                    is_dm_channel(buzz_event.channel_id, &ctx.channel_info).await;
-                                let answered = turn_reply::agent_answered_event(
-                                    &ctx.rest_client,
-                                    &buzz_event.event,
-                                    buzz_event.channel_id,
-                                    is_dm,
-                                )
-                                .await;
-                                if answered == Some(true) {
-                                    tracing::info!(
-                                        event_id = %event_id_hex,
-                                        "redelivered mention was already answered - settled without running it again"
+                            let verdict = answered::catch_up_verdict(
+                                handled_wakes.as_ref(),
+                                &event_id_hex,
+                                buzz_event.event.created_at.as_secs(),
+                                || async {
+                                    let is_dm = is_dm_channel(
+                                        buzz_event.channel_id,
+                                        &ctx.channel_info,
+                                    )
+                                    .await;
+                                    turn_reply::agent_answered_event(
+                                        &ctx.rest_client,
+                                        &buzz_event.event,
+                                        buzz_event.channel_id,
+                                        is_dm,
+                                    )
+                                    .await
+                                },
+                            )
+                            .await;
+                            if verdict == answered::CatchUpVerdict::SkipAnswered {
+                                tracing::info!(
+                                    event_id = %event_id_hex,
+                                    "replayed message was already answered - settled without running it again"
+                                );
+                                if let Some(ledger) = handled_wakes.as_mut() {
+                                    ledger.settle_answered(
+                                        &event_id_hex,
+                                        queue.pending_events(),
+                                        wake_ledger::unix_now(),
                                     );
-                                    if let Some(ledger) = handled_wakes.as_mut() {
-                                        ledger.settle_answered(
-                                            &event_id_hex,
-                                            queue.pending_events(),
-                                            wake_ledger::unix_now(),
-                                        );
-                                    }
-                                    continue;
                                 }
+                                continue;
                             }
 
                             // Check: kind:9, content "!shutdown", from owner, mentions THIS agent.
@@ -3957,6 +4027,46 @@ async fn tokio_main() -> Result<()> {
                                 tracing::debug!("typing indicator dropped for {ch}: {e}");
                             }
                         }
+                    }
+                    None
+                }
+                head = async {
+                    if placement_watching {
+                        placement_rx.recv().await
+                    } else {
+                        std::future::pending().await
+                    }
+                } => {
+                    let _ = result_rx;
+                    match head {
+                        Some(head) => {
+                            if placement_watch.observe(head.as_ref()) {
+                                tracing::info!(
+                                    home = ?config.placement.home,
+                                    "agent was placed in another home - finishing the current turn, then exiting"
+                                );
+                                placement::mark_moved_away();
+                                placement_exit_timer =
+                                    Some(tokio::time::interval(Duration::from_secs(1)));
+                            }
+                        }
+                        None => {
+                            tracing::error!("placement watch stopped unexpectedly");
+                            placement_rx_open = false;
+                        }
+                    }
+                    None
+                }
+                _ = async {
+                    match placement_exit_timer.as_mut() {
+                        Some(timer) => timer.tick().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    let _ = result_rx;
+                    if placement_watch.may_exit(queue.has_in_flight() || heartbeat_in_flight) {
+                        tracing::info!("placed in another home and no turn is running - exiting gracefully");
+                        let _ = shutdown_tx.send(());
                     }
                     None
                 }
@@ -5809,6 +5919,11 @@ fn dispatch_pending(
     // Turns that ended since the last dispatch settle their events first, so
     // the snapshot below already shows what is still unanswered.
     settle_finished_turns(ledger.as_deref_mut(), queue);
+    // The agent works in another home now: start no new turn. Queued events stay
+    // queued (and unanswered on the relay) for the new home.
+    if placement::moved_away() {
+        return Vec::new();
+    }
     // Keyed by the exact session scope, not the channel: two threads dispatching
     // concurrently in one channel get distinct typing entries so completing one
     // never clears the other's indicator.
