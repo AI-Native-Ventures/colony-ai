@@ -1186,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "buzz-desktop"
-version = "3.0.73"
+version = "3.0.75"
 dependencies = [
  "anyhow",
  "arboard",
