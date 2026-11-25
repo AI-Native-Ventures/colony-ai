@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { useCommunities } from "@/features/communities/useCommunities";
+import { useOptionalActiveCommunity } from "@/features/communities/useCommunities";
 
 import { getCloudCapabilities, NO_CLOUD_CAPABILITIES } from "./cloudApi";
 import type { CloudCapabilities } from "./cloudApi";
@@ -16,7 +16,7 @@ export const cloudCapabilitiesQueryKey = (
  * the switch stays hidden rather than offering something that cannot work.
  */
 export function useCloudCapabilities(options?: { enabled?: boolean }) {
-  const { activeCommunity } = useCommunities();
+  const activeCommunity = useOptionalActiveCommunity();
   const communityId = activeCommunity?.id ?? null;
   const relayUrl = activeCommunity?.relayUrl ?? null;
   const query = useQuery({

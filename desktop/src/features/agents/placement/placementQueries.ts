@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
-import { useCommunities } from "@/features/communities/useCommunities";
+import { useOptionalActiveCommunity } from "@/features/communities/useCommunities";
 import { getRelaySelf } from "@/features/moderation/lib/relaySelf";
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
@@ -75,7 +75,7 @@ export function usePlacements(
   options?: { enabled?: boolean },
 ): Map<string, AgentPlacement> {
   const queryClient = useQueryClient();
-  const { activeCommunity } = useCommunities();
+  const activeCommunity = useOptionalActiveCommunity();
   const communityId = activeCommunity?.id ?? null;
   const relayUrl = activeCommunity?.relayUrl ?? null;
   const agents = React.useMemo(

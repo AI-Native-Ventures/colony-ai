@@ -47,6 +47,7 @@ import type { BotActivityAgent } from "@/features/channels/ui/BotActivityBar";
 import { AgentWorkingIndicatorRow } from "@/features/channels/ui/AgentWorkingIndicator";
 import { useAgentWorkingIndicators } from "@/features/channels/ui/useAgentWorkingIndicators";
 import { formatWorkingIndicatorLabel } from "@/features/channels/lib/agentWorkingIndicator";
+import { ChannelAgentHomeNotices } from "@/features/agents/placement/ChannelAgentHomeNotices";
 import { ChannelComposerActivityAccessory } from "@/features/channels/ui/ChannelComposerActivityAccessory";
 import {
   containsWelcomePersonaMention,
@@ -861,6 +862,10 @@ export const ChannelPane = React.memo(function ChannelPane({
                         {welcomeKickoffStage}
                       </WelcomeComposerGuidanceLayer>
                     ) : null}
+                    <ChannelAgentHomeNotices
+                      channel={activeChannel}
+                      currentPubkey={currentPubkey}
+                    />
                     <ComposerDockBackdrop gutterClassName="inset-x-5" />
                     <MessageComposer
                       channelId={activeChannel?.id ?? null}

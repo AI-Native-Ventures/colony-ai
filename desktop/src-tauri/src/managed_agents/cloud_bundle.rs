@@ -86,9 +86,9 @@ pub enum CloudUploadOutcome {
 
 /// What was last uploaded for one agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct SentBundle {
-    hash: String,
-    version: u64,
+pub(crate) struct SentBundle {
+    pub(crate) hash: String,
+    pub(crate) version: u64,
 }
 
 /// What to do about one agent.

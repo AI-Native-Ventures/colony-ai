@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AgentHomeSettings } from "@/features/agents/placement/AgentHomeSettings";
 
 import {
   agentConfigSurfaceQueryKey,
@@ -990,6 +991,7 @@ export function AgentInstanceEditDialog({
                 />
               </div>
             </div>
+            <AgentHomeSettings pubkey={agent.pubkey} />
             {/* Harness */}
             <div className="space-y-1.5">
               <label
