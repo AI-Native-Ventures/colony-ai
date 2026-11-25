@@ -215,7 +215,14 @@ impl ReplyPlan {
     }
 
     /// Whether an event the agent published counts as its answer to this turn.
+    ///
+    /// Only a published message counts. A reaction (the harness's own eyes or
+    /// speech-bubble progress marks included) is progress, never an answer, even
+    /// when a relay hands one back for a filter that asked for messages only.
     fn is_answer(&self, event: &nostr::Event) -> bool {
+        if !REPLY_KINDS.contains(&event.kind.as_u16()) {
+            return false;
+        }
         match queue::parse_thread_tags(event).root_event_id {
             None => self.top_level_counts,
             Some(root) => self.roots.contains(&root),
@@ -757,6 +764,36 @@ mod tests {
             Ok(false)
         );
         assert_eq!(answer_in_response(&serde_json::json!([]), &plan), Ok(false));
+    }
+
+    #[test]
+    fn reaction_is_not_an_answer() {
+        let agent = Keys::generate();
+        let mention = "a".repeat(64);
+        let plan = plan_with_roots(&[mention.as_str()]);
+        // The harness's 👀 and 💬 marks are reactions (kind 7) on the mention.
+        let reaction = |emoji: &str| {
+            EventBuilder::new(Kind::Custom(7), emoji)
+                .tags([Tag::parse(["e", mention.as_str()]).unwrap()])
+                .sign_with_keys(&agent)
+                .unwrap()
+        };
+        for emoji in ["👀", "💬"] {
+            assert_eq!(
+                answer_in_response(&serde_json::json!([reaction(emoji)]), &plan),
+                Ok(false),
+                "{emoji} is progress, not an answer"
+            );
+        }
+        // A real reply next to the reactions is still found.
+        let reply = event_by(
+            &agent,
+            vec![vec!["e".into(), mention.clone(), "".into(), "reply".into()]],
+        );
+        assert_eq!(
+            answer_in_response(&serde_json::json!([reaction("👀"), reply]), &plan),
+            Ok(true)
+        );
     }
 
     #[test]

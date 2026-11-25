@@ -295,6 +295,26 @@ impl WakeLedger {
         self.catch_up_since
     }
 
+    /// Make this run replay at least back to `floor`, even on a first run with
+    /// no file (a fresh cloud volume) or when the saved floor is more recent.
+    ///
+    /// A home that was away may have left messages the other home never
+    /// answered; the relay, not this file, knows which. The eviction boundary
+    /// still wins: ids this ledger forgot stay excluded.
+    pub(crate) fn widen_catch_up(&mut self, floor: u64) {
+        let floor = floor.max(self.evicted_floor);
+        let since = self.catch_up_since.map_or(floor, |since| since.min(floor));
+        self.catch_up_since = Some(since);
+        self.baseline = since;
+    }
+
+    /// Whether an event created at `created_at` reaches the listener only
+    /// because this run replayed from a floor, i.e. it was sent before this run
+    /// started listening.
+    pub(crate) fn is_catch_up(&self, created_at: u64) -> bool {
+        self.catch_up_since.is_some() && created_at < self.live_cutoff
+    }
+
     /// Record a channel event the listener received.
     ///
     /// `now` caps a future `created_at`, so one event from a fast clock cannot
@@ -812,6 +832,44 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.dir);
         }
+    }
+
+    #[test]
+    fn fresh_volume_picks_up_last_24h() {
+        let temp = TempLedger::new();
+        let now = 1_000_000;
+        let mut ledger = temp.open(now);
+        assert_eq!(ledger.catch_up_since(), None, "no file, no catch-up yet");
+        assert!(!ledger.is_catch_up(now - 7_200));
+
+        ledger.widen_catch_up(now - 86_400);
+        assert_eq!(ledger.catch_up_since(), Some(now - 86_400));
+        // A message sent two hours ago is delivered by the replay as caught up;
+        // one sent right now is live.
+        assert!(ledger.is_catch_up(now - 7_200));
+        assert_eq!(
+            ledger.admit(&event_at(now - 7_200), now),
+            Admission::CaughtUp
+        );
+        assert_eq!(ledger.admit(&event_at(now), now), Admission::Live);
+        assert!(!ledger.is_catch_up(now));
+    }
+
+    #[test]
+    fn widening_never_narrows_a_saved_floor() {
+        let temp = TempLedger::new();
+        let mut ledger = temp.open(10_000);
+        assert!(ledger.sync(std::iter::empty(), 10_000).is_saved());
+        // Reopened later: the saved floor (10_000) is more recent than 24 h back.
+        let now = 200_000;
+        let mut reopened = WakeLedger::open(temp.path(), RELAY, &agent(), now, now);
+        let saved = reopened.catch_up_since().expect("saved floor");
+        reopened.widen_catch_up(now - 86_400);
+        assert_eq!(reopened.catch_up_since(), Some(saved.min(now - 86_400)));
+        // A floor older than the saved one is never raised.
+        let before = reopened.catch_up_since();
+        reopened.widen_catch_up(now);
+        assert_eq!(reopened.catch_up_since(), before);
     }
 
     #[test]

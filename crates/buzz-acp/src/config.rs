@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+use buzz_core::agent_placement::Home;
 use clap::Parser;
 use clap::ValueEnum;
 use nostr::Keys;
@@ -522,6 +523,29 @@ pub struct CliArgs {
     #[arg(long, env = "BUZZ_ACP_EXIT_AFTER_INACTIVITY", default_value_t = 0)]
     pub exit_after_inactivity: u64,
 
+    /// Where this harness runs: `mac` (default) or `cloud`. Set by the cloud
+    /// boot response on a Colony cloud machine; never set on the Mac.
+    #[arg(long, env = "COLONY_HOME", default_value = "mac", hide = true)]
+    pub colony_home: String,
+
+    /// Placement generation this harness was started for (cloud only).
+    #[arg(
+        long,
+        env = "COLONY_PLACEMENT_GENERATION",
+        default_value_t = 0,
+        hide = true
+    )]
+    pub placement_generation: u64,
+
+    /// Home fence token presented in the NIP-42 AUTH event (cloud only).
+    #[arg(
+        long,
+        env = "COLONY_CLOUD_HOME_TOKEN",
+        hide = true,
+        hide_env_values = true
+    )]
+    pub cloud_home_token: Option<String>,
+
     /// Connect and subscribe before starting the ACP/LLM subprocess pool.
     #[arg(long, env = "BUZZ_ACP_LAZY_POOL", default_value_t = false)]
     pub lazy_pool: bool,
@@ -635,6 +659,8 @@ pub struct Config {
     pub relay_observer: bool,
     /// Seconds without dispatched events before an idle harness exits. 0 = disabled.
     pub exit_after_inactivity_secs: u64,
+    /// Where this harness runs and the placement generation it was started for.
+    pub placement: PlacementIdentity,
     /// Whether ACP/LLM subprocess initialization is deferred until accepted work arrives.
     pub lazy_pool: bool,
     /// Seconds with no dispatched turn in flight and an empty queue before a
@@ -963,6 +989,59 @@ fn resolve_managed_credits_session(
         .map_err(|_| ConfigError::ConfigFile("invalid managed credits session".into()))
 }
 
+/// Where this harness runs and the placement generation it was started for.
+///
+/// On the Mac the generation is learned from the relay at start (see
+/// `placement`); on a cloud machine it is fixed by the boot response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlacementIdentity {
+    /// `Mac` or `Cloud`.
+    pub home: Home,
+    /// Generation of the placement head this harness was started for.
+    /// `0` on the Mac until the head is read.
+    pub generation: u64,
+}
+
+impl PlacementIdentity {
+    /// A harness on the owner's Mac that has not read the placement head yet.
+    pub const MAC: Self = Self {
+        home: Home::Mac,
+        generation: 0,
+    };
+
+    /// Validate the three placement settings. A cloud harness needs a home
+    /// fence token and a non-zero generation; anything else is a
+    /// misconfigured machine and must not start.
+    pub fn from_parts(
+        home: &str,
+        generation: u64,
+        home_token: Option<&str>,
+    ) -> Result<Self, ConfigError> {
+        match home {
+            "mac" | "" => Ok(Self::MAC),
+            "cloud" => {
+                if home_token.is_none_or(str::is_empty) {
+                    return Err(ConfigError::ConfigFile(
+                        "COLONY_HOME=cloud requires COLONY_CLOUD_HOME_TOKEN".into(),
+                    ));
+                }
+                if generation == 0 {
+                    return Err(ConfigError::ConfigFile(
+                        "COLONY_HOME=cloud requires COLONY_PLACEMENT_GENERATION".into(),
+                    ));
+                }
+                Ok(Self {
+                    home: Home::Cloud,
+                    generation,
+                })
+            }
+            other => Err(ConfigError::ConfigFile(format!(
+                "COLONY_HOME must be mac or cloud, got {other}"
+            ))),
+        }
+    }
+}
+
 impl Config {
     pub fn from_cli() -> Result<Self, ConfigError> {
         // Legacy env-var propagation is intentionally NOT done here.
@@ -983,6 +1062,17 @@ impl Config {
         args.private_key
             .replace_range(.., &"0".repeat(args.private_key.len()));
         args.private_key.clear();
+
+        let placement = PlacementIdentity::from_parts(
+            &args.colony_home,
+            args.placement_generation,
+            args.cloud_home_token.as_deref(),
+        )?;
+        if placement.home == Home::Cloud {
+            if let Some(token) = args.cloud_home_token.as_deref() {
+                crate::cloud_boot::install_home_token(token);
+            }
+        }
 
         let system_prompt = if let Some(text) = args.system_prompt {
             Some(text)
@@ -1259,6 +1349,7 @@ impl Config {
             has_generated_codex_config,
             relay_observer: args.relay_observer,
             exit_after_inactivity_secs: args.exit_after_inactivity,
+            placement,
             lazy_pool: args.lazy_pool,
             idle_pool_sleep_secs: args.idle_pool_sleep,
             replay_floor_unix: args.replay_floor,
@@ -1638,6 +1729,7 @@ mod tests {
             has_generated_codex_config: false,
             relay_observer: false,
             exit_after_inactivity_secs: 0,
+            placement: PlacementIdentity::MAC,
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
@@ -3398,5 +3490,33 @@ mod credits_replay_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod placement_identity_tests {
+    use super::*;
+
+    #[test]
+    fn mac_is_the_default_and_ignores_generation() {
+        assert_eq!(
+            PlacementIdentity::from_parts("mac", 0, None).expect("mac"),
+            PlacementIdentity::MAC
+        );
+        assert_eq!(
+            PlacementIdentity::from_parts("", 9, None).expect("empty is mac"),
+            PlacementIdentity::MAC
+        );
+    }
+
+    #[test]
+    fn cloud_needs_a_token_and_a_generation() {
+        let ok = PlacementIdentity::from_parts("cloud", 4, Some("tok")).expect("cloud");
+        assert_eq!(ok.home, Home::Cloud);
+        assert_eq!(ok.generation, 4);
+        assert!(PlacementIdentity::from_parts("cloud", 4, None).is_err());
+        assert!(PlacementIdentity::from_parts("cloud", 4, Some("")).is_err());
+        assert!(PlacementIdentity::from_parts("cloud", 0, Some("tok")).is_err());
+        assert!(PlacementIdentity::from_parts("moon", 1, Some("tok")).is_err());
     }
 }
