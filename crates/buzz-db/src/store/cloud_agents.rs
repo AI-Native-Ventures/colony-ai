@@ -480,16 +480,29 @@ impl Db {
         Ok(id)
     }
 
+    /// Claim up to `limit` due operations of any community. See
+    /// [`Db::claim_due_cloud_ops_for`].
+    pub async fn claim_due_cloud_ops(&self, limit: i64) -> Result<Vec<OpRow>> {
+        self.claim_due_cloud_ops_for(None, limit).await
+    }
+
     /// Claim up to `limit` due operations, at most one per agent and always the
     /// agent's oldest pending one, so an agent's operations run in order. A
     /// claim leases the operation for [`OP_LEASE_SECS`] and counts as an
     /// attempt, so a crash is bounded by the attempt limit like any failure.
-    pub async fn claim_due_cloud_ops(&self, limit: i64) -> Result<Vec<OpRow>> {
+    /// `community` narrows the claim to one community (tests; production
+    /// passes `None`).
+    pub async fn claim_due_cloud_ops_for(
+        &self,
+        community: Option<CommunityId>,
+        limit: i64,
+    ) -> Result<Vec<OpRow>> {
         let rows = sqlx::query(
             "WITH heads AS ( \
                  SELECT DISTINCT ON (community_id, agent_pubkey) \
                         community_id, id, next_attempt_at, claimed_until \
-                 FROM cloud_agent_ops WHERE status = 'pending' \
+                 FROM cloud_agent_ops \
+                 WHERE status = 'pending' AND ($3::uuid IS NULL OR community_id = $3) \
                  ORDER BY community_id, agent_pubkey, created_at, id \
              ), due AS ( \
                  SELECT o.community_id, o.id \
@@ -509,6 +522,7 @@ impl Db {
         )
         .bind(limit)
         .bind(OP_LEASE_SECS)
+        .bind(community.map(|c| *c.as_uuid()))
         .fetch_all(&self.pool)
         .await?;
         rows.iter()
@@ -523,6 +537,108 @@ impl Db {
                 })
             })
             .collect()
+    }
+
+    /// Record the host's ids for an agent's machine and volume. Returns `false`
+    /// when the agent has no row any more.
+    pub async fn set_cloud_machine(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        machine_id: &str,
+        volume_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE cloud_agents SET fly_machine_id = $3, fly_volume_id = $4, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(machine_id)
+        .bind(volume_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Set the status of an agent that is still placed in the cloud at
+    /// `generation` (and set `last_error`, or clear it with `None`). A stale
+    /// caller changes nothing and gets `false`: a result that arrives after the
+    /// agent moved must never write over the new placement.
+    pub async fn set_cloud_status(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        status: PlacementStatus,
+        last_error: Option<&str>,
+    ) -> Result<bool> {
+        let Some(status) = status_str(status) else {
+            return Err(DbError::InvalidData("status has no stored form".into()));
+        };
+        let result = sqlx::query(
+            "UPDATE cloud_agents SET status = $4, last_error = $5, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND generation = $3 AND home = 'cloud'",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(status)
+        .bind(last_error.map(|text| text.chars().take(500).collect::<String>()))
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Mark a claimed operation done.
+    pub async fn finish_cloud_op(&self, community: CommunityId, id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE cloud_agent_ops SET status = 'done', claimed_until = NULL, updated_at = now() \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Give a claimed operation back to the journal to run again after
+    /// `delay_secs`, remembering why it failed.
+    pub async fn reschedule_cloud_op(
+        &self,
+        community: CommunityId,
+        id: Uuid,
+        delay_secs: i64,
+        error: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE cloud_agent_ops SET claimed_until = NULL, last_error = $4, updated_at = now(), \
+                 next_attempt_at = now() + make_interval(secs => $3::double precision) \
+             WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(id)
+        .bind(delay_secs)
+        .bind(error.chars().take(500).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Give up on a claimed operation. It stays in the journal as `failed`
+    /// with its reason.
+    pub async fn fail_cloud_op(&self, community: CommunityId, id: Uuid, error: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE cloud_agent_ops SET status = 'failed', claimed_until = NULL, last_error = $3, \
+                 updated_at = now() WHERE community_id = $1 AND id = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(id)
+        .bind(error.chars().take(500).collect::<String>())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// Agents of one owner that are placed in the cloud (the per-account cap).
@@ -1125,7 +1241,7 @@ mod postgres_tests {
             None
         );
         let first: Vec<_> = db
-            .claim_due_cloud_ops(10_000)
+            .claim_due_cloud_ops_for(Some(community), 10_000)
             .await
             .unwrap()
             .into_iter()
@@ -1136,7 +1252,7 @@ mod postgres_tests {
         assert_eq!(first[0].attempt, 1);
         // The lease hides it from a second worker, and `start` waits for `ensure`.
         let second: Vec<_> = db
-            .claim_due_cloud_ops(10_000)
+            .claim_due_cloud_ops_for(Some(community), 10_000)
             .await
             .unwrap()
             .into_iter()
