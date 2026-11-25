@@ -13,6 +13,10 @@ pub mod fence;
 pub mod fly;
 pub mod host;
 pub mod ops;
+pub mod presence;
+pub mod reconcile;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 use std::sync::Arc;
 

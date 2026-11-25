@@ -750,11 +750,21 @@ impl Db {
 
     /// Delete an account and cascade its key envelope, provider links, codes, and mail.
     #[datastore_span(name = "account_delete", system = "postgresql")]
+    ///
+    /// The account's cloud agents are taken out of service in the same
+    /// transaction (their machines are destroyed by the journal and their sealed
+    /// keys go once the host confirms), so deleting an account never leaves a
+    /// machine running or a key stored.
     pub async fn delete_account(&self, pubkey: &str) -> Result<bool> {
+        let owner = hex::decode(pubkey)
+            .map_err(|_| crate::DbError::InvalidData("account pubkey is not hex".into()))?;
+        let mut tx = self.pool.begin().await?;
+        crate::cloud_agents::begin_cloud_teardown_in(&mut tx, &owner, None).await?;
         let result = sqlx::query("DELETE FROM accounts WHERE pubkey = $1")
             .bind(pubkey)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
 
