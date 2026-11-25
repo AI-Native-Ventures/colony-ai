@@ -6438,7 +6438,7 @@ fn handle_prompt_result_inner(
                     events = batch.events.len(),
                     "OpenCode free route refused: keeping the message unanswered and stopping"
                 );
-                queue.requeue_preserve_timestamps(batch);
+                drop(batch);
                 hard_timeout_fate_suffix = Some(" (kept for the next free route)");
             } else if config.managed_credits_session.is_some()
                 && !matches!(result.outcome, PromptOutcome::Ok(_))
