@@ -89,15 +89,9 @@ pub async fn check_agent_auth(
     agent_pubkey: &[u8],
     home_tag: Option<&str>,
 ) -> Result<(), FenceRefusal> {
-    let fence_state = state
-        .db
-        .cloud_fence_state(community, agent_pubkey)
-        .await
-        .map_err(|error| {
-            tracing::warn!(error = %error, "agent placement lookup failed, denying (fail-closed)");
-            FenceRefusal::Unavailable
-        })?;
-    decide(fence_state.as_ref(), home_tag)
+    // RED PROOF: the placement is never consulted, so any connection is let in.
+    let _ = (state, community, agent_pubkey, home_tag);
+    Ok(())
 }
 
 #[cfg(test)]
