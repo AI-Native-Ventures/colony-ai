@@ -7,6 +7,7 @@ mod business_profile;
 mod acp;
 #[cfg(test)]
 mod brand_guard_tests;
+mod cloud_boot;
 mod config;
 mod connection_test;
 mod engram_fetch;
@@ -2483,6 +2484,9 @@ mod replay_floor_tests {
 }
 
 pub fn run() -> Result<()> {
+    // On a Colony cloud machine the secrets arrive through a one-time boot
+    // token. Redeem it before anything reads the environment.
+    cloud_boot::run_boot_if_requested().context("cloud boot failed")?;
     config::propagate_legacy_env_vars();
     tokio_main()
 }
@@ -10834,6 +10838,7 @@ mod build_mcp_servers_tests {
             has_generated_codex_config: false,
             relay_observer: false,
             exit_after_inactivity_secs: 0,
+            placement: config::PlacementIdentity::MAC,
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
@@ -11109,6 +11114,7 @@ mod error_outcome_emission_tests {
             has_generated_codex_config: false,
             relay_observer: false,
             exit_after_inactivity_secs: 0,
+            placement: config::PlacementIdentity::MAC,
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
