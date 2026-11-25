@@ -631,6 +631,16 @@ export function useAnchoredScroll({
         scrollToBottomImperative("auto");
         mountPinRafIdRef.current = requestAnimationFrame(() => {
           mountPinRafIdRef.current = null;
+          // A reader can take the virtual scroller before its follow-up frame
+          // runs. Do not re-arm a cancelled bottom settle and pull them back
+          // to the newest row after that deliberate navigation.
+          if (
+            virtualizerOwnsPrependAnchoring &&
+            virtualHasBottomIntent &&
+            !virtualHasBottomIntent()
+          ) {
+            return;
+          }
           scrollToBottomImperative("auto");
         });
       };
@@ -776,6 +786,7 @@ export function useAnchoredScroll({
     scrollToBottomImperative,
     scrollToMessageImperative,
     targetMessageId,
+    virtualHasBottomIntent,
     virtualScrollToBottom,
     virtualSettleAtBottom,
     virtualizerOwnsPrependAnchoring,
