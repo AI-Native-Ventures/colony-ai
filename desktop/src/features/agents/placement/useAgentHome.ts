@@ -12,6 +12,7 @@ import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useCloudCapabilities } from "./cloudQueries";
 import { capMessage, notCloudReadyMessage, statusLabel } from "./placementCopy";
 import { usePlacement } from "./placementQueries";
+import { getPlacement } from "./placementStore";
 import { classifyPlacementError, publishPlacement } from "./publishPlacement";
 import type { AgentPlacement, Home } from "./placementTypes";
 
@@ -149,6 +150,11 @@ export function useAgentHome(
       run(async () => {
         if (home === placement.home) return;
         await publishPlacement(key, "setHome", placement.generation, home);
+        // The relay keeps the home when it holds no key for the agent and says
+        // so in the head; say it here too.
+        if (home === "cloud" && getPlacement(key).status === "notCloudReady") {
+          setMessage(notCloudReadyMessage(name));
+        }
       }),
     chooseModel: (model) =>
       run(async () => {

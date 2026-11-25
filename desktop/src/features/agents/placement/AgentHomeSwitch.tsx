@@ -71,10 +71,10 @@ export function AgentHomeSwitch({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="c3c-subtitle inline-flex items-center gap-1 rounded-md px-1 text-left hover:text-colony-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-colony-accent disabled:opacity-60"
+            className="c3c-subtitle inline-flex items-center gap-1 rounded-md px-1 text-left hover:text-colony-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-colony-accent aria-busy:opacity-60"
             data-state-home={placement.home}
             data-testid="agent-home-trigger"
-            disabled={pending}
+            aria-busy={pending || undefined}
             type="button"
           >
             {workingOnLabel(placement.home)}
