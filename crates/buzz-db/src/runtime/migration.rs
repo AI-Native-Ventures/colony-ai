@@ -725,7 +725,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 70);
+        assert_eq!(migrations.len(), 71);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -788,6 +788,11 @@ mod postgres_tests {
             .sql
             .as_str()
             .contains("ADD COLUMN paid_allowed"));
+        assert_eq!(migrations[70].version, 71);
+        assert!(migrations[70]
+            .sql
+            .as_str()
+            .contains("ADD COLUMN free_route_until"));
         assert!(migrations[54]
             .sql
             .as_str()
