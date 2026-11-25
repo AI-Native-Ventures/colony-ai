@@ -636,14 +636,19 @@ mod postgres_tests {
         let by_others = f
             .state
             .db
-            .cloud_wake_candidates(f.community, None, &[f.agent.clone()], &[9u8; 32])
+            .cloud_wake_candidates(
+                f.community,
+                None,
+                std::slice::from_ref(&f.agent),
+                &[9u8; 32],
+            )
             .await
             .expect("candidates");
         assert_eq!(by_others.len(), 1);
         let by_itself = f
             .state
             .db
-            .cloud_wake_candidates(f.community, None, &[f.agent.clone()], &f.agent)
+            .cloud_wake_candidates(f.community, None, std::slice::from_ref(&f.agent), &f.agent)
             .await
             .expect("candidates");
         assert!(by_itself.is_empty(), "the author is never a candidate");

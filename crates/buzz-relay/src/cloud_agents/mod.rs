@@ -74,6 +74,32 @@ pub fn placement_head(row: &CloudAgentRow, default_model: Option<&str>, now: i64
     }
 }
 
+/// Re-publishes an agent's placement head from its stored row. Logs and
+/// returns `false` on failure so a background caller can keep its own retry
+/// record instead of treating the head as current.
+pub(crate) async fn refresh_head_for(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    agent_pubkey: &[u8],
+) -> bool {
+    let host = match state.db.lookup_community_host(community).await {
+        Ok(Some(host)) => host,
+        Ok(None) => return true, // community is gone, nothing to publish to
+        Err(error) => {
+            tracing::warn!(%error, "placement head not refreshed: community lookup failed");
+            return false;
+        }
+    };
+    let tenant = buzz_core::tenant::TenantContext::resolved(community, host);
+    match crate::handlers::agent_placement::refresh_head(state, &tenant, agent_pubkey).await {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(?error, "placement head not refreshed");
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,31 +170,5 @@ mod tests {
             hex::encode(hash),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
-    }
-}
-
-/// Re-publishes an agent's placement head from its stored row. Logs and
-/// returns `false` on failure so a background caller can keep its own retry
-/// record instead of treating the head as current.
-pub(crate) async fn refresh_head_for(
-    state: &Arc<AppState>,
-    community: buzz_core::tenant::CommunityId,
-    agent_pubkey: &[u8],
-) -> bool {
-    let host = match state.db.lookup_community_host(community).await {
-        Ok(Some(host)) => host,
-        Ok(None) => return true, // community is gone, nothing to publish to
-        Err(error) => {
-            tracing::warn!(%error, "placement head not refreshed: community lookup failed");
-            return false;
-        }
-    };
-    let tenant = buzz_core::tenant::TenantContext::resolved(community, host);
-    match crate::handlers::agent_placement::refresh_head(state, &tenant, agent_pubkey).await {
-        Ok(()) => true,
-        Err(error) => {
-            tracing::warn!(?error, "placement head not refreshed");
-            false
-        }
     }
 }
