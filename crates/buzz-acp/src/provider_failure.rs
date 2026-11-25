@@ -174,6 +174,72 @@ pub(crate) fn credits_interrupted_notice() -> &'static str {
     "⚠️ This Colony credits turn stopped before its result was confirmed. Usage may be recovering automatically. Automatic replay was stopped; check your balance before starting a new turn."
 }
 
+/// Plain copy of the tagged credit notice a cloud agent posts. The desktop
+/// renders the card and its actions from the tag, not from these words.
+pub(crate) const OUT_OF_CREDIT_COPY: &str = "Out of AI credit.";
+
+/// Name of the tag marking a harness system message the app turns into a card.
+pub(crate) const NOTICE_TAG_NAME: &str = "colony_notice";
+
+/// The gateway words for "balance cannot fund the request" (`CreditRefusal::OutOfCredits`).
+const OUT_OF_CREDITS_MESSAGE: &str = "Out of credits. Top up to keep your Colony Agent working.";
+/// The gateway words for the deployment-wide daily ceiling (`CreditRefusal::DailyLimit`).
+const DAILY_LIMIT_MESSAGE: &str = "Colony AI has reached its limit for today. Try again tomorrow, or connect Claude Code, Codex or an OpenRouter key in Settings > Agents.";
+
+/// Which credit refusal a tagged notice reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CreditNoticeKind {
+    /// The owner's balance cannot fund the request.
+    OutOfCredit,
+    /// The deployment's daily spend ceiling was reached.
+    DailyLimit,
+}
+
+impl CreditNoticeKind {
+    /// Value of the `colony_notice` tag.
+    pub(crate) fn tag_value(self) -> &'static str {
+        match self {
+            Self::OutOfCredit => "outOfCredit",
+            Self::DailyLimit => "dailyLimit",
+        }
+    }
+}
+
+/// The credit refusal behind `error`, when it is one the app shows as a card.
+/// Every other credits refusal (busy, recovering, ...) keeps its plain notice.
+pub(crate) fn credit_notice_kind(error: &AcpError) -> Option<CreditNoticeKind> {
+    let AcpError::AgentError {
+        code: -32004,
+        message,
+    } = error
+    else {
+        return None;
+    };
+    match message.as_str() {
+        OUT_OF_CREDITS_MESSAGE => Some(CreditNoticeKind::OutOfCredit),
+        DAILY_LIMIT_MESSAGE => Some(CreditNoticeKind::DailyLimit),
+        _ => None,
+    }
+}
+
+/// The text to post and the tag to attach for a failed turn.
+///
+/// A credit refusal always carries its `colony_notice` tag. On a cloud machine
+/// its words are the short card copy; on the Mac the existing `legacy` words
+/// stay, so nothing a Mac agent says changes. Any other failure is returned
+/// unchanged with no tag.
+pub(crate) fn credit_notice(
+    error: &AcpError,
+    cloud: bool,
+    legacy: String,
+) -> (String, Option<CreditNoticeKind>) {
+    match credit_notice_kind(error) {
+        Some(kind) if cloud => (OUT_OF_CREDIT_COPY.to_owned(), Some(kind)),
+        Some(kind) => (legacy, Some(kind)),
+        None => (legacy, None),
+    }
+}
+
 fn credits_notice(message: &str) -> &'static str {
     match message {
         "Out of credits. Top up to keep your Colony Agent working." => "Out of credits. Top up to keep your Colony Agent working.",
@@ -406,5 +472,74 @@ mod free_limit_tests {
             SystemTime::now()
         ));
         std::fs::remove_dir_all(&dir).expect("remove scratch dir");
+    }
+}
+
+#[cfg(test)]
+mod credit_notice_tests {
+    use super::*;
+
+    fn gateway_error(message: &str) -> AcpError {
+        AcpError::AgentError {
+            code: -32004,
+            message: message.to_owned(),
+        }
+    }
+
+    #[test]
+    fn out_of_credit_posts_one_notice() {
+        let legacy = "⚠️ Out of credits. Top up to keep your Colony Agent working.".to_owned();
+
+        // On a cloud machine: the short card copy, tagged outOfCredit.
+        let (content, kind) = credit_notice(
+            &gateway_error("Out of credits. Top up to keep your Colony Agent working."),
+            true,
+            legacy.clone(),
+        );
+        assert_eq!(content, "Out of AI credit.");
+        assert_eq!(kind, Some(CreditNoticeKind::OutOfCredit));
+        assert_eq!(kind.map(CreditNoticeKind::tag_value), Some("outOfCredit"));
+
+        // The daily ceiling is its own tag with the same card copy.
+        let (content, kind) = credit_notice(
+            &gateway_error(DAILY_LIMIT_MESSAGE),
+            true,
+            "unused".to_owned(),
+        );
+        assert_eq!(content, "Out of AI credit.");
+        assert_eq!(kind.map(CreditNoticeKind::tag_value), Some("dailyLimit"));
+
+        // On the Mac the words are unchanged; only the tag is added.
+        let (content, kind) = credit_notice(
+            &gateway_error("Out of credits. Top up to keep your Colony Agent working."),
+            false,
+            legacy.clone(),
+        );
+        assert_eq!(content, legacy);
+        assert_eq!(kind, Some(CreditNoticeKind::OutOfCredit));
+
+        // Other credits refusals and other failures keep their plain notice, no tag.
+        for error in [
+            gateway_error("Your Colony Agents are busy. Try again shortly."),
+            gateway_error("anything else"),
+            AcpError::AgentError {
+                code: -32001,
+                message: "Out of credits. Top up to keep your Colony Agent working.".into(),
+            },
+        ] {
+            let (content, kind) = credit_notice(&error, true, "plain".to_owned());
+            assert_eq!((content.as_str(), kind), ("plain", None));
+        }
+    }
+
+    #[test]
+    fn credit_words_match_what_the_gateway_says() {
+        // These strings are the gateway's `CreditRefusal` Display text. If they
+        // drift, `credits_notice` falls back to its generic line and the tag is lost.
+        assert_eq!(
+            credits_notice(OUT_OF_CREDITS_MESSAGE),
+            OUT_OF_CREDITS_MESSAGE
+        );
+        assert_eq!(credits_notice(DAILY_LIMIT_MESSAGE), DAILY_LIMIT_MESSAGE);
     }
 }
