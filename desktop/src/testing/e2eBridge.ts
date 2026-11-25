@@ -1358,6 +1358,14 @@ type E2eConfig = {
     };
     /** Native credits flag; default OFF in browser fixtures too. */
     colonyCreditsGatewayEnabled?: boolean;
+    /** What the relay says about cloud agents; absent means switched off. */
+    cloudCapabilities?: {
+      enabled: boolean;
+      allowed: boolean;
+      maxPerAccount: number;
+      models: string[];
+      defaultModel: string | null;
+    };
     /** Explicit owner-only agent-access capability; independent of baked defaults. */
     ownerOnlyAccessBuild?: boolean;
     /** File-layer config returned by runtime id. */
@@ -25357,6 +25365,18 @@ export function maybeInstallE2eTauriMocks() {
         return config?.mock?.colonyCreditsGatewayEnabled ?? false;
       case "set_placement_cache":
         return null;
+      case "get_cloud_capabilities":
+        return (
+          config?.mock?.cloudCapabilities ?? {
+            enabled: false,
+            allowed: false,
+            maxPerAccount: 0,
+            models: [],
+            defaultModel: null,
+          }
+        );
+      case "upload_cloud_bundle":
+        return { result: "unchanged" };
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
       case "update_managed_agent":

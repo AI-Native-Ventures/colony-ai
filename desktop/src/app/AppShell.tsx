@@ -56,6 +56,7 @@ import { useAgentsDataRefresh } from "@/features/agents/lib/useAgentsDataRefresh
 import { useManagedAgentRuntimeReconciliation } from "@/features/agents/useManagedAgentRuntimeReconciliation";
 import { useAutoRestartPolicy } from "@/features/agents/lib/useAutoRestartPolicy";
 import { useCofounderScoutKeepAlive } from "@/features/cofounder/useCofounderScoutKeepAlive";
+import { useCloudBundleSync } from "@/features/agents/placement/useCloudBundleSync";
 import { usePlacementSync } from "@/features/agents/placement/usePlacementSync";
 import { useMentionReconciler } from "@/features/messages/ui/useMentionReconciler";
 import { usePersonaSync } from "@/features/agents/lib/usePersonaSync";
@@ -250,6 +251,9 @@ export function AppShell() {
   // Where each agent works (This Mac or the cloud): keeps this Mac from running
   // a second copy of an agent that works in the cloud.
   usePlacementSync();
+  // Makes this Mac's agents cloud-ready in the background, when the relay says
+  // this account may use cloud agents.
+  useCloudBundleSync();
   // Co-founder mode starts Scout by itself: the owner never messages it first.
   useCofounderScoutKeepAlive();
   // Owner-global observer ingestion: receives + decrypts agent observer
