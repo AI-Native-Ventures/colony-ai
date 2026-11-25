@@ -378,6 +378,13 @@ impl Db {
         cloud_agent_fence_state(&mut conn, community, agent).await
     }
 
+    /// The verified account email behind an owner pubkey (64 hex characters).
+    /// See [`verified_account_email`].
+    pub async fn owner_account_email(&self, owner_hex: &str) -> Result<Option<String>> {
+        let mut conn = self.pool.acquire().await?;
+        verified_account_email(&mut conn, owner_hex).await
+    }
+
     /// Store a fresh boot token hash for a cloud-placed agent at `generation`.
     ///
     /// Returns `false` when the agent is not placed in the cloud at that

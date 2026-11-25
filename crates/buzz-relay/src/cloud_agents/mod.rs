@@ -2,9 +2,10 @@
 //! Mac. The relay owns placement, the stored key and config, and (in later
 //! slices) the machine lifecycle.
 //!
-//! This slice holds the configuration and the NIP-42 home fence. The placement
+//! This slice holds the configuration, the NIP-42 home fence and the machine boot. The placement
 //! broker lives in [`crate::handlers::agent_placement`].
 
+pub mod boot;
 pub mod config;
 pub mod fence;
 

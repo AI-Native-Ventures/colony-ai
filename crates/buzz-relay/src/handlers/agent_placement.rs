@@ -24,9 +24,10 @@ use buzz_core::agent_placement::{
 use buzz_core::kind::{KIND_AGENT_PLACEMENT_ACTION, KIND_AGENT_PLACEMENT_HEAD};
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::cloud_agents::{self as store, CasOutcome, CloudAgentRow};
+use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
 
 use super::company_cofounder::{
-    command_d_tag, conflict, duplicate_result, forbidden, internal, invalid,
+    command_d_tag, conflict, duplicate_result, forbidden, internal, invalid, relay_head_event,
 };
 use super::company_initiative::{commit_head, lock_current_head, HeadWrite};
 use super::ingest::{IngestAuth, IngestError, IngestResult};
@@ -249,6 +250,106 @@ pub(super) async fn handle(
         );
     }
     Ok(result)
+}
+
+/// Re-publishes an agent's placement head from its stored row, in its own
+/// transaction. Used when the row changes without a command: a bundle upload
+/// (`cloudReady`, `configVersion`), a wake, a stop. Does nothing when the agent
+/// has no row, or when the head already says the same (only `updatedAt`
+/// differs), so repeated uploads and reconcile passes cause no event churn.
+pub(crate) async fn refresh_head(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    agent_key: &[u8],
+) -> Result<(), IngestError> {
+    let community = tenant.community();
+    let d_tag = hex::encode(agent_key);
+    let mut tx = state
+        .db
+        .begin_event_write_transaction()
+        .await
+        .map_err(internal)?;
+    buzz_deletion::store(&state.db)
+        .guard_transaction(&mut tx, community)
+        .await
+        .map_err(|error| {
+            IngestError::Rejected(format!("restricted: community writes are fenced: {error}"))
+        })?;
+    let (current_head_id, current_stored) = lock_current_head(
+        state,
+        &mut tx,
+        community,
+        KIND_AGENT_PLACEMENT_HEAD,
+        &d_tag,
+        &format!("agent-placement:{d_tag}"),
+    )
+    .await?;
+    let Some(row) = store::get_cloud_agent_in(&mut tx, community, agent_key, true)
+        .await
+        .map_err(internal)?
+    else {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(());
+    };
+    let now = Utc::now().timestamp();
+    let head = crate::cloud_agents::placement_head(
+        &row,
+        state.config.cloud_agents.default_model.as_deref(),
+        now,
+    );
+    let unchanged = current_stored
+        .as_ref()
+        .and_then(|stored| serde_json::from_str::<PlacementHead>(&stored.event.content).ok())
+        .is_some_and(|current| {
+            PlacementHead {
+                updated_at: head.updated_at,
+                ..current
+            } == head
+        });
+    if unchanged {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(());
+    }
+    let head_event = relay_head_event(
+        state,
+        KIND_AGENT_PLACEMENT_HEAD,
+        &d_tag,
+        serde_json::to_string(&head).map_err(internal)?,
+        current_stored.as_ref(),
+    )?;
+    let precondition = current_head_id.as_deref().map_or(
+        ParameterizedReplacePrecondition::CreateOnly,
+        ParameterizedReplacePrecondition::ExpectedRevision,
+    );
+    let replaced = state
+        .db
+        .replace_parameterized_event_in_transaction(
+            &mut tx,
+            community,
+            &head_event,
+            &d_tag,
+            None,
+            precondition,
+        )
+        .await
+        .map_err(internal)?;
+    if replaced.status != ParameterizedReplaceStatus::Inserted {
+        tx.rollback().await.map_err(internal)?;
+        return Err(conflict(
+            "agent placement changed before its head could be refreshed; retry",
+        ));
+    }
+    tx.commit().await.map_err(internal)?;
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &replaced.event,
+        KIND_AGENT_PLACEMENT_HEAD,
+        &state.relay_keypair.public_key().to_hex(),
+        None,
+    )
+    .await;
+    Ok(())
 }
 
 /// Refuses a command that was written against another generation.
