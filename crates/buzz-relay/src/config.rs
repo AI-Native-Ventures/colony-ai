@@ -858,6 +858,8 @@ pub struct Config {
     pub accounts: AccountConfig,
     /// Optional PayFast credit and hosting payments configuration.
     pub payments: PaymentsConfig,
+    /// Cloud agents (agents that work on their own machine). Off unless configured.
+    pub cloud_agents: crate::cloud_agents::config::CloudAgentsConfig,
     /// Whether REST API requests must present a valid token. Independent of
     /// WebSocket protocol auth, which is *always* required by REQ/EVENT/COUNT.
     pub require_auth_token: bool,
@@ -1701,6 +1703,9 @@ impl Config {
         };
         let accounts = account_config_from_lookup(|name| std::env::var(name).ok())?;
         let payments = payments_config_from_lookup(|name| std::env::var(name).ok())?;
+        let cloud_agents = crate::cloud_agents::config::CloudAgentsConfig::from_env(|name| {
+            std::env::var(name).ok()
+        })?;
 
         if !require_auth_token {
             warn!(
@@ -2146,6 +2151,7 @@ impl Config {
             auth,
             accounts,
             payments,
+            cloud_agents,
             require_auth_token,
             cors_origins,
             relay_private_key,

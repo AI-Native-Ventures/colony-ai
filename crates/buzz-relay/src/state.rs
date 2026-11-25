@@ -1529,6 +1529,69 @@ pub(crate) mod tests {
         build_test_state(config, pool).await
     }
 
+    /// Replay guard that never refuses, for routes that sign several requests.
+    struct AlwaysFreshReplayGuard;
+
+    impl buzz_auth::Nip98ReplayGuard for AlwaysFreshReplayGuard {
+        fn try_mark_in_scope<'a>(
+            &'a self,
+            _scope: &'a str,
+            _event_id: &'a nostr::EventId,
+            _ttl_secs: u64,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<bool, buzz_auth::AuthError>> + Send + 'a>,
+        > {
+            Box::pin(async { Ok(true) })
+        }
+    }
+
+    /// Test state for the cloud agents HTTP routes: cloud agents configured, an
+    /// account key for sealing agent keys, NIP-98 replays never refused, and a
+    /// secure relay URL so signed request URLs use `https`. Real database.
+    pub(crate) async fn test_state_for_cloud_agents(
+        database_url: &str,
+        cloud_agents: crate::cloud_agents::config::CloudAgentsConfig,
+        account_kek: Option<[u8; 32]>,
+    ) -> Arc<AppState> {
+        let mut config = crate::config::Config::from_env().expect("default config loads");
+        config.require_relay_membership = false;
+        config.redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:1".to_string());
+        config.database_url = database_url.to_owned();
+        config.read_database_url = None;
+        config.relay_url = "wss://cloud-agents-test.example".to_owned();
+        config.cloud_agents = cloud_agents;
+        config.accounts =
+            crate::config::AccountConfig::test_config(account_kek, None, vec![], None);
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_secs(10))
+            .connect_lazy(&config.database_url)
+            .expect("lazy pg pool");
+        build_test_state_with(config, pool, |state| {
+            state.nip98_replay = Arc::new(AlwaysFreshReplayGuard);
+        })
+        .await
+    }
+
+    /// Test state with cloud agents configured, against a real database.
+    pub(crate) async fn test_state_with_cloud_agents(
+        database_url: &str,
+        cloud_agents: crate::cloud_agents::config::CloudAgentsConfig,
+    ) -> Arc<AppState> {
+        let mut config = crate::config::Config::from_env().expect("default config loads");
+        config.require_relay_membership = false;
+        config.redis_url =
+            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:1".to_string());
+        config.database_url = database_url.to_owned();
+        config.read_database_url = None;
+        config.cloud_agents = cloud_agents;
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_secs(10))
+            .connect_lazy(&config.database_url)
+            .expect("lazy pg pool");
+        build_test_state(config, pool).await
+    }
+
     /// Build test state around a caller-owned writer pool. Production-path
     /// lifecycle tests use this to hold the sole connection as a deterministic
     /// barrier while AUTH waits in the real database acquisition path.
@@ -1541,6 +1604,14 @@ pub(crate) mod tests {
     }
 
     async fn build_test_state(config: crate::config::Config, pool: sqlx::PgPool) -> Arc<AppState> {
+        build_test_state_with(config, pool, |_| {}).await
+    }
+
+    async fn build_test_state_with(
+        config: crate::config::Config,
+        pool: sqlx::PgPool,
+        tweak: impl FnOnce(&mut AppState),
+    ) -> Arc<AppState> {
         let db = buzz_db::Db::from_pool(pool.clone());
         let redis_pool = deadpool_redis::Config::from_url(&config.redis_url)
             .create_pool(Some(deadpool_redis::Runtime::Tokio1))
@@ -1558,7 +1629,7 @@ pub(crate) mod tests {
             buzz_workflow::WorkflowConfig::default(),
         ));
         let media_storage = buzz_media::MediaStorage::new(&config.media).expect("media storage");
-        let (state, _audit_shutdown) = AppState::new(
+        let (mut state, _audit_shutdown) = AppState::new(
             config,
             db,
             redis_pool,
@@ -1570,6 +1641,7 @@ pub(crate) mod tests {
             nostr::Keys::generate(),
             media_storage,
         );
+        tweak(&mut state);
         Arc::new(state)
     }
 

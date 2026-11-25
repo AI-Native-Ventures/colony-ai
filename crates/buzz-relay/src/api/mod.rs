@@ -3,9 +3,11 @@
 pub mod accounts;
 pub mod admin;
 pub mod bridge;
+/// Cloud agents: capabilities, bundle upload and machine boot.
+pub mod cloud_agents;
 /// Private Colony Agent credit gateway.
 pub mod credits_gateway;
-mod credits_gateway_limits;
+pub(crate) mod credits_gateway_limits;
 mod credits_gateway_message;
 mod credits_gateway_metering;
 mod credits_gateway_policy;

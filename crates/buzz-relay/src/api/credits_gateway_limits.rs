@@ -7,7 +7,7 @@ const MAX_FREE_ACCOUNTS: usize = 64;
 const MAX_FREE_IN_FLIGHT: i64 = 256;
 
 /// Build the policy from the process environment.
-pub(super) fn policy_from_env() -> GatewayPolicy {
+pub(crate) fn policy_from_env() -> GatewayPolicy {
     policy_from_lookup(|key| std::env::var(key).ok())
 }
 

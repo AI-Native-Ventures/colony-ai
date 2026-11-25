@@ -20,6 +20,8 @@ pub mod business_records;
 pub mod channel;
 /// Channel membership and roster persistence.
 pub mod channel_members;
+/// Cloud agent registry, boot tokens and the durable Fly operation journal.
+pub mod cloud_agents;
 /// Community lifecycle and host-map persistence.
 /// Durable queue of wakes for Scout in co-founder mode.
 pub mod cofounder_wakes;
