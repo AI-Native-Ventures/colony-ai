@@ -82,6 +82,26 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
             .await
         }
         WhatsappCmd::Batch(sub) => dispatch_batch(sub, client).await,
+        WhatsappCmd::Queue { batch, cmd: None } => {
+            query(client, queue_query(batch.as_deref())?).await
+        }
+        WhatsappCmd::Queue {
+            cmd:
+                Some(crate::WhatsappQueueCmd::Remove {
+                    keep,
+                    remove,
+                    all,
+                    batch,
+                }),
+            ..
+        } => {
+            publish(
+                client,
+                KIND_WHATSAPP_BATCH_DECISION,
+                queue_removal_content(&keep, &remove, all, batch.as_deref())?,
+            )
+            .await
+        }
         WhatsappCmd::Send {
             contact,
             thread,
@@ -786,6 +806,54 @@ pub(crate) fn decision_content(
     }))
 }
 
+/// The read that shows what waits in the approved queue, per industry.
+pub(crate) fn queue_query(batch: Option<&str>) -> Result<Value, CliError> {
+    let mut body = json!({ "what": "queue" });
+    if let Some(batch) = batch {
+        let batch_id = Uuid::parse_str(batch.trim())
+            .map_err(|_| CliError::Usage("--batch must be a UUID".into()))?;
+        body["batchId"] = json!(batch_id.to_string());
+    }
+    Ok(body)
+}
+
+/// The `47049` content that takes waiting messages out of the approved queue. Exactly one of
+/// `--keep`, `--remove` or `--all` names them; the relay refuses a name that matches nothing.
+pub(crate) fn queue_removal_content(
+    keep: &[String],
+    remove: &[String],
+    all: bool,
+    batch: Option<&str>,
+) -> Result<Value, CliError> {
+    let given = usize::from(!keep.is_empty()) + usize::from(!remove.is_empty()) + usize::from(all);
+    if given != 1 {
+        return Err(CliError::Usage(
+            "give exactly one of --keep, --remove or --all".into(),
+        ));
+    }
+    if keep.iter().chain(remove).any(|name| name.trim().is_empty()) {
+        return Err(CliError::Usage(
+            "an industry name cannot be empty; use the names `whatsapp queue` shows".into(),
+        ));
+    }
+    let mut content = json!({ "v": 1, "decision": "remove_queued" });
+    if !keep.is_empty() {
+        content["keep"] = json!(keep);
+    }
+    if !remove.is_empty() {
+        content["remove"] = json!(remove);
+    }
+    if all {
+        content["all"] = json!(true);
+    }
+    if let Some(batch) = batch {
+        let batch_id = Uuid::parse_str(batch.trim())
+            .map_err(|_| CliError::Usage("--batch must be a UUID".into()))?;
+        content["batchId"] = json!(batch_id.to_string());
+    }
+    Ok(content)
+}
+
 /// The `47049` content that decides one agent draft.
 pub(crate) fn draft_decision_content(
     draft: &str,
@@ -1384,6 +1452,45 @@ mod tests {
         assert!(Uuid::parse_str(content["batchId"].as_str().expect("id")).is_ok());
         assert!(batch_content(" ", "en", vec![], &[], None, None, None).is_err());
         assert!(batch_content("intro", "en", vec![], &[], None, None, Some("bad")).is_err());
+    }
+
+    #[test]
+    fn queue_commands_match_the_contract() {
+        let batch = "8f2c1f3a-6f0e-4a57-9a0e-2b7c3d4e5f60";
+        assert_eq!(
+            queue_query(None).expect("query"),
+            json!({ "what": "queue" })
+        );
+        assert_eq!(
+            queue_query(Some(batch)).expect("query"),
+            json!({ "what": "queue", "batchId": batch })
+        );
+        assert!(queue_query(Some("not-a-uuid")).is_err());
+
+        let furniture = vec!["Furniture".to_string(), "Locksmith Businesses".to_string()];
+        assert_eq!(
+            queue_removal_content(&furniture, &[], false, None).expect("keep"),
+            json!({ "v": 1, "decision": "remove_queued", "keep": furniture })
+        );
+        assert_eq!(
+            queue_removal_content(&[], &furniture, false, Some(batch)).expect("remove"),
+            json!({
+                "v": 1,
+                "decision": "remove_queued",
+                "remove": furniture,
+                "batchId": batch,
+            })
+        );
+        assert_eq!(
+            queue_removal_content(&[], &[], true, None).expect("all"),
+            json!({ "v": 1, "decision": "remove_queued", "all": true })
+        );
+        // GUARD: the exactly-one rule. Nothing named must never reach the relay as "everything".
+        assert!(queue_removal_content(&[], &[], false, None).is_err());
+        assert!(queue_removal_content(&furniture, &furniture, false, None).is_err());
+        assert!(queue_removal_content(&furniture, &[], true, None).is_err());
+        assert!(queue_removal_content(&[" ".to_string()], &[], false, None).is_err());
+        assert!(queue_removal_content(&[], &[], true, Some("not-a-uuid")).is_err());
     }
 
     #[test]

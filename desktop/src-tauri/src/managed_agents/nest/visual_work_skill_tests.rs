@@ -74,6 +74,6 @@ fn previous_nest_skill_is_refreshed_with_the_visual_workflow() {
     assert!(refreshed.contains("## Visual work"));
     assert_eq!(
         fs::read_to_string(skill_dir.join(".skill-version")).unwrap(),
-        "26\n"
+        format!("{NEST_SKILL_VERSION}\n")
     );
 }

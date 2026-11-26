@@ -1854,6 +1854,15 @@ pub enum WhatsappCmd {
     /// Prepare, review and decide batches of template messages
     #[command(subcommand)]
     Batch(WhatsappBatchCmd),
+    /// Show the approved messages still waiting to be sent, per industry, or take some out
+    #[command(args_conflicts_with_subcommands = true)]
+    Queue {
+        /// Only this approved batch
+        #[arg(long)]
+        batch: Option<String>,
+        #[command(subcommand)]
+        cmd: Option<WhatsappQueueCmd>,
+    },
     /// Send one message: free text inside the 24 hour window, otherwise a template.
     /// An agent's message is a draft until an owner or admin approves it; their own send at once
     Send {
@@ -1948,6 +1957,27 @@ pub enum WhatsappTemplatesCmd {
     Get {
         /// Template name, Colony title, or a colony://template/<name>?lang=<code> link
         template: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WhatsappQueueCmd {
+    /// Take approved messages that still wait out of the queue, by the industry of their lead.
+    /// They are never sent and cannot be put back. Only when the owner asks for it
+    Remove {
+        /// Keep this industry or vertical and take everything else out; repeat for each one.
+        /// Use the names exactly as `whatsapp queue` shows them
+        #[arg(long, conflicts_with_all = ["remove", "all"])]
+        keep: Vec<String>,
+        /// Take this industry or vertical out; repeat for each one
+        #[arg(long, conflicts_with = "all")]
+        remove: Vec<String>,
+        /// Take every waiting message out
+        #[arg(long)]
+        all: bool,
+        /// Only this approved batch
+        #[arg(long)]
+        batch: Option<String>,
     },
 }
 
@@ -5503,7 +5533,7 @@ mod tests {
             ("upload", 1),
             ("users", 5),
             // Safety and unknown-send recovery are intentional owner-facing WhatsApp groups.
-            ("whatsapp", 15),
+            ("whatsapp", 16),
             ("work", 16),
             ("workflows", 8),
         ];

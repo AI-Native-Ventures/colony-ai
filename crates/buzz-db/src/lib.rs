@@ -67,7 +67,7 @@ pub use store::{
     community, company_work_watchdog, credits_gateway, deletion, discovery_usage, dm, event, feed,
     git_repo, moderation, money_rails, partition, payments, product_feedback, push, reaction,
     relay_admin_actions, relay_invite, relay_members, relay_operators, reminder, replaceable,
-    storage_accounting, thread, usage, user, whatsapp, workflow,
+    storage_accounting, thread, usage, user, whatsapp, whatsapp_queue, workflow,
 };
 
 pub use allowlist::AllowlistEntry;

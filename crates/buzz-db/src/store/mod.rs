@@ -78,5 +78,7 @@ pub mod usage;
 pub mod user;
 /// Per-company WhatsApp outreach connection, contacts, messages and batches.
 pub mod whatsapp;
+/// Approved WhatsApp batch messages waiting to be sent, and their removal from the queue.
+pub mod whatsapp_queue;
 /// Workflow, run, and approval persistence.
 pub mod workflow;

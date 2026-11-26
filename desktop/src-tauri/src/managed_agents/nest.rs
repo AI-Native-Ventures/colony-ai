@@ -93,7 +93,9 @@ const NEST_AGENTS_VERSION: u32 = 8;
 /// Version 24 adds the Lists, campaigns and templates section (`colony lists`,
 /// `colony campaigns`, `colony whatsapp templates get`, `batch create --list`).
 /// Version 26 makes Open Design the default visual workflow for every runtime.
-const NEST_SKILL_VERSION: u32 = 26;
+/// Version 27 adds taking approved WhatsApp messages out of the queue
+/// (`colony whatsapp queue`, `queue remove`), only on the owner's word.
+const NEST_SKILL_VERSION: u32 = 27;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.

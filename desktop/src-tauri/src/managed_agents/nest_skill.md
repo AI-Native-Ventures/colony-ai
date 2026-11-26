@@ -198,6 +198,8 @@ colony leads get --lead <lead link or id>     # one lead in full
 
 **Prepare WhatsApp messages for a list.** `colony whatsapp batch create --list <list link or id> --template <name or title> [--param "..."]`. It takes every member that has a phone number. Members with no number, who opted out, or whose lead is gone are skipped, and the command prints each one with the reason: pass that on in one line. The batch is only a draft: it waits for the owner or an admin to approve it, and nothing is sent before then. Say that the batch is waiting for approval. Read the template with `templates get` first so the parameters fit its slots, and never send, approve or retry a batch around the owner.
 
+**Take approved WhatsApp messages out of the queue.** Only when the owner asks. `colony whatsapp queue` shows the approved messages that still wait, counted per industry and vertical. `colony whatsapp queue remove --keep "<industry or vertical>"` (repeat `--keep` for each one) keeps those and takes every other waiting message out; `--remove "<industry or vertical>"` takes only those out. Use the names exactly as `queue` shows them: a name that matches nothing refuses the whole command and changes nothing. Removed messages are never sent and cannot be put back (prepare a new batch instead). Afterwards say in one line how many left the queue and how many stay. You still cannot approve, reject or send a batch.
+
 ## Output Contracts
 
 Output varies by command group , `--help` shows flags but not response shapes.

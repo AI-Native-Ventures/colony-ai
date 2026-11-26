@@ -110,7 +110,8 @@ pub fn facts_from_timeline(
     }
 }
 
-async fn relay_heads(
+/// Relay-signed heads of one kind for the given `d` tags.
+pub(super) async fn relay_heads(
     state: &Arc<AppState>,
     community: CommunityId,
     kind: u32,
@@ -134,7 +135,8 @@ async fn relay_heads(
         .map_err(|error| format!("could not read the business records: {error}"))
 }
 
-fn d_tag_of(stored: &buzz_core::StoredEvent) -> Option<String> {
+/// The `d` tag of a stored event.
+pub(super) fn d_tag_of(stored: &buzz_core::StoredEvent) -> Option<String> {
     stored
         .event
         .tags
