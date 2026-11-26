@@ -65,6 +65,7 @@ struct FakeGraph {
     sabotage_after_send: AtomicBool,
     reject_token: AtomicBool,
     hide_templates: AtomicBool,
+    intro_body: Mutex<String>,
     media_info: Mutex<Result<MediaInfo, GraphError>>,
     media_download: Mutex<Result<Vec<u8>, DownloadError>>,
 }
@@ -81,6 +82,7 @@ impl FakeGraph {
             sabotage_after_send: AtomicBool::new(false),
             reject_token: AtomicBool::new(false),
             hide_templates: AtomicBool::new(false),
+            intro_body: Mutex::new("Hi {{1}}, it is Sam from Horizon Labs.".into()),
             media_info: Mutex::new(Err(GraphError::Unavailable("no media scripted".into()))),
             media_download: Mutex::new(Err(DownloadError::Graph(GraphError::Unavailable(
                 "no media scripted".into(),
@@ -177,7 +179,7 @@ impl GraphApi for FakeGraph {
             language: "en".into(),
             category: "MARKETING".into(),
             status: "APPROVED".into(),
-            body: "Hi {{1}}, it is Sam from Horizon Labs.".into(),
+            body: self.intro_body.lock().expect("intro body lock").clone(),
             buttons: json!([{"type": "QUICK_REPLY", "text": "Not interested"}]),
         }])
     }
@@ -4120,6 +4122,93 @@ async fn approving_a_batch_whose_template_is_gone_from_meta_fails_with_template_
         .expect("owner approves once the template is back");
     fx.run_sender(base()).await;
     assert_eq!(fx.graph.send_count(), 1);
+}
+
+#[tokio::test]
+async fn unsent_template_messages_follow_the_wording_meta_has_now() {
+    let fx = fixture().await;
+    let stored = |number: &'static str| {
+        let pool = fx.pool.clone();
+        let community = *fx.community().as_uuid();
+        async move {
+            sqlx::query_as::<_, (String, String)>(
+                "SELECT body, state FROM whatsapp_messages \
+                 WHERE community_id = $1 AND wa_id = $2 AND direction = 'out'",
+            )
+            .bind(community)
+            .bind(number)
+            .fetch_one(&pool)
+            .await
+            .expect("the outbound message")
+        }
+    };
+    let prepare = |number: &'static str, approve: bool| {
+        let fx = &fx;
+        async move {
+            let batch_id = Uuid::new_v4();
+            fx.command(&fx.owner, KIND_WHATSAPP_BATCH, batch(batch_id, &[number]))
+                .await
+                .expect("a batch");
+            if approve {
+                fx.command(
+                    &fx.owner,
+                    KIND_WHATSAPP_BATCH_DECISION,
+                    json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+                )
+                .await
+                .expect("owner approves");
+            }
+        }
+    };
+
+    // One message already sent, one approved and waiting, one still held for approval.
+    prepare("+27820000021", true).await;
+    fx.run_sender(base()).await;
+    assert_eq!(fx.graph.send_count(), 1);
+    prepare("+27820000022", true).await;
+    prepare("+27820000023", false).await;
+    let old = "Hi Thabo, it is Sam from Horizon Labs.";
+    assert_eq!(
+        stored("27820000022").await,
+        (old.to_owned(), "ready".to_owned())
+    );
+    assert_eq!(
+        stored("27820000023").await,
+        (old.to_owned(), "held".to_owned())
+    );
+
+    // The owner edits the template at Meta. While Meta reviews it, it is not listed.
+    fx.graph.hide_templates.store(true, Ordering::SeqCst);
+    connect::sync_templates(&fx.state, &fx.tenant)
+        .await
+        .expect("sync during the review");
+    assert_eq!(stored("27820000022").await.0, old);
+
+    // Meta approves the new wording. It is what Meta fills in for every message from now on.
+    *fx.graph.intro_body.lock().expect("intro body lock") =
+        "Hi {{1}}, it is Zaina from Signal Story.".into();
+    fx.graph.hide_templates.store(false, Ordering::SeqCst);
+    connect::sync_templates(&fx.state, &fx.tenant)
+        .await
+        .expect("sync after the approval");
+
+    // GUARD: `refresh_unsent_template_text` in `sync_templates`.
+    let new = "Hi Thabo, it is Zaina from Signal Story.";
+    assert_eq!(
+        stored("27820000022").await,
+        (new.to_owned(), "ready".to_owned()),
+        "a waiting message shows the words Meta will send"
+    );
+    assert_eq!(
+        stored("27820000023").await,
+        (new.to_owned(), "held".to_owned()),
+        "a message waiting for approval shows the words Meta will send"
+    );
+    assert_eq!(
+        stored("27820000021").await.0,
+        old,
+        "a message that was sent keeps the words the person received"
+    );
 }
 
 // ── send_now: the owner's test release of a small approved batch ──────────────
