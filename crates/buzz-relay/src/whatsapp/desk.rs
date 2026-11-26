@@ -111,7 +111,7 @@ pub fn facts_from_timeline(
 }
 
 /// Relay-signed heads of one kind for the given `d` tags.
-pub(super) async fn relay_heads(
+async fn relay_heads(
     state: &Arc<AppState>,
     community: CommunityId,
     kind: u32,
