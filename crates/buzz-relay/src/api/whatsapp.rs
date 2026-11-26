@@ -33,7 +33,7 @@ use crate::whatsapp::policy::{
     next_window_start, normalize_wa_id, retry_scope_for_error_code, verify_signature,
     verify_token_matches, window_closes_at, window_open, MAX_WEBHOOK_BODY_BYTES,
 };
-use crate::whatsapp::{access_for, Access};
+use crate::whatsapp::{access_for, queue, Access};
 
 /// Route of the connect endpoint.
 pub(crate) const CONNECT_PATH: &str = "/api/whatsapp/connect";
@@ -837,6 +837,24 @@ pub async fn query(
             detail["counts"] = row_counts(&rows);
             Ok(Json(detail))
         }
+        "queue" => {
+            private(access)?;
+            let batch_id = match request.batch_id.as_deref() {
+                Some(raw) => Some(Uuid::parse_str(raw.trim()).map_err(|_| {
+                    api_error(StatusCode::BAD_REQUEST, "batchId must be a UUID")
+                })?),
+                None => None,
+            };
+            let rows = queue::load(&state, community, batch_id)
+                .await
+                .map_err(|error| match error {
+                    queue::LoadError::TooLarge => {
+                        api_error(StatusCode::BAD_REQUEST, queue::TOO_LARGE)
+                    }
+                    queue::LoadError::Internal(reason) => internal_error(&reason),
+                })?;
+            Ok(Json(queue::summary_view(&rows)))
+        }
         "drafts" => {
             private(access)?;
             let drafts = state
@@ -985,7 +1003,7 @@ pub async fn query(
         }
         _ => Err(api_error(
             StatusCode::BAD_REQUEST,
-            "unknown query: use status, templates, batches, batch, drafts, safety_check, suppressions, unknown_sends, contacts, inbox or thread",
+            "unknown query: use status, templates, batches, batch, queue, drafts, safety_check, suppressions, unknown_sends, contacts, inbox or thread",
         )),
     }
 }
