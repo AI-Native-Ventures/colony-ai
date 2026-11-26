@@ -4,6 +4,9 @@
 //! Cost: a fixed number of queries whatever the number of contacts (desk facts, prospect heads,
 //! customer heads, co-founder settings), never one per contact and never a full customer
 //! gather.
+//!
+//! Where the records live: a lead record (prospect head) is stored inside a channel of the
+//! company, a customer record outside every channel. Each is read where it is written.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -110,12 +113,38 @@ pub fn facts_from_timeline(
     }
 }
 
-/// Relay-signed heads of one kind for the given `d` tags.
+/// Relay-signed lead records for the given `d` tags.
+///
+/// A lead record is stored inside a channel of the company (`HeadWrite::channel_id`), so it is
+/// found by kind, relay author and `d` tag alone, the way the business-record handlers read
+/// it. A lookup limited to records outside channels finds no lead at all: the desk then shows
+/// no business name and no website, and a waiting message looks as if it had no lead record.
+pub(super) async fn lead_heads(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    d_tags: Vec<String>,
+) -> Result<Vec<buzz_core::StoredEvent>, String> {
+    relay_heads(state, community, KIND_PROSPECT_HEAD, d_tags, false).await
+}
+
+/// Relay-signed customer records for the given `d` tags. A customer record is stored outside
+/// every channel, which is where the customer handlers read it.
+async fn customer_heads(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    d_tags: Vec<String>,
+) -> Result<Vec<buzz_core::StoredEvent>, String> {
+    relay_heads(state, community, KIND_CUSTOMER_HEAD, d_tags, true).await
+}
+
+/// Relay-signed heads of one kind for the given `d` tags. `outside_channels` limits the read
+/// to records stored outside every channel; it must match where the kind is written.
 async fn relay_heads(
     state: &Arc<AppState>,
     community: CommunityId,
     kind: u32,
     d_tags: Vec<String>,
+    outside_channels: bool,
 ) -> Result<Vec<buzz_core::StoredEvent>, String> {
     if d_tags.is_empty() {
         return Ok(Vec::new());
@@ -125,7 +154,7 @@ async fn relay_heads(
     query.kinds = Some(vec![kind as i32]);
     query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
     query.d_tags = Some(d_tags);
-    query.global_only = true;
+    query.global_only = outside_channels;
     query.limit = Some(max);
     query.max_limit = Some(max);
     state
@@ -172,14 +201,7 @@ pub async fn load(
         .map(|(raw, uuid)| (prospect_d_tag(*community.as_uuid(), *uuid), raw.clone()))
         .collect();
     let mut leads = HashMap::new();
-    for stored in relay_heads(
-        state,
-        community,
-        KIND_PROSPECT_HEAD,
-        by_d_tag.keys().cloned().collect(),
-    )
-    .await?
-    {
+    for stored in lead_heads(state, community, by_d_tag.keys().cloned().collect()).await? {
         let (Some(d_tag), Ok(head)) = (
             d_tag_of(&stored),
             serde_json::from_str::<ProspectHead>(&stored.event.content),
@@ -225,13 +247,8 @@ pub async fn load(
                         .map(|d_tag| (d_tag, raw.clone()))
                 })
                 .collect();
-            for stored in relay_heads(
-                state,
-                community,
-                KIND_CUSTOMER_HEAD,
-                by_record.keys().cloned().collect(),
-            )
-            .await?
+            for stored in
+                customer_heads(state, community, by_record.keys().cloned().collect()).await?
             {
                 let (Some(d_tag), Ok(head)) = (
                     d_tag_of(&stored),
