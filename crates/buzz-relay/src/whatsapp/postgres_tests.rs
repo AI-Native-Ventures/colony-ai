@@ -4125,6 +4125,7 @@ async fn approving_a_batch_whose_template_is_gone_from_meta_fails_with_template_
 }
 
 #[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn unsent_template_messages_follow_the_wording_meta_has_now() {
     let fx = fixture().await;
     let stored = |number: &'static str| {
