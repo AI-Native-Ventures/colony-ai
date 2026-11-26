@@ -5,6 +5,7 @@ import {
   capMessage,
   cloudModelLabel,
   cloudSetupLabel,
+  FREE_AI_BUSY_MESSAGE,
   macOffMessage,
   notCloudReadyMessage,
   settingsTitle,
@@ -69,5 +70,21 @@ describe("cloud agent copy", () => {
       "Colony credits · DeepSeek V4.1 Flash",
     );
     assert.equal(cloudSetupLabel(null), "Colony credits");
+  });
+
+  it("the free model reads as Free (default), never as its raw id", () => {
+    assert.equal(cloudModelLabel("colony-free"), "Free (default)");
+    assert.equal(cloudSetupLabel("colony-free"), "Free AI");
+    assert.equal(cloudSetupLabel("colony-free").includes("colony-free"), false);
+    // Paid models keep the existing label.
+    assert.equal(
+      cloudModelLabel("deepseek/deepseek-v4.1-flash"),
+      "DeepSeek V4.1 Flash",
+    );
+  });
+
+  it("the busy notice copy is exact and carries no em-dash", () => {
+    assert.equal(FREE_AI_BUSY_MESSAGE, "Free AI is busy right now.");
+    assert.equal(FREE_AI_BUSY_MESSAGE.includes("\u2014"), false);
   });
 });

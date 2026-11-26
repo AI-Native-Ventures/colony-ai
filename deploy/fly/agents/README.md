@@ -10,8 +10,9 @@ step, and production stays locked until the owner unlocks it.
 ## What a machine gets
 
 - Image: `Dockerfile.colony-agent` (Sprig stages: `buzz-acp`, `buzz-agent`,
-  `buzz-dev-mcp`, `rg`, the `colony` CLI, git signing helpers, plus `jq`).
-  No Claude Code, Codex, OpenCode or plan sign-ins.
+  `buzz-dev-mcp`, `rg`, the `colony` CLI, git signing helpers, plus `jq`, and
+  OpenCode pinned to v1.19.6 with a checked SHA-256, used only for the free
+  route below). No Claude Code, Codex or plan sign-ins, and no provider keys.
 - Config: only `COLONY_CLOUD_BOOT_URL` and a single-use `COLONY_CLOUD_BOOT_TOKEN`
   (expires after 300 s). The harness redeems the token at startup and receives
   its key, relay URL and AI session from the relay. No secret is ever written
@@ -66,7 +67,7 @@ Set these on the relay app (canary first). All are read by the relay at start.
 | `COLONY_CLOUD_VOLUME_GB` | volume size | `1` |
 | `COLONY_CLOUD_AGENTS_MAX_PER_ACCOUNT` | cloud agents per account | `2` |
 | `COLONY_CLOUD_AGENTS_MAX_MACHINES` | machines across all accounts | `100` |
-| `COLONY_CLOUD_DEFAULT_MODEL` | cloud model, must be in `COLONY_CREDITS_ALLOWED_MODELS` | none |
+| `COLONY_CLOUD_DEFAULT_MODEL` | cloud model for new cloud agents; a paid model must be in `COLONY_CREDITS_ALLOWED_MODELS` | `colony-free` |
 
 The image must be pinned by digest. A tag is refused, so a push to the registry
 can never change what a running relay starts.
@@ -95,6 +96,39 @@ is slow):
 ```sh
 scripts/test-colony-agent-image.sh
 ```
+
+## Free route (owner decision, 25 Nov 2026)
+
+New cloud agents use the model value `colony-free`. Users pay nothing on it.
+
+1. **`openCodeFree`** (first). The machine runs `opencode acp` with the free
+   model `opencode/deepseek-v4.1-flash-free`. No credits session is minted.
+   OpenCode state lives under `/data/home`, so it survives sleep.
+2. **`openrouterFree`** (fallback). When OpenCode refuses or the free model has
+   ended, the harness posts nothing, tells the relay
+   (`POST /api/cloud-agents/{agent}/free-route-refused`, bearer home token) and exits with code
+   76. The relay records the route for 6 hours and the next boot, started at once
+   through the normal wake, runs `buzz-agent` on the credits gateway with a
+   session limited to free models (`paid_allowed=false`, zero cost). The message
+   is answered from the relay's unanswered catch-up, so it is not lost. At most
+   one route switch happens per wake. After 6 hours the agent tries OpenCode again.
+3. **Free AI is busy.** When the gateway's free chain is also used up
+   (`DailyLimit` or every free model answers 429), the agent posts one notice per
+   turn, tagged `["colony_notice","freeAiBusy"]`, with the text
+   "Free AI is busy right now." The desktop shows it with "Top up" and
+   "Move to This Mac".
+
+Paid DeepSeek through credits stays an explicit choice of the owner.
+
+The gateway's free chain is `COLONY_CREDITS_UPSTREAM_MODEL` followed by
+`COLONY_CREDITS_UPSTREAM_FALLBACK_MODELS`. Every `:free` model shares one
+OpenRouter account limit of 1,000 requests a day, across all users and agents.
+
+Risk, in plain words: OpenCode's terms allow its free tier for your own use and
+ban unattended automated processes. All agent machines leave through Fly's
+shared egress, so OpenCode may rate-limit or block them. The free offer is
+time-limited. The `openrouterFree` fallback is what keeps agents answering when
+that happens.
 
 ## Kill switch and cost guard
 

@@ -8,7 +8,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use buzz_core::agent_placement::is_valid_cloud_model;
+use buzz_core::agent_placement::{is_valid_cloud_model, CLOUD_MODEL_FREE};
 use zeroize::Zeroizing;
 
 use crate::config::ConfigError;
@@ -171,20 +171,22 @@ impl CloudAgentsConfig {
         )?;
         let fly = parse_fly(&get)?;
         let allowed_models = parse_allowed_models(get("COLONY_CREDITS_ALLOWED_MODELS"));
+        // Free AI first (owner decision, 25 Nov 2026): a new cloud agent starts on
+        // `colony-free` unless the operator names another default.
         let default_model = match get("COLONY_CLOUD_DEFAULT_MODEL") {
-            None => None,
+            None => Some(CLOUD_MODEL_FREE.to_owned()),
             Some(model) if !is_valid_cloud_model(&model) => {
                 return Err(invalid("COLONY_CLOUD_DEFAULT_MODEL is not a model name"));
             }
-            Some(model) if !allowed_models.contains(&model) => {
+            Some(model) if model != CLOUD_MODEL_FREE && !allowed_models.contains(&model) => {
                 // Keep running: the gateway refuses a model that is not allowed,
                 // so a default that is not on the list could only fail every
-                // wake. Say so loudly and run without a default.
+                // wake. Say so loudly and fall back to the free route.
                 tracing::error!(
                     "COLONY_CLOUD_DEFAULT_MODEL is not in COLONY_CREDITS_ALLOWED_MODELS; \
-                     cloud agents run without a default model"
+                     cloud agents default to the free route"
                 );
-                None
+                Some(CLOUD_MODEL_FREE.to_owned())
             }
             Some(model) => Some(model),
         };
@@ -213,7 +215,20 @@ impl CloudAgentsConfig {
 
     /// Whether `model` is on the credits gateway's allowed list.
     pub fn model_allowed(&self, model: &str) -> bool {
-        self.allowed_models.iter().any(|allowed| allowed == model)
+        model == CLOUD_MODEL_FREE || self.allowed_models.iter().any(|allowed| allowed == model)
+    }
+
+    /// The models an owner may pick for a cloud agent: the free route first,
+    /// then every model the credits gateway allows.
+    pub fn selectable_models(&self) -> Vec<String> {
+        std::iter::once(CLOUD_MODEL_FREE.to_owned())
+            .chain(
+                self.allowed_models
+                    .iter()
+                    .filter(|model| model.as_str() != CLOUD_MODEL_FREE)
+                    .cloned(),
+            )
+            .collect()
     }
 }
 
@@ -401,7 +416,7 @@ mod tests {
         assert_eq!(config.max_per_account, 2);
         assert_eq!(config.max_machines, 100);
         assert!(config.fly.is_none());
-        assert!(config.default_model.is_none());
+        assert_eq!(config.default_model.as_deref(), Some("colony-free"));
         assert!(!config.allows_account(Some("owner@example.com")));
     }
 
@@ -542,6 +557,26 @@ mod tests {
     }
 
     #[test]
+    fn colony_free_is_the_default_and_always_selectable() {
+        let config = CloudAgentsConfig::from_env(env(&[(
+            "COLONY_CREDITS_ALLOWED_MODELS",
+            r#"["deepseek/deepseek-v4.1-flash","free/a"]"#,
+        )]))
+        .expect("config");
+        assert_eq!(config.default_model.as_deref(), Some("colony-free"));
+        // Not a gateway model, so it is allowed without being on the list.
+        assert!(config.model_allowed("colony-free"));
+        assert_eq!(
+            config.selectable_models(),
+            vec!["colony-free", "deepseek/deepseek-v4.1-flash", "free/a"],
+            "the free route is first, paid models stay selectable"
+        );
+        let empty = CloudAgentsConfig::from_env(env(&[])).expect("config");
+        assert_eq!(empty.selectable_models(), vec!["colony-free"]);
+        assert!(!empty.model_allowed("other/model"));
+    }
+
+    #[test]
     fn the_default_model_must_be_on_the_allowed_list() {
         let allowed = r#"["deepseek/deepseek-v4.1-flash","free/a"]"#;
         let config = CloudAgentsConfig::from_env(env(&[
@@ -561,7 +596,11 @@ mod tests {
             ("COLONY_CLOUD_DEFAULT_MODEL", "deepseek/deepseek-v4.1-flash"),
         ]))
         .expect("config still loads");
-        assert!(not_allowed.default_model.is_none());
+        assert_eq!(
+            not_allowed.default_model.as_deref(),
+            Some("colony-free"),
+            "a default the gateway would refuse falls back to the free route"
+        );
 
         assert!(
             CloudAgentsConfig::from_env(env(&[("COLONY_CLOUD_DEFAULT_MODEL", "bad model")]))

@@ -1,8 +1,40 @@
 import { AGENT_START_STALLED_AFTER_MS } from "@/features/agents/agentStartWatch";
+import type { TimelineMessage } from "@/features/messages/types";
 
 import type { AgentPlacement } from "./placementTypes";
 
-export type HomeNoticeKind = "outOfCredit" | "startFailure" | "macOff";
+export type HomeNoticeKind =
+  | "outOfCredit"
+  | "startFailure"
+  | "macOff"
+  | "freeAiBusy";
+
+const NOTICE_TAG = "colony_notice";
+const FREE_AI_BUSY_VALUE = "freeAiBusy";
+
+/**
+ * Whether the agent's newest message in the conversation is its tagged
+ * "Free AI is busy" notice. The relay's head status does not change for this
+ * notice, so the card follows the message: it shows until the agent says
+ * something else.
+ */
+export function freeAiBusyShowing(
+  messages: ReadonlyArray<
+    Pick<TimelineMessage, "createdAt" | "pubkey" | "tags">
+  >,
+  agentPubkey: string,
+): boolean {
+  let newest: (typeof messages)[number] | null = null;
+  for (const message of messages) {
+    if (message.pubkey?.toLowerCase() !== agentPubkey.toLowerCase()) continue;
+    if (!newest || message.createdAt >= newest.createdAt) newest = message;
+  }
+  return Boolean(
+    newest?.tags?.some(
+      (tag) => tag[0] === NOTICE_TAG && tag[1] === FREE_AI_BUSY_VALUE,
+    ),
+  );
+}
 
 /**
  * Which card, if any, an agent's conversation shows (plan Task 18).
@@ -32,11 +64,14 @@ export function homeNoticeKind(input: {
   /** Unix seconds of the oldest message to the agent nobody answered, or null. */
   oldestUnansweredAt: number | null;
   nowSeconds: number;
+  /** The agent's newest message is its "Free AI is busy" notice. */
+  freeAiBusy?: boolean;
 }): HomeNoticeKind | null {
   const { placement } = input;
   if (placement.home === "cloud") {
     if (placement.status === "outOfCredit") return "outOfCredit";
     if (placement.status === "failed") return "startFailure";
+    if (input.freeAiBusy) return "freeAiBusy";
     return null;
   }
   if (!input.cloudAvailable || !input.owned || input.online) return null;

@@ -661,6 +661,9 @@ pub struct Config {
     pub exit_after_inactivity_secs: u64,
     /// Where this harness runs and the placement generation it was started for.
     pub placement: PlacementIdentity,
+    /// The free route a cloud machine works on (`COLONY_CLOUD_ROUTE`), or
+    /// `Other` for the Mac and for cloud agents on a paid model.
+    pub cloud_route: crate::free_route::Route,
     /// Whether ACP/LLM subprocess initialization is deferred until accepted work arrives.
     pub lazy_pool: bool,
     /// Seconds with no dispatched turn in flight and an empty queue before a
@@ -1350,6 +1353,7 @@ impl Config {
             relay_observer: args.relay_observer,
             exit_after_inactivity_secs: args.exit_after_inactivity,
             placement,
+            cloud_route: crate::free_route::Route::current(),
             lazy_pool: args.lazy_pool,
             idle_pool_sleep_secs: args.idle_pool_sleep,
             replay_floor_unix: args.replay_floor,
@@ -1730,6 +1734,7 @@ mod tests {
             relay_observer: false,
             exit_after_inactivity_secs: 0,
             placement: PlacementIdentity::MAC,
+            cloud_route: crate::free_route::Route::Other,
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,

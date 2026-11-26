@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use buzz_core::agent_placement::{is_secret_env_name, CloudConfigSnapshot};
+use buzz_core::agent_placement::{is_secret_env_name, CloudConfigSnapshot, CLOUD_MODEL_FREE};
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_db::cloud_agents::CloudAgentRow;
 use uuid::Uuid;
@@ -27,6 +27,54 @@ pub const BOOT_TOKEN_TTL_SECS: i64 = 300;
 pub const IDLE_EXIT_SECS: u32 = 600;
 /// Where the machine's volume is mounted.
 pub const DATA_DIR: &str = "/data";
+/// OpenCode's free model, the first stop of the free route.
+pub const OPENCODE_FREE_MODEL: &str = "opencode/deepseek-v4.1-flash-free";
+/// Hours the OpenRouter free route stays in force after OpenCode refuses.
+pub const FREE_ROUTE_SWITCH_HOURS: i32 = 6;
+/// Seconds a route-switch start waits, so the refusing machine can exit first.
+pub const FREE_ROUTE_START_DELAY_SECS: i32 = 10;
+
+/// Which way a machine reaches its AI. The harness reads it as
+/// `COLONY_CLOUD_ROUTE` (see `buzz-acp`'s `free_route`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Route {
+    /// `colony-free`, first stop: OpenCode's free model, inside the machine,
+    /// with no gateway session.
+    OpenCodeFree,
+    /// `colony-free` after OpenCode refused: the free models behind the Colony
+    /// gateway, on a session that can never choose a paid model.
+    OpenrouterFree,
+    /// An allowlisted paid model through the credits gateway.
+    Gateway,
+}
+
+impl Route {
+    /// The `COLONY_CLOUD_ROUTE` value, `None` for the paid gateway route.
+    pub const fn env_value(self) -> Option<&'static str> {
+        match self {
+            Self::OpenCodeFree => Some("openCodeFree"),
+            Self::OpenrouterFree => Some("openrouterFree"),
+            Self::Gateway => None,
+        }
+    }
+}
+
+/// Picks the route for a boot. `colony-free` starts on OpenCode and moves to the
+/// OpenRouter free route only while a switch recorded by a refusal is in force
+/// (`free_until` in the future). Any other model is the paid gateway route.
+pub fn pick_route(
+    model: &str,
+    free_until: Option<chrono::DateTime<chrono::Utc>>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Route {
+    if model != CLOUD_MODEL_FREE {
+        return Route::Gateway;
+    }
+    match free_until {
+        Some(until) if until > now => Route::OpenrouterFree,
+        _ => Route::OpenCodeFree,
+    }
+}
 
 /// Why a boot token could not be issued or redeemed.
 #[derive(Debug)]
@@ -130,15 +178,40 @@ pub async fn redeem(
     }
 
     let owner_hex = hex::encode(&row.owner_pubkey);
-    let session = crate::api::credits_gateway::mint_cloud_session(
-        state,
-        row.community,
-        &row.agent_pubkey,
-        row.generation,
-    )
-    .await
-    .map_err(|error| unavailable(format!("AI session not opened: {error}")))?
-    .id;
+    let free_until = state
+        .db
+        .cloud_free_route_until(row.community, &row.agent_pubkey)
+        .await
+        .map_err(|error| unavailable(format!("route lookup failed: {error}")))?;
+    let route = pick_route(&model, free_until, chrono::Utc::now());
+    // OpenCode's free model needs no gateway session. The OpenRouter free route
+    // gets one that can never choose a paid model; a paid model gets the
+    // owner's full cloud session.
+    let session = match route {
+        Route::OpenCodeFree => None,
+        Route::OpenrouterFree => Some(
+            crate::api::credits_gateway::mint_cloud_free_session(
+                state,
+                row.community,
+                &row.agent_pubkey,
+                row.generation,
+            )
+            .await
+            .map_err(|error| unavailable(format!("AI session not opened: {error}")))?
+            .id,
+        ),
+        Route::Gateway => Some(
+            crate::api::credits_gateway::mint_cloud_session(
+                state,
+                row.community,
+                &row.agent_pubkey,
+                row.generation,
+            )
+            .await
+            .map_err(|error| unavailable(format!("AI session not opened: {error}")))?
+            .id,
+        ),
+    };
 
     Ok(build_env(&EnvInputs {
         nsec: &nsec,
@@ -146,6 +219,7 @@ pub async fn redeem(
         row: &row,
         snapshot: &snapshot,
         home_token: &home_token,
+        route,
         session,
         model: &model,
         owner_hex: &owner_hex,
@@ -164,9 +238,13 @@ pub struct EnvInputs<'a> {
     pub snapshot: &'a CloudConfigSnapshot,
     /// The home token the machine presents when it authenticates.
     pub home_token: &'a str,
-    /// The credits session the machine pays with.
-    pub session: Uuid,
-    /// The model the machine asks for.
+    /// How the machine reaches its AI.
+    pub route: Route,
+    /// The credits session the machine pays with. `None` on the OpenCode free
+    /// route, which has no gateway session.
+    pub session: Option<Uuid>,
+    /// The model the machine asks for (the cloud model value; the free routes
+    /// name their own models).
     pub model: &'a str,
     /// The owner's public key, hex.
     pub owner_hex: &'a str,
@@ -208,19 +286,54 @@ pub fn build_env(inputs: &EnvInputs<'_>) -> BTreeMap<String, Zeroizing<String>> 
     );
     put(&mut env, "COLONY_CLOUD_HOME_TOKEN", inputs.home_token);
 
-    put(&mut env, "COLONY_CREDITS_GATEWAY", "1");
-    put(
-        &mut env,
-        "COLONY_CREDITS_SESSION_ID",
-        inputs.session.to_string(),
-    );
-    put(&mut env, "COLONY_CREDITS_MODEL", inputs.model);
-    put(&mut env, "BUZZ_AGENT_PROVIDER", "colony-credits");
-    put(&mut env, "LLM_PROVIDER", "colony-credits");
-    put(&mut env, "BUZZ_AGENT_MODEL", inputs.model);
-    put(&mut env, "BUZZ_ACP_MODEL", inputs.model);
-
-    put(&mut env, "BUZZ_ACP_AGENT_COMMAND", "buzz-agent");
+    if let Some(value) = inputs.route.env_value() {
+        put(&mut env, "COLONY_CLOUD_ROUTE", value);
+    }
+    match (inputs.route, inputs.session) {
+        (Route::OpenCodeFree, _) => {
+            // OpenCode's free model, run inside the machine as an ACP agent. Its
+            // state lives under the volume's home so it survives sleep. No
+            // gateway session, no provider key: nothing here can spend credit.
+            put(&mut env, "BUZZ_ACP_AGENT_COMMAND", "opencode");
+            put(&mut env, "BUZZ_ACP_AGENT_ARGS", "acp");
+            put(&mut env, "BUZZ_ACP_MODEL", OPENCODE_FREE_MODEL);
+            put(
+                &mut env,
+                "OPENCODE_CONFIG_CONTENT",
+                serde_json::json!({
+                    "autoupdate": false,
+                    "share": "disabled",
+                    "model": OPENCODE_FREE_MODEL,
+                })
+                .to_string(),
+            );
+            put(
+                &mut env,
+                "XDG_DATA_HOME",
+                format!("{DATA_DIR}/home/.local/share"),
+            );
+        }
+        (route, Some(session)) => {
+            put(&mut env, "COLONY_CREDITS_GATEWAY", "1");
+            put(&mut env, "COLONY_CREDITS_SESSION_ID", session.to_string());
+            put(&mut env, "BUZZ_AGENT_PROVIDER", "colony-credits");
+            put(&mut env, "LLM_PROVIDER", "colony-credits");
+            // The free route names no model: the gateway answers a request with
+            // no model from its free chain. Only a paid model is named.
+            if route == Route::Gateway {
+                put(&mut env, "COLONY_CREDITS_MODEL", inputs.model);
+                put(&mut env, "BUZZ_AGENT_MODEL", inputs.model);
+                put(&mut env, "BUZZ_ACP_MODEL", inputs.model);
+            }
+            put(&mut env, "BUZZ_ACP_AGENT_COMMAND", "buzz-agent");
+        }
+        (_, None) => {
+            // `redeem` always opens a session for a gateway route. Without one
+            // the machine gets no AI settings and fails to start, which is
+            // better than silently picking another route.
+            tracing::error!("a gateway route was built without a session");
+        }
+    }
     put(
         &mut env,
         "BUZZ_ACP_EXIT_AFTER_INACTIVITY",
@@ -333,16 +446,173 @@ mod tests {
         row: &CloudAgentRow,
         snapshot: &CloudConfigSnapshot,
     ) -> BTreeMap<String, Zeroizing<String>> {
+        env_on(
+            row,
+            snapshot,
+            Route::Gateway,
+            Some(Uuid::nil()),
+            "deepseek/deepseek-v4.1-flash",
+        )
+    }
+
+    fn env_on(
+        row: &CloudAgentRow,
+        snapshot: &CloudConfigSnapshot,
+        route: Route,
+        session: Option<Uuid>,
+        model: &str,
+    ) -> BTreeMap<String, Zeroizing<String>> {
         build_env(&EnvInputs {
             nsec: SECRET_NSEC,
             relay_url: "wss://acme.example",
             row,
             snapshot,
             home_token: "home-token-value",
-            session: Uuid::nil(),
-            model: "deepseek/deepseek-v4.1-flash",
+            route,
+            session,
+            model,
             owner_hex: &"bb".repeat(32),
         })
+    }
+
+    fn keys_of(env: &BTreeMap<String, Zeroizing<String>>) -> BTreeSet<&str> {
+        env.keys().map(String::as_str).collect()
+    }
+
+    const FORBIDDEN_EVERYWHERE: [&str; 9] = [
+        "OPENROUTER_MASTER_KEY",
+        "OPENROUTER_API_KEY",
+        "COLONY_ACCOUNT_KEK",
+        "PAYFAST_MERCHANT_KEY",
+        "PAYFAST_PASSPHRASE",
+        "STRIPE_SECRET_KEY",
+        "BUZZ_ACP_PRIVATE_KEY",
+        "BUZZ_ACP_API_TOKEN",
+        "ANTHROPIC_API_KEY",
+    ];
+
+    fn now() -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc::now()
+    }
+
+    #[test]
+    fn colony_free_starts_on_opencode_and_a_live_switch_moves_it_to_openrouter() {
+        let later = now() + chrono::Duration::hours(5);
+        let earlier = now() - chrono::Duration::minutes(1);
+        assert_eq!(pick_route("colony-free", None, now()), Route::OpenCodeFree);
+        assert_eq!(
+            pick_route("colony-free", Some(later), now()),
+            Route::OpenrouterFree
+        );
+        assert_eq!(
+            pick_route("colony-free", Some(earlier), now()),
+            Route::OpenCodeFree,
+            "an expired switch means OpenCode again"
+        );
+        // A paid model ignores the free route entirely.
+        assert_eq!(
+            pick_route("deepseek/deepseek-v4.1-flash", Some(later), now()),
+            Route::Gateway
+        );
+    }
+
+    /// The OpenCode route: `opencode acp`, the free model forced, state on the
+    /// volume, and no gateway session or provider variable at all.
+    #[test]
+    fn colony_free_boots_opencode_without_a_gateway_session() {
+        let env = env_on(
+            &row(None),
+            &snapshot(),
+            Route::OpenCodeFree,
+            None,
+            "colony-free",
+        );
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"].as_str(), "opencode");
+        assert_eq!(env["BUZZ_ACP_AGENT_ARGS"].as_str(), "acp");
+        assert_eq!(
+            env["BUZZ_ACP_MODEL"].as_str(),
+            "opencode/deepseek-v4.1-flash-free"
+        );
+        assert_eq!(env["COLONY_CLOUD_ROUTE"].as_str(), "openCodeFree");
+        let config: serde_json::Value =
+            serde_json::from_str(env["OPENCODE_CONFIG_CONTENT"].as_str()).expect("json");
+        assert_eq!(config["model"], "opencode/deepseek-v4.1-flash-free");
+        assert_eq!(config["share"], "disabled");
+        assert_eq!(config["autoupdate"], false);
+        assert_eq!(env["XDG_DATA_HOME"].as_str(), "/data/home/.local/share");
+        assert_eq!(env["HOME"].as_str(), "/data/home");
+        for gateway_name in [
+            "COLONY_CREDITS_GATEWAY",
+            "COLONY_CREDITS_SESSION_ID",
+            "COLONY_CREDITS_MODEL",
+            "BUZZ_AGENT_PROVIDER",
+            "BUZZ_AGENT_MODEL",
+            "LLM_PROVIDER",
+        ] {
+            assert!(
+                !env.contains_key(gateway_name),
+                "{gateway_name} has no place on the OpenCode route"
+            );
+        }
+        for forbidden in FORBIDDEN_EVERYWHERE {
+            assert!(!env.contains_key(forbidden), "{forbidden}");
+        }
+        // Nothing beyond the paid route's list, except what OpenCode needs.
+        let paid = env_for(&row(None), &snapshot());
+        let extra: BTreeSet<&str> = keys_of(&env).difference(&keys_of(&paid)).copied().collect();
+        let allowed: BTreeSet<&str> = [
+            "COLONY_CLOUD_ROUTE",
+            "BUZZ_ACP_AGENT_ARGS",
+            "OPENCODE_CONFIG_CONTENT",
+            "XDG_DATA_HOME",
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(extra, allowed);
+    }
+
+    /// The OpenRouter free route: buzz-agent on the gateway, naming no model so
+    /// the gateway answers from its free chain.
+    #[test]
+    fn the_openrouter_free_route_names_no_model_and_uses_the_gateway() {
+        let session = Uuid::from_u128(7);
+        let env = env_on(
+            &row(None),
+            &snapshot(),
+            Route::OpenrouterFree,
+            Some(session),
+            "colony-free",
+        );
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"].as_str(), "buzz-agent");
+        assert_eq!(env["COLONY_CREDITS_GATEWAY"].as_str(), "1");
+        assert_eq!(
+            env["COLONY_CREDITS_SESSION_ID"].as_str(),
+            session.to_string()
+        );
+        assert_eq!(env["BUZZ_AGENT_PROVIDER"].as_str(), "colony-credits");
+        assert_eq!(env["COLONY_CLOUD_ROUTE"].as_str(), "openrouterFree");
+        for model_name in ["COLONY_CREDITS_MODEL", "BUZZ_AGENT_MODEL", "BUZZ_ACP_MODEL"] {
+            assert!(
+                !env.contains_key(model_name),
+                "{model_name}: `colony-free` is not a gateway model"
+            );
+        }
+        assert!(!env.contains_key("OPENCODE_CONFIG_CONTENT"));
+        for forbidden in FORBIDDEN_EVERYWHERE {
+            assert!(!env.contains_key(forbidden), "{forbidden}");
+        }
+    }
+
+    /// The paid route is untouched and carries no route variable.
+    #[test]
+    fn the_paid_route_is_unchanged() {
+        let env = env_for(&row(None), &snapshot());
+        assert!(!env.contains_key("COLONY_CLOUD_ROUTE"));
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"].as_str(), "buzz-agent");
+        assert_eq!(
+            env["COLONY_CREDITS_MODEL"].as_str(),
+            "deepseek/deepseek-v4.1-flash"
+        );
     }
 
     /// The contract: exactly these names reach a machine, and none of them is

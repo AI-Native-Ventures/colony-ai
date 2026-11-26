@@ -12466,6 +12466,27 @@ mod failure_notice_tests {
     }
 
     #[test]
+    fn free_ai_busy_notice_event_carries_its_tag_once() {
+        let event = build_failure_notice(
+            &nostr::Keys::generate(),
+            Uuid::new_v4(),
+            &ThreadTags::default(),
+            crate::provider_failure::FREE_AI_BUSY_COPY,
+            Some(CreditNoticeKind::FreeAiBusy),
+        )
+        .expect("free ai busy notice");
+        assert_eq!(event.content, "Free AI is busy right now.");
+        let notices: Vec<Vec<String>> = tag_rows(&event)
+            .into_iter()
+            .filter(|row| row.first().map(String::as_str) == Some("colony_notice"))
+            .collect();
+        assert_eq!(
+            notices,
+            vec![vec!["colony_notice".to_owned(), "freeAiBusy".to_owned()]]
+        );
+    }
+
+    #[test]
     fn plain_failure_notice_has_no_notice_tag() {
         let event = build_failure_notice(
             &nostr::Keys::generate(),

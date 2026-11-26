@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { homeNoticeKind } from "./homeNoticeModel.ts";
+import { freeAiBusyShowing, homeNoticeKind } from "./homeNoticeModel.ts";
+import { homeNoticeContent } from "./homeNoticeContent.ts";
 
 const NOW = 1_800_000_000;
 const placement = (home, status = null) => ({
@@ -78,5 +79,110 @@ describe("home notice card", () => {
 
   it("a cloud agent never shows the Mac off card", () => {
     assert.equal(kind({ placement: placement("cloud", "asleep") }), null);
+  });
+});
+
+const AGENT = "aa".repeat(32);
+const msg = (id, createdAt, pubkey, tags = []) => ({
+  id,
+  createdAt,
+  pubkey,
+  tags,
+});
+const busyTags = [["colony_notice", "freeAiBusy"]];
+
+describe("free AI busy card", () => {
+  it("a cloud agent whose latest message is the freeAiBusy notice shows the card", () => {
+    assert.equal(
+      kind({
+        placement: placement("cloud", "asleep"),
+        freeAiBusy: true,
+      }),
+      "freeAiBusy",
+    );
+  });
+
+  it("start failure and out of credit still win over free AI busy", () => {
+    assert.equal(
+      kind({ placement: placement("cloud", "failed"), freeAiBusy: true }),
+      "startFailure",
+    );
+    assert.equal(
+      kind({ placement: placement("cloud", "outOfCredit"), freeAiBusy: true }),
+      "outOfCredit",
+    );
+  });
+
+  it("never on the Mac, and not unless the notice is showing", () => {
+    assert.equal(
+      kind({
+        placement: placement("mac"),
+        freeAiBusy: true,
+        oldestUnansweredAt: null,
+      }),
+      null,
+    );
+    assert.equal(kind({ placement: placement("cloud", "asleep") }), null);
+  });
+
+  it("shows only while the agent's newest message is the tagged notice", () => {
+    const messages = [
+      msg("1", 10, "bb".repeat(32)),
+      msg("2", 20, AGENT, busyTags),
+    ];
+    assert.equal(freeAiBusyShowing(messages, AGENT), true);
+    // The agent answered afterwards: the card goes away.
+    assert.equal(
+      freeAiBusyShowing([...messages, msg("3", 30, AGENT)], AGENT),
+      false,
+    );
+    // Another sender's tagged message is not this agent's notice.
+    assert.equal(
+      freeAiBusyShowing([msg("4", 40, "bb".repeat(32), busyTags)], AGENT),
+      false,
+    );
+    // Other notice kinds and untagged messages do not count.
+    assert.equal(
+      freeAiBusyShowing(
+        [msg("5", 50, AGENT, [["colony_notice", "outOfCredit"]])],
+        AGENT,
+      ),
+      false,
+    );
+    assert.equal(freeAiBusyShowing([], AGENT), false);
+  });
+
+  it("the card says Free AI is busy right now. with Top up and Move to This Mac", () => {
+    const calls = [];
+    const content = homeNoticeContent("freeAiBusy", "Scout", {
+      moveToCloud: () => calls.push("cloud"),
+      moveToMac: () => calls.push("mac"),
+      retry: () => calls.push("retry"),
+      topUp: () => calls.push("topUp"),
+    });
+    assert.equal(content.message, "Free AI is busy right now.");
+    assert.deepEqual(
+      content.actions.map((action) => action.label),
+      ["Top up", "Move to This Mac"],
+    );
+    for (const action of content.actions) action.onClick();
+    assert.deepEqual(calls, ["topUp", "mac"]);
+  });
+
+  it("the other cards keep their words", () => {
+    const handlers = {
+      moveToCloud: () => {},
+      moveToMac: () => {},
+      retry: () => {},
+      topUp: () => {},
+    };
+    assert.equal(
+      homeNoticeContent("outOfCredit", "Scout", handlers).message,
+      "Out of AI credit.",
+    );
+    assert.equal(
+      homeNoticeContent("startFailure", "Scout", handlers).message,
+      "Scout could not start in the cloud.",
+    );
   });
 });

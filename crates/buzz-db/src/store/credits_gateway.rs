@@ -216,6 +216,32 @@ impl Db {
         generation: i64,
         policy: &GatewayPolicy,
     ) -> Result<CloudCreditSession> {
+        self.create_cloud_credit_session_with(community, agent, generation, policy, false)
+            .await
+    }
+
+    /// [`Self::create_cloud_credit_session`] for the free route: the session may
+    /// never choose a paid model, even when the account pays for its AI, so a
+    /// machine on the free route can not spend the owner's credit.
+    pub async fn create_cloud_free_credit_session(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        policy: &GatewayPolicy,
+    ) -> Result<CloudCreditSession> {
+        self.create_cloud_credit_session_with(community, agent, generation, policy, true)
+            .await
+    }
+
+    async fn create_cloud_credit_session_with(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        generation: i64,
+        policy: &GatewayPolicy,
+        free_only: bool,
+    ) -> Result<CloudCreditSession> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT assert_community_write_allowed($1)")
             .bind(community.as_uuid())
@@ -264,7 +290,7 @@ impl Db {
             return Err(DbError::InvalidData("managed session limit reached".into()));
         }
         let id = Uuid::new_v4();
-        let paid_allowed = !free;
+        let paid_allowed = !free && !free_only;
         let expires_at: DateTime<Utc> = sqlx::query_scalar(
             "INSERT INTO account_ai_sessions \
                  (id, account_id, community_id, agent_pubkey, expires_at, cloud, paid_allowed) \

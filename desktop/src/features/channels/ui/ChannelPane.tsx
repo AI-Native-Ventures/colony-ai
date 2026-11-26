@@ -867,6 +867,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                       <ChannelAgentHomeNotices
                         channel={activeChannel}
                         currentPubkey={currentPubkey}
+                        messages={messages}
                       />
                     </div>
                     <MessageComposer
