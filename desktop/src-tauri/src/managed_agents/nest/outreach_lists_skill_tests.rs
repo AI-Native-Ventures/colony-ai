@@ -115,3 +115,36 @@ fn skill_written_by_the_previous_release_is_regenerated_with_the_lists_section()
         "adding the section must bump NEST_SKILL_VERSION so existing nests pick it up"
     );
 }
+
+#[test]
+fn skill_lets_an_agent_shrink_the_approved_queue_only_on_the_owners_word() {
+    let section = section();
+    assert!(section.contains(
+        "**Take approved WhatsApp messages out of the queue.** Only when the owner asks."
+    ));
+    assert!(section.contains("`colony whatsapp queue` shows the approved messages that still wait"));
+    assert!(section.contains("`colony whatsapp queue remove --keep"));
+    assert!(section.contains("a name that matches nothing refuses the whole command"));
+    assert!(section.contains("Removed messages are never sent and cannot be put back"));
+    assert!(section.contains("You still cannot approve, reject or send a batch."));
+}
+
+#[test]
+fn skill_written_by_the_previous_release_is_regenerated_with_the_queue_rule() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".colony");
+    ensure_nest_at(&root).unwrap();
+
+    // What the previous release left on disk: the skill without the rule, at version 26.
+    let skill_dir = root.join(CANONICAL_SKILL_DIR);
+    fs::write(skill_dir.join("SKILL.md"), "# old skill without the queue").unwrap();
+    fs::write(skill_dir.join(".skill-version"), "26\n").unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    let refreshed = fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+    assert!(
+        refreshed.contains("colony whatsapp queue remove --keep"),
+        "adding the rule must bump NEST_SKILL_VERSION so existing nests pick it up"
+    );
+}

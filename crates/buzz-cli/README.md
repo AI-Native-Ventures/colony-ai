@@ -156,6 +156,8 @@ buzz whatsapp batch list [--state pending]
 buzz whatsapp batch show --batch <uuid>
 buzz whatsapp batch approve --batch <uuid> [--drop 3] [--edit-file edits.json]   # owner or admin
 buzz whatsapp batch reject --batch <uuid>                                          # owner or admin
+buzz whatsapp queue [--batch <uuid>]                                               # approved messages still waiting, per industry
+buzz whatsapp queue remove --keep "Furniture" [--keep ...] | --remove "..." | --all   # take waiting messages out; never sent
 buzz whatsapp stage +27821234567 call_booked                                    # contacted|replied|wants_call|call_booked|quote_sent|client|no_thanks
 buzz whatsapp rename +27821234567 "Plane Tree Hotel"                              # or --clear
 buzz whatsapp send --contact +27821234567 --text "Thanks, here is the quote"      # inside the 24 hour window

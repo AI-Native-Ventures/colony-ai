@@ -220,6 +220,23 @@ pub struct OpRow {
     pub attempt: i32,
 }
 
+/// How a machine's report that its free route was refused ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreeRouteSwitch {
+    /// Recorded: the agent works on the OpenRouter free route until the time
+    /// the row now holds, and a start of its machine is queued.
+    Switched {
+        /// Placement generation the start was queued for.
+        generation: i64,
+    },
+    /// A switch is already in force, so nothing changed. This is the bound that
+    /// keeps a refusal from ever looping: one switch per wake.
+    AlreadySwitched,
+    /// The reporter is not the agent's current machine: an old token, an agent
+    /// that moved home, or no such agent.
+    NotCurrent,
+}
+
 fn home_str(home: Home) -> &'static str {
     match home {
         Home::Mac => "mac",
@@ -802,6 +819,90 @@ impl Db {
         Ok(true)
     }
 
+    /// The end of the agent's OpenRouter free-route switch, `None` when it has
+    /// none. A time in the past means the switch has run out.
+    pub async fn cloud_free_route_until(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+    ) -> Result<Option<DateTime<Utc>>> {
+        let until: Option<Option<DateTime<Utc>>> = sqlx::query_scalar(
+            "SELECT free_route_until FROM cloud_agents WHERE community_id = $1 AND agent_pubkey = $2",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(until.flatten())
+    }
+
+    /// Records that the agent's OpenCode free route was refused: it uses the
+    /// OpenRouter free route for the next `hours`, and a start of its machine
+    /// is journaled `start_delay_secs` from now (time for the refusing machine
+    /// to exit first). The reporter proves it is the agent's current machine
+    /// with `home_token_hash`.
+    ///
+    /// At most one switch is in force at a time: while `free_route_until` is in
+    /// the future a second report changes nothing, so the free route can never
+    /// switch back and forth in one wake.
+    pub async fn switch_cloud_free_route(
+        &self,
+        community: CommunityId,
+        agent: &[u8],
+        home_token_hash: &[u8],
+        hours: i32,
+        start_delay_secs: i32,
+    ) -> Result<FreeRouteSwitch> {
+        let mut tx = self.pool.begin().await?;
+        let switched: Option<(i64,)> = sqlx::query_as(
+            "UPDATE cloud_agents SET free_route_until = now() + make_interval(hours => $4), \
+                 status = 'waking', last_wake_at = now(), wake_attempts = 0, \
+                 last_error = NULL, updated_at = now() \
+             WHERE community_id = $1 AND agent_pubkey = $2 AND home = 'cloud' \
+               AND home_token_hash = $3 \
+               AND (free_route_until IS NULL OR free_route_until <= now()) \
+             RETURNING generation",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(home_token_hash)
+        .bind(hours)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((generation,)) = switched else {
+            let current: Option<(bool, bool)> = sqlx::query_as(
+                "SELECT COALESCE(home_token_hash = $3, false), \
+                        COALESCE(free_route_until > now(), false) \
+                 FROM cloud_agents \
+                 WHERE community_id = $1 AND agent_pubkey = $2 AND home = 'cloud'",
+            )
+            .bind(community.as_uuid())
+            .bind(agent)
+            .bind(home_token_hash)
+            .fetch_optional(&mut *tx)
+            .await?;
+            tx.rollback().await?;
+            return Ok(match current {
+                Some((true, true)) => FreeRouteSwitch::AlreadySwitched,
+                _ => FreeRouteSwitch::NotCurrent,
+            });
+        };
+        sqlx::query(
+            "INSERT INTO cloud_agent_ops (community_id, agent_pubkey, op, generation, next_attempt_at) \
+             VALUES ($1, $2, 'start', $3, now() + make_interval(secs => $4::double precision)) \
+             ON CONFLICT (community_id, agent_pubkey, op, generation) WHERE status = 'pending' \
+             DO NOTHING",
+        )
+        .bind(community.as_uuid())
+        .bind(agent)
+        .bind(generation)
+        .bind(start_delay_secs)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(FreeRouteSwitch::Switched { generation })
+    }
+
     /// Every agent that has a machine on the host.
     pub async fn list_cloud_machine_rows(&self) -> Result<Vec<MachineRow>> {
         let rows = sqlx::query(
@@ -1350,6 +1451,119 @@ mod postgres_tests {
             pending_ops(&pool, community).await,
             vec![("ensure".to_string(), 1), ("stop".to_string(), 2)]
         );
+    }
+
+    /// [red-proof] One route switch per wake: a refusal is recorded once, the
+    /// second report while a switch is in force changes nothing and queues no
+    /// second start, and a stranger's token switches nothing.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn free_route_switches_once_per_wake() {
+        let (db, pool, community) = fixture().await;
+        db.upsert_cloud_bundle(&bundle(community, 1, 1))
+            .await
+            .unwrap();
+        db.set_cloud_home_cas(community, &key(1), 0, Home::Cloud)
+            .await
+            .unwrap();
+        assert!(db
+            .set_cloud_home_token(community, &key(1), 1, &[7; 32])
+            .await
+            .unwrap());
+        assert_eq!(
+            db.cloud_free_route_until(community, &key(1)).await.unwrap(),
+            None,
+            "a new agent starts on the OpenCode route"
+        );
+
+        // A stranger's token does nothing.
+        assert_eq!(
+            db.switch_cloud_free_route(community, &key(1), &[9; 32], 6, 10)
+                .await
+                .unwrap(),
+            FreeRouteSwitch::NotCurrent
+        );
+        assert_eq!(
+            db.cloud_free_route_until(community, &key(1)).await.unwrap(),
+            None
+        );
+
+        // The machine's own token switches it, for about six hours.
+        assert_eq!(
+            db.switch_cloud_free_route(community, &key(1), &[7; 32], 6, 10)
+                .await
+                .unwrap(),
+            FreeRouteSwitch::Switched { generation: 1 }
+        );
+        let until = db
+            .cloud_free_route_until(community, &key(1))
+            .await
+            .unwrap()
+            .expect("switch recorded");
+        let hours = (until - Utc::now()).num_minutes();
+        assert!((355..=360).contains(&hours), "about six hours: {hours} min");
+        assert_eq!(
+            stored(&db, community, 1).await.status,
+            Some(PlacementStatus::Waking)
+        );
+        let delayed: bool = sqlx::query_scalar(
+            "SELECT next_attempt_at > now() + interval '5 seconds' FROM cloud_agent_ops \
+             WHERE community_id = $1 AND op = 'start' AND status = 'pending'",
+        )
+        .bind(community.as_uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(delayed, "the start waits for the refusing machine to exit");
+
+        // A second report in the same wake changes nothing.
+        assert_eq!(
+            db.switch_cloud_free_route(community, &key(1), &[7; 32], 6, 10)
+                .await
+                .unwrap(),
+            FreeRouteSwitch::AlreadySwitched
+        );
+        let starts: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM cloud_agent_ops WHERE community_id = $1 AND op = 'start'",
+        )
+        .bind(community.as_uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(starts, 1, "never a second start");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn free_route_switch_runs_out_after_its_time() {
+        let (db, pool, community) = fixture().await;
+        db.upsert_cloud_bundle(&bundle(community, 1, 1))
+            .await
+            .unwrap();
+        db.set_cloud_home_cas(community, &key(1), 0, Home::Cloud)
+            .await
+            .unwrap();
+        db.set_cloud_home_token(community, &key(1), 1, &[7; 32])
+            .await
+            .unwrap();
+        db.switch_cloud_free_route(community, &key(1), &[7; 32], 6, 10)
+            .await
+            .unwrap();
+        sqlx::query(
+            "UPDATE cloud_agents SET free_route_until = now() - interval '1 minute' \
+             WHERE community_id = $1",
+        )
+        .bind(community.as_uuid())
+        .execute(&pool)
+        .await
+        .unwrap();
+        // The switch has expired: a refusal from the OpenCode route counts again.
+        assert!(matches!(
+            db.switch_cloud_free_route(community, &key(1), &[7; 32], 6, 10)
+                .await
+                .unwrap(),
+            FreeRouteSwitch::Switched { .. }
+        ));
     }
 
     #[tokio::test]

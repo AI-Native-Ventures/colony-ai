@@ -10,6 +10,7 @@ pub mod graph;
 pub mod inbound;
 pub mod media;
 pub mod policy;
+pub mod queue;
 pub mod secrets;
 pub mod sender;
 

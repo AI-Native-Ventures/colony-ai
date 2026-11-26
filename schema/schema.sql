@@ -675,6 +675,7 @@ CREATE TABLE cloud_agents (
     last_error TEXT CHECK (last_error IS NULL OR char_length(last_error) <= 500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    free_route_until TIMESTAMPTZ,
     PRIMARY KEY (community_id, agent_pubkey),
     CHECK ((home = 'cloud') = (status IS NOT NULL)),
     CHECK ((boot_token_hash IS NULL) = (boot_token_expires_at IS NULL))

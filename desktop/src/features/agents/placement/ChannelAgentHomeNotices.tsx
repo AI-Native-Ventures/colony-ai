@@ -7,6 +7,7 @@ import { findUnansweredMentions } from "@/features/agents/unansweredMentions";
 import { usePresenceQuery } from "@/features/presence/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
+import type { TimelineMessage } from "@/features/messages/types";
 import type { Channel } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
@@ -16,7 +17,7 @@ import {
   homeNoticeContent,
   useTopUpDialog,
 } from "./AgentHomeNotices";
-import { homeNoticeKind } from "./homeNoticeModel";
+import { freeAiBusyShowing, homeNoticeKind } from "./homeNoticeModel";
 import { useAgentHome } from "./useAgentHome";
 
 /** How far back a message to an agent can be and still be "waiting". */
@@ -29,9 +30,11 @@ const LOOKBACK_SECONDS = 15 * 60;
 export function ChannelAgentHomeNotices({
   channel,
   currentPubkey,
+  messages,
 }: {
   channel: Channel | null;
   currentPubkey: string | undefined;
+  messages: ReadonlyArray<TimelineMessage>;
 }) {
   const knownAgents = useKnownAgentPubkeys();
   const agentPubkey = React.useMemo(() => {
@@ -49,6 +52,7 @@ export function ChannelAgentHomeNotices({
       agentPubkey={agentPubkey}
       channelId={channel.id}
       currentPubkey={currentPubkey}
+      messages={messages}
     />
   );
 }
@@ -57,10 +61,12 @@ function HomeNoticeForAgent({
   agentPubkey,
   channelId,
   currentPubkey,
+  messages,
 }: {
   agentPubkey: string;
   channelId: string;
   currentPubkey: string | undefined;
+  messages: ReadonlyArray<TimelineMessage>;
 }) {
   const model = useAgentHome(agentPubkey);
   const identity = useIdentityQuery().data?.pubkey ?? currentPubkey;
@@ -117,6 +123,7 @@ function HomeNoticeForAgent({
     ),
     oldestUnansweredAt: watchUnanswered ? (unanswered.data ?? null) : null,
     nowSeconds: now,
+    freeAiBusy: freeAiBusyShowing(messages, agentPubkey),
   });
   if (!kind) return null;
   const { message, actions } = homeNoticeContent(kind, model.name, {

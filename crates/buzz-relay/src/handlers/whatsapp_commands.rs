@@ -3,7 +3,8 @@
 //! These run after the ingest pipeline has verified the signature, timestamp, identity and
 //! `MessagesWrite` scope. This module owns the role checks: only the owner or an admin can
 //! decide a batch or change settings; owner, admins and members of the private Outreach
-//! channel can prepare batches and send inside an open window.
+//! channel can prepare batches, send inside an open window, and take approved messages that
+//! still wait out of the queue (that only ever shrinks what is sent).
 //!
 //! Commands are recorded in the relay's own tables (batch, message and contact rows), not as
 //! stored events: the event is the request, the tables are the durable state, and every
@@ -41,7 +42,7 @@ use crate::whatsapp::policy::{
 use crate::whatsapp::sender::{
     check_send, enqueue_send, safety_refusal, Enqueued, SendCommand, SendContext, TemplateRef,
 };
-use crate::whatsapp::{access_for, channel, parse_uuid, Access};
+use crate::whatsapp::{access_for, channel, parse_uuid, queue, Access};
 
 const MAX_BATCH_ROWS: usize = 500;
 const MAX_MATERIAL_LINKS: usize = 10;
@@ -86,6 +87,29 @@ fn default_language() -> String {
 struct RowEditCommand {
     idx: i32,
     params: Vec<String>,
+}
+
+/// The `decision` of a 47049 command that takes waiting messages out of the queue.
+const QUEUE_REMOVAL_DECISION: &str = "remove_queued";
+
+/// Take approved messages that still wait out of the queue (kind 47049, decision
+/// `remove_queued`). Exactly one of `keep`, `remove` or `all` names the messages.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueueRemovalCommand {
+    v: u8,
+    /// Narrow the command to one approved batch.
+    #[serde(default)]
+    batch_id: Option<String>,
+    /// Industries or verticals to keep: every other waiting message leaves the queue.
+    #[serde(default)]
+    keep: Vec<String>,
+    /// Industries or verticals to take out.
+    #[serde(default)]
+    remove: Vec<String>,
+    /// Take every waiting message in scope out.
+    #[serde(default)]
+    all: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -607,6 +631,9 @@ async fn handle_decision(
     event: &Event,
     access: Access,
 ) -> Result<IngestResult, IngestError> {
+    if is_queue_removal(event) {
+        return handle_queue_removal(tenant, state, event, access).await;
+    }
     if !access.is_owner_admin() {
         return Err(restricted(
             "only the owner or an admin can decide a batch or a draft",
@@ -700,6 +727,110 @@ async fn handle_decision(
             Ok(ok(event, "rejected"))
         }
     }
+}
+
+/// Whether a 47049 command asks to take waiting messages out of the queue. That one decision
+/// only shrinks what will be sent, so it is open to every caller that may prepare a batch. Any
+/// other content, readable or not, keeps the owner-or-admin check in front of everything else.
+fn is_queue_removal(event: &Event) -> bool {
+    serde_json::from_str::<serde_json::Value>(&event.content)
+        .ok()
+        .and_then(|content| {
+            content
+                .get("decision")
+                .and_then(serde_json::Value::as_str)
+                .map(|decision| decision == QUEUE_REMOVAL_DECISION)
+        })
+        .unwrap_or(false)
+}
+
+/// Take approved messages that still wait out of the queue, chosen by the industry or vertical
+/// of their lead. Removed messages are never sent and nothing is ever put back, so the owner's
+/// agents may do this when the owner asks; approving and sending stay with the owner.
+async fn handle_queue_removal(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: &Event,
+    access: Access,
+) -> Result<IngestResult, IngestError> {
+    if !access.can_send() {
+        return Err(restricted(
+            "only the owner, admins, their agents and Outreach members can take messages out of the queue",
+        ));
+    }
+    let community = tenant.community();
+    // A revoked WhatsApp entry stops agents here exactly as it stops them preparing batches.
+    if !access.is_owner_admin()
+        && crate::handlers::company_access::access_revoked(
+            state,
+            community,
+            buzz_core::company_access::AccessCategory::Whatsapp,
+        )
+        .await
+        .map_err(internal)?
+    {
+        return Err(restricted(
+            "WhatsApp access was revoked by the owner; ask the owner to grant it again",
+        ));
+    }
+    let command: QueueRemovalCommand = parse(event)?;
+    check_version(command.v)?;
+    let batch_id = match command.batch_id.as_deref() {
+        Some(raw) => Some(parse_uuid(raw, "batchId").map_err(invalid)?),
+        None => None,
+    };
+    let selection =
+        queue::Selection::parse(&command.keep, &command.remove, command.all).map_err(invalid)?;
+    let rows = queue::load(state, community, batch_id)
+        .await
+        .map_err(|error| match error {
+            queue::LoadError::TooLarge => invalid(queue::TOO_LARGE),
+            queue::LoadError::Internal(reason) => internal(reason),
+        })?;
+    // GUARD: a name that matches no waiting message refuses the whole command, so a mistyped
+    // name in a keep list cannot empty the queue.
+    let leaving = queue::plan(&rows, &selection).map_err(|unmatched| {
+        invalid(format!(
+            "no waiting message is in: {}. Waiting now: {}",
+            unmatched.join(", "),
+            queue::describe(&rows)
+        ))
+    })?;
+    let reason = if access.is_owner_admin() {
+        "removed from the queue by the owner or an admin"
+    } else {
+        "removed from the queue by the Outreach team"
+    };
+    let removed = state
+        .db
+        .whatsapp_remove_queued_rows(community, &leaving, reason)
+        .await
+        .map_err(internal)?;
+    let gone: HashSet<Uuid> = leaving.iter().copied().collect();
+    let staying: Vec<queue::LabelledRow> = rows
+        .into_iter()
+        .filter(|row| !gone.contains(&row.row.message_id))
+        .collect();
+    if removed > 0 {
+        channel::post_notice(
+            state,
+            tenant,
+            "queue_removed",
+            &format!(
+                "{removed} approved message(s) were taken out of the WhatsApp queue and will not be sent ({reason}). {} stay queued.",
+                staying.len()
+            ),
+        )
+        .await;
+    }
+    Ok(ok(
+        event,
+        format!(
+            "removed {removed} waiting message(s); {} stay queued: {}",
+            staying.len(),
+            queue::describe(&staying)
+        ),
+    ))
 }
 
 /// Owner or admin releases the waiting rows of an already approved test batch (at most

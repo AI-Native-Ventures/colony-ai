@@ -52,9 +52,18 @@ assert_run '
   done
 '
 
-# 4. Plan-login runtimes must not be in the image (spec section 3, anti-goal).
+# 4. OpenCode is in the image for the free route (pinned release), and no
+#    plan-login runtime is (spec section 3, anti-goal).
+OPENCODE_VERSION=1.19.6
+opencode_out="$(docker run --rm --entrypoint /usr/local/bin/opencode "$IMAGE" --version 2>&1)" \
+    || fail "opencode --version failed (got: $opencode_out)"
+grep -q "$OPENCODE_VERSION" <<<"$opencode_out" \
+    || fail "opencode --version did not report $OPENCODE_VERSION (got: $opencode_out)"
+# The unprivileged agent user must be able to run it too.
+docker run --rm --entrypoint /bin/bash "$IMAGE" -ceu 'su-exec agent opencode --version >/dev/null' \
+    || fail "opencode does not run as the agent user"
 assert_run '
-  for name in claude codex opencode goose; do
+  for name in claude codex goose; do
     if command -v "$name" >/dev/null 2>&1; then
       echo "unexpected runtime in image: $name" >&2
       exit 1

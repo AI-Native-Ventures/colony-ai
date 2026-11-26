@@ -21,6 +21,7 @@ Graph version lives in one constant: `GRAPH_API_VERSION` in
 | add or undo an opt-out or never-contact entry | yes | no | no |
 | check, mark delivered, or resend an unknown send | yes | no | no |
 | create batch | yes | yes | no |
+| take approved messages that still wait out of the queue (`remove_queued`) | yes | yes, it only shrinks what is sent | no |
 | send a message (free text in the window, follow-up template) | yes, sent at once | yes, but only as a DRAFT | no |
 | approve, edit or reject an agent draft | yes | no | no |
 | send a template to a NEW chat outside a batch | yes (counts to cap) | no, use a batch | no |
@@ -76,6 +77,7 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `templates` | `refresh` (bool, owner/admin only) | any member | `{ "templates": [Template] }` |
 | `batches` | `state` optional | owner/admin, Outreach member | `{ "batches": [BatchSummary] }` |
 | `batch` | `batchId` | owner/admin, Outreach member | `BatchDetail` |
+| `queue` | `batchId` optional | owner/admin, Outreach member | `{ "queued": n, "groups": [{ "industry", "vertical", "queued" }] }`: approved batch messages still waiting to be sent, grouped by the industry and vertical of their lead, largest group first. Messages whose contact has no lead record are the group `No lead record`. More than 5000 waiting messages are refused: name one batch |
 | `drafts` | `limit` | owner/admin, Outreach member | `{ "drafts": [Message + to, params] }` pending agent drafts, oldest first |
 | `safety_check` | `identities: [{kind: "phone"|"email"|"domain", value}]` | any member | `{ "matches": [{kind, value}] }` for caller-provided active suppressions only |
 | `suppressions` | `limit` | owner/admin | `{ "suppressions": [Suppression], "businessStops": [BusinessStop] }` |
@@ -321,6 +323,25 @@ waiting. A repeat keeps the first release moment. The relay marks released rows 
 flag. The Outreach channel gets a `batch_send_now` notice. Older apps never send it and ignore
 `sendsAt`.
 
+`remove_queued` takes approved messages that still wait (`ready`) out of the queue. It is the
+one decision that is not owner/admin only: it can only shrink what will be sent, so every caller
+that may prepare a batch may send it (an agent only while its WhatsApp access is not revoked).
+
+```json
+{ "v": 1, "decision": "remove_queued", "keep": ["Furniture", "Locksmith Businesses"] }
+```
+
+Exactly one of `keep` (these stay, every other waiting message goes), `remove` (these go) or
+`"all": true` names the messages; `batchId` optionally narrows the command to one approved batch.
+A name is the industry or the vertical of the lead exactly as the `queue` read shows it, in any
+letter case; `No lead record` names the messages without a lead. A name that matches no waiting
+message refuses the whole command (`invalid: no waiting message is in: ...`) and nothing changes,
+so a mistyped name in a keep list cannot empty the queue. Removed rows become `skipped` with the
+reason `removed from the queue by ...`; the sender never reads them again and nothing puts them
+back (prepare a new batch instead). A row the sender claimed in the same moment is left alone, so
+the answer `removed N waiting message(s); M stay queued: ...` counts what really left. The
+Outreach channel gets a `queue_removed` notice when at least one row left.
+
 To decide one agent draft (see `47050`) send `draftId` instead of `batchId`:
 
 ```json
@@ -509,7 +530,7 @@ One private channel named `Outreach`. Each contact has ONE thread:
 ## CLI
 
 `colony whatsapp drafts | draft approve | draft reject` (owner/admin decide), `status | templates | template-title | batch create | batch list | batch show |
-batch approve | batch reject | send | safety list | safety never-contact | safety undo-never-contact |
+batch approve | batch reject | queue | queue remove | send | safety list | safety never-contact | safety undo-never-contact |
 safety undo-opt-out | unknown-send list | unknown-send check | unknown-send mark-delivered |
 unknown-send resend | contacts | inbox | thread | cap`. `templates` prints the title first
 and the Meta name second; `template-title --template <title or Meta name> --title "..."` renames

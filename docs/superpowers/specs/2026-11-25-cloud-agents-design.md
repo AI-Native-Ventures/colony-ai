@@ -12,7 +12,7 @@ The model is Jemma's: Jemma runs a job on the owner's laptop (Claude Code on his
 
 1. **Who decides.** Per agent. The owner can flip an agent between "This Mac" and "Cloud" at any time, from the chat itself and from the agent's profile/settings.
 2. **Machine cost.** Free beta with a cap. Colony pays for the cloud machines. The monthly hiring fee decided on 22 Oct ("Always available" vs "Ready within 30 seconds", paid upfront) comes later and must fit on top of this design without changing the switch.
-3. **AI cost.** Users pay for their own AI usage. The owner asked for the best setup; the proposal he was shown is section 5.4 (Colony credits by default, own key optional, $1 starter credit).
+3. **AI cost.** Free AI first (owner decision, 25 Nov 2026, after the proposal below): the default cloud model is `colony-free`, which costs the user nothing (section 5.4: OpenCode's free model first, then the OpenRouter free models through the Colony gateway). Paid DeepSeek through credits stays an explicit choice; own key optional, $1 starter credit.
 4. **What a cloud agent is.** A full computer per agent, with the same kinds of abilities as a Mac agent (shell, files, web), not a Workers-style brain.
 5. **Host.** Fly Machines, chosen after a price check on 25 Nov (1 GB agent: Fly $6.70/month 24/7, about $2.90 at 10 h a day, about $0.30 asleep with files kept; Cloudflare Containers about $9.90, $4.10, and $0 asleep but files wiped). The host sits behind one host layer so Cloudflare can be added later.
 
@@ -29,7 +29,7 @@ Earlier decisions that still hold: one machine per agent (22 Oct); agent private
 
 **Non-goals (v1)**
 - Mobile app UI. The flip is a relay event, so a phone can flip later with no relay change. (Builder's call to include the mobile switch only if it is trivial; it is not required for v1.)
-- Claude Code, Codex or OpenCode inside the cloud machine. Plan sign-ins cannot move to a hosted machine (Anthropic's rules; OpenAI requires approval for hosted apps). The cloud machine runs Colony Agent (`buzz-agent`).
+- Claude Code or Codex inside the cloud machine, and any plan sign-in. Plan sign-ins cannot move to a hosted machine (Anthropic's rules; OpenAI requires approval for hosted apps). OpenCode is in the machine only for the free route (section 5.4), never with a plan or provider login. Otherwise the cloud machine runs Colony Agent (`buzz-agent`).
 - Paid hosting, "Always available" machines, monthly fees.
 - Automatic switching between Mac and cloud.
 - Moving files that exist only in folders on the owner's Mac.
@@ -77,7 +77,7 @@ Hosts compared: Fly Machines vs Cloudflare Containers (section 2, decision 5). F
 - **Flip semantics.** A flip applies at once. The relay closes every live connection of the agent when its home changes, so a reply in progress at the moment of a flip is dropped, and the new home answers that message through relay catch-up (exactly one answer beats finishing the in-flight reply).
 - **"Already answered" lives on the relay, not in a home's ledger.** The wake ledger is a local file per home, so it does not travel: a fresh cloud volume replays nothing older than about 15 minutes, and a Mac coming back would re-answer days of messages the cloud already handled. Rule: a message counts as answered only when the agent has published a reply to it. A 👀 or 💬 reaction is progress, not an answer (GATE-304: a harness reacted, was stopped, and the mention was lost), so a message with only a reaction is picked up again. This is the same test `desktop/src/features/agents/unansweredMentions.ts` already uses. On start, every home asks the relay for its unanswered messages from the **last 24 hours** and handles only those; the local ledger only removes duplicates within one home. Older unanswered messages are not picked up automatically. The builder must show that a mention sent seconds before a flip is answered exactly once, and that a message stalled while the Mac was off is answered after "Move to the cloud".
 - **Relay fence (no second copy, even from an old app).** The relay allows many connections per agent key today, so a desktop-only rule would not stop an older app from starting a local copy. When an agent is placed in the cloud, the relay issues that machine a credential bound to the placement generation, and refuses NIP-42 authentication as that agent from any connection that does not present the current credential. When the agent is placed on the Mac, connections presenting an old cloud credential are refused, and Mac connections authenticate as today (backward compatible). The desktop and harness rules above stay, so a correct app never even tries.
-- **Two setups per agent.** The Mac setup is today's record, untouched. The cloud setup is stored separately: provider (`colony-credits` by default, or the owner's own key) and model (default DeepSeek V4.1 Flash via the gateway, configurable, never hardcoded). Persona, name, system prompt and team instructions are shared. A Claude Code, Codex or OpenCode agent flipped to the cloud runs Colony Agent there with the cloud setup, and returns to its own runtime when flipped back.
+- **Two setups per agent.** The Mac setup is today's record, untouched. The cloud setup is stored separately: provider (`colony-credits` by default, or the owner's own key) and model (default `colony-free`, see section 5.4; paid DeepSeek V4.1 Flash via the gateway is selectable, configurable, never hardcoded). Persona, name, system prompt and team instructions are shared. A Claude Code, Codex or OpenCode agent flipped to the cloud runs the cloud setup there (the free route, or Colony Agent on a paid model), and returns to its own runtime when flipped back.
 - **What follows the agent:** identity (same pubkey), chat history, memory (agent engrams, kind 30174), canvas and relay files. **What does not:** files that exist only in folders on the Mac, and the Mac harness's own session state. The cloud agent says so plainly when asked for a Mac-only file.
 - **Who can flip:** the agent's owner only in v1, enforced by the relay.
 
@@ -86,7 +86,7 @@ Hosts compared: Fly Machines vs Cloudflare Containers (section 2, decision 5). F
 - **Host layer.** A `CloudHost` interface in the relay with operations such as create, start, stop, destroy and status for one agent machine. v1 has one implementation, Fly Machines (Machines REST API, token in a relay Fly secret). Cloudflare can be added behind the same interface later.
 - **Fly app and isolation.** Agent machines run in their own Fly app, not the relay's. They must not share a private network with the relay or the databases: an agent has a shell, so the app is created on its own isolated network (or in a separate Fly organisation), and machines reach the relay only through its public `wss://` address. This drops the "private network" benefit mentioned during the host discussion; the price comparison still holds.
 - **Machine shape.** One machine per cloud agent, 1 GB RAM, shared CPU, region `iad` (next to the relay). One small Fly volume per agent (1 GB to start) holds the workspace, the wake ledger and the harness state, so files survive sleep and image updates. Builder measures memory with a real agent turn and a browser page open; if 1 GB is not enough, step up and report the new price.
-- **Image.** A Colony agent image built from `Dockerfile.sprig` (`buzz-acp`, `buzz-agent`, `buzz-dev-mcp`, `rg`, git signing) plus the `colony` CLI and what the Colony Agent needs to read and act on the web (a headless browser if the agent's browser tools need one). Digest-pinned, pushed to Fly's registry by CI. No Claude Code, Codex, OpenCode or plan credentials in the image.
+- **Image.** A Colony agent image built from `Dockerfile.sprig` (`buzz-acp`, `buzz-agent`, `buzz-dev-mcp`, `rg`, git signing) plus the `colony` CLI and what the Colony Agent needs to read and act on the web (a headless browser if the agent's browser tools need one). Digest-pinned, pushed to Fly's registry by CI. OpenCode is installed, pinned by release and checked by SHA-256, for the free route only. No Claude Code, Codex or plan credentials in the image.
 - **Secrets on the machine.** The agent's nsec and auth tag, the relay URL, and a cloud AI session (5.4). Never the owner's key, the OpenRouter master key or payment secrets. The relay stores each cloud-ready agent's nsec encrypted at rest (envelope encryption with a key held only in relay secrets), and decrypts it only to configure that agent's machine.
 - **Getting the key to the relay.** The nsec exists only on the Mac today. The desktop uploads it (encrypted in transit, owner-signed request). **Owner decision (25 Nov, "happy"):** when the cloud beta is on for an account, the desktop makes all of that owner's agents cloud-ready in the background, ahead of any flip, so a later flip from the phone works with the Mac closed. An agent created on another Mac that has not uploaded yet shows "Open Colony on your Mac once to make Scout cloud-ready" when someone tries to flip it from elsewhere.
 - **Cloud configuration snapshot.** `buzz-acp` needs more than persona and prompt: respond-to mode and allowlist, subscribe rules, parallelism, timeouts, env vars, tool and MCP permissions, team instructions. These live only in the Mac's `ManagedAgentRecord`. The desktop pushes a signed snapshot of the runnable config together with the key (stored encrypted beside it on the relay) and re-pushes it on every edit of that agent. The cloud machine boots from the latest snapshot. Paid-provider API keys and Mac-only paths are stripped from the snapshot.
@@ -95,13 +95,23 @@ Hosts compared: Fly Machines vs Cloudflare Containers (section 2, decision 5). F
 - **Lifecycle edges the builder must cover:** flip to cloud (create the machine if needed, start it), flip to Mac (stop the machine, keep the volume for a while), agent deleted or owner account deleted (destroy machine and volume), relay restart (reconcile registry against the Fly app: no orphans, no missing machines), Fly API failure (durable retry record, never a silent success), image update (roll new digest on next start).
 - **Status the UI can show:** Asleep, Waking, Working, Could not start, Out of credit. Derived from the relay registry plus presence.
 
-### 5.4 Cloud AI setup (users pay their own usage)
+### 5.4 Cloud AI setup (free first, paid by choice)
 
-This is the setup proposed to the owner on 25 Nov; it is a proposal he did not object to, and the design doc approval confirms it.
+Owner decision, 25 Nov 2026: cloud agents use free AI first. The numbered list below is the paid route (an explicit choice per agent) as proposed earlier that day; the free-first route comes before it and is the default.
+
+**Free-first route.**
+
+1. The cloud model value `colony-free` is the default for every new cloud agent (the relay's default model; `COLONY_CLOUD_DEFAULT_MODEL` can still override it). The model picker shows it as "Free (default)" beside the paid models. Users pay nothing on it.
+2. **Route `openCodeFree`.** The machine runs OpenCode as the ACP agent (`opencode acp`) with the free model `opencode/deepseek-v4.1-flash-free`, forced through `OPENCODE_CONFIG_CONTENT` as the desktop does. OpenCode's data lives under `/data/home`, so it survives sleep. No credits session is minted and no gateway secret reaches the machine.
+3. **Switch to `openrouterFree`.** When OpenCode refuses or the free model has ended (free-tier error, rate limit, model ended, or repeated provider failures), the harness posts nothing to the chat, reports the refusal to the relay (`POST /api/cloud-agents/{agent}/free-route-refused`, bearer home token) and exits with code 76 ("free route refused"). The relay records the route `openrouterFree` on the agent for 6 hours. The next boot starts at once through the normal wake and the unanswered catch-up of section 5.2, so the message is not lost, and runs `buzz-agent` on the credits gateway with a cloud session limited to free models (`paid_allowed=false`, zero cost, even for a paying account). The switch is bounded: at most one route switch per wake, never a loop. When the 6 hours pass the agent tries OpenCode again.
+4. **Free AI is busy.** When the gateway's free chain is exhausted too (`DailyLimit`, or every free model answers 429), the harness posts one notice per turn tagged `["colony_notice","freeAiBusy"]` with the text "Free AI is busy right now." The desktop card offers "Top up" and "Move to This Mac". The head status may stay `asleep` or `working`; no new status is added. All `:free` models share one OpenRouter account limit of 1,000 requests a day, so this card is expected on a busy day.
+5. **Risk the owner should read.** OpenCode's terms allow the free tier for the user's own use and ban unattended automated processes. All agent machines leave through Fly's shared egress, so OpenCode may rate-limit or block them. The free offer is time-limited. The fallback in step 3 is what keeps agents answering when that happens.
+
+**Paid route (explicit choice).**
 
 1. The cloud agent never holds a provider key. It calls the relay credits gateway, which is already live on prod.
 2. Each owner account has a credit balance, topped up through the existing checkout (PayFast configured on prod; Stripe code merged without secrets). Each reply is charged at model cost plus 20%.
-3. Default cloud model: DeepSeek V4.1 Flash (about 1 to 3 US cents a reply). It must be added to `COLONY_CREDITS_ALLOWED_MODELS` with the model-terms review the gateway docs require. The owner can pick another allowed model in the agent's cloud setup.
+3. Paid model choice: DeepSeek V4.1 Flash (about 1 to 3 US cents a reply), selectable per agent, no longer the default. It must be added to `COLONY_CREDITS_ALLOWED_MODELS` with the model-terms review the gateway docs require. The owner can pick another allowed model in the agent's cloud setup.
    - **Gateway change required.** Today an explicit model selection must be free (`ordered_chain(..., require_free = true)` in `crates/buzz-relay/src/api/credits_gateway_upstream.rs:343-372,524`; sessions accept only `selectable_free_models()`). The gateway must accept an allowlisted paid model for a cloud session of a paying account, with the existing balance hold and cost + 20% settlement. The global primary model and the free chain stay as they are, so Mac agents and free or judge accounts are unchanged and Colony pays nothing extra.
 4. Starter credit: each account gets $1 once, the first time it puts an agent in the cloud, funded by Colony, recorded as a ledger grant.
 5. Own key instead: in the agent's cloud setup the owner can paste an OpenRouter or DeepSeek key. It is stored encrypted per account on the relay. **The key never reaches the machine** (an agent with a shell could be talked into reading it): the gateway uses the stored key upstream for that agent's requests and charges nothing. Own key is a second slice; the acceptance gate does not wait for it.
@@ -118,12 +128,12 @@ Conversation header (agent DM, or an agent's own row in a channel header)
 │ Scout      Working on: This Mac ▾           │
 └────────────────────────────────────────────┘
   tap ▾ →  ✓ This Mac   (Claude Code)
-             Cloud      (Colony credits · DeepSeek V4.1 Flash)
+             Cloud      (Free (default) · or Colony credits · DeepSeek V4.1 Flash)
 
 Agent profile / settings
   Where Scout works
   ( ) This Mac    uses Claude Code
-  (•) Cloud       uses Colony credits · DeepSeek V4.1 Flash ▾
+  (•) Cloud       uses Free (default) ▾
                   Asleep · wakes when you message
 ```
 
@@ -150,7 +160,7 @@ Agent profile / settings
 ## 6. Constraints and prerequisites
 
 - **Fly invoice** must be paid before anything deploys (relay or agent machines).
-- **DeepSeek V4.1 Flash** must be added to the gateway's allowed models (Fly secret change on `colony-relay`, owner sets secrets) after a model-terms review.
+- **DeepSeek V4.1 Flash** (the paid choice, not the default) must be added to the gateway's allowed models (Fly secret change on `colony-relay`, owner sets secrets) after a model-terms review.
 - **PayFast live mode** and a real top-up are unverified; credits must actually be buyable before beta users depend on them.
 - **Relay deploy order**: ship desktop support before the relay emits anything older desktops cannot read (owner lesson of 5 Nov: a new relay enum broke old clients).
 - Production releases follow the Colony release flow; nothing here changes it.

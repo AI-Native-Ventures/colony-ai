@@ -526,6 +526,28 @@ async fn seed_prospect_head_with_activity(
     status: &str,
     activity: Option<(ProspectActivityKind, &str)>,
 ) -> String {
+    seed_prospect_head_labelled(
+        fx,
+        phone,
+        name,
+        status,
+        activity,
+        "Hospitality",
+        "Guesthouse",
+    )
+    .await
+}
+
+/// Seed a prospect head in a named industry and vertical.
+async fn seed_prospect_head_labelled(
+    fx: &Fixture,
+    phone: &str,
+    name: &str,
+    status: &str,
+    activity: Option<(ProspectActivityKind, &str)>,
+    industry: &str,
+    vertical: &str,
+) -> String {
     let prospect_id = Uuid::new_v4();
     let head = ProspectHead {
         schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
@@ -539,8 +561,8 @@ async fn seed_prospect_head_with_activity(
                 display_name: name.to_string(),
                 external_ids: Vec::new(),
             },
-            industry: "Hospitality".into(),
-            vertical: "Guesthouse".into(),
+            industry: industry.to_string(),
+            vertical: vertical.to_string(),
             fit_score: None,
             origin: None,
             discovery_tags: Vec::new(),
@@ -5590,4 +5612,246 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
         .expect("capped counts");
     assert_eq!(capped.total, 300);
     assert!(capped.truncated);
+}
+
+async fn batch_row_for(
+    fx: &Fixture,
+    batch_id: Uuid,
+    wa_id: &str,
+) -> buzz_db::whatsapp::WhatsappMessage {
+    batch_rows(fx, batch_id)
+        .await
+        .into_iter()
+        .find(|row| row.wa_id == wa_id)
+        .expect("the batch has a row for this number")
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn waiting_messages_leave_the_queue_by_industry_and_are_never_sent() {
+    let fx = fixture().await;
+    let agent = Keys::generate();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            fx.outreach_channel().await,
+            &agent.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&fx.owner.public_key().to_bytes()),
+        )
+        .await
+        .expect("agent joins Outreach");
+    let outsider = Keys::generate();
+
+    let leads = [
+        (
+            "27821230101",
+            "Sofa Fix",
+            "Furniture",
+            "Furniture & Upholstery Repair Businesses",
+        ),
+        (
+            "27821230102",
+            "Couch Care",
+            "Furniture",
+            "Furniture & Upholstery Repair Businesses",
+        ),
+        (
+            "27821230103",
+            "Key Kings",
+            "Repair & Personal Services",
+            "Locksmith Businesses",
+        ),
+        (
+            "27821230104",
+            "Wash House",
+            "Repair & Personal Services",
+            "Laundry services",
+        ),
+        (
+            "27821230105",
+            "Talent Co",
+            "Professional Services",
+            "Recruitment Agencies",
+        ),
+    ];
+    let mut rows = Vec::new();
+    for (wa_id, name, industry, vertical) in leads {
+        let phone = format!("+{wa_id}");
+        let lead =
+            seed_prospect_head_labelled(&fx, &phone, name, "active", None, industry, vertical)
+                .await;
+        rows.push(json!({"to": phone, "leadId": lead, "params": ["Thabo"]}));
+    }
+    let batch_id = Uuid::new_v4();
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH,
+        json!({
+            "v": 1,
+            "batchId": batch_id.to_string(),
+            "template": "intro",
+            "language": "en",
+            "rows": rows,
+        }),
+    )
+    .await
+    .expect("the owner prepares the batch");
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_BATCH_DECISION,
+        json!({"v": 1, "batchId": batch_id.to_string(), "decision": "approve"}),
+    )
+    .await
+    .expect("the owner approves the batch");
+
+    // The read behind `whatsapp queue`: every waiting message, grouped by its lead's industry.
+    let waiting = super::queue::load(&fx.state, fx.community(), None)
+        .await
+        .expect("queue read");
+    let view = super::queue::summary_view(&waiting);
+    assert_eq!(view["queued"], 5);
+    assert_eq!(view["groups"][0]["industry"], "Furniture");
+    assert_eq!(view["groups"][0]["queued"], 2);
+
+    // GUARD: `can_send` in `handle_queue_removal`. A member outside Outreach cannot touch the
+    // queue, not even to shrink it.
+    let refused = rejection(
+        fx.command(
+            &outsider,
+            KIND_WHATSAPP_BATCH_DECISION,
+            json!({"v": 1, "decision": "remove_queued", "all": true}),
+        )
+        .await,
+    );
+    assert!(refused.starts_with("restricted:"), "{refused}");
+
+    // GUARD: the unmatched-name refusal in `queue::plan`. "Locks" names nothing that waits, so
+    // the whole command is refused instead of keeping furniture only.
+    let mistyped = rejection(
+        fx.command(
+            &agent,
+            KIND_WHATSAPP_BATCH_DECISION,
+            json!({"v": 1, "decision": "remove_queued", "keep": ["Furniture", "Locks"]}),
+        )
+        .await,
+    );
+    assert!(
+        mistyped.starts_with("invalid: no waiting message is in: Locks"),
+        "{mistyped}"
+    );
+    assert!(
+        batch_rows(&fx, batch_id)
+            .await
+            .iter()
+            .all(|row| row.state == "ready"),
+        "a refused command leaves every row waiting"
+    );
+
+    // The owner's agent keeps furniture (named by industry) and locksmiths (named by vertical,
+    // in another letter case): laundry and recruitment leave the queue.
+    let kept = fx
+        .command(
+            &agent,
+            KIND_WHATSAPP_BATCH_DECISION,
+            json!({
+                "v": 1,
+                "decision": "remove_queued",
+                "keep": ["furniture", "LOCKSMITH businesses"],
+            }),
+        )
+        .await
+        .expect("the agent shrinks the queue");
+    assert!(
+        kept.message
+            .starts_with("removed 2 waiting message(s); 3 stay queued"),
+        "{}",
+        kept.message
+    );
+    for gone in ["27821230104", "27821230105"] {
+        let row = batch_row_for(&fx, batch_id, gone).await;
+        assert_eq!(row.state, "skipped");
+        assert_eq!(
+            row.skip_reason.as_deref(),
+            Some("removed from the queue by the Outreach team")
+        );
+        // GUARD: the state change in `whatsapp_remove_queued_rows`. The sender's final claim
+        // reads only waiting rows, so a row that left the queue can never be sent.
+        assert!(
+            !fx.state
+                .db
+                .whatsapp_claim_message(
+                    fx.community(),
+                    row.id,
+                    Uuid::new_v4(),
+                    base() + Duration::minutes(2),
+                    base(),
+                )
+                .await
+                .expect("claim result"),
+            "a removed row is never claimed for sending"
+        );
+    }
+    for stays in ["27821230101", "27821230102", "27821230103"] {
+        assert_eq!(batch_row_for(&fx, batch_id, stays).await.state, "ready");
+    }
+
+    // The owner takes the locksmith out by name, inside this one batch.
+    let remove_locksmiths = json!({
+        "v": 1,
+        "decision": "remove_queued",
+        "batchId": batch_id.to_string(),
+        "remove": ["Locksmith Businesses"],
+    });
+    let owner_removed = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_BATCH_DECISION,
+            remove_locksmiths.clone(),
+        )
+        .await
+        .expect("the owner shrinks the queue");
+    assert_eq!(
+        owner_removed.message,
+        "removed 1 waiting message(s); 2 stay queued: Furniture & Upholstery Repair Businesses 2"
+    );
+    assert_eq!(
+        batch_row_for(&fx, batch_id, "27821230103")
+            .await
+            .skip_reason
+            .as_deref(),
+        Some("removed from the queue by the owner or an admin")
+    );
+
+    // A repeat names an industry that no longer waits: refused, and furniture stays.
+    let repeat = rejection(
+        fx.command(&fx.owner, KIND_WHATSAPP_BATCH_DECISION, remove_locksmiths)
+            .await,
+    );
+    assert!(
+        repeat.starts_with("invalid: no waiting message is in: Locksmith Businesses"),
+        "{repeat}"
+    );
+
+    // Whatever the sender does next, it only ever reaches the numbers that stayed.
+    for _ in 0..3 {
+        fx.run_sender(Utc::now()).await;
+    }
+    let sent_to: Vec<String> = fx
+        .graph
+        .sends
+        .lock()
+        .expect("sends")
+        .iter()
+        .map(|send| match send {
+            SendRequest::Text { to, .. } | SendRequest::Template { to, .. } => to.clone(),
+        })
+        .collect();
+    assert!(
+        sent_to
+            .iter()
+            .all(|to| to == "27821230101" || to == "27821230102"),
+        "only the furniture leads are ever sent: {sent_to:?}"
+    );
 }
