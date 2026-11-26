@@ -16,8 +16,9 @@ use buzz_core::business_records::{prospect_d_tag, ProspectHead};
 use buzz_core::kind::KIND_PROSPECT_HEAD;
 use buzz_core::tenant::CommunityId;
 use buzz_db::whatsapp_queue::QueuedRow;
+use buzz_db::EventQuery;
 
-use super::desk::{d_tag_of, relay_heads};
+use super::desk::d_tag_of;
 use crate::state::AppState;
 
 /// Most waiting rows one summary or removal reads. A larger queue is refused with
@@ -156,7 +157,7 @@ pub async fn load(
     d_tags.sort();
     let mut labels: HashMap<String, LeadLabels> = HashMap::new();
     for chunk in d_tags.chunks(LEAD_HEADS_PER_QUERY) {
-        let heads = relay_heads(state, community, KIND_PROSPECT_HEAD, chunk.to_vec())
+        let heads = lead_heads(state, community, chunk.to_vec())
             .await
             .map_err(LoadError::Internal)?;
         for stored in heads {
@@ -190,6 +191,34 @@ pub async fn load(
             LabelledRow { row, labels: found }
         })
         .collect())
+}
+
+/// Relay-signed lead records for the given `d` tags.
+///
+/// A lead record is stored inside the company's business channel, so it is found by kind, relay
+/// author and `d` tag alone, the way the business-record handlers read it. A lookup limited to
+/// events outside every channel finds no lead at all, and each waiting message then looks as
+/// if it had no lead record.
+async fn lead_heads(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    d_tags: Vec<String>,
+) -> Result<Vec<buzz_core::StoredEvent>, String> {
+    if d_tags.is_empty() {
+        return Ok(Vec::new());
+    }
+    let max = (d_tags.len() as i64).saturating_mul(2).max(2);
+    let mut query = EventQuery::for_community(community);
+    query.kinds = Some(vec![KIND_PROSPECT_HEAD as i32]);
+    query.pubkey = Some(state.relay_keypair.public_key().to_bytes().to_vec());
+    query.d_tags = Some(d_tags);
+    query.limit = Some(max);
+    query.max_limit = Some(max);
+    state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .map_err(|error| format!("could not read the lead records: {error}"))
 }
 
 /// The ids of the messages that leave the queue. `Err` lists the named industries that match
