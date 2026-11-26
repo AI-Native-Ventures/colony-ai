@@ -54,6 +54,7 @@ import {
   ChatsMenu,
   ChatsMenuContent,
 } from "./ChatsMenu";
+import { MapShellUpdateButton } from "./MapShellUpdateButton";
 import "./MapShell.css";
 
 type MapShellProps = {
@@ -656,10 +657,12 @@ export function MapShell({
             <span aria-hidden="true" className="map-shell-bell-dot" />
           ) : null}
         </button>
+        <MapShellUpdateButton />
         <NeedYouButton count={needsYouTotal} onClick={onNeedsYou} />
         {profileMenu}
       </div>
       <div className="map-shell-mobile-actions">
+        <MapShellUpdateButton />
         <NeedYouButton count={needsYouTotal} onClick={onNeedsYou} />
         <button
           aria-expanded={mobileMenuOpen}

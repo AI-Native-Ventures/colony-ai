@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { capture, prepareMapShell } from "./mapShellTestSupport";
 
 type UpdateStatus = Record<string, unknown>;
 
@@ -22,6 +23,11 @@ const DOWNLOAD_URL = "https://colony.global/#download";
  */
 async function installFakeElectronUpdater(page: Page, initial: UpdateStatus) {
   await installMockBridge(page);
+  await addFakeElectronUpdater(page, initial);
+}
+
+/** The fake updater alone, for a test that installs its own mock bridge. */
+async function addFakeElectronUpdater(page: Page, initial: UpdateStatus) {
   await page.addInitScript((initialStatus) => {
     const listeners = new Set<(status: UpdateStatus) => void>();
     let current = initialStatus as UpdateStatus;
@@ -211,4 +217,129 @@ test("an install the updater refuses keeps its own explanation", async ({
   await expect(page.getByTestId("settings-panel-updates")).not.toContainText(
     "Automatic updates aren't available",
   );
+});
+
+function mapUpdateButton(page: Page, actions: "desktop" | "mobile") {
+  return page
+    .locator(`.map-shell-${actions}-actions`)
+    .getByTestId("map-shell-update");
+}
+
+function updaterCalls(page: Page) {
+  return page.evaluate(
+    () => (window as FakeUpdaterWindow).__fakeUpdater?.calls,
+  );
+}
+
+test("the Map layout shows a ready update in its top bar and installs on one click", async ({
+  page,
+}) => {
+  await addFakeElectronUpdater(page, { state: "idle" });
+  await prepareMapShell(page, {
+    theme: "light",
+    width: 1440,
+    height: 900,
+    featureEnabled: true,
+  });
+  // This layout has no sidebar, so the sidebar card cannot carry the prompt.
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-update-card")).toHaveCount(0);
+  const button = mapUpdateButton(page, "desktop");
+  await expect(button).toHaveCount(0);
+
+  await push(page, { state: "downloading", percent: 40 });
+  await expect(button).toHaveCount(0);
+
+  await push(page, { state: "ready" });
+  await expect(button).toBeVisible();
+  await expect(button).toHaveText("Update now");
+  await expect(button).toBeEnabled();
+  await expect(mapUpdateButton(page, "mobile")).toBeHidden();
+  await capture(page, "map-update-ready-wide-light");
+
+  await button.click();
+  await expect.poll(() => updaterCalls(page)).toEqual(["install"]);
+  await expect(button).toHaveText("Updating...");
+  await expect(button).toBeDisabled();
+});
+
+test("a narrow Map window keeps the update prompt and the keyboard installs it", async ({
+  page,
+}) => {
+  await addFakeElectronUpdater(page, { state: "ready" });
+  await prepareMapShell(page, {
+    theme: "dark",
+    width: 390,
+    height: 844,
+    featureEnabled: true,
+  });
+  const button = mapUpdateButton(page, "mobile");
+  await expect(button).toBeVisible();
+  await expect(button).toHaveText("Update now");
+  await expect(mapUpdateButton(page, "desktop")).toBeHidden();
+  // The extra button must not push the bar wider than the window.
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  const bar = await page.getByTestId("map-shell-bar").boundingBox();
+  const box = await button.boundingBox();
+  expect(box && bar && box.x >= bar.x && box.x + box.width <= 390).toBe(true);
+  await capture(page, "map-update-ready-narrow-dark");
+
+  await button.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => updaterCalls(page)).toEqual(["install"]);
+});
+
+test("the Map layout sends an update Colony cannot install to colony.global", async ({
+  page,
+}) => {
+  await addFakeElectronUpdater(page, { state: "idle" });
+  await prepareMapShell(page, {
+    theme: "light",
+    width: 1440,
+    height: 900,
+    featureEnabled: true,
+  });
+  const button = mapUpdateButton(page, "desktop");
+
+  await push(page, {
+    state: "manual-required",
+    version: "3.0.91",
+    releaseUrl: DOWNLOAD_URL,
+  });
+  await expect(button).toHaveText("Update available");
+  await capture(page, "map-update-manual-wide-light");
+  await button.click();
+  await expect.poll(() => openedUrls(page)).toEqual([DOWNLOAD_URL]);
+
+  // A failed background check has nothing to click, so it stays quiet.
+  await push(page, { state: "error", message: "Update check failed." });
+  await expect(button).toHaveCount(0);
+
+  // An install the updater refuses says so and offers the manual download.
+  await push(page, { state: "ready" });
+  await page.evaluate(() => {
+    const fake = (window as FakeUpdaterWindow).__fakeUpdater;
+    if (fake) {
+      fake.refuseInstallWith = {
+        state: "error",
+        message:
+          "The downloaded update failed its signature check, so it was not installed.",
+        releaseUrl: "https://colony.global/#download",
+      };
+    }
+  });
+  await button.click();
+  await expect(button).toHaveText("Update not installed");
+  await expect(button).toHaveAttribute(
+    "title",
+    "The downloaded update failed its signature check, so it was not installed.",
+  );
+  await button.click();
+  await expect
+    .poll(() => openedUrls(page))
+    .toEqual([DOWNLOAD_URL, DOWNLOAD_URL]);
 });
