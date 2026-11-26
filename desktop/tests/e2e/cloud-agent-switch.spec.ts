@@ -21,6 +21,7 @@ async function openScoutDm(
     maxPerAccount?: number;
     capabilities?: boolean;
     extraPlacements?: MockAgentPlacement[];
+    agentStatus?: "running" | "stopped";
   } = {},
 ) {
   const relaySecret = generateSecretKey();
@@ -57,7 +58,7 @@ async function openScoutDm(
           pubkey: SCOUT,
           name: "Scout",
           runtime: "claude",
-          status: "running",
+          status: options.agentStatus ?? "running",
           channelIds: [REFERENCE_CHANNEL_IDS.scoutDm],
         },
       ],
@@ -260,4 +261,84 @@ test("without cloud agents on the relay nothing changes in the header", async ({
   await openScoutDm(page, { capabilities: false });
   await expect(page.getByTestId("agent-home-switch")).toHaveCount(0);
   await expect(page.getByTestId("chat-header-agent-runtime")).toBeVisible();
+});
+
+async function openScoutProfile(
+  page: Page,
+  options: Parameters<typeof openScoutDm>[1] = {},
+) {
+  await openScoutDm(page, { agentStatus: "stopped", ...options });
+  await page.goto(`/#/agents?agent=${SCOUT}`);
+  await expect(page.getByTestId("agent-profile-content")).toBeVisible();
+}
+
+test("the profile page has the switch, and flipping to Cloud swaps Start for the cloud setup", async ({
+  page,
+}) => {
+  await openScoutProfile(page);
+  const card = page.getByTestId("agent-profile-home");
+  await expect(
+    card.getByRole("group", { name: "Where Scout works" }),
+  ).toBeVisible();
+  await expect(card.getByTestId("agent-home-setting-mac")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // On the Mac: the Mac runtime is shown and Start is offered, as before.
+  await expect(page.getByRole("button", { name: "Start agent" })).toBeVisible();
+  await expect(page.getByTestId("agent-cloud-setup")).toHaveCount(0);
+  await expect(page.getByTestId("agent-model-selection")).toContainText(
+    "Not running",
+  );
+
+  await card.getByTestId("agent-home-setting-cloud").click();
+  await expect(card.getByTestId("agent-home-setting-cloud")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // In the cloud: no Start on the Mac, the AI card shows the cloud setup.
+  await expect(page.getByRole("button", { name: "Start agent" })).toHaveCount(
+    0,
+  );
+  const setup = page.getByTestId("agent-cloud-setup");
+  await expect(setup).toContainText("Colony credits · DeepSeek V4.1 Flash");
+  await expect(page.getByTestId("agent-cloud-status")).toHaveText("Asleep");
+  await expect(page.getByTestId("agent-model-selection")).not.toContainText(
+    "Not running",
+  );
+
+  // And back: this Mac takes the agent over again (placement enforcement
+  // starts its harness), so the cloud setup goes and Stop replaces it.
+  await card.getByTestId("agent-home-setting-mac").click();
+  await expect(page.getByRole("button", { name: "Stop agent" })).toBeVisible();
+  await expect(page.getByTestId("agent-cloud-setup")).toHaveCount(0);
+});
+
+test("a cloud agent's profile offers no Start and no relay-presence refusal", async ({
+  page,
+}) => {
+  await openScoutProfile(page, {
+    placement: { home: "cloud", status: "asleep", cloudModel: MODEL },
+  });
+  await expect(page.getByTestId("agent-cloud-status")).toHaveText("Asleep");
+  await expect(page.getByRole("button", { name: "Start agent" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "Restart agent" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText(/present on the relay/)).toHaveCount(0);
+  await waitForAnimations(page);
+});
+
+test("without cloud agents on the relay the profile page is unchanged", async ({
+  page,
+}) => {
+  await openScoutProfile(page, { capabilities: false });
+  await expect(page.getByTestId("agent-profile-home")).toHaveCount(0);
+  await expect(page.getByTestId("agent-cloud-setup")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start agent" })).toBeVisible();
+  await expect(page.getByTestId("agent-model-selection")).toContainText(
+    "Not running",
+  );
 });

@@ -3,6 +3,7 @@ import * as React from "react";
 import { useAgentSubscriptionUsage } from "@/features/agents/useAgentSubscriptionUsage";
 import type { useAgentConfigSurface } from "@/features/agents/hooks";
 import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
+import { Badge } from "@/shared/ui/badge";
 import type {
   AgentSubscriptionUsage,
   SubscriptionUsageWindow,
@@ -86,6 +87,7 @@ export function AgentPageRuntime({
   authStatus,
   availability,
   canEdit,
+  cloud = null,
   config,
   configError,
   configLoading,
@@ -99,6 +101,8 @@ export function AgentPageRuntime({
   authStatus: string;
   availability: Parameters<typeof harnessAvailabilityLabel>[0];
   canEdit: boolean;
+  /** Set when the agent works in the cloud: its setup replaces the Mac runtime. */
+  cloud?: { label: string; status: string | null } | null;
   config: RuntimeConfig;
   configError: Error | null;
   configLoading: boolean;
@@ -126,11 +130,12 @@ export function AgentPageRuntime({
   });
   const subscriptionUsageQuery = useAgentSubscriptionUsage(
     agent.pubkey,
-    isClaudeSubscription({
-      runtimeId: expectedRuntimeId,
-      provider,
-      envVars: providerEnvVars,
-    }),
+    !cloud &&
+      isClaudeSubscription({
+        runtimeId: expectedRuntimeId,
+        provider,
+        envVars: providerEnvVars,
+      }),
   );
   const effort = observed
     ? acceptedEffortLabel(
@@ -168,32 +173,51 @@ export function AgentPageRuntime({
         ) : null}
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
-        <Detail
-          label="Model"
-          value={
-            !hasRunningLocalPair
-              ? idleRuntimeLabel
-              : configLoading && !model
-                ? "Loading"
-                : simpleModelLabel(model, provider)
-          }
-        />
-        <Detail
-          label="Harness"
-          value={
-            !hasRunningLocalPair
-              ? idleRuntimeLabel
-              : configLoading && !runtime
-                ? "Loading"
-                : (runtime?.label ?? "Not reported")
-          }
-        />
-        {effort ? <Detail label="Effort" value={effort} /> : null}
-        {providerLabel ? (
-          <Detail label="Provider" value={providerLabel} />
-        ) : null}
-      </dl>
+      {cloud ? (
+        <dl
+          className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4"
+          data-testid="agent-cloud-setup"
+        >
+          <Detail label="Runs in the cloud with" value={cloud.label} />
+          {cloud.status ? (
+            <div className="grid gap-1">
+              <dt className="text-xs text-muted-foreground">Status</dt>
+              <dd data-testid="agent-cloud-status">
+                <Badge className="h-6 px-2 text-2xs" variant="idle">
+                  {cloud.status}
+                </Badge>
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      ) : (
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <Detail
+            label="Model"
+            value={
+              !hasRunningLocalPair
+                ? idleRuntimeLabel
+                : configLoading && !model
+                  ? "Loading"
+                  : simpleModelLabel(model, provider)
+            }
+          />
+          <Detail
+            label="Harness"
+            value={
+              !hasRunningLocalPair
+                ? idleRuntimeLabel
+                : configLoading && !runtime
+                  ? "Loading"
+                  : (runtime?.label ?? "Not reported")
+            }
+          />
+          {effort ? <Detail label="Effort" value={effort} /> : null}
+          {providerLabel ? (
+            <Detail label="Provider" value={providerLabel} />
+          ) : null}
+        </dl>
+      )}
 
       {subscriptionUsageQuery.data ? (
         <SubscriptionUsageMeters usage={subscriptionUsageQuery.data} />
@@ -213,7 +237,7 @@ export function AgentPageRuntime({
           </button>
         </div>
       ) : null}
-      {config?.isPreSpawn ? (
+      {config?.isPreSpawn && !cloud ? (
         <p className="agents-c3-quiet mt-3">
           {name} has not reported a running model yet.
         </p>

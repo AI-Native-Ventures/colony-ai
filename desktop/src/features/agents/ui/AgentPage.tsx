@@ -43,6 +43,10 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { AgentInstanceEditDialog } from "./AgentInstanceEditDialog";
+import { AGENT_PRESENT_ON_RELAY_MESSAGE } from "../lib/useAgentAvailability";
+import { useAgentHome } from "../placement/useAgentHome";
+import { macMayStartAgent } from "../placement/placementEnforcement";
+import { AgentPageHome } from "./AgentPageHome";
 import { AgentPageInstructions } from "./AgentPageInstructions";
 import {
   AgentPageOverview,
@@ -157,6 +161,13 @@ export function AgentPage({
   const agent = actions.managedAgents.find(
     (candidate) => candidate.pubkey.toLowerCase() === key,
   );
+  const home = useAgentHome(agent?.pubkey);
+  // An agent homed in the cloud runs there: the Mac must not start it.
+  const inCloud = home.show && !macMayStartAgent(home.placement.home);
+  const actionError =
+    inCloud && actions.actionErrorMessage === AGENT_PRESENT_ON_RELAY_MESSAGE
+      ? null
+      : actions.actionErrorMessage;
   const teamQuery = useCompanyTeamQuery();
   const identity = useIdentityQuery();
   const personasQuery = usePersonasQuery();
@@ -576,7 +587,7 @@ export function AgentPage({
                 {STOP_ICON}
                 Stop agent
               </button>
-            ) : (
+            ) : inCloud ? null : (
               <button
                 className="agents-c3-btn"
                 data-size="md"
@@ -591,9 +602,9 @@ export function AgentPage({
             {moreMenu}
           </div>
         </header>
-        {messageError || actions.actionErrorMessage ? (
+        {messageError || actionError ? (
           <p className="agents-c3-error" role="alert">
-            {messageError ?? actions.actionErrorMessage}
+            {messageError ?? actionError}
           </p>
         ) : null}
 
@@ -631,7 +642,7 @@ export function AgentPage({
           <div className="agents-c3-banner" role="status">
             {INFO_ICON}
             <span>Saved changes apply on the next start.</span>
-            {local ? (
+            {local && !inCloud ? (
               <button
                 disabled={actions.isPending}
                 onClick={() => void actions.handleRestart(agent.pubkey)}
@@ -644,11 +655,15 @@ export function AgentPage({
         ) : null}
 
         <div className="agents-c3-stack" data-testid="agent-profile-content">
+          <AgentPageHome model={home} />
           <AgentPageRuntime
             agent={agent}
             authStatus={runtime?.authStatus.status ?? "unknown"}
             availability={availability}
             canEdit
+            cloud={
+              inCloud ? { label: home.cloudLabel, status: home.status } : null
+            }
             config={configQuery.data}
             configError={
               configQuery.error instanceof Error ? configQuery.error : null

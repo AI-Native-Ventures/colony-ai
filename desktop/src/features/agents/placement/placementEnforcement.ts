@@ -2,6 +2,7 @@ import type { ManagedAgent } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 import type { PlacementChange } from "./placementStore";
+import type { Home } from "./placementTypes";
 
 export type PlacementAction = {
   pubkey: string;
@@ -44,4 +45,13 @@ export function planPlacementActions(
     }
   }
   return actions;
+}
+
+/**
+ * Whether this Mac may start an agent by hand (the profile's Start and Restart).
+ * An agent homed in the cloud runs there: starting it here would make the
+ * second copy that `planPlacementActions` exists to remove.
+ */
+export function macMayStartAgent(home: Home): boolean {
+  return home !== "cloud";
 }
