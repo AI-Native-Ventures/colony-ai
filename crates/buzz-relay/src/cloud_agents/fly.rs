@@ -10,7 +10,13 @@
 //!
 //! Calls are bounded: 15 seconds each, one in flight per machine. A 429, a 5xx
 //! or a network failure is [`HostError::Transient`] and the journal retries it
-//! with backoff; any other refusal is [`HostError::Permanent`].
+//! with backoff; any other refusal is [`HostError::Permanent`], except a 412 from
+//! start, which means the machine is still settling and is worth another try.
+//!
+//! A config update is not applied the moment the API answers it: the machine
+//! moves to the new version a moment later, and a start sent before then is
+//! refused with 412. [`FlyHost::start`] therefore waits for the updated version
+//! to be stopped before it starts the machine.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -24,6 +30,9 @@ use super::host::{BootEnvelope, CloudHost, HostError, MachineRef, MachineSpec, M
 
 /// Seconds before a Machines API call is given up.
 const REQUEST_TIMEOUT_SECS: u64 = 15;
+/// Seconds Fly is asked to wait for an updated machine to settle. Below
+/// [`REQUEST_TIMEOUT_SECS`] so Fly answers (408) before the client gives up.
+const SETTLE_WAIT_SECS: u64 = 10;
 /// Where the agent volume is mounted.
 const MOUNT_PATH: &str = "/data";
 /// Metadata key that names the agent a machine belongs to.
@@ -205,13 +214,41 @@ impl CloudHost for FlyHost {
         });
         let update = json!({"config": config, "skip_launch": true});
         let path = format!("/machines/{}", machine.machine_id);
-        let (status, _) = self.call(Method::POST, &path, Some(&update)).await?;
+        let (status, updated) = self.call(Method::POST, &path, Some(&update)).await?;
         if !status.is_success() {
             return Err(Self::refuse("machine update", status));
+        }
+        // Wait for the updated version to settle before starting it; a start
+        // sent while the update is still being applied is refused with 412.
+        let version = updated
+            .get("instance_id")
+            .and_then(Value::as_str)
+            .filter(|id| {
+                !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric())
+            })
+            .ok_or_else(|| {
+                HostError::Permanent("fly machine update answered with no instance_id".into())
+            })?;
+        let (status, _) = self
+            .call(
+                Method::GET,
+                &format!(
+                    "{path}/wait?instance_id={version}&state=stopped&timeout={SETTLE_WAIT_SECS}"
+                ),
+                None,
+            )
+            .await?;
+        if !status.is_success() {
+            return Err(Self::refuse("machine wait", status));
         }
         let (status, _) = self
             .call(Method::POST, &format!("{path}/start"), None)
             .await?;
+        if status == StatusCode::PRECONDITION_FAILED {
+            return Err(HostError::Transient(format!(
+                "fly machine start answered {status}"
+            )));
+        }
         if !status.is_success() {
             return Err(Self::refuse("machine start", status));
         }
@@ -343,6 +380,7 @@ mod tests {
     struct Seen {
         method: String,
         path: String,
+        query: String,
         body: Value,
         authorization: Option<String>,
     }
@@ -369,6 +407,7 @@ mod tests {
         mock.seen.lock().unwrap().push(Seen {
             method: method.to_string(),
             path: uri.path().to_owned(),
+            query: uri.query().unwrap_or_default().to_owned(),
             body: serde_json::from_slice(&body).unwrap_or(Value::Null),
             authorization: headers
                 .get("authorization")
@@ -389,6 +428,10 @@ mod tests {
         match key {
             "POST /v1/apps/colony-agents/volumes" => (200, json!({"id": "vol_1"})),
             "POST /v1/apps/colony-agents/machines" => (200, json!({"id": "mach_1"})),
+            "POST /v1/apps/colony-agents/machines/mach_1" => (
+                200,
+                json!({"id": "mach_1", "instance_id": "01VERSION2", "state": "created"}),
+            ),
             "GET /v1/apps/colony-agents/machines/mach_1" => (
                 200,
                 json!({"id": "mach_1", "state": "stopped", "config": {
@@ -563,6 +606,92 @@ mod tests {
             Some("POST /v1/apps/colony-agents/machines/mach_1/start"),
             "the machine starts only after its env is written"
         );
+    }
+
+    fn boot() -> BootEnvelope {
+        BootEnvelope {
+            boot_url: "https://relay.example/api/cloud-agents/boot".into(),
+            boot_token: Zeroizing::new("boot-token-value".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn fly_start_waits_for_the_updated_version_before_starting() {
+        let (host, mock, _server) = host().await;
+        host.start(&machine(), &boot()).await.expect("start");
+        let calls = seen(&mock);
+        let order: Vec<String> = calls
+            .iter()
+            .map(|c| format!("{} {}", c.method, c.path))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                "GET /v1/apps/colony-agents/machines/mach_1",
+                "POST /v1/apps/colony-agents/machines/mach_1",
+                "GET /v1/apps/colony-agents/machines/mach_1/wait",
+                "POST /v1/apps/colony-agents/machines/mach_1/start",
+            ],
+            "the start waits for the config update to settle"
+        );
+        let wait = &calls[2];
+        assert!(
+            wait.query.contains("instance_id=01VERSION2"),
+            "waits for the version the update made: {}",
+            wait.query
+        );
+        assert!(wait.query.contains("state=stopped"), "{}", wait.query);
+        assert!(wait.query.contains("timeout=10"), "{}", wait.query);
+    }
+
+    #[tokio::test]
+    async fn a_412_from_start_is_transient() {
+        let (host, mock, _server) = host().await;
+        script(
+            &mock,
+            "POST /v1/apps/colony-agents/machines/mach_1/start",
+            412,
+            json!({"error": "machine still updating"}),
+        );
+        assert!(matches!(
+            host.start(&machine(), &boot()).await,
+            Err(HostError::Transient(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_wait_timeout_is_transient_and_does_not_start() {
+        let (host, mock, _server) = host().await;
+        script(
+            &mock,
+            "GET /v1/apps/colony-agents/machines/mach_1/wait",
+            408,
+            json!({}),
+        );
+        assert!(matches!(
+            host.start(&machine(), &boot()).await,
+            Err(HostError::Transient(_))
+        ));
+        assert!(
+            !seen(&mock).iter().any(|c| c.path.ends_with("/start")),
+            "no start before the machine settled"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_update_with_no_version_does_not_start() {
+        let (host, mock, _server) = host().await;
+        script(
+            &mock,
+            "POST /v1/apps/colony-agents/machines/mach_1",
+            200,
+            json!({"id": "mach_1"}),
+        );
+        assert!(matches!(
+            host.start(&machine(), &boot()).await,
+            Err(HostError::Permanent(_))
+        ));
+        assert!(!seen(&mock).iter().any(|c| c.path.ends_with("/start")));
     }
 
     #[tokio::test]
