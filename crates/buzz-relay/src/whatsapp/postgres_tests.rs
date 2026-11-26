@@ -548,6 +548,24 @@ async fn seed_prospect_head_labelled(
     industry: &str,
     vertical: &str,
 ) -> String {
+    seed_prospect_head_stored(fx, None, phone, name, status, activity, industry, vertical).await
+}
+
+/// A lead record stored where `channel` says. Production keeps every lead record inside the
+/// company's business channel (`HeadWrite::channel_id`, with the matching `h` tag), so a test
+/// of a lookup that has to find real leads passes `Some(channel)`; `None` stores the record
+/// outside every channel.
+#[allow(clippy::too_many_arguments)]
+async fn seed_prospect_head_stored(
+    fx: &Fixture,
+    channel: Option<Uuid>,
+    phone: &str,
+    name: &str,
+    status: &str,
+    activity: Option<(ProspectActivityKind, &str)>,
+    industry: &str,
+    vertical: &str,
+) -> String {
     let prospect_id = Uuid::new_v4();
     let head = ProspectHead {
         schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
@@ -597,19 +615,21 @@ async fn seed_prospect_head_labelled(
         source_action_event_id: "0".repeat(64),
     };
     let d_tag = prospect_d_tag(*fx.community().as_uuid(), prospect_id);
+    let mut tags = vec![Tag::parse(["d", d_tag.as_str()]).expect("prospect d tag")];
+    if let Some(channel) = channel {
+        tags.push(Tag::parse(["h", channel.to_string().as_str()]).expect("prospect h tag"));
+    }
     let event = EventBuilder::new(
         Kind::Custom(KIND_PROSPECT_HEAD as u16),
         serde_json::to_string(&head).expect("serialize prospect head"),
     )
-    .tags(vec![
-        Tag::parse(["d", d_tag.as_str()]).expect("prospect d tag")
-    ])
+    .tags(tags)
     .sign_with_keys(&fx.state.relay_keypair)
     .expect("sign prospect head");
     let (_, inserted) = fx
         .state
         .db
-        .replace_parameterized_event(fx.community(), &event, &d_tag, None)
+        .replace_parameterized_event(fx.community(), &event, &d_tag, channel)
         .await
         .expect("insert prospect head");
     assert!(inserted, "the fixture prospect head is stored");
@@ -5676,12 +5696,19 @@ async fn waiting_messages_leave_the_queue_by_industry_and_are_never_sent() {
             "Recruitment Agencies",
         ),
     ];
+    // GUARD: the lead lookup in `queue::load` must find a lead record that sits inside a
+    // channel. That is where production stores every lead; a lookup limited to events outside
+    // channels labels nothing, and the whole queue reads as "No lead record". The last lead
+    // is stored outside channels, so both shapes are read.
+    let lead_channel = fx.outreach_channel().await;
     let mut rows = Vec::new();
-    for (wa_id, name, industry, vertical) in leads {
+    for (index, (wa_id, name, industry, vertical)) in leads.into_iter().enumerate() {
         let phone = format!("+{wa_id}");
-        let lead =
-            seed_prospect_head_labelled(&fx, &phone, name, "active", None, industry, vertical)
-                .await;
+        let stored_in = (index < 4).then_some(lead_channel);
+        let lead = seed_prospect_head_stored(
+            &fx, stored_in, &phone, name, "active", None, industry, vertical,
+        )
+        .await;
         rows.push(json!({"to": phone, "leadId": lead, "params": ["Thabo"]}));
     }
     let batch_id = Uuid::new_v4();
@@ -5714,6 +5741,24 @@ async fn waiting_messages_leave_the_queue_by_industry_and_are_never_sent() {
     assert_eq!(view["queued"], 5);
     assert_eq!(view["groups"][0]["industry"], "Furniture");
     assert_eq!(view["groups"][0]["queued"], 2);
+    let named: Vec<&str> = view["groups"]
+        .as_array()
+        .expect("groups")
+        .iter()
+        .filter_map(|group| group["vertical"].as_str())
+        .collect();
+    for vertical in [
+        "Furniture & Upholstery Repair Businesses",
+        "Locksmith Businesses",
+        "Laundry services",
+        "Recruitment Agencies",
+    ] {
+        assert!(named.contains(&vertical), "{vertical} missing in {named:?}");
+    }
+    assert!(
+        waiting.iter().all(|row| row.labels.is_some()),
+        "every waiting message carries the industry of its lead: {view}"
+    );
 
     // GUARD: `can_send` in `handle_queue_removal`. A member outside Outreach cannot touch the
     // queue, not even to shrink it.
