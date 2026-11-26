@@ -19,23 +19,28 @@ export function AgentHomeSettingsSection({
   model,
   onChoose,
   onChooseModel,
+  showTitle = true,
 }: {
   model: AgentHomeModel;
   onChoose: (home: Home) => void;
   onChooseModel: (modelId: string) => void;
+  /** False when the host card already carries the title as its heading. */
+  showTitle?: boolean;
 }) {
   const { placement } = model;
   const cloudBlocked = model.notCloudReady && placement.home !== "cloud";
   const statusLine = cloudStatusLine(placement.status);
   return (
     <div className="space-y-2" data-testid="agent-home-settings">
-      <p
-        aria-hidden="true"
-        className="text-sm font-medium text-foreground"
-        data-testid="agent-home-settings-title"
-      >
-        {settingsTitle(model.name)}
-      </p>
+      {showTitle ? (
+        <p
+          aria-hidden="true"
+          className="text-sm font-medium text-foreground"
+          data-testid="agent-home-settings-title"
+        >
+          {settingsTitle(model.name)}
+        </p>
+      ) : null}
       <SegmentedControl<Home>
         disabled={model.pending}
         legend={settingsTitle(model.name)}
