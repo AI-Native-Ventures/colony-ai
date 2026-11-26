@@ -31,7 +31,11 @@ const WIDTHS = [
 async function open(
   page: Page,
   placement: Partial<MockAgentPlacement>,
-  options: { local?: boolean; clock?: boolean } = {},
+  options: {
+    local?: boolean;
+    clock?: boolean;
+    agentStatus?: "running" | "stopped";
+  } = {},
 ) {
   if (options.clock) await page.clock.install();
   const relaySecret = generateSecretKey();
@@ -80,7 +84,7 @@ async function open(
                 pubkey: SCOUT,
                 name: "Scout",
                 runtime: "claude",
-                status: "running",
+                status: options.agentStatus ?? "running",
                 channelIds: [REFERENCE_CHANNEL_IDS.scoutDm],
               },
             ],
@@ -124,6 +128,30 @@ for (const size of WIDTHS) {
       await expect(section).toBeVisible();
       await section.scrollIntoViewIfNeeded();
       await shot(page, `${size.name}-settings-section`);
+    });
+
+    test("profile page, agent on this Mac", async ({ page }) => {
+      await open(page, {}, { agentStatus: "stopped" });
+      await page.goto(`/#/agents?agent=${SCOUT}`);
+      await expect(page.getByTestId("agent-profile-home")).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Start agent" }),
+      ).toBeVisible();
+      await shot(page, `${size.name}-profile-mac`);
+    });
+
+    test("profile page, agent in the cloud", async ({ page }) => {
+      await open(
+        page,
+        { home: "cloud", status: "asleep" },
+        { agentStatus: "stopped" },
+      );
+      await page.goto(`/#/agents?agent=${SCOUT}`);
+      await expect(page.getByTestId("agent-cloud-status")).toHaveText("Asleep");
+      await expect(
+        page.getByRole("button", { name: "Start agent" }),
+      ).toHaveCount(0);
+      await shot(page, `${size.name}-profile-cloud`);
     });
 
     test("out of AI credit card", async ({ page }) => {

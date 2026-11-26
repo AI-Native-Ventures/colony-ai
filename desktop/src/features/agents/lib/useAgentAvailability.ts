@@ -17,6 +17,10 @@ export function resolveAgentAvailability(
   return presenceLoaded && connected ? (status ?? "offline") : undefined;
 }
 
+/** The refusal shown when presence says the agent is already on the relay. */
+export const AGENT_PRESENT_ON_RELAY_MESSAGE =
+  "This agent is present on the relay. Starting another instance is unavailable.";
+
 /** Positive presence blocks another start, but never grants lifecycle control.
  * Missing/offline presence is not proof that starting another body is safe.
  */
@@ -26,7 +30,7 @@ export function agentPresenceStartBlockReason(
 ): string | undefined {
   return !isLifecycleActive &&
     (availability === "online" || availability === "away")
-    ? "This agent is present on the relay. Starting another instance is unavailable."
+    ? AGENT_PRESENT_ON_RELAY_MESSAGE
     : undefined;
 }
 

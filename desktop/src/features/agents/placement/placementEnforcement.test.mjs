@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { planPlacementActions } from "./placementEnforcement.ts";
+import {
+  macMayStartAgent,
+  planPlacementActions,
+} from "./placementEnforcement.ts";
 
 const SCOUT = "a".repeat(64);
 const agent = (status, backend = "local") => ({
@@ -97,5 +100,12 @@ describe("placement enforcement", () => {
       ),
       [],
     );
+  });
+});
+
+describe("hand starts on the Mac", () => {
+  it("are allowed for a Mac-homed agent and refused for a cloud-homed one", () => {
+    assert.equal(macMayStartAgent("mac"), true);
+    assert.equal(macMayStartAgent("cloud"), false);
   });
 });
