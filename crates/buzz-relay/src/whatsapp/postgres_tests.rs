@@ -27,8 +27,12 @@ use buzz_core::business_records::{
     ProspectQualification, ProspectRecordInput, ProspectStage, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::channel::MemberRole;
+use buzz_core::company_cofounder::CofounderSettings;
+use buzz_core::company_customers::{
+    compute_customer_record, customer_d_tag, CustomerSource, ManualState, Milestone, MilestoneKind,
+};
 use buzz_core::kind::{
-    KIND_PROSPECT_HEAD, KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION,
+    KIND_CUSTOMER_HEAD, KIND_PROSPECT_HEAD, KIND_WHATSAPP_BATCH, KIND_WHATSAPP_BATCH_DECISION,
     KIND_WHATSAPP_CONTACT_UPDATE, KIND_WHATSAPP_SAFETY_ACTION, KIND_WHATSAPP_SEND_REQUEST,
     KIND_WHATSAPP_SETTINGS, KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 };
@@ -538,7 +542,8 @@ async fn seed_prospect_head_with_activity(
     .await
 }
 
-/// Seed a prospect head in a named industry and vertical.
+/// Seed a prospect head in a named industry and vertical, stored inside a channel the way
+/// production stores every lead record.
 async fn seed_prospect_head_labelled(
     fx: &Fixture,
     phone: &str,
@@ -548,7 +553,18 @@ async fn seed_prospect_head_labelled(
     industry: &str,
     vertical: &str,
 ) -> String {
-    seed_prospect_head_stored(fx, None, phone, name, status, activity, industry, vertical).await
+    let channel = fx.outreach_channel().await;
+    seed_prospect_head_stored(
+        fx,
+        Some(channel),
+        phone,
+        name,
+        status,
+        activity,
+        industry,
+        vertical,
+    )
+    .await
 }
 
 /// A lead record stored where `channel` says. Production keeps every lead record inside the
@@ -565,6 +581,33 @@ async fn seed_prospect_head_stored(
     activity: Option<(ProspectActivityKind, &str)>,
     industry: &str,
     vertical: &str,
+) -> String {
+    seed_prospect_head_staged(
+        fx,
+        channel,
+        phone,
+        name,
+        status,
+        activity,
+        industry,
+        vertical,
+        ProspectStage::Qualified,
+    )
+    .await
+}
+
+/// [`seed_prospect_head_stored`] with the pipeline stage of the lead.
+#[allow(clippy::too_many_arguments)]
+async fn seed_prospect_head_staged(
+    fx: &Fixture,
+    channel: Option<Uuid>,
+    phone: &str,
+    name: &str,
+    status: &str,
+    activity: Option<(ProspectActivityKind, &str)>,
+    industry: &str,
+    vertical: &str,
+    stage: ProspectStage,
 ) -> String {
     let prospect_id = Uuid::new_v4();
     let head = ProspectHead {
@@ -596,7 +639,7 @@ async fn seed_prospect_head_stored(
             last_verified_at: None,
             qualification: ProspectQualification::Unreviewed,
             saved: false,
-            stage: ProspectStage::Qualified,
+            stage,
             lost_reason: None,
         },
         activities: activity
@@ -5423,6 +5466,201 @@ async fn a_failed_send_with_the_meta_undeliverable_code_is_not_on_whatsapp_until
         .await,
     );
     assert!(refusal.contains("cannot be changed"), "{refusal}");
+}
+
+/// A contact linked to the lead at `stage`, with the lead record stored the way production
+/// stores it: inside a channel of the company. Returns the lead id.
+async fn seed_contact_with_lead(
+    fx: &Fixture,
+    wa_id: &str,
+    business: &str,
+    stage: ProspectStage,
+) -> String {
+    let channel = fx.outreach_channel().await;
+    let lead_id = seed_prospect_head_staged(
+        fx,
+        Some(channel),
+        &format!("+{wa_id}"),
+        business,
+        "active",
+        None,
+        "Hospitality",
+        "Guesthouse",
+        stage,
+    )
+    .await;
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), wa_id, Some("Meta profile"))
+        .await
+        .expect("contact");
+    sqlx::query(
+        "UPDATE whatsapp_contacts SET lead_id = $3 \
+         WHERE community_id = $1 AND wa_id = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(wa_id)
+    .bind(&lead_id)
+    .execute(&fx.pool)
+    .await
+    .expect("link the contact to its lead");
+    lead_id
+}
+
+/// The customer record of `lead_id` with one booked call, stored the way production stores
+/// it: relay signed, outside every channel.
+async fn seed_customer_record_with_a_booked_call(fx: &Fixture, lead_id: &str) {
+    let at = base().timestamp();
+    let relay = fx.state.relay_keypair.public_key().to_hex();
+    let source = CustomerSource {
+        party_id: lead_id.to_owned(),
+        prospect: None,
+        clients: Vec::new(),
+        proposals: Vec::new(),
+        acceptances: Vec::new(),
+        payments: Vec::new(),
+        invoices: Vec::new(),
+        jobs: Vec::new(),
+        whatsapp: None,
+    };
+    let manual = ManualState {
+        milestones: vec![Milestone {
+            milestone_id: "1".repeat(64),
+            kind: MilestoneKind::CallBooked,
+            title: None,
+            at,
+            note: None,
+            file_ref: None,
+            by_pubkey: relay.clone(),
+            recorded_at: at,
+        }],
+        ..ManualState::default()
+    };
+    let head = compute_customer_record(&source, &manual, at, &relay, None);
+    let d_tag = customer_d_tag(lead_id).expect("customer d tag");
+    let event = EventBuilder::new(
+        Kind::Custom(KIND_CUSTOMER_HEAD as u16),
+        serde_json::to_string(&head).expect("serialize customer head"),
+    )
+    .tags(vec![
+        Tag::parse(["d", d_tag.as_str()]).expect("customer d tag")
+    ])
+    .sign_with_keys(&fx.state.relay_keypair)
+    .expect("sign customer head");
+    let (_, inserted) = fx
+        .state
+        .db
+        .replace_parameterized_event(fx.community(), &event, &d_tag, None)
+        .await
+        .expect("insert customer head");
+    assert!(inserted, "the fixture customer head is stored");
+}
+
+/// Turn co-founder mode on through the production settings command.
+async fn enable_cofounder(fx: &Fixture) {
+    let event = buzz_sdk::company_records::build_cofounder_action(
+        &CofounderSettings {
+            enabled: true,
+            ..CofounderSettings::default()
+        },
+        None,
+    )
+    .expect("build co-founder action")
+    .sign_with_keys(&fx.owner)
+    .expect("sign co-founder action");
+    let auth = IngestAuth::Http {
+        pubkey: fx.owner.public_key(),
+        scopes: vec![buzz_auth::Scope::MessagesWrite],
+        auth_method: HttpAuthMethod::DevPubkey,
+    };
+    crate::handlers::company_cofounder::handle(&fx.tenant, &fx.state, event, auth)
+        .await
+        .expect("enable co-founder mode");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_contact_linked_to_a_lead_shows_its_business_and_stage_on_the_desk() {
+    // GUARD: production stores every lead record inside a channel of the company and every
+    // customer record outside channels. The desk looked for both outside channels, so it found
+    // no lead at all: no business name, no website, and a lost lead or a booked call never
+    // moved the stage. The thread view, the list and the counts all read through `desk::load`.
+    let fx = fixture().await;
+    enable_cofounder(&fx).await;
+    let open = "27821230001";
+    let lost = "27821230002";
+    let booked = "27821230003";
+    seed_contact_with_lead(&fx, open, "Plane Tree Hotel", ProspectStage::Qualified).await;
+    seed_contact_with_lead(&fx, lost, "Closed Gate Lodge", ProspectStage::Lost).await;
+    let booked_lead = seed_contact_with_lead(
+        &fx,
+        booked,
+        "Jacaranda Guesthouse",
+        ProspectStage::Qualified,
+    )
+    .await;
+    seed_customer_record_with_a_booked_call(&fx, &booked_lead).await;
+    // A contact without a lead keeps working and carries no business fields.
+    let unlinked = "27821230004";
+    fx.state
+        .db
+        .whatsapp_ensure_contact(fx.community(), unlinked, Some("Thabo"))
+        .await
+        .expect("contact");
+
+    // The thread view.
+    let contact = contact_json_current_desktop(&fx, open).await;
+    assert_eq!(contact["businessName"], "Plane Tree Hotel", "{contact}");
+    assert_eq!(contact["website"], "https://example.test");
+    assert_eq!(contact["stage"], "none");
+    let contact = contact_json_current_desktop(&fx, lost).await;
+    assert_eq!(contact["businessName"], "Closed Gate Lodge");
+    assert_eq!(contact["stage"], "no_thanks", "a lost lead: {contact}");
+    let contact = contact_json_current_desktop(&fx, booked).await;
+    assert_eq!(contact["businessName"], "Jacaranda Guesthouse");
+    assert_eq!(contact["stage"], "call_booked", "a booked call: {contact}");
+    let contact = contact_json_current_desktop(&fx, unlinked).await;
+    assert!(contact.get("businessName").is_none(), "{contact}");
+    assert_eq!(contact["stage"], "none");
+
+    // The list and the counts, in one answer.
+    let page = crate::api::whatsapp::contacts_page_view(
+        &fx.state,
+        fx.community(),
+        200,
+        None,
+        true,
+        Utc::now(),
+        true,
+    )
+    .await
+    .expect("contacts page");
+    let listed: HashMap<String, (Value, Value)> = page["contacts"]
+        .as_array()
+        .expect("contacts")
+        .iter()
+        .map(|row| {
+            (
+                row["waId"].as_str().expect("waId").to_owned(),
+                (row["businessName"].clone(), row["stage"].clone()),
+            )
+        })
+        .collect();
+    assert_eq!(listed.len(), 4);
+    assert_eq!(listed[open], (json!("Plane Tree Hotel"), json!("none")));
+    assert_eq!(
+        listed[lost],
+        (json!("Closed Gate Lodge"), json!("no_thanks"))
+    );
+    assert_eq!(
+        listed[booked],
+        (json!("Jacaranda Guesthouse"), json!("call_booked"))
+    );
+    assert_eq!(listed[unlinked], (Value::Null, json!("none")));
+    assert_eq!(page["totalContacts"], 4);
+    assert_eq!(page["stageCounts"]["none"], 2);
+    assert_eq!(page["stageCounts"]["no_thanks"], 1);
+    assert_eq!(page["stageCounts"]["call_booked"], 1);
 }
 
 #[tokio::test]
