@@ -1,6 +1,7 @@
 //! Connect and disconnect a company's number, sync templates, track quality, and build the
 //! status object the desktop shows.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -8,6 +9,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use buzz_core::tenant::CommunityId;
 use buzz_core::TenantContext;
 pub use buzz_db::whatsapp::QUALITY_PAUSE_REASON;
 use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTemplate};
@@ -16,7 +18,7 @@ use super::channel;
 use super::graph::{GraphError, PhoneInfo};
 use super::policy::{
     account_failure_for_code, account_retry_error_codes, default_template_title, hash_verify_token,
-    sast_day_start, template_slot_count,
+    render_template, sast_day_start, stored_template_params, template_slot_count,
 };
 use super::secrets::{self, SecretField};
 use crate::state::AppState;
@@ -415,11 +417,70 @@ pub async fn sync_templates(
         .whatsapp_replace_templates(community, &templates, Utc::now())
         .await
         .map_err(|error| error.to_string())?;
+    refresh_unsent_template_text(state, community, &templates).await?;
     let _ = state
         .db
         .whatsapp_clear_issue(community, "template_sync")
         .await;
     Ok(count)
+}
+
+/// Unsent template messages read per page while their text is refreshed.
+const UNSENT_TEXT_PAGE: i64 = 500;
+/// Pages read in one sync. Past it the sync fails instead of leaving later messages stale.
+const UNSENT_TEXT_MAX_PAGES: usize = 200;
+
+/// Give every template message that has not reached Meta yet the wording its template has now.
+///
+/// A message stores the text it was prepared with, while Meta fills in whatever the template
+/// says when it is sent. After a template is edited at Meta the two differ, and the queue and
+/// the later chat record would show words the person never received. Every sync compares each
+/// unsent message with its template, so a sync that failed part way is repaired by the next.
+async fn refresh_unsent_template_text(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    templates: &[WhatsappTemplate],
+) -> Result<u64, String> {
+    let bodies: HashMap<(&str, &str), &str> = templates
+        .iter()
+        .map(|template| {
+            (
+                (template.name.as_str(), template.language.as_str()),
+                template.body.as_str(),
+            )
+        })
+        .collect();
+    let mut changed = 0;
+    let mut after = None;
+    for _ in 0..UNSENT_TEXT_MAX_PAGES {
+        let page = state
+            .db
+            .whatsapp_unsent_template_messages(community, after, UNSENT_TEXT_PAGE)
+            .await
+            .map_err(|error| error.to_string())?;
+        let fresh: Vec<(Uuid, String)> = page
+            .iter()
+            .filter_map(|message| {
+                let body = bodies.get(&(
+                    message.template_name.as_str(),
+                    message.template_language.as_str(),
+                ))?;
+                // A message whose parameters no longer fit the template keeps its text.
+                let text = render_template(body, &stored_template_params(&message.params)).ok()?;
+                (text != message.body).then_some((message.id, text))
+            })
+            .collect();
+        changed += state
+            .db
+            .whatsapp_set_unsent_template_text(community, &fresh)
+            .await
+            .map_err(|error| error.to_string())?;
+        if i64::try_from(page.len()).unwrap_or(i64::MAX) < UNSENT_TEXT_PAGE {
+            return Ok(changed);
+        }
+        after = page.last().map(|message| message.id);
+    }
+    Err("too many unsent template messages to refresh in one sync".to_string())
 }
 
 /// Ask Meta about the number and apply quality and connection state.

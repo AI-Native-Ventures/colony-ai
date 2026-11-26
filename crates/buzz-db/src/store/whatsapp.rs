@@ -229,6 +229,21 @@ pub struct NewWhatsappConnection {
     pub created_by: Vec<u8>,
 }
 
+/// One template message that has not reached Meta yet.
+#[derive(Clone, Debug)]
+pub struct WhatsappUnsentTemplateMessage {
+    /// Message id.
+    pub id: Uuid,
+    /// Template name.
+    pub template_name: String,
+    /// Template language.
+    pub template_language: String,
+    /// Template parameters.
+    pub params: Value,
+    /// Text as stored when the message was prepared.
+    pub body: String,
+}
+
 /// An approved template.
 #[derive(Clone, Debug)]
 pub struct WhatsappTemplate {
@@ -1285,6 +1300,70 @@ impl Db {
         .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// A page of template messages that have not reached Meta yet, in id order.
+    ///
+    /// Not reached Meta yet means held for approval, approved and waiting, a draft, or queued.
+    pub async fn whatsapp_unsent_template_messages(
+        &self,
+        community: CommunityId,
+        after: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<WhatsappUnsentTemplateMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, template_name, template_language, params, body \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND kind = 'template' \
+               AND state IN ('held', 'ready', 'draft', 'queued') \
+               AND template_name IS NOT NULL AND template_language IS NOT NULL \
+               AND ($2::uuid IS NULL OR id > $2) \
+             ORDER BY id LIMIT $3",
+        )
+        .bind(community.as_uuid())
+        .bind(after)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(WhatsappUnsentTemplateMessage {
+                    id: row.try_get("id")?,
+                    template_name: row.try_get("template_name")?,
+                    template_language: row.try_get("template_language")?,
+                    params: row.try_get("params")?,
+                    body: row.try_get("body")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Store the current wording for template messages that have not reached Meta yet.
+    ///
+    /// A message that was claimed or sent meanwhile keeps its text. `updated_at` is left alone:
+    /// it is when the message was queued. Returns how many messages changed.
+    pub async fn whatsapp_set_unsent_template_text(
+        &self,
+        community: CommunityId,
+        texts: &[(Uuid, String)],
+    ) -> Result<u64> {
+        if texts.is_empty() {
+            return Ok(0);
+        }
+        let ids: Vec<Uuid> = texts.iter().map(|(id, _)| *id).collect();
+        let bodies: Vec<String> = texts.iter().map(|(_, body)| body.clone()).collect();
+        let result = sqlx::query(
+            "UPDATE whatsapp_messages AS m SET body = fresh.body \
+             FROM unnest($2::uuid[], $3::text[]) AS fresh(id, body) \
+             WHERE m.community_id = $1 AND m.id = fresh.id AND m.direction = 'out' \
+               AND m.kind = 'template' AND m.state IN ('held', 'ready', 'draft', 'queued')",
+        )
+        .bind(community.as_uuid())
+        .bind(&ids)
+        .bind(&bodies)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     /// Synced templates, newest names last.
