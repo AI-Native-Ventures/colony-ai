@@ -628,6 +628,19 @@ fn clip_title(title: &str) -> String {
     title.chars().take(MAX_TITLE_CHARS).collect()
 }
 
+/// The parameters stored with a template message, as the strings Meta receives.
+pub fn stored_template_params(params: &Value) -> Vec<String> {
+    params
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| item.as_str().unwrap_or("").to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Highest `{{n}}` slot in a template body.
 pub fn template_slot_count(body: &str) -> usize {
     slots(body).into_iter().max().unwrap_or(0)
