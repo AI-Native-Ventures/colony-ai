@@ -3157,6 +3157,135 @@ async fn payment_recovery_requeues_only_eligible_failed_rows_once() {
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres and Redis"]
+async fn the_send_notice_names_the_stop_that_holds_the_queue_now() {
+    // GUARD: `send_health_view` in `connect::status_view` shows a stored account refusal only
+    // until the owner asks to resume, and names a RED quality stop as itself. The record of the
+    // refusal clears only on an accepted send, and a RED stop lets no send through: without the
+    // guard the owner keeps reading "account is locked" long after Meta restored the account.
+    let fx = fixture().await;
+    approved_batch(&fx, &["+27820001201", "+27820001202"]).await;
+    fx.graph.script_sends(vec![Err(GraphError::Rejected {
+        http_status: 400,
+        code: Some(131_031),
+        message: "Business Account locked".into(),
+    })]);
+    fx.run_sender(base()).await;
+    let red = PhoneInfo {
+        display_phone_number: Some("+27 82 000 0000".into()),
+        verified_name: Some("Horizon Labs".into()),
+        quality_rating: Some("RED".into()),
+        status: Some("CONNECTED".into()),
+    };
+    connect::apply_phone_info(&fx.state, &fx.tenant, &red).await;
+
+    let locked = connect::status_view(&fx.state, &fx.tenant)
+        .await
+        .expect("status while Meta refuses the account");
+    assert_eq!(
+        locked["sendHealth"]["code"],
+        json!("131031"),
+        "an account refusal the owner has not answered is the reason shown"
+    );
+    assert_eq!(locked["sendHealth"]["waitingCount"], json!(2));
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        json!({"v": 1, "resumeAndRetry": true}),
+    )
+    .await
+    .expect("the owner resumes after Meta restored the account");
+    let held = connect::status_view(&fx.state, &fx.tenant)
+        .await
+        .expect("status while only the RED rating holds the queue");
+    assert_eq!(held["sendingPaused"], json!(true));
+    let notice = &held["sendHealth"];
+    assert_eq!(
+        notice["code"],
+        json!("quality_red"),
+        "the notice names the stop that holds the queue now: {notice}"
+    );
+    let banner = notice["banner"].as_str().expect("banner text");
+    assert!(
+        banner.contains("RED")
+            && banner.contains("2 messages are waiting")
+            && banner.contains("Sending starts again by itself"),
+        "{banner}"
+    );
+    assert!(
+        !notice.to_string().contains("locked") && !notice.to_string().contains("Resume and retry"),
+        "the answered account refusal is no longer presented as the cause: {notice}"
+    );
+    assert_eq!(
+        notice["waitingCount"],
+        json!(0),
+        "a stop that lifts by itself offers no resume action"
+    );
+    assert_eq!(
+        fx.state
+            .db
+            .whatsapp_ensure_settings(fx.community())
+            .await
+            .expect("settings while the RED rating holds the queue")
+            .account_health_code
+            .as_deref(),
+        Some("131031"),
+        "the refusal record itself still waits for an accepted send"
+    );
+
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        json!({"v": 1, "sendingPaused": true}),
+    )
+    .await
+    .expect("the owner pauses as well");
+    let both = connect::status_view(&fx.state, &fx.tenant)
+        .await
+        .expect("status with an owner pause on top of the RED rating");
+    let banner = both["sendHealth"]["banner"].as_str().expect("banner text");
+    assert!(
+        banner.contains("you resume sending") && !banner.contains("by itself"),
+        "an owner pause is never promised to lift by itself: {banner}"
+    );
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_SETTINGS,
+        json!({"v": 1, "sendingPaused": false}),
+    )
+    .await
+    .expect("the owner resumes");
+
+    let green = PhoneInfo {
+        quality_rating: Some("GREEN".into()),
+        ..red
+    };
+    connect::apply_phone_info(&fx.state, &fx.tenant, &green).await;
+    let recovered = connect::status_view(&fx.state, &fx.tenant)
+        .await
+        .expect("status after the rating recovered");
+    assert_eq!(recovered["sendingPaused"], json!(false));
+    assert!(
+        recovered["sendHealth"].is_null(),
+        "nothing holds the queue, so there is no notice: {}",
+        recovered["sendHealth"]
+    );
+
+    fx.run_sender(base() + Duration::minutes(10)).await;
+    assert!(
+        fx.state
+            .db
+            .whatsapp_ensure_settings(fx.community())
+            .await
+            .expect("settings after Meta accepted a send")
+            .account_health_code
+            .is_none(),
+        "the refusal record still clears on the first accepted send"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
 async fn engagement_limit_is_contact_only_and_retries_after_the_selected_delay() {
     // GUARD: this uses the production Graph stub, failure classifier, sender loop and signed
     // retryLater command. If 131049 becomes an account failure, the second recipient cannot
