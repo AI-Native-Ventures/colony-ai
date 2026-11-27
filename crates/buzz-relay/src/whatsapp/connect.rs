@@ -12,7 +12,9 @@ use zeroize::Zeroizing;
 use buzz_core::tenant::CommunityId;
 use buzz_core::TenantContext;
 pub use buzz_db::whatsapp::QUALITY_PAUSE_REASON;
-use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTemplate};
+use buzz_db::whatsapp::{
+    NewWhatsappConnection, WhatsappConnection, WhatsappSettings, WhatsappTemplate,
+};
 
 use super::channel;
 use super::graph::{GraphError, PhoneInfo};
@@ -712,6 +714,67 @@ pub fn template_json(template: &WhatsappTemplate) -> Value {
     })
 }
 
+/// Where Meta shows a number's quality rating.
+const QUALITY_FIX_URL: &str = "https://business.facebook.com/latest/whatsapp_manager/phone_numbers";
+
+/// What the notice at the top of Outreach says about sending right now.
+///
+/// A stored account refusal is the reason only until the owner asks to resume. After that the
+/// automatic stop is off and the record merely waits for Meta to accept a send. That cannot
+/// happen while another stop holds the queue, so the record must not be shown as the cause. A
+/// RED quality stop is named as itself: it lifts without any owner action.
+fn send_health_view(settings: &WhatsappSettings, waiting: i64) -> Option<Value> {
+    let refusal_is_current =
+        settings.system_paused || settings.account_health_resume_requested_at.is_none();
+    let refusal = settings
+        .account_health_code
+        .as_deref()
+        .filter(|_| refusal_is_current)
+        .and_then(|code| account_failure_for_code(Some(code)).map(|failure| (code, failure)));
+    if let Some((code, failure)) = refusal {
+        return Some(json!({
+            "code": code,
+            "message": failure.summary(),
+            "banner": failure.health_banner(waiting),
+            "fixSteps": failure.fix_steps(),
+            "fixUrl": failure.fix_url(),
+            "at": settings.account_health_at.map(|at| at.to_rfc3339()),
+            "paused": settings.send_paused,
+            "resumeRequestedAt": settings.account_health_resume_requested_at.map(|at| at.to_rfc3339()),
+            "waitingCount": waiting,
+        }));
+    }
+    settings
+        .quality_paused
+        .then(|| quality_stop_view(settings, waiting))
+}
+
+/// The notice for a stop caused only by Meta's RED quality rating.
+fn quality_stop_view(settings: &WhatsappSettings, waiting: i64) -> Value {
+    let next = if settings.owner_paused {
+        "They stay queued until the rating improves and you resume sending."
+    } else {
+        "Sending starts again by itself when the rating improves."
+    };
+    json!({
+        "code": "quality_red",
+        "message": "Meta's rating follows how people reacted to your messages over the last 7 days. Blocks and reports lower it.",
+        "banner": format!(
+            "WhatsApp is not sending. Meta rates this number's quality as low (RED). Nothing was lost: {waiting} messages are waiting. {next}"
+        ),
+        "fixSteps": [
+            "Open WhatsApp Manager, then Phone numbers, to see the rating.",
+            "The rating is checked regularly, and this stop lifts by itself when it leaves RED.",
+        ],
+        "fixUrl": QUALITY_FIX_URL,
+        "at": Value::Null,
+        "paused": settings.send_paused,
+        "resumeRequestedAt": Value::Null,
+        // No account refusal waits for a resume, so the desktop offers no resume action.
+        "waitingCount": 0,
+    })
+}
+
 /// The status object of the contract.
 pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Result<Value, String> {
     let community = tenant.community();
@@ -751,23 +814,7 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         .whatsapp_count_failed_messages_by_code(community, "131049")
         .await
         .map_err(|error| error.to_string())?;
-    let send_health = settings
-        .account_health_code
-        .as_deref()
-        .and_then(|code| account_failure_for_code(Some(code)).map(|failure| (code, failure)))
-        .map(|(code, failure)| {
-            json!({
-                "code": code,
-                "message": failure.summary(),
-                "banner": failure.health_banner(account_waiting_count),
-                "fixSteps": failure.fix_steps(),
-                "fixUrl": failure.fix_url(),
-                "at": settings.account_health_at.map(|at| at.to_rfc3339()),
-                "paused": settings.send_paused,
-                "resumeRequestedAt": settings.account_health_resume_requested_at.map(|at| at.to_rfc3339()),
-                "waitingCount": account_waiting_count,
-            })
-        });
+    let send_health = send_health_view(&settings, account_waiting_count);
     Ok(json!({
         "connected": connection.is_some(),
         "connectionId": connection.as_ref().map(|c| c.id.to_string()),
