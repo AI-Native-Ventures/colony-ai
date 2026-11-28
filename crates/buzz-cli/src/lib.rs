@@ -1931,14 +1931,28 @@ pub enum WhatsappCmd {
         /// New cap, 0 through 1000; leave out to show the current cap
         value: Option<i32>,
     },
-    /// Move a contact to a pipeline stage: contacted, replied, wants_call, call_booked,
-    /// quote_sent, client or no_thanks. A business that stopped or is not on WhatsApp stays so
+    /// Move a contact to a pipeline stage: contacted, replied, wants_call, ready_to_call,
+    /// call_booked, quote_sent, client or no_thanks. A business that stopped or is not on
+    /// WhatsApp stays so. `ready_to_call` means the preparation is done and a person can phone
+    /// them: add what they need with --link, --note and --assign
     Stage {
         /// Phone number, for example +27821234567
         wa_id: String,
         /// The stage
         stage: String,
+        /// Where the prepared work is, for example https://preview.example/acme
+        #[arg(long)]
+        link: Option<String>,
+        /// What the person who calls needs to know
+        #[arg(long)]
+        note: Option<String>,
+        /// Hex pubkey of the person who will make the call, from `whatsapp closers`
+        #[arg(long)]
+        assign: Option<String>,
     },
+    /// List the people a lead can be given to for its call: the owner, admins and Outreach
+    /// members. Never an agent
+    Closers,
     /// Give a contact a name (shown instead of its WhatsApp profile name), or clear it
     Rename {
         /// Phone number, for example +27821234567
@@ -5533,7 +5547,7 @@ mod tests {
             ("upload", 1),
             ("users", 5),
             // Safety and unknown-send recovery are intentional owner-facing WhatsApp groups.
-            ("whatsapp", 16),
+            ("whatsapp", 17),
             ("work", 16),
             ("workflows", 8),
         ];

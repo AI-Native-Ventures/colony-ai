@@ -139,23 +139,51 @@ pub async fn dispatch(cmd: crate::WhatsappCmd, client: &BuzzClient) -> Result<()
         WhatsappCmd::Safety(sub) => dispatch_safety(sub, client).await,
         WhatsappCmd::UnknownSend(sub) => dispatch_unknown_send(sub, client).await,
         WhatsappCmd::Contacts { limit } => {
-            query(client, json!({ "what": "contacts", "limit": limit })).await
+            query(
+                client,
+                json!({ "what": "contacts", "limit": limit, "capabilities": STAGE_CAPABILITIES }),
+            )
+            .await
         }
         WhatsappCmd::Inbox { limit } => {
-            query(client, json!({ "what": "inbox", "limit": limit })).await
+            query(
+                client,
+                json!({ "what": "inbox", "limit": limit, "capabilities": STAGE_CAPABILITIES }),
+            )
+            .await
         }
         WhatsappCmd::Thread { contact, limit } => {
             query(
                 client,
-                json!({ "what": "thread", "waId": contact, "limit": limit }),
+                json!({
+                    "what": "thread",
+                    "waId": contact,
+                    "limit": limit,
+                    "capabilities": STAGE_CAPABILITIES,
+                }),
             )
             .await
         }
-        WhatsappCmd::Stage { wa_id, stage } => {
+        WhatsappCmd::Closers => query(client, json!({ "what": "call_closers" })).await,
+        WhatsappCmd::Stage {
+            wa_id,
+            stage,
+            link,
+            note,
+            assign,
+        } => {
             publish(
                 client,
                 KIND_WHATSAPP_CONTACT_UPDATE,
-                contact_stage_content(&wa_id, &stage)?,
+                contact_stage_content(
+                    &wa_id,
+                    &stage,
+                    CallBriefArgs {
+                        link: link.as_deref(),
+                        note: note.as_deref(),
+                        assign: assign.as_deref(),
+                    },
+                )?,
             )
             .await
         }
@@ -511,18 +539,56 @@ pub(crate) fn unknown_send_recovery_content(
     }))
 }
 
-/// `47052` content that sets a contact's stage.
-fn contact_stage_content(wa_id: &str, stage: &str) -> Result<Value, CliError> {
+/// The stage names this CLI reads beyond the first desk release. The relay answers an older
+/// name to a caller that does not ask: without this marker a lead in `ready_to_call` reads back
+/// as `wants_call`, right after an agent moved it.
+const STAGE_CAPABILITIES: [&str; 1] = ["whatsapp-outreach-stage-ready-to-call"];
+
+/// What goes with a lead that is handed over for its call. Every part is optional.
+#[derive(Clone, Copy, Debug, Default)]
+struct CallBriefArgs<'a> {
+    /// Where the prepared work is.
+    link: Option<&'a str>,
+    /// What the person who calls needs to know.
+    note: Option<&'a str>,
+    /// Hex pubkey of the person who will make the call.
+    assign: Option<&'a str>,
+}
+
+/// `47052` content that sets a contact's stage, with the call brief when any part is given.
+/// The stage and the brief travel in one command, so the relay stores both or neither.
+fn contact_stage_content(
+    wa_id: &str,
+    stage: &str,
+    brief: CallBriefArgs<'_>,
+) -> Result<Value, CliError> {
     let wa_id = wa_id.trim();
     if wa_id.is_empty() {
         return Err(CliError::Usage("give the contact's phone number".into()));
     }
     let Some(stage) = WhatsappStage::parse_manual(stage) else {
         return Err(CliError::Usage(
-            "stage must be contacted, replied, wants_call, call_booked, quote_sent, client or no_thanks".into(),
+            "stage must be contacted, replied, wants_call, ready_to_call, call_booked, quote_sent, client or no_thanks".into(),
         ));
     };
-    Ok(json!({ "v": 1, "waId": wa_id, "stage": stage.as_str() }))
+    let mut content = json!({ "v": 1, "waId": wa_id, "stage": stage.as_str() });
+    let mut call_brief = serde_json::Map::new();
+    for (field, flag, value) in [
+        ("link", "--link", brief.link),
+        ("note", "--note", brief.note),
+        ("assignee", "--assign", brief.assign),
+    ] {
+        let Some(value) = value else { continue };
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(CliError::Usage(format!("{flag} is empty")));
+        }
+        call_brief.insert(field.to_owned(), json!(value));
+    }
+    if !call_brief.is_empty() {
+        content["callBrief"] = Value::Object(call_brief);
+    }
+    Ok(content)
 }
 
 /// `47052` content that sets or clears a contact's name.
@@ -1277,16 +1343,47 @@ mod tests {
 
     #[test]
     fn stage_and_rename_commands_match_the_contract() {
-        let stage = contact_stage_content(" +27821234567 ", "call_booked").expect("stage");
+        let none = CallBriefArgs::default();
+        let stage = contact_stage_content(" +27821234567 ", "call_booked", none).expect("stage");
         assert_eq!(
             stage,
             json!({"v": 1, "waId": "+27821234567", "stage": "call_booked"})
         );
         // Facts cannot be set, and neither can a word that is not a stage.
         for bad in ["queued", "stopped", "not_on_whatsapp", "won", ""] {
-            assert!(contact_stage_content("+27821234567", bad).is_err(), "{bad}");
+            assert!(
+                contact_stage_content("+27821234567", bad, none).is_err(),
+                "{bad}"
+            );
         }
-        assert!(contact_stage_content("  ", "client").is_err());
+        assert!(contact_stage_content("  ", "client", none).is_err());
+        // A lead handed over for its call carries its brief in the same command; only the
+        // parts that were given are sent, so the others stay as they are.
+        let key = "ab".repeat(32);
+        let ready = contact_stage_content(
+            "+27821234567",
+            "ready_to_call",
+            CallBriefArgs {
+                link: Some(" https://preview.example/acme "),
+                note: None,
+                assign: Some(&key),
+            },
+        )
+        .expect("ready to call");
+        assert_eq!(
+            ready,
+            json!({
+                "v": 1,
+                "waId": "+27821234567",
+                "stage": "ready_to_call",
+                "callBrief": {"link": "https://preview.example/acme", "assignee": key},
+            })
+        );
+        let blank = CallBriefArgs {
+            note: Some("   "),
+            ..none
+        };
+        assert!(contact_stage_content("+27821234567", "ready_to_call", blank).is_err());
         let rename =
             contact_rename_content("+27821234567", Some(" Plane Tree "), false).expect("n");
         assert_eq!(

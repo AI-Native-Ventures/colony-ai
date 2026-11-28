@@ -84,6 +84,7 @@ Body `{ "what": "<name>", ... }`. Every response is JSON.
 | `unknown_sends` | `limit` | owner/admin | `{ "unknownSends": [Message] }` whose result needs an owner decision |
 | `contacts` | `limit`, `before`, `counts` | owner/admin, Outreach member | `{ "contacts": [Contact], "nextCursor": string \| null }`, plus the count fields below when `counts` is true |
 | `inbox` | `limit` | owner/admin, Outreach member | contacts whose latest inbound message has no reply yet |
+| `call_closers` | none | owner/admin, Outreach member | `{ "closers": [{ "pubkey", "role", "name" }] }`: the people a lead can be given to for its call (owners and admins, then Outreach channel members; never an agent; at most 200). `name` is `null` without a profile name |
 | `thread` | `waId`, `limit`, `includeHeld` (rows still waiting for a batch approval are left out unless true, so an older app never labels them approved) | owner/admin, Outreach member | `{ "contact": Contact, "messages": [Message] }` with live delivery state |
 
 `thread` lists every message of the conversation except dropped rows, including rows of a batch that
@@ -405,6 +406,9 @@ changes until an owner or admin renames. A `template_title_proposed` notice is p
 { "v": 1, "waId": "27821234567", "label": "Plane Tree Hotel" }
 { "v": 1, "waId": "27821234567", "label": null }
 { "v": 1, "waId": "27821234567", "retryMedia": "<message id>" }
+{ "v": 1, "waId": "27821234567", "stage": "ready_to_call",
+  "callBrief": { "link": "https://preview.example/acme", "note": "Wants the booking page first.", "assignee": "<hex pubkey>" } }
+{ "v": 1, "waId": "27821234567", "callBrief": { "link": null } }
 ```
 
 `retryMedia` (sent on its own) restarts the download of an inbound file whose download gave up
@@ -414,15 +418,35 @@ changes until an owner or admin renames. A `template_title_proposed` notice is p
 Sets the contact's pipeline stage and/or its label (owner's name, shown instead of the WhatsApp
 profile name; `null` clears it; 1 to 120 characters). Same access as replying (`Access::can_send`);
 a plain member is refused. A stage a person may set: `contacted`, `replied`, `wants_call`,
-`call_booked`, `quote_sent`, `client`, `no_thanks`. `stopped` and `not_on_whatsapp` are facts and
-are never accepted; a contact that opted out or is not on WhatsApp refuses a stage change.
+`ready_to_call`, `call_booked`, `quote_sent`, `client`, `no_thanks`. `stopped` and
+`not_on_whatsapp` are facts and are never accepted; a contact that opted out or is not on WhatsApp
+refuses a stage change.
+
+`ready_to_call` sits between `wants_call` and `call_booked` and means the preparation for the call
+is done. It is only ever set by hand: no WhatsApp event or record moves a contact there. A newer
+tap or reply does not pull the contact back out of it, and a call booked afterwards moves it on.
+
+`callBrief` is what the person who phones the business needs. Each field is absent to leave it
+alone, `null` to clear it, or a value: `link` (a full `http` or `https` address, at most 2000
+characters), `note` (at most 2000 characters, line breaks kept) and `assignee` (hex pubkey of a
+person from `call_closers`; an agent, a plain member and a stranger are refused). It can be sent
+with a stage, with a label or on its own, at any stage. The stage, the label and the brief are
+stored in one write: when any part is refused, nothing changes. When the call is given to
+someone new, or the lead becomes `ready_to_call` while a person already has it, the relay posts a
+`call_assigned` notice in Outreach that mentions that person (`p` tag) and names the contact
+(`wa-call` tag). Nobody is told about their own change.
 Every change is appended to the audit log (`whatsapp_contact_updated`). Marking `call_booked`
 also adds a `CallBooked` milestone (kind `47069`) to the contact's customer record when
 co-founder mode is on, the record exists and the caller may write it; the milestone is named by
 the command, so a retry never adds a second one.
 
-**Stage** (computed by the relay, returned on every Contact): `none`, `contacted`, `replied`,
-`wants_call`, `call_booked`, `quote_sent`, `client`, `no_thanks`, `stopped`, `not_on_whatsapp`.
+**Stage** (computed by the relay, returned on every Contact): `none`, `queued`, `contacted`,
+`replied`, `wants_call`, `ready_to_call`, `call_booked`, `quote_sent`, `client`, `no_thanks`,
+`stopped`, `not_on_whatsapp`. Two of these were added after apps were installed that cannot read
+them, so the relay names them only to a caller that asks, with `capabilities` on the query:
+`whatsapp-outreach-stage-queued` (otherwise `queued` reads `none`) and
+`whatsapp-outreach-stage-ready-to-call` (otherwise `ready_to_call` reads `wants_call`). The list
+and the counts use the same projection.
 Order of precedence: opted out (`stopped`, or `no_thanks` when the reason is `no_thanks`); latest
 send failed with Meta `131026` (`not_on_whatsapp`); a manual stage unless a newer fact implies a
 strictly later stage; then derived, latest first: `client` (customer record is a client, or the
@@ -434,7 +458,9 @@ button), `replied`, `contacted`. Opt-out reasons are stored as `stop` or `no_tha
 Additive Contact fields: `stage`, `stageSetBy` (`auto` or the setter's hex pubkey),
 `stageChangedAt`, `lastContactedAt`, `lastReplyAt`, `label`, `profileName`, `lastOutboundState`
 (`sent`, `delivered`, `read`, `failed` or null), and, when the contact is linked to a lead,
-`businessName` and `website`. `displayName` is the label when one is set.
+`businessName` and `website`. `displayName` is the label when one is set. `callBrief` is `null`
+until a link, a note or a person is set, else `{ "link", "note", "assigneePubkey", "updatedBy",
+"updatedAt" }`.
 
 ### `47053` `KIND_WHATSAPP_SAFETY_ACTION` (owner/admin only)
 

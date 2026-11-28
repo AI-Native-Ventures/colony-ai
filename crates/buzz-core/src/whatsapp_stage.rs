@@ -10,6 +10,10 @@
 //! 4. Derived, latest first: `client`, `quote_sent`, `call_booked`, `no_thanks` (lead lost),
 //!    `wants_call`, `replied`, `contacted`, `queued`, else `none`.
 //!
+//! `ready_to_call` sits between `wants_call` and `call_booked` and is only ever set by a person:
+//! it says the preparation for the call is done and someone can now phone the business. No fact
+//! implies it, so nothing moves a contact there automatically.
+//!
 //! A manual stage is never moved backwards automatically: a fact overrides it only when it is
 //! strictly later on the ladder AND newer than the manual change.
 
@@ -76,6 +80,8 @@ pub enum WhatsappStage {
     Replied,
     /// They asked for a call.
     WantsCall,
+    /// The preparation is done: a person can phone them now. Set by hand only.
+    ReadyToCall,
     /// A call is booked.
     CallBooked,
     /// A quote was sent.
@@ -99,6 +105,7 @@ impl WhatsappStage {
             Self::Contacted => "contacted",
             Self::Replied => "replied",
             Self::WantsCall => "wants_call",
+            Self::ReadyToCall => "ready_to_call",
             Self::CallBooked => "call_booked",
             Self::QuoteSent => "quote_sent",
             Self::Client => "client",
@@ -115,6 +122,7 @@ impl WhatsappStage {
             "contacted" => Some(Self::Contacted),
             "replied" => Some(Self::Replied),
             "wants_call" => Some(Self::WantsCall),
+            "ready_to_call" => Some(Self::ReadyToCall),
             "call_booked" => Some(Self::CallBooked),
             "quote_sent" => Some(Self::QuoteSent),
             "client" => Some(Self::Client),
@@ -132,9 +140,10 @@ impl WhatsappStage {
             Self::Contacted => 1,
             Self::Replied | Self::NoThanks => 2,
             Self::WantsCall => 3,
-            Self::CallBooked => 4,
-            Self::QuoteSent => 5,
-            Self::Client => 6,
+            Self::ReadyToCall => 4,
+            Self::CallBooked => 5,
+            Self::QuoteSent => 6,
+            Self::Client => 7,
             Self::Stopped | Self::NotOnWhatsapp => u8::MAX,
         }
     }
@@ -503,11 +512,61 @@ mod tests {
     }
 
     #[test]
+    fn ready_to_call_holds_until_a_newer_later_fact() {
+        // GUARD: `ready_to_call` is above `wants_call` and below `call_booked` on the ladder.
+        // A new "call me" tap or reply must not pull the contact back out of it, and a call
+        // booked afterwards must move it on.
+        let ready = StageInputs {
+            manual: manual(WhatsappStage::ReadyToCall, 5),
+            wants_call: Some(Fact::at(t(7))),
+            replied: Some(Fact::at(t(7))),
+            contacted: Some(Fact::at(t(8))),
+            ..Default::default()
+        };
+        let held = derive_stage(&ready);
+        assert_eq!(held.stage, WhatsappStage::ReadyToCall);
+        assert_eq!(held.set_by, StageSetBy::Manual("ab".repeat(32)));
+        assert_eq!(held.changed_at, Some(t(5)));
+
+        // A call booked before the hand-set stage does not override it.
+        let older_booking = StageInputs {
+            call_booked: Some(Fact::at(t(4))),
+            ..ready.clone()
+        };
+        assert_eq!(
+            derive_stage(&older_booking).stage,
+            WhatsappStage::ReadyToCall
+        );
+
+        let booked = StageInputs {
+            call_booked: Some(Fact::at(t(9))),
+            ..ready
+        };
+        let moved = derive_stage(&booked);
+        assert_eq!(moved.stage, WhatsappStage::CallBooked);
+        assert_eq!(moved.set_by, StageSetBy::Auto);
+    }
+
+    #[test]
+    fn no_fact_alone_implies_ready_to_call() {
+        // Every fact set, no manual stage: the result is never `ready_to_call`.
+        let all = StageInputs {
+            wants_call: Some(Fact::at(t(3))),
+            replied: Some(Fact::at(t(3))),
+            contacted: Some(Fact::at(t(2))),
+            queued: Some(Fact::at(t(1))),
+            ..Default::default()
+        };
+        assert_eq!(derive_stage(&all).stage, WhatsappStage::WantsCall);
+    }
+
+    #[test]
     fn only_deskable_stages_can_be_set_by_hand() {
         for ok in [
             "contacted",
             "replied",
             "wants_call",
+            "ready_to_call",
             "call_booked",
             "quote_sent",
             "client",
