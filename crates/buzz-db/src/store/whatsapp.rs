@@ -229,6 +229,21 @@ pub struct NewWhatsappConnection {
     pub created_by: Vec<u8>,
 }
 
+/// One template message that has not reached Meta yet.
+#[derive(Clone, Debug)]
+pub struct WhatsappUnsentTemplateMessage {
+    /// Message id.
+    pub id: Uuid,
+    /// Template name.
+    pub template_name: String,
+    /// Template language.
+    pub template_language: String,
+    /// Template parameters.
+    pub params: Value,
+    /// Text as stored when the message was prepared.
+    pub body: String,
+}
+
 /// An approved template.
 #[derive(Clone, Debug)]
 pub struct WhatsappTemplate {
@@ -291,6 +306,43 @@ pub struct DeskFacts {
     pub last_outcome_state: Option<String>,
     /// Meta error code of that outcome when it failed.
     pub last_outcome_code: Option<String>,
+    /// Where the work prepared for the call is, if a person attached it.
+    pub call_brief_link: Option<String>,
+    /// What the person who calls needs to know, if written.
+    pub call_brief_note: Option<String>,
+    /// The person who will phone the business, if assigned.
+    pub call_assignee: Option<Vec<u8>>,
+    /// Who last changed the call brief.
+    pub call_brief_by: Option<Vec<u8>>,
+    /// When they changed it.
+    pub call_brief_at: Option<DateTime<Utc>>,
+}
+
+/// A change to a contact's call brief. Each of `link`, `note` and `assignee` is
+/// `Some(Some(value))` to set it, `Some(None)` to clear it and `None` to leave it alone.
+#[derive(Clone, Copy, Debug)]
+pub struct CallBriefChange<'a> {
+    /// Where the prepared work is.
+    pub link: Option<Option<&'a str>>,
+    /// What the person who calls needs to know.
+    pub note: Option<Option<&'a str>>,
+    /// The person who will make the call.
+    pub assignee: Option<Option<&'a [u8]>>,
+    /// Who makes this change.
+    pub by: &'a [u8],
+    /// When they make it.
+    pub at: DateTime<Utc>,
+}
+
+/// A person who can be given a call to close.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CallCloser {
+    /// Hex pubkey.
+    pub pubkey: String,
+    /// `owner`, `admin` or `member`.
+    pub role: String,
+    /// Profile name, when one is set.
+    pub display_name: Option<String>,
 }
 
 /// A WhatsApp contact (one per wa_id and company).
@@ -1287,6 +1339,70 @@ impl Db {
         Ok(())
     }
 
+    /// A page of template messages that have not reached Meta yet, in id order.
+    ///
+    /// Not reached Meta yet means held for approval, approved and waiting, a draft, or queued.
+    pub async fn whatsapp_unsent_template_messages(
+        &self,
+        community: CommunityId,
+        after: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<WhatsappUnsentTemplateMessage>> {
+        let rows = sqlx::query(
+            "SELECT id, template_name, template_language, params, body \
+             FROM whatsapp_messages \
+             WHERE community_id = $1 AND direction = 'out' AND kind = 'template' \
+               AND state IN ('held', 'ready', 'draft', 'queued') \
+               AND template_name IS NOT NULL AND template_language IS NOT NULL \
+               AND ($2::uuid IS NULL OR id > $2) \
+             ORDER BY id LIMIT $3",
+        )
+        .bind(community.as_uuid())
+        .bind(after)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(WhatsappUnsentTemplateMessage {
+                    id: row.try_get("id")?,
+                    template_name: row.try_get("template_name")?,
+                    template_language: row.try_get("template_language")?,
+                    params: row.try_get("params")?,
+                    body: row.try_get("body")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Store the current wording for template messages that have not reached Meta yet.
+    ///
+    /// A message that was claimed or sent meanwhile keeps its text. `updated_at` is left alone:
+    /// it is when the message was queued. Returns how many messages changed.
+    pub async fn whatsapp_set_unsent_template_text(
+        &self,
+        community: CommunityId,
+        texts: &[(Uuid, String)],
+    ) -> Result<u64> {
+        if texts.is_empty() {
+            return Ok(0);
+        }
+        let ids: Vec<Uuid> = texts.iter().map(|(id, _)| *id).collect();
+        let bodies: Vec<String> = texts.iter().map(|(_, body)| body.clone()).collect();
+        let result = sqlx::query(
+            "UPDATE whatsapp_messages AS m SET body = fresh.body \
+             FROM unnest($2::uuid[], $3::text[]) AS fresh(id, body) \
+             WHERE m.community_id = $1 AND m.id = fresh.id AND m.direction = 'out' \
+               AND m.kind = 'template' AND m.state IN ('held', 'ready', 'draft', 'queued')",
+        )
+        .bind(community.as_uuid())
+        .bind(&ids)
+        .bind(&bodies)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Synced templates, newest names last.
     pub async fn whatsapp_list_templates(
         &self,
@@ -1475,6 +1591,8 @@ impl Db {
         }
         let rows = sqlx::query(
             "SELECT c.wa_id, c.label, c.manual_stage, c.manual_stage_by, c.manual_stage_at, \
+                    c.call_brief_link, c.call_brief_note, c.call_assignee, \
+                    c.call_brief_by, c.call_brief_at, \
                     max(COALESCE(m.sent_at, m.created_at)) FILTER ( \
                         WHERE m.direction = 'out' AND m.state IN ('sent', 'delivered', 'read') \
                     ) AS last_contacted_at, \
@@ -1535,28 +1653,44 @@ impl Db {
                         last_outcome_at: row.try_get("last_outcome_at")?,
                         last_outcome_state: row.try_get("last_outcome_state")?,
                         last_outcome_code: row.try_get("last_outcome_code")?,
+                        call_brief_link: row.try_get("call_brief_link")?,
+                        call_brief_note: row.try_get("call_brief_note")?,
+                        call_assignee: row.try_get("call_assignee")?,
+                        call_brief_by: row.try_get("call_brief_by")?,
+                        call_brief_at: row.try_get("call_brief_at")?,
                     },
                 ))
             })
             .collect()
     }
 
-    /// Set a contact's stage and/or label. `stage` is `Some((stage, by, at))` to set it;
-    /// `label` is `Some(Some(text))` to set, `Some(None)` to clear, `None` to leave alone.
-    /// Returns `false` when the contact does not exist.
+    /// Set a contact's stage, label and/or call brief in ONE statement, so a move to
+    /// `ready_to_call` and the brief that goes with it are stored together or not at all.
+    /// `stage` is `Some((stage, by, at))` to set it; `label` is `Some(Some(text))` to set,
+    /// `Some(None)` to clear, `None` to leave alone; `brief` is `None` to leave the call brief
+    /// alone. Returns `false` when the contact does not exist.
     pub async fn whatsapp_set_contact_desk(
         &self,
         community: CommunityId,
         wa_id: &str,
         stage: Option<(&str, &[u8], DateTime<Utc>)>,
         label: Option<Option<&str>>,
+        brief: Option<CallBriefChange<'_>>,
     ) -> Result<bool> {
+        let link = brief.and_then(|brief| brief.link);
+        let note = brief.and_then(|brief| brief.note);
+        let assignee = brief.and_then(|brief| brief.assignee);
         let result = sqlx::query(
             "UPDATE whatsapp_contacts SET \
                  manual_stage = CASE WHEN $3 THEN $4 ELSE manual_stage END, \
                  manual_stage_by = CASE WHEN $3 THEN $5 ELSE manual_stage_by END, \
                  manual_stage_at = CASE WHEN $3 THEN $6 ELSE manual_stage_at END, \
                  label = CASE WHEN $7 THEN $8 ELSE label END, \
+                 call_brief_link = CASE WHEN $9 THEN $10 ELSE call_brief_link END, \
+                 call_brief_note = CASE WHEN $11 THEN $12 ELSE call_brief_note END, \
+                 call_assignee = CASE WHEN $13 THEN $14 ELSE call_assignee END, \
+                 call_brief_by = CASE WHEN $15 THEN $16 ELSE call_brief_by END, \
+                 call_brief_at = CASE WHEN $15 THEN $17 ELSE call_brief_at END, \
                  updated_at = now() \
              WHERE community_id = $1 AND wa_id = $2",
         )
@@ -1568,9 +1702,74 @@ impl Db {
         .bind(stage.map(|(_, _, at)| at))
         .bind(label.is_some())
         .bind(label.flatten())
+        .bind(link.is_some())
+        .bind(link.flatten())
+        .bind(note.is_some())
+        .bind(note.flatten())
+        .bind(assignee.is_some())
+        .bind(assignee.flatten())
+        .bind(brief.is_some())
+        .bind(brief.map(|brief| brief.by))
+        .bind(brief.map(|brief| brief.at))
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
+    }
+
+    /// The people who can be given a call to close: owners and admins, and members of the
+    /// Outreach channel, which is who can open Outreach. Never an agent: a profile with a
+    /// recorded agent owner or an agent type is left out, as is a deactivated one. Owners
+    /// first, then admins, then by name. At most `limit` rows.
+    pub async fn whatsapp_list_call_closers(
+        &self,
+        community: CommunityId,
+        outreach_channel: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<CallCloser>> {
+        let rows = sqlx::query(
+            "SELECT p.pubkey, p.role, u.display_name \
+             FROM ( \
+                 SELECT rm.pubkey AS pubkey, rm.role AS role \
+                 FROM relay_members rm \
+                 WHERE rm.community_id = $1 AND rm.role IN ('owner', 'admin') \
+                 UNION \
+                 SELECT encode(cm.pubkey, 'hex') AS pubkey, 'member' AS role \
+                 FROM channel_members cm \
+                 JOIN channels c \
+                   ON c.community_id = cm.community_id AND c.id = cm.channel_id \
+                  AND c.deleted_at IS NULL \
+                 WHERE cm.community_id = $1 AND cm.channel_id = $2 \
+                   AND cm.removed_at IS NULL \
+                   AND NOT EXISTS ( \
+                       SELECT 1 FROM relay_members held \
+                       WHERE held.community_id = cm.community_id \
+                         AND held.pubkey = encode(cm.pubkey, 'hex') \
+                         AND held.role IN ('owner', 'admin')) \
+             ) p \
+             LEFT JOIN users u \
+                    ON u.community_id = $1 AND encode(u.pubkey, 'hex') = p.pubkey \
+             WHERE p.pubkey ~ '^[0-9a-f]{64}$' \
+               AND (u.pubkey IS NULL \
+                    OR (u.agent_owner_pubkey IS NULL AND u.agent_type IS NULL \
+                        AND u.deactivated_at IS NULL)) \
+             ORDER BY CASE p.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, \
+                      lower(COALESCE(u.display_name, '')), p.pubkey \
+             LIMIT $3",
+        )
+        .bind(community.as_uuid())
+        .bind(outreach_channel)
+        .bind(limit.clamp(1, 500))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(CallCloser {
+                    pubkey: row.try_get("pubkey")?,
+                    role: row.try_get("role")?,
+                    display_name: row.try_get("display_name")?,
+                })
+            })
+            .collect()
     }
 
     /// Record what an inbound message means (`wants_call`). Safe to repeat.

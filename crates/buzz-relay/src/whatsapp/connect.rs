@@ -1,6 +1,7 @@
 //! Connect and disconnect a company's number, sync templates, track quality, and build the
 //! status object the desktop shows.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -8,15 +9,18 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use buzz_core::tenant::CommunityId;
 use buzz_core::TenantContext;
 pub use buzz_db::whatsapp::QUALITY_PAUSE_REASON;
-use buzz_db::whatsapp::{NewWhatsappConnection, WhatsappConnection, WhatsappTemplate};
+use buzz_db::whatsapp::{
+    NewWhatsappConnection, WhatsappConnection, WhatsappSettings, WhatsappTemplate,
+};
 
 use super::channel;
 use super::graph::{GraphError, PhoneInfo};
 use super::policy::{
     account_failure_for_code, account_retry_error_codes, default_template_title, hash_verify_token,
-    sast_day_start, template_slot_count,
+    render_template, sast_day_start, stored_template_params, template_slot_count,
 };
 use super::secrets::{self, SecretField};
 use crate::state::AppState;
@@ -415,11 +419,70 @@ pub async fn sync_templates(
         .whatsapp_replace_templates(community, &templates, Utc::now())
         .await
         .map_err(|error| error.to_string())?;
+    refresh_unsent_template_text(state, community, &templates).await?;
     let _ = state
         .db
         .whatsapp_clear_issue(community, "template_sync")
         .await;
     Ok(count)
+}
+
+/// Unsent template messages read per page while their text is refreshed.
+const UNSENT_TEXT_PAGE: i64 = 500;
+/// Pages read in one sync. Past it the sync fails instead of leaving later messages stale.
+const UNSENT_TEXT_MAX_PAGES: usize = 200;
+
+/// Give every template message that has not reached Meta yet the wording its template has now.
+///
+/// A message stores the text it was prepared with, while Meta fills in whatever the template
+/// says when it is sent. After a template is edited at Meta the two differ, and the queue and
+/// the later chat record would show words the person never received. Every sync compares each
+/// unsent message with its template, so a sync that failed part way is repaired by the next.
+async fn refresh_unsent_template_text(
+    state: &Arc<AppState>,
+    community: CommunityId,
+    templates: &[WhatsappTemplate],
+) -> Result<u64, String> {
+    let bodies: HashMap<(&str, &str), &str> = templates
+        .iter()
+        .map(|template| {
+            (
+                (template.name.as_str(), template.language.as_str()),
+                template.body.as_str(),
+            )
+        })
+        .collect();
+    let mut changed = 0;
+    let mut after = None;
+    for _ in 0..UNSENT_TEXT_MAX_PAGES {
+        let page = state
+            .db
+            .whatsapp_unsent_template_messages(community, after, UNSENT_TEXT_PAGE)
+            .await
+            .map_err(|error| error.to_string())?;
+        let fresh: Vec<(Uuid, String)> = page
+            .iter()
+            .filter_map(|message| {
+                let body = bodies.get(&(
+                    message.template_name.as_str(),
+                    message.template_language.as_str(),
+                ))?;
+                // A message whose parameters no longer fit the template keeps its text.
+                let text = render_template(body, &stored_template_params(&message.params)).ok()?;
+                (text != message.body).then_some((message.id, text))
+            })
+            .collect();
+        changed += state
+            .db
+            .whatsapp_set_unsent_template_text(community, &fresh)
+            .await
+            .map_err(|error| error.to_string())?;
+        if i64::try_from(page.len()).unwrap_or(i64::MAX) < UNSENT_TEXT_PAGE {
+            return Ok(changed);
+        }
+        after = page.last().map(|message| message.id);
+    }
+    Err("too many unsent template messages to refresh in one sync".to_string())
 }
 
 /// Ask Meta about the number and apply quality and connection state.
@@ -651,6 +714,67 @@ pub fn template_json(template: &WhatsappTemplate) -> Value {
     })
 }
 
+/// Where Meta shows a number's quality rating.
+const QUALITY_FIX_URL: &str = "https://business.facebook.com/latest/whatsapp_manager/phone_numbers";
+
+/// What the notice at the top of Outreach says about sending right now.
+///
+/// A stored account refusal is the reason only until the owner asks to resume. After that the
+/// automatic stop is off and the record merely waits for Meta to accept a send. That cannot
+/// happen while another stop holds the queue, so the record must not be shown as the cause. A
+/// RED quality stop is named as itself: it lifts without any owner action.
+fn send_health_view(settings: &WhatsappSettings, waiting: i64) -> Option<Value> {
+    let refusal_is_current =
+        settings.system_paused || settings.account_health_resume_requested_at.is_none();
+    let refusal = settings
+        .account_health_code
+        .as_deref()
+        .filter(|_| refusal_is_current)
+        .and_then(|code| account_failure_for_code(Some(code)).map(|failure| (code, failure)));
+    if let Some((code, failure)) = refusal {
+        return Some(json!({
+            "code": code,
+            "message": failure.summary(),
+            "banner": failure.health_banner(waiting),
+            "fixSteps": failure.fix_steps(),
+            "fixUrl": failure.fix_url(),
+            "at": settings.account_health_at.map(|at| at.to_rfc3339()),
+            "paused": settings.send_paused,
+            "resumeRequestedAt": settings.account_health_resume_requested_at.map(|at| at.to_rfc3339()),
+            "waitingCount": waiting,
+        }));
+    }
+    settings
+        .quality_paused
+        .then(|| quality_stop_view(settings, waiting))
+}
+
+/// The notice for a stop caused only by Meta's RED quality rating.
+fn quality_stop_view(settings: &WhatsappSettings, waiting: i64) -> Value {
+    let next = if settings.owner_paused {
+        "They stay queued until the rating improves and you resume sending."
+    } else {
+        "Sending starts again by itself when the rating improves."
+    };
+    json!({
+        "code": "quality_red",
+        "message": "Meta's rating follows how people reacted to your messages over the last 7 days. Blocks and reports lower it.",
+        "banner": format!(
+            "WhatsApp is not sending. Meta rates this number's quality as low (RED). Nothing was lost: {waiting} messages are waiting. {next}"
+        ),
+        "fixSteps": [
+            "Open WhatsApp Manager, then Phone numbers, to see the rating.",
+            "The rating is checked regularly, and this stop lifts by itself when it leaves RED.",
+        ],
+        "fixUrl": QUALITY_FIX_URL,
+        "at": Value::Null,
+        "paused": settings.send_paused,
+        "resumeRequestedAt": Value::Null,
+        // No account refusal waits for a resume, so the desktop offers no resume action.
+        "waitingCount": 0,
+    })
+}
+
 /// The status object of the contract.
 pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Result<Value, String> {
     let community = tenant.community();
@@ -690,23 +814,7 @@ pub async fn status_view(state: &Arc<AppState>, tenant: &TenantContext) -> Resul
         .whatsapp_count_failed_messages_by_code(community, "131049")
         .await
         .map_err(|error| error.to_string())?;
-    let send_health = settings
-        .account_health_code
-        .as_deref()
-        .and_then(|code| account_failure_for_code(Some(code)).map(|failure| (code, failure)))
-        .map(|(code, failure)| {
-            json!({
-                "code": code,
-                "message": failure.summary(),
-                "banner": failure.health_banner(account_waiting_count),
-                "fixSteps": failure.fix_steps(),
-                "fixUrl": failure.fix_url(),
-                "at": settings.account_health_at.map(|at| at.to_rfc3339()),
-                "paused": settings.send_paused,
-                "resumeRequestedAt": settings.account_health_resume_requested_at.map(|at| at.to_rfc3339()),
-                "waitingCount": account_waiting_count,
-            })
-        });
+    let send_health = send_health_view(&settings, account_waiting_count);
     Ok(json!({
         "connected": connection.is_some(),
         "connectionId": connection.as_ref().map(|c| c.id.to_string()),

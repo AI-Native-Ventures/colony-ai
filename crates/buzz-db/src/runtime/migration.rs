@@ -725,7 +725,7 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 71);
+        assert_eq!(migrations.len(), 72);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert_eq!(migrations[55].version, 56);
@@ -1460,6 +1460,23 @@ mod postgres_tests {
             "SELECT attach_community_write_fence('business_proposal_conversion_claims')"
         ));
         assert!(desired_schema.contains("CREATE TABLE business_proposal_conversion_claims"));
+        assert_eq!(migrations[71].version, 72);
+        let ready_to_call = migrations[71].sql.as_str();
+        // The hand-set stage list is replaced, not appended to: the old check must go first.
+        assert!(ready_to_call.contains("DROP CONSTRAINT whatsapp_contacts_manual_stage_check"));
+        assert!(ready_to_call.contains("'ready_to_call'"));
+        for column in [
+            "call_brief_link",
+            "call_brief_note",
+            "call_assignee",
+            "call_brief_by",
+            "call_brief_at",
+        ] {
+            assert!(
+                ready_to_call.contains(&format!("ADD COLUMN {column} ")),
+                "{column}"
+            );
+        }
     }
 
     #[test]
