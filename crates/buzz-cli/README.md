@@ -158,7 +158,9 @@ buzz whatsapp batch approve --batch <uuid> [--drop 3] [--edit-file edits.json]  
 buzz whatsapp batch reject --batch <uuid>                                          # owner or admin
 buzz whatsapp queue [--batch <uuid>]                                               # approved messages still waiting, per industry
 buzz whatsapp queue remove --keep "Furniture" [--keep ...] | --remove "..." | --all   # take waiting messages out; never sent
-buzz whatsapp stage +27821234567 call_booked                                    # contacted|replied|wants_call|call_booked|quote_sent|client|no_thanks
+buzz whatsapp stage +27821234567 call_booked                                    # contacted|replied|wants_call|ready_to_call|call_booked|quote_sent|client|no_thanks
+buzz whatsapp closers                                                           # people a lead can be given to for its call (never an agent)
+buzz whatsapp stage +27821234567 ready_to_call --link https://preview.example/acme --note "Wants the booking page first" --assign <pubkey>
 buzz whatsapp rename +27821234567 "Plane Tree Hotel"                              # or --clear
 buzz whatsapp send --contact +27821234567 --text "Thanks, here is the quote"      # inside the 24 hour window
 buzz whatsapp send --contact +27821234567 --template intro_offer --param Thabo

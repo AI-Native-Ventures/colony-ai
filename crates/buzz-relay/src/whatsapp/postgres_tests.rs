@@ -5173,7 +5173,7 @@ async fn contact_json_current_desktop(fx: &Fixture, wa_id: &str) -> Value {
         50,
         true,
         Utc::now(),
-        true,
+        crate::whatsapp::desk::StageSupport::CURRENT,
     )
     .await
     .expect("current desktop thread view")["contact"]
@@ -5850,7 +5850,7 @@ async fn a_contact_linked_to_a_lead_shows_its_business_and_stage_on_the_desk() {
         None,
         true,
         Utc::now(),
-        true,
+        crate::whatsapp::desk::StageSupport::CURRENT,
     )
     .await
     .expect("contacts page");
@@ -5965,7 +5965,7 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
         Some("not-a-cursor"),
         false,
         now,
-        true,
+        crate::whatsapp::desk::StageSupport::CURRENT,
     )
     .await
     .expect_err("a malformed cursor is a 400");
@@ -5985,7 +5985,7 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
             before.as_deref(),
             false,
             now,
-            true,
+            crate::whatsapp::desk::StageSupport::CURRENT,
         )
         .await
         .expect("contacts page");
@@ -6033,7 +6033,7 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
         None,
         true,
         now,
-        true,
+        crate::whatsapp::desk::StageSupport::CURRENT,
     )
     .await
     .expect("counted contacts");
@@ -6065,7 +6065,7 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
         None,
         true,
         now,
-        false,
+        crate::whatsapp::desk::StageSupport::LEGACY,
     )
     .await
     .expect("legacy counts");
@@ -6073,9 +6073,15 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
 
     // The bound: chunk edges do not change the numbers, and a cap below the community size
     // counts exactly that many and says the numbers are a floor.
-    let chunked = super::desk::stage_counts_bounded(&fx.state, fx.community(), true, 450, 100)
-        .await
-        .expect("chunked counts");
+    let chunked = super::desk::stage_counts_bounded(
+        &fx.state,
+        fx.community(),
+        super::desk::StageSupport::CURRENT,
+        450,
+        100,
+    )
+    .await
+    .expect("chunked counts");
     assert_eq!(chunked.total, TOTAL as u64);
     assert!(
         !chunked.truncated,
@@ -6084,11 +6090,388 @@ async fn contact_pages_and_stage_counts_cover_every_contact_not_one_capped_page(
     let expected_by_stage: std::collections::BTreeMap<String, u64> =
         from_counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
     assert_eq!(chunked.by_stage, expected_by_stage);
-    let capped = super::desk::stage_counts_bounded(&fx.state, fx.community(), true, 300, 100)
-        .await
-        .expect("capped counts");
+    let capped = super::desk::stage_counts_bounded(
+        &fx.state,
+        fx.community(),
+        super::desk::StageSupport::CURRENT,
+        300,
+        100,
+    )
+    .await
+    .expect("capped counts");
     assert_eq!(capped.total, 300);
     assert!(capped.truncated);
+}
+
+/// Give `keys` a profile name, as their profile event would.
+async fn name_user(fx: &Fixture, keys: &Keys, name: &str) {
+    sqlx::query(
+        "INSERT INTO users (community_id, pubkey, display_name) VALUES ($1, $2, $3) \
+         ON CONFLICT (community_id, pubkey) DO UPDATE SET display_name = EXCLUDED.display_name",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(keys.public_key().to_bytes().to_vec())
+    .bind(name)
+    .execute(&fx.pool)
+    .await
+    .expect("name the user");
+}
+
+/// The "a call was given to you" notices in the Outreach channel, oldest first.
+async fn call_notices(fx: &Fixture) -> Vec<(String, Value)> {
+    let channel = fx.outreach_channel().await;
+    sqlx::query_as::<_, (String, Value)>(
+        "SELECT content, tags FROM events \
+         WHERE community_id = $1 AND channel_id = $2 AND kind = 9 \
+           AND tags @> jsonb_build_array(jsonb_build_array('wa-notice', 'call_assigned')) \
+         ORDER BY created_at, id",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(channel)
+    .fetch_all(&fx.pool)
+    .await
+    .expect("call notices")
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres and Redis"]
+async fn a_lead_ready_to_call_carries_its_brief_and_goes_only_to_a_person() {
+    // GUARD: three seams of "Ready to call".
+    // 1. `find_call_closer` in `handle_contact_update`: a call goes to a person who can open
+    //    Outreach. Without it the agent and the plain member below are accepted.
+    // 2. The single `whatsapp_set_contact_desk` write: a refused brief moves no stage.
+    // 3. `StageSupport` in the contact views: an app that did not ask for `ready_to_call`
+    //    reads `wants_call`, in the contact and in the counts.
+    let fx = fixture().await;
+    let wa = "27821230401";
+    seed_opener(&fx, wa, "wamid.OUT-RTC-1", "delivered", None).await;
+    let channel = fx.outreach_channel().await;
+    let owner_hex = fx.owner.public_key().to_hex();
+    let owner_bytes = fx.owner.public_key().to_bytes();
+    name_user(&fx, &fx.owner, "Basheer").await;
+
+    let closer = Keys::generate();
+    let closer_hex = closer.public_key().to_hex();
+    fx.state
+        .db
+        .add_relay_member(fx.community(), &closer_hex, "admin", Some(&owner_hex))
+        .await
+        .expect("admin");
+    name_user(&fx, &closer, "Zaina").await;
+    let outreach = Keys::generate();
+    let outreach_hex = outreach.public_key().to_hex();
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            channel,
+            &outreach.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&owner_bytes),
+        )
+        .await
+        .expect("outreach member");
+    // An agent of the owner that also sits in the Outreach channel, a plain member and a
+    // stranger: none of them is a person who can be given a call.
+    let scout = Keys::generate();
+    own_agent(&fx, &scout, &fx.owner).await;
+    fx.state
+        .db
+        .add_member(
+            fx.community(),
+            channel,
+            &scout.public_key().to_bytes(),
+            MemberRole::Member,
+            Some(&owner_bytes),
+        )
+        .await
+        .expect("agent in the channel");
+    let plain = Keys::generate();
+    fx.state
+        .db
+        .add_relay_member(
+            fx.community(),
+            &plain.public_key().to_hex(),
+            "member",
+            Some(&owner_hex),
+        )
+        .await
+        .expect("plain member");
+    let stranger = Keys::generate();
+
+    let closers = fx
+        .state
+        .db
+        .whatsapp_list_call_closers(fx.community(), Some(channel), 200)
+        .await
+        .expect("closers");
+    let listed: Vec<(&str, &str)> = closers
+        .iter()
+        .map(|closer| (closer.pubkey.as_str(), closer.role.as_str()))
+        .collect();
+    assert_eq!(
+        listed,
+        vec![
+            (owner_hex.as_str(), "owner"),
+            (closer_hex.as_str(), "admin"),
+            (outreach_hex.as_str(), "member"),
+        ],
+        "owner, admin and Outreach member; never the agent or the plain member"
+    );
+    assert_eq!(closers[1].display_name.as_deref(), Some("Zaina"));
+
+    // The owner prepares the call: name, stage, link, note and person in one command.
+    let done = fx
+        .command(
+            &fx.owner,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(
+                wa,
+                json!({
+                    "stage": "ready_to_call",
+                    "label": "Acme Furniture",
+                    "callBrief": {
+                        "link": " https://preview.signalstory.example/acme ",
+                        "note": "Site preview is ready.\r\nThey want the booking page first.",
+                        "assignee": closer_hex,
+                    },
+                }),
+            ),
+        )
+        .await
+        .expect("ready to call");
+    for part in [
+        "stage ready_to_call",
+        "call link set",
+        "call note set",
+        "call given to Zaina",
+        "they were told in Outreach",
+    ] {
+        assert!(done.message.contains(part), "{part}: {}", done.message);
+    }
+    let view = contact_json_current_desktop(&fx, wa).await;
+    assert_eq!(view["stage"], "ready_to_call");
+    assert_eq!(view["stageSetBy"], owner_hex);
+    assert_eq!(
+        view["callBrief"]["link"],
+        "https://preview.signalstory.example/acme"
+    );
+    assert_eq!(
+        view["callBrief"]["note"],
+        "Site preview is ready.\nThey want the booking page first."
+    );
+    assert_eq!(view["callBrief"]["assigneePubkey"], closer_hex);
+    assert_eq!(view["callBrief"]["updatedBy"], owner_hex);
+
+    // An app that did not ask for the new stage still shows the lead, as "Wants a call".
+    let older = contact_json(&fx, wa).await;
+    assert_eq!(older["stage"], "wants_call");
+    assert_eq!(older["callBrief"]["assigneePubkey"], closer_hex);
+    let current_counts = crate::api::whatsapp::contacts_page_view(
+        &fx.state,
+        fx.community(),
+        50,
+        None,
+        true,
+        Utc::now(),
+        super::desk::StageSupport::CURRENT,
+    )
+    .await
+    .expect("current counts");
+    assert_eq!(current_counts["stageCounts"]["ready_to_call"], 1);
+    assert!(current_counts["stageCounts"].get("wants_call").is_none());
+    let older_counts = crate::api::whatsapp::contacts_page_view(
+        &fx.state,
+        fx.community(),
+        50,
+        None,
+        true,
+        Utc::now(),
+        super::desk::StageSupport::LEGACY,
+    )
+    .await
+    .expect("older counts");
+    assert_eq!(older_counts["stageCounts"]["wants_call"], 1);
+    assert!(older_counts["stageCounts"].get("ready_to_call").is_none());
+
+    // She is told once, by a notice that mentions her and carries the brief.
+    let notices = call_notices(&fx).await;
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    let (text, tags) = &notices[0];
+    assert_eq!(
+        text,
+        "Ready to call: Acme Furniture (+27821230401). Basheer gave you this call.\n\
+         Link: https://preview.signalstory.example/acme\n\
+         Brief: Site preview is ready.\nThey want the booking page first."
+    );
+    let has_tag = |name: &str, value: &str| {
+        tags.as_array()
+            .expect("tags")
+            .iter()
+            .any(|tag| tag == &json!([name, value]))
+    };
+    assert!(has_tag("p", &closer_hex), "{tags}");
+    assert!(has_tag("wa-call", wa), "{tags}");
+    let audited: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_log \
+         WHERE community_id = $1 AND action = 'whatsapp_contact_updated' \
+           AND detail->'call_brief'->>'assignee' = $2",
+    )
+    .bind(fx.community().as_uuid())
+    .bind(&closer_hex)
+    .fetch_one(&fx.pool)
+    .await
+    .expect("audit rows");
+    assert_eq!(
+        audited, 1,
+        "the assignment is audited with who got the call"
+    );
+
+    // A call never goes to an agent, a plain member or a stranger, and a refused brief moves
+    // nothing: the stage asked for in the same command is not stored either.
+    for (who, key) in [
+        ("agent", scout.public_key().to_hex()),
+        ("plain member", plain.public_key().to_hex()),
+        ("stranger", stranger.public_key().to_hex()),
+    ] {
+        let refusal = rejection(
+            fx.command(
+                &fx.owner,
+                KIND_WHATSAPP_CONTACT_UPDATE,
+                update(
+                    wa,
+                    json!({"stage": "call_booked", "callBrief": {"assignee": key}}),
+                ),
+            )
+            .await,
+        );
+        assert!(
+            refusal.contains("An agent cannot be given a call"),
+            "{who}: {refusal}"
+        );
+    }
+    for (bad, want) in [
+        (json!({"link": "preview.example/acme"}), "full web address"),
+        (json!({"link": "javascript:alert(1)"}), "full web address"),
+        (
+            json!({"link": "https://preview.example/a b"}),
+            "full web address",
+        ),
+        (json!({"link": "  "}), "link is empty"),
+        (json!({"note": "   "}), "note is empty"),
+        (json!({"note": "x".repeat(2001)}), "longer than 2000"),
+        (json!({"assignee": "abc"}), "64 character hex pubkey"),
+        (json!({}), "callBrief is empty"),
+    ] {
+        let refusal = rejection(
+            fx.command(
+                &fx.owner,
+                KIND_WHATSAPP_CONTACT_UPDATE,
+                update(wa, json!({"stage": "call_booked", "callBrief": bad})),
+            )
+            .await,
+        );
+        assert!(refusal.contains(want), "{want}: {refusal}");
+    }
+    let view = contact_json_current_desktop(&fx, wa).await;
+    assert_eq!(
+        view["stage"], "ready_to_call",
+        "a refused brief moves no stage"
+    );
+    assert_eq!(view["callBrief"]["assigneePubkey"], closer_hex);
+    assert_eq!(call_notices(&fx).await.len(), 1);
+
+    // The brief is changed later on its own: the link goes, the rest stays, nobody is told
+    // again.
+    fx.command(
+        &closer,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"callBrief": {"link": null}})),
+    )
+    .await
+    .expect("the closer edits the brief");
+    let view = contact_json_current_desktop(&fx, wa).await;
+    assert_eq!(view["stage"], "ready_to_call");
+    assert_eq!(view["callBrief"]["link"], Value::Null);
+    assert_eq!(
+        view["callBrief"]["note"],
+        "Site preview is ready.\nThey want the booking page first."
+    );
+    assert_eq!(view["callBrief"]["assigneePubkey"], closer_hex);
+    assert_eq!(view["callBrief"]["updatedBy"], closer_hex);
+    assert_eq!(call_notices(&fx).await.len(), 1);
+
+    // A second lead: the call is given first and the lead becomes ready later. Each moment
+    // tells her once.
+    let second = "27821230402";
+    seed_opener(&fx, second, "wamid.OUT-RTC-2", "delivered", None).await;
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(second, json!({"callBrief": {"assignee": closer_hex}})),
+    )
+    .await
+    .expect("give the call");
+    let notices = call_notices(&fx).await;
+    assert_eq!(notices.len(), 2, "{notices:?}");
+    assert_eq!(
+        notices[1].0,
+        "Lead given to you: +27821230402. Basheer gave you this call."
+    );
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(second, json!({"stage": "ready_to_call"})),
+    )
+    .await
+    .expect("ready");
+    let notices = call_notices(&fx).await;
+    assert_eq!(notices.len(), 3, "{notices:?}");
+    assert_eq!(
+        notices[2].0,
+        "Ready to call: +27821230402. Basheer gave you this call."
+    );
+
+    // Nobody is told about their own change.
+    let third = "27821230403";
+    seed_opener(&fx, third, "wamid.OUT-RTC-3", "delivered", None).await;
+    let own = fx
+        .command(
+            &closer,
+            KIND_WHATSAPP_CONTACT_UPDATE,
+            update(
+                third,
+                json!({"stage": "ready_to_call", "callBrief": {"assignee": closer_hex}}),
+            ),
+        )
+        .await
+        .expect("she takes a lead herself");
+    assert!(!own.message.contains("told"), "{}", own.message);
+    assert_eq!(call_notices(&fx).await.len(), 3);
+
+    // The lead moves on the way it always did, and keeps its brief.
+    fx.command(
+        &closer,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"stage": "call_booked"})),
+    )
+    .await
+    .expect("call booked");
+    let view = contact_json_current_desktop(&fx, wa).await;
+    assert_eq!(view["stage"], "call_booked");
+    assert_eq!(view["callBrief"]["assigneePubkey"], closer_hex);
+    // Clearing the person leaves the note, and the brief is gone once nothing is left.
+    fx.command(
+        &fx.owner,
+        KIND_WHATSAPP_CONTACT_UPDATE,
+        update(wa, json!({"callBrief": {"assignee": null, "note": null}})),
+    )
+    .await
+    .expect("clear the brief");
+    assert_eq!(
+        contact_json_current_desktop(&fx, wa).await["callBrief"],
+        Value::Null
+    );
 }
 
 async fn batch_row_for(

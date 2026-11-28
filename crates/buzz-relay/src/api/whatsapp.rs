@@ -52,6 +52,11 @@ const SIGNATURE_HEADER: &str = "x-hub-signature-256";
 /// A desktop that knows the `queued` contact-stage enum sends this marker on every query.
 /// Its absence means the relay must project the legacy-safe `none` stage.
 pub(crate) const QUEUED_STAGE_CAPABILITY: &str = "whatsapp-outreach-stage-queued";
+/// A client that knows the `ready_to_call` stage sends this marker. Without it the relay
+/// answers `wants_call` for such a contact, which every installed desktop can show.
+pub(crate) const READY_TO_CALL_STAGE_CAPABILITY: &str = "whatsapp-outreach-stage-ready-to-call";
+/// Most people one `call_closers` answer lists.
+const MAX_CALL_CLOSERS: i64 = 200;
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -179,11 +184,19 @@ struct SafetyCheckIdentity {
     value: String,
 }
 
-fn supports_queued_stage(request: &QueryRequest) -> bool {
-    request
-        .capabilities
-        .iter()
-        .any(|capability| capability == QUEUED_STAGE_CAPABILITY)
+/// The later stage names this caller said it can read. Each marker is independent, so an
+/// installed desktop that only knows `queued` keeps getting exactly what it got before.
+fn stage_support(request: &QueryRequest) -> desk::StageSupport {
+    let advertised = |marker: &str| {
+        request
+            .capabilities
+            .iter()
+            .any(|capability| capability == marker)
+    };
+    desk::StageSupport {
+        queued: advertised(QUEUED_STAGE_CAPABILITY),
+        ready_to_call: advertised(READY_TO_CALL_STAGE_CAPABILITY),
+    }
 }
 
 fn normalize_suppression_identity(
@@ -322,7 +335,7 @@ fn with_desk(
     mut view: Value,
     contact: &WhatsappContact,
     desk: &desk::DeskData,
-    supports_queued_stage: bool,
+    support: desk::StageSupport,
 ) -> Value {
     let facts = desk.facts.get(&contact.wa_id).cloned().unwrap_or_default();
     let lead_id = contact.lead_id.as_deref();
@@ -331,7 +344,7 @@ fn with_desk(
         &facts,
         lead_id.and_then(|id| desk.leads.get(id)),
         lead_id.and_then(|id| desk.records.get(id)),
-        supports_queued_stage,
+        support,
     );
     if let Some(object) = view.as_object_mut() {
         object.extend(fields);
@@ -460,7 +473,7 @@ pub(crate) async fn contacts_view(
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     // Non-HTTP callers do not carry desktop capability markers. Keep their projection safe for
     // a strict older parser rather than assuming the current desktop is installed everywhere.
-    contacts_view_for_capability(state, community, contacts, now, false).await
+    contacts_view_for_capability(state, community, contacts, now, desk::StageSupport::LEGACY).await
 }
 
 /// Contact view with an explicit wire-compatibility projection. HTTP callers use this rather
@@ -470,7 +483,7 @@ async fn contacts_view_for_capability(
     community: buzz_core::tenant::CommunityId,
     contacts: &[WhatsappContact],
     now: chrono::DateTime<Utc>,
-    supports_queued_stage: bool,
+    support: desk::StageSupport,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let ids: Vec<String> = contacts.iter().map(|c| c.wa_id.clone()).collect();
     let flags = state
@@ -495,7 +508,7 @@ async fn contacts_view_for_capability(
                     with_business_stop(contact_view(c, now, &flags), business_stops.get(&c.wa_id)),
                     c,
                     &desk,
-                    supports_queued_stage,
+                    support,
                 )
             })
             .collect::<Vec<_>>(),
@@ -536,7 +549,7 @@ pub(crate) async fn contacts_page_view(
     before: Option<&str>,
     counts: bool,
     now: chrono::DateTime<Utc>,
-    supports_queued_stage: bool,
+    support: desk::StageSupport,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let cursor = before
         .map(|raw| {
@@ -561,13 +574,11 @@ pub(crate) async fn contacts_page_view(
         .last()
         .filter(|_| more)
         .map(|last| encode_contact_cursor(&last.cursor()));
-    let mut view =
-        contacts_view_for_capability(state, community, &contacts, now, supports_queued_stage)
-            .await?;
+    let mut view = contacts_view_for_capability(state, community, &contacts, now, support).await?;
     if let Some(object) = view.as_object_mut() {
         object.insert("nextCursor".to_owned(), json!(next_cursor));
         if counts {
-            let counted = desk::stage_counts(state, community, supports_queued_stage)
+            let counted = desk::stage_counts(state, community, support)
                 .await
                 .map_err(|reason| internal_error(&reason))?;
             object.extend(counted.fields());
@@ -588,7 +599,16 @@ pub(crate) async fn thread_view(
     now: chrono::DateTime<Utc>,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     // See `contacts_view`: callers without a capability marker must get legacy-safe stages.
-    thread_view_for_capability(state, community, wa_id, limit, include_held, now, false).await
+    thread_view_for_capability(
+        state,
+        community,
+        wa_id,
+        limit,
+        include_held,
+        now,
+        desk::StageSupport::LEGACY,
+    )
+    .await
 }
 
 /// Thread view with the caller's explicitly advertised enum support.
@@ -599,7 +619,7 @@ pub(crate) async fn thread_view_for_capability(
     limit: i64,
     include_held: bool,
     now: chrono::DateTime<Utc>,
-    supports_queued_stage: bool,
+    support: desk::StageSupport,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let db_error = |error: buzz_db::DbError| internal_error(&format!("whatsapp query: {error}"));
     let contact = state
@@ -656,7 +676,7 @@ pub(crate) async fn thread_view_for_capability(
             ),
             &contact,
             &desk,
-            supports_queued_stage,
+            support,
         ),
         "messages": messages
             .iter()
@@ -702,6 +722,27 @@ fn batch_view(batch: &WhatsappBatch, rows: &[WhatsappMessage]) -> Value {
     })
 }
 
+/// The `call_closers` answer: the people a lead can be given to for its call. `name` is `null`
+/// while the person has no profile name.
+fn call_closers_view(closers: &[buzz_db::whatsapp::CallCloser]) -> Value {
+    json!({
+        "closers": closers
+            .iter()
+            .map(|closer| {
+                json!({
+                    "pubkey": closer.pubkey,
+                    "role": closer.role,
+                    "name": closer
+                        .display_name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty()),
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
 fn limit_of(request: &QueryRequest) -> i64 {
     request.limit.unwrap_or(DEFAULT_LIST_LIMIT).clamp(1, 200)
 }
@@ -721,7 +762,7 @@ pub async fn query(
     let community = tenant.community();
     let db_error = |error: buzz_db::DbError| internal_error(&format!("whatsapp query: {error}"));
     let now = Utc::now();
-    let queued_stage_supported = supports_queued_stage(&request);
+    let support = stage_support(&request);
 
     let private = |access: Access| -> Result<(), (StatusCode, Json<Value>)> {
         if access.can_read_private() {
@@ -836,6 +877,24 @@ pub async fn query(
             detail["rows"] = Value::Array(row_views);
             detail["counts"] = row_counts(&rows);
             Ok(Json(detail))
+        }
+        "call_closers" => {
+            private(access)?;
+            let settings = state
+                .db
+                .whatsapp_ensure_settings(community)
+                .await
+                .map_err(db_error)?;
+            let closers = state
+                .db
+                .whatsapp_list_call_closers(
+                    community,
+                    settings.outreach_channel_id,
+                    MAX_CALL_CLOSERS,
+                )
+                .await
+                .map_err(db_error)?;
+            Ok(Json(call_closers_view(&closers)))
         }
         "queue" => {
             private(access)?;
@@ -958,7 +1017,7 @@ pub async fn query(
                     request.before.as_deref(),
                     request.counts,
                     now,
-                    queued_stage_supported,
+                    support,
                 )
                 .await?,
             ))
@@ -976,7 +1035,7 @@ pub async fn query(
                     community,
                     &contacts,
                     now,
-                    queued_stage_supported,
+                    support,
                 )
                 .await?,
             ))
@@ -996,7 +1055,7 @@ pub async fn query(
                     limit_of(&request),
                     request.include_held,
                     now,
-                    queued_stage_supported,
+                    support,
                 )
                 .await?,
             ))
@@ -1135,14 +1194,55 @@ mod tests {
             "what": "contacts"
         }))
         .expect("legacy query parses");
-        assert!(!supports_queued_stage(&legacy));
+        assert_eq!(stage_support(&legacy), desk::StageSupport::LEGACY);
 
         let current: QueryRequest = serde_json::from_value(serde_json::json!({
             "what": "contacts",
             "capabilities": [QUEUED_STAGE_CAPABILITY]
         }))
         .expect("current query parses");
-        assert!(supports_queued_stage(&current));
+        assert!(stage_support(&current).queued);
+    }
+
+    #[test]
+    fn ready_to_call_is_only_named_to_a_caller_that_asked_for_it() {
+        // GUARD: desktops from v3.0.38 through v3.0.77 send the `queued` marker alone and show
+        // an unfamiliar stage as "Not contacted". Knowing `queued` must not imply knowing
+        // `ready_to_call`. This is the request seam that feeds the contact, inbox, thread and
+        // count projections.
+        let queued_only: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts",
+            "capabilities": [QUEUED_STAGE_CAPABILITY]
+        }))
+        .expect("query parses");
+        assert_eq!(
+            stage_support(&queued_only),
+            desk::StageSupport {
+                queued: true,
+                ready_to_call: false,
+            }
+        );
+
+        let current: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts",
+            "capabilities": [QUEUED_STAGE_CAPABILITY, READY_TO_CALL_STAGE_CAPABILITY]
+        }))
+        .expect("query parses");
+        assert_eq!(stage_support(&current), desk::StageSupport::CURRENT);
+
+        // An agent's CLI names only the stage it needs.
+        let cli: QueryRequest = serde_json::from_value(serde_json::json!({
+            "what": "contacts",
+            "capabilities": [READY_TO_CALL_STAGE_CAPABILITY]
+        }))
+        .expect("query parses");
+        assert_eq!(
+            stage_support(&cli),
+            desk::StageSupport {
+                queued: false,
+                ready_to_call: true,
+            }
+        );
     }
 
     #[test]

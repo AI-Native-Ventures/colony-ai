@@ -26,8 +26,9 @@ use buzz_core::kind::{
 use buzz_core::whatsapp_stage::{derive_stage, WhatsappStage};
 use buzz_core::TenantContext;
 use buzz_db::whatsapp::{
-    BatchDecisionOutcome, DraftDecisionOutcome, NewOutboundMessage, RowEdit, SendNowOutcome,
-    UnknownSendReplacement, WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP, OWNER_PAUSE_REASON,
+    BatchDecisionOutcome, CallBriefChange, CallCloser, DraftDecisionOutcome, NewOutboundMessage,
+    RowEdit, SendNowOutcome, UnknownSendReplacement, WhatsappBatch, MAX_DAILY_NEW_CHAT_CAP,
+    OWNER_PAUSE_REASON,
 };
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
@@ -35,8 +36,8 @@ use crate::state::AppState;
 use crate::whatsapp::connect::sync_templates;
 use crate::whatsapp::inbound::{load_lead_phone_lookup, LeadPhoneLookup, LeadPhoneMatch};
 use crate::whatsapp::policy::{
-    account_retry_error_codes, clean_title, e164, is_contact_engagement_limit, normalize_wa_id,
-    render_template, retry_scope_for_error_code, template_slot_count, window_open,
+    account_retry_error_codes, clean_title, contact_label, e164, is_contact_engagement_limit,
+    normalize_wa_id, render_template, retry_scope_for_error_code, template_slot_count, window_open,
     FailureRetryScope, SEND_NOW_MAX_ROWS,
 };
 use crate::whatsapp::sender::{
@@ -202,7 +203,7 @@ struct TemplateTitleCommand {
     propose: bool,
 }
 
-/// Rename a contact and/or set its pipeline stage (kind 47052).
+/// Rename a contact, set its pipeline stage and/or change its call brief (kind 47052).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContactUpdateCommand {
@@ -214,6 +215,10 @@ struct ContactUpdateCommand {
     /// `Some(Some(text))` sets the label, `Some(None)` (JSON `null`) clears it, absent leaves it.
     #[serde(default, deserialize_with = "present_or_null")]
     label: Option<Option<String>>,
+    /// What the person who phones the business needs: a link, a note and who makes the call.
+    /// Stored with the stage in one write, so a move to `ready_to_call` never lands without it.
+    #[serde(default)]
+    call_brief: Option<CallBriefCommand>,
     /// Message id whose inbound media download should be started again (the owner pressed
     /// Retry on a picture, sticker or voice note that could not be loaded). Sent on its own.
     #[serde(default)]
@@ -258,6 +263,22 @@ struct UnknownSendRecoveryCommand {
     confirm: bool,
 }
 
+/// The call brief of a contact. Each field is absent to leave it alone, JSON `null` to clear
+/// it, or a value to set it.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CallBriefCommand {
+    /// Where the prepared work is: a full `http` or `https` address.
+    #[serde(default, deserialize_with = "present_or_null")]
+    link: Option<Option<String>>,
+    /// What the person who calls needs to know.
+    #[serde(default, deserialize_with = "present_or_null")]
+    note: Option<Option<String>>,
+    /// Hex pubkey of the person who will make the call. Never an agent.
+    #[serde(default, deserialize_with = "present_or_null")]
+    assignee: Option<Option<String>>,
+}
+
 /// Tell an absent field (`None`) from an explicit `null` (`Some(None)`).
 fn present_or_null<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
@@ -269,6 +290,14 @@ where
 
 /// Longest owner label, in characters.
 const MAX_LABEL_CHARS: usize = 120;
+/// Longest call-brief link and note, in characters. The table refuses anything longer.
+const MAX_CALL_LINK_CHARS: usize = 2000;
+const MAX_CALL_NOTE_CHARS: usize = 2000;
+/// Most people looked through when checking who a call may be given to.
+const MAX_CALL_CLOSERS: i64 = 200;
+/// The stages a person may set by hand, as the refusal names them.
+const MANUAL_STAGE_NAMES: &str =
+    "contacted, replied, wants_call, ready_to_call, call_booked, quote_sent, client or no_thanks";
 const MAX_SAFETY_REASON_CHARS: usize = 500;
 
 fn restricted(reason: impl std::fmt::Display) -> IngestError {
@@ -1161,6 +1190,7 @@ async fn handle_contact_update(
     if let Some(retry_later) = command.retry_later.as_ref() {
         if command.stage.is_some()
             || command.label.is_some()
+            || command.call_brief.is_some()
             || command.retry_media.is_some()
             || command.retry_send.is_some()
         {
@@ -1218,6 +1248,7 @@ async fn handle_contact_update(
     if let Some(message_id) = command.retry_send.as_deref() {
         if command.stage.is_some()
             || command.label.is_some()
+            || command.call_brief.is_some()
             || command.retry_media.is_some()
             || command.retry_later.is_some()
         {
@@ -1283,6 +1314,7 @@ async fn handle_contact_update(
     if let Some(message_id) = command.retry_media.as_deref() {
         if command.stage.is_some()
             || command.label.is_some()
+            || command.call_brief.is_some()
             || command.retry_send.is_some()
             || command.retry_later.is_some()
         {
@@ -1315,11 +1347,8 @@ async fn handle_contact_update(
         .stage
         .as_deref()
         .map(|value| {
-            WhatsappStage::parse_manual(value).ok_or_else(|| {
-                invalid(
-                    "stage must be contacted, replied, wants_call, call_booked, quote_sent, client or no_thanks",
-                )
-            })
+            WhatsappStage::parse_manual(value)
+                .ok_or_else(|| invalid(format!("stage must be {MANUAL_STAGE_NAMES}")))
         })
         .transpose()?;
     let label = match &command.label {
@@ -1327,8 +1356,13 @@ async fn handle_contact_update(
         Some(None) => Some(None),
         Some(Some(text)) => Some(Some(clean_label(text)?)),
     };
-    if stage.is_none() && label.is_none() {
-        return Err(invalid("nothing to change: set stage or label"));
+    let brief = command
+        .call_brief
+        .as_ref()
+        .map(clean_call_brief)
+        .transpose()?;
+    if stage.is_none() && label.is_none() && brief.is_none() {
+        return Err(invalid("nothing to change: set stage, label or callBrief"));
     }
     let contact = state
         .db
@@ -1345,11 +1379,11 @@ async fn handle_contact_update(
         .as_deref()
         .and_then(|id| desk.records.get(id));
     let facts = desk.facts.get(&wa_id).cloned().unwrap_or_default();
+    let current = derive_stage(&crate::whatsapp::desk::stage_inputs(
+        &contact, &facts, lead, record,
+    ));
     if stage.is_some() {
         // A fact would hide the new stage, so say so instead of accepting a change that shows nothing.
-        let current = derive_stage(&crate::whatsapp::desk::stage_inputs(
-            &contact, &facts, lead, record,
-        ));
         if contact.opted_out_at.is_some()
             || matches!(
                 current.stage,
@@ -1361,6 +1395,21 @@ async fn handle_contact_update(
             ));
         }
     }
+    // GUARD: a call is only ever given to a person who can open Outreach. An agent, a plain
+    // member and a stranger are refused before anything is stored.
+    let new_assignee = brief.as_ref().and_then(|brief| brief.assignee).flatten();
+    let assignee_closer = match new_assignee {
+        Some(assignee) => Some(
+            find_call_closer(state, community, &assignee)
+                .await?
+                .ok_or_else(|| {
+                    invalid(
+                        "callBrief.assignee must be a person who can open Outreach: the owner, an admin or an Outreach member. An agent cannot be given a call",
+                    )
+                })?,
+        ),
+        None => None,
+    };
     let now = Utc::now();
     let by = event.pubkey.to_bytes();
     let changed = state
@@ -1370,13 +1419,32 @@ async fn handle_contact_update(
             &wa_id,
             stage.map(|stage| (stage.as_str(), by.as_slice(), now)),
             label.as_ref().map(|label| label.as_deref()),
+            brief.as_ref().map(|brief| CallBriefChange {
+                link: brief.link.as_ref().map(|link| link.as_deref()),
+                note: brief.note.as_ref().map(|note| note.as_deref()),
+                assignee: brief
+                    .assignee
+                    .as_ref()
+                    .map(|assignee| assignee.as_ref().map(|key| key.as_slice())),
+                by: by.as_slice(),
+                at: now,
+            }),
         )
         .await
         .map_err(internal)?;
     if !changed {
         return Err(invalid("no such contact"));
     }
-    audit_contact_update(state, tenant, event, &wa_id, stage, label.as_ref()).await?;
+    audit_contact_update(
+        state,
+        tenant,
+        event,
+        &wa_id,
+        stage,
+        label.as_ref(),
+        brief.as_ref(),
+    )
+    .await?;
 
     let mut notes = Vec::new();
     if let Some(stage) = stage {
@@ -1413,7 +1481,253 @@ async fn handle_contact_update(
         Some(None) => notes.push("name cleared".to_owned()),
         None => {}
     }
+    if let Some(brief) = &brief {
+        match &brief.link {
+            Some(Some(_)) => notes.push("call link set".to_owned()),
+            Some(None) => notes.push("call link cleared".to_owned()),
+            None => {}
+        }
+        match &brief.note {
+            Some(Some(_)) => notes.push("call note set".to_owned()),
+            Some(None) => notes.push("call note cleared".to_owned()),
+            None => {}
+        }
+        match (&brief.assignee, &assignee_closer) {
+            (Some(Some(_)), Some(closer)) => {
+                notes.push(format!("call given to {}", closer_name(closer)));
+            }
+            (Some(None), _) => notes.push("call assignment cleared".to_owned()),
+            _ => {}
+        }
+    }
+
+    // Tell the person who now has the call. Two moments count: the call was given to someone
+    // new, or the lead became ready to call while a person already had it. Nobody is told
+    // about their own change.
+    let final_stage = stage.unwrap_or(current.stage);
+    let became_ready =
+        stage == Some(WhatsappStage::ReadyToCall) && current.stage != WhatsappStage::ReadyToCall;
+    let final_assignee: Option<Vec<u8>> =
+        brief.as_ref().and_then(|brief| brief.assignee).map_or_else(
+            || facts.call_assignee.clone(),
+            |change| change.map(|key| key.to_vec()),
+        );
+    if let Some(assignee) = final_assignee.as_deref() {
+        let newly_given = facts.call_assignee.as_deref() != Some(assignee);
+        if assignee != by.as_slice() && (newly_given || became_ready) {
+            let final_link = brief
+                .as_ref()
+                .and_then(|brief| brief.link.clone())
+                .unwrap_or_else(|| facts.call_brief_link.clone());
+            let final_note = brief
+                .as_ref()
+                .and_then(|brief| brief.note.clone())
+                .unwrap_or_else(|| facts.call_brief_note.clone());
+            let business = match &label {
+                Some(Some(label)) => label.clone(),
+                _ => facts
+                    .label
+                    .clone()
+                    .filter(|label| !label.trim().is_empty())
+                    .or_else(|| lead.map(|lead| lead.business_name.clone()))
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or_else(|| contact_label(&contact.display_name, &contact.wa_id)),
+            };
+            let giver = state
+                .db
+                .get_user(community, by.as_slice())
+                .await
+                .ok()
+                .flatten()
+                .and_then(|profile| profile.display_name)
+                .map(|name| name.trim().to_owned())
+                .filter(|name| !name.is_empty());
+            let text = call_assignment_text(&CallAssignment {
+                ready: final_stage == WhatsappStage::ReadyToCall,
+                business: &business,
+                phone: &e164(&contact.wa_id),
+                giver: giver.as_deref(),
+                link: final_link.as_deref(),
+                note: final_note.as_deref(),
+            });
+            let told =
+                channel::post_call_assignment(state, tenant, &hex::encode(assignee), &wa_id, &text)
+                    .await;
+            notes.push(
+                if told {
+                    "they were told in Outreach"
+                } else {
+                    "the notice to them could not be posted, so tell them yourself"
+                }
+                .to_owned(),
+            );
+        }
+    }
     Ok(ok(event, notes.join(", ")))
+}
+
+/// A validated change to a contact's call brief.
+#[derive(Debug, PartialEq, Eq)]
+struct CallBriefUpdate {
+    link: Option<Option<String>>,
+    note: Option<Option<String>>,
+    assignee: Option<Option<[u8; 32]>>,
+}
+
+/// Check every field of a call-brief change. Nothing is stored when one of them is refused.
+fn clean_call_brief(command: &CallBriefCommand) -> Result<CallBriefUpdate, IngestError> {
+    let link = match &command.link {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(raw)) => Some(Some(clean_call_link(raw)?)),
+    };
+    let note = match &command.note {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(raw)) => Some(Some(clean_call_note(raw)?)),
+    };
+    let assignee = match &command.assignee {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(raw)) => Some(Some(parse_call_assignee(raw)?)),
+    };
+    if link.is_none() && note.is_none() && assignee.is_none() {
+        return Err(invalid("callBrief is empty: set link, note or assignee"));
+    }
+    Ok(CallBriefUpdate {
+        link,
+        note,
+        assignee,
+    })
+}
+
+/// Clean a call-brief link: a full `http` or `https` address with a host and no spaces.
+fn clean_call_link(raw: &str) -> Result<String, IngestError> {
+    let link = raw.trim();
+    if link.is_empty() {
+        return Err(invalid("callBrief.link is empty; send null to clear it"));
+    }
+    if link.chars().count() > MAX_CALL_LINK_CHARS {
+        return Err(invalid(format!(
+            "callBrief.link is longer than {MAX_CALL_LINK_CHARS} characters"
+        )));
+    }
+    let web_address =
+        "callBrief.link must be a full web address that starts with http:// or https://";
+    if link
+        .chars()
+        .any(|character| character.is_whitespace() || character.is_control())
+    {
+        return Err(invalid(web_address));
+    }
+    let parsed = url::Url::parse(link).map_err(|_| invalid(web_address))?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none_or(str::is_empty) {
+        return Err(invalid(web_address));
+    }
+    Ok(link.to_owned())
+}
+
+/// Clean a call-brief note. Line breaks stay; any other control character is refused.
+fn clean_call_note(raw: &str) -> Result<String, IngestError> {
+    let unified = raw.replace("\r\n", "\n");
+    let note = unified.trim();
+    if note.is_empty() {
+        return Err(invalid("callBrief.note is empty; send null to clear it"));
+    }
+    if note.chars().count() > MAX_CALL_NOTE_CHARS {
+        return Err(invalid(format!(
+            "callBrief.note is longer than {MAX_CALL_NOTE_CHARS} characters"
+        )));
+    }
+    if note
+        .chars()
+        .any(|character| character.is_control() && character != '\n' && character != '\t')
+    {
+        return Err(invalid(
+            "callBrief.note has characters that cannot be shown",
+        ));
+    }
+    Ok(note.to_owned())
+}
+
+/// Read a call assignee: a 64 character hex pubkey.
+fn parse_call_assignee(raw: &str) -> Result<[u8; 32], IngestError> {
+    let refusal = "callBrief.assignee must be a 64 character hex pubkey";
+    let bytes = hex::decode(raw.trim()).map_err(|_| invalid(refusal))?;
+    <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| invalid(refusal))
+}
+
+/// The person `assignee` is when a call may be given to them, else `None`.
+async fn find_call_closer(
+    state: &Arc<AppState>,
+    community: buzz_core::tenant::CommunityId,
+    assignee: &[u8; 32],
+) -> Result<Option<CallCloser>, IngestError> {
+    let settings = state
+        .db
+        .whatsapp_ensure_settings(community)
+        .await
+        .map_err(internal)?;
+    let wanted = hex::encode(assignee);
+    Ok(state
+        .db
+        .whatsapp_list_call_closers(community, settings.outreach_channel_id, MAX_CALL_CLOSERS)
+        .await
+        .map_err(internal)?
+        .into_iter()
+        .find(|closer| closer.pubkey == wanted))
+}
+
+/// What to call a person in a note: their profile name, or a plain word when they have none.
+fn closer_name(closer: &CallCloser) -> String {
+    closer
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("a teammate")
+        .to_owned()
+}
+
+/// What the Outreach notice to the person who got a call says.
+struct CallAssignment<'a> {
+    /// The lead is in `ready_to_call`.
+    ready: bool,
+    business: &'a str,
+    phone: &'a str,
+    /// Profile name of who gave the call, when they have one.
+    giver: Option<&'a str>,
+    link: Option<&'a str>,
+    note: Option<&'a str>,
+}
+
+/// The text of the notice: what, who gave it, then the link and the note when there are any.
+fn call_assignment_text(assignment: &CallAssignment<'_>) -> String {
+    let headline = if assignment.ready {
+        "Ready to call"
+    } else {
+        "Lead given to you"
+    };
+    // A lead with no name yet is known by its number alone: do not print it twice.
+    let mut text = if assignment.business == assignment.phone {
+        format!("{headline}: {}.", assignment.phone)
+    } else {
+        format!(
+            "{headline}: {} ({}).",
+            assignment.business, assignment.phone
+        )
+    };
+    text.push_str(&match assignment.giver {
+        Some(giver) => format!(" {giver} gave you this call."),
+        None => " This call was given to you.".to_owned(),
+    });
+    if let Some(link) = assignment.link {
+        text.push_str(&format!("\nLink: {link}"));
+    }
+    if let Some(note) = assignment.note {
+        text.push_str(&format!("\nBrief: {note}"));
+    }
+    text
 }
 
 fn clean_safety_reason(raw: &str) -> Result<String, IngestError> {
@@ -1655,6 +1969,7 @@ async fn audit_contact_update(
     wa_id: &str,
     stage: Option<WhatsappStage>,
     label: Option<&Option<String>>,
+    brief: Option<&CallBriefUpdate>,
 ) -> Result<(), IngestError> {
     let Some(audit) = state.audit.as_ref() else {
         return Ok(());
@@ -1669,6 +1984,14 @@ async fn audit_contact_update(
                 "command_event_id": event.id.to_hex(),
                 "stage": stage.map(WhatsappStage::as_str),
                 "label_set": label.map(|label| label.is_some()),
+                "call_brief": brief.map(|brief| serde_json::json!({
+                    "link_set": brief.link.as_ref().map(Option::is_some),
+                    "note_set": brief.note.as_ref().map(Option::is_some),
+                    "assignee": brief
+                        .assignee
+                        .as_ref()
+                        .map(|assignee| assignee.as_ref().map(hex::encode)),
+                })),
             }),
         })
         .await
@@ -1905,6 +2228,128 @@ mod tests {
     use super::*;
     use buzz_db::whatsapp::WhatsappContact;
     use chrono::TimeZone;
+
+    fn refusal<T: std::fmt::Debug>(result: Result<T, IngestError>) -> String {
+        match result {
+            Err(IngestError::Rejected(reason)) => reason,
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_call_link_is_a_full_web_address_and_nothing_else() {
+        // GUARD: the link is shown as a clickable address on the desk and in a notice, so
+        // only `http` and `https` with a host pass. `javascript:` and bare words do not.
+        assert_eq!(
+            clean_call_link("  https://preview.example/acme?v=2 ").expect("link"),
+            "https://preview.example/acme?v=2"
+        );
+        assert!(clean_call_link("http://localhost:3000/demo").is_ok());
+        for bad in [
+            "preview.example/acme",
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "mailto:someone@example.com",
+            "https://",
+            "https://preview.example/a b",
+            "https://preview.example/a\nb",
+        ] {
+            let reason = refusal(clean_call_link(bad));
+            assert!(reason.contains("full web address"), "{bad}: {reason}");
+        }
+        assert!(refusal(clean_call_link("   ")).contains("link is empty"));
+        let long = format!(
+            "https://preview.example/{}",
+            "a".repeat(MAX_CALL_LINK_CHARS)
+        );
+        assert!(refusal(clean_call_link(&long)).contains("longer than 2000"));
+    }
+
+    #[test]
+    fn a_call_note_keeps_its_lines_and_has_a_length() {
+        assert_eq!(
+            clean_call_note("  Preview ready.\r\nWants the booking page.  ").expect("note"),
+            "Preview ready.\nWants the booking page."
+        );
+        assert!(refusal(clean_call_note(" \n ")).contains("note is empty"));
+        assert!(clean_call_note(&"x".repeat(MAX_CALL_NOTE_CHARS)).is_ok());
+        assert!(
+            refusal(clean_call_note(&"x".repeat(MAX_CALL_NOTE_CHARS + 1)))
+                .contains("longer than 2000")
+        );
+        assert!(refusal(clean_call_note("bad\u{0}byte")).contains("cannot be shown"));
+    }
+
+    #[test]
+    fn a_call_brief_change_reads_absent_null_and_value_apart() {
+        let parse = |content: serde_json::Value| {
+            serde_json::from_value::<ContactUpdateCommand>(content).expect("command parses")
+        };
+        // Absent: the brief is not touched at all.
+        let plain = parse(serde_json::json!({"v": 1, "waId": "27821234567", "stage": "client"}));
+        assert!(plain.call_brief.is_none());
+
+        let key = "ab".repeat(32);
+        let command = parse(serde_json::json!({
+            "v": 1,
+            "waId": "27821234567",
+            "callBrief": {"link": null, "assignee": key}
+        }));
+        let update = clean_call_brief(command.call_brief.as_ref().expect("brief")).expect("clean");
+        assert_eq!(
+            update,
+            CallBriefUpdate {
+                link: Some(None),
+                note: None,
+                assignee: Some(Some([0xab; 32])),
+            }
+        );
+
+        let empty = parse(serde_json::json!({"v": 1, "waId": "27821234567", "callBrief": {}}));
+        assert!(
+            refusal(clean_call_brief(empty.call_brief.as_ref().expect("brief")))
+                .contains("callBrief is empty")
+        );
+        let short = "ab".repeat(31);
+        let long = "ab".repeat(33);
+        for bad in ["abc", "zz", short.as_str(), long.as_str()] {
+            assert!(
+                refusal(parse_call_assignee(bad)).contains("64 character hex pubkey"),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_call_notice_says_what_who_and_carries_the_brief() {
+        let full = call_assignment_text(&CallAssignment {
+            ready: true,
+            business: "Acme Furniture",
+            phone: "+27821234567",
+            giver: Some("Basheer"),
+            link: Some("https://preview.example/acme"),
+            note: Some("Wants the booking page first."),
+        });
+        assert_eq!(
+            full,
+            "Ready to call: Acme Furniture (+27821234567). Basheer gave you this call.\n\
+             Link: https://preview.example/acme\n\
+             Brief: Wants the booking page first."
+        );
+        // No name for the lead or the giver, nothing attached, and not ready yet.
+        let bare = call_assignment_text(&CallAssignment {
+            ready: false,
+            business: "+27821234567",
+            phone: "+27821234567",
+            giver: None,
+            link: None,
+            note: None,
+        });
+        assert_eq!(
+            bare,
+            "Lead given to you: +27821234567. This call was given to you."
+        );
+    }
 
     fn contact() -> WhatsappContact {
         WhatsappContact {

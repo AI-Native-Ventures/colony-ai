@@ -735,6 +735,52 @@ pub async fn post_owner_notice(
     }
 }
 
+/// Tell one person that a lead was given to them for a call: a top-level Outreach notice that
+/// mentions them. The `p` tag uses Colony's existing mention notification path, and `wa-call`
+/// names the contact so an app can link the notice to it. Returns whether the notice was
+/// posted. A failure is logged and reported to the caller, never fatal: the assignment is
+/// already stored and shows on the desk.
+pub async fn post_call_assignment(
+    state: &Arc<AppState>,
+    tenant: &TenantContext,
+    assignee_hex: &str,
+    wa_id: &str,
+    text: &str,
+) -> bool {
+    let settings = match state.db.whatsapp_ensure_settings(tenant.community()).await {
+        Ok(settings) => settings,
+        Err(error) => {
+            tracing::warn!("whatsapp call assignment settings lookup failed: {error}");
+            return false;
+        }
+    };
+    let Some(channel_id) = settings.outreach_channel_id else {
+        return false;
+    };
+    let tags = vec![
+        vec!["wa-notice".to_string(), "call_assigned".to_string()],
+        vec!["wa-call".to_string(), wa_id.to_string()],
+        vec!["p".to_string(), assignee_hex.to_string()],
+    ];
+    match post_message(
+        state,
+        tenant,
+        channel_id,
+        None,
+        text.to_string(),
+        tags,
+        Utc::now(),
+    )
+    .await
+    {
+        Ok(_) => true,
+        Err(error) => {
+            tracing::warn!("whatsapp call assignment notice post failed: {error}");
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

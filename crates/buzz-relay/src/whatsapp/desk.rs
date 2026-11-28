@@ -340,22 +340,62 @@ pub fn desk_fields(
     lead: Option<&LeadFacts>,
     record: Option<&RecordFacts>,
 ) -> Map<String, Value> {
-    desk_fields_for_capability(contact, facts, lead, record, false)
+    desk_fields_for_capability(contact, facts, lead, record, StageSupport::LEGACY)
 }
 
-/// The same desk projection for a desktop that explicitly understands the `queued` stage.
-/// The legacy default deliberately writes `none` for queued work: desktop-v3.0.37 validates
-/// this enum strictly and would reject the entire contact response if it saw `queued`.
+/// The stage names added after the first desk release that a caller said it can read. A caller
+/// that names none of them gets the legacy-safe projection.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StageSupport {
+    /// Reads `queued`. desktop-v3.0.37 validates the enum strictly and would reject the entire
+    /// contact response if it saw the name.
+    pub queued: bool,
+    /// Reads `ready_to_call`. Desktops up to v3.0.77 show an unfamiliar stage as "Not contacted",
+    /// which would hide a lead that is one step from a call.
+    pub ready_to_call: bool,
+}
+
+impl StageSupport {
+    /// A caller that advertised nothing: every later stage is projected onto an older one.
+    pub const LEGACY: Self = Self {
+        queued: false,
+        ready_to_call: false,
+    };
+    /// A caller that reads every stage.
+    pub const CURRENT: Self = Self {
+        queued: true,
+        ready_to_call: true,
+    };
+}
+
+/// The `stage` string a caller sees: the real stage where the caller advertised support for it,
+/// the closest older stage otherwise (`queued` reads `none`, `ready_to_call` reads `wants_call`:
+/// to an older app the lead still wants a call). The list and the counts both go through here,
+/// so a count always equals what a full list would show.
 ///
 /// This match is intentionally exhaustive. Adding a stage in `buzz-core` makes the compiler
-/// require a deliberate legacy projection instead of accidentally leaking a new enum value to
-/// an installed desktop that cannot parse it.
-const fn legacy_stage_wire_value(stage: WhatsappStage) -> &'static str {
+/// require a deliberate projection instead of accidentally leaking a new enum value to an
+/// installed desktop that cannot parse it.
+fn project_stage(stage: WhatsappStage, support: StageSupport) -> &'static str {
     match stage {
-        WhatsappStage::None | WhatsappStage::Queued => "none",
+        WhatsappStage::None => "none",
+        WhatsappStage::Queued => {
+            if support.queued {
+                "queued"
+            } else {
+                "none"
+            }
+        }
         WhatsappStage::Contacted => "contacted",
         WhatsappStage::Replied => "replied",
         WhatsappStage::WantsCall => "wants_call",
+        WhatsappStage::ReadyToCall => {
+            if support.ready_to_call {
+                "ready_to_call"
+            } else {
+                "wants_call"
+            }
+        }
         WhatsappStage::CallBooked => "call_booked",
         WhatsappStage::QuoteSent => "quote_sent",
         WhatsappStage::Client => "client",
@@ -365,15 +405,22 @@ const fn legacy_stage_wire_value(stage: WhatsappStage) -> &'static str {
     }
 }
 
-/// The `stage` string a caller sees: the real stage for a caller that advertised `queued`
-/// support, the legacy-safe projection otherwise. The list and the counts both go through
-/// here, so a count always equals what a full list would show.
-fn project_stage(stage: WhatsappStage, supports_queued_stage: bool) -> &'static str {
-    if supports_queued_stage {
-        stage.as_str()
-    } else {
-        legacy_stage_wire_value(stage)
+/// The call brief of a contact as the views carry it (`callBrief`), or `null` when nobody
+/// attached a link, wrote a note or assigned a person. Additive: older apps ignore it.
+pub fn call_brief_view(facts: &DeskFacts) -> Value {
+    if facts.call_brief_link.is_none()
+        && facts.call_brief_note.is_none()
+        && facts.call_assignee.is_none()
+    {
+        return Value::Null;
     }
+    json!({
+        "link": facts.call_brief_link,
+        "note": facts.call_brief_note,
+        "assigneePubkey": facts.call_assignee.as_ref().map(hex::encode),
+        "updatedBy": facts.call_brief_by.as_ref().map(hex::encode),
+        "updatedAt": rfc3339(facts.call_brief_at),
+    })
 }
 
 impl DeskData {
@@ -396,18 +443,18 @@ impl DeskData {
     }
 }
 
-/// Build the desk projection for a caller that has explicitly advertised whether it can parse
-/// the `queued` stage. New wire fields remain additive; only the existing `stage` enum is
+/// Build the desk projection for a caller that has explicitly advertised which later stage
+/// names it can parse. New wire fields remain additive; only the existing `stage` enum is
 /// projected for compatibility.
 pub fn desk_fields_for_capability(
     contact: &WhatsappContact,
     facts: &DeskFacts,
     lead: Option<&LeadFacts>,
     record: Option<&RecordFacts>,
-    supports_queued_stage: bool,
+    support: StageSupport,
 ) -> Map<String, Value> {
     let result = derive_stage(&stage_inputs(contact, facts, lead, record));
-    let wire_stage = project_stage(result.stage, supports_queued_stage);
+    let wire_stage = project_stage(result.stage, support);
     let profile = contact.display_name.trim();
     let has_profile = profile.chars().any(char::is_alphanumeric);
     let mut fields = Map::new();
@@ -425,6 +472,7 @@ pub fn desk_fields_for_capability(
         },
     );
     fields.insert("label".into(), json!(facts.label));
+    fields.insert("callBrief".into(), call_brief_view(facts));
     fields.insert(
         "profileName".into(),
         if has_profile {
@@ -520,16 +568,9 @@ impl StageCounts {
 pub async fn stage_counts(
     state: &Arc<AppState>,
     community: CommunityId,
-    supports_queued_stage: bool,
+    support: StageSupport,
 ) -> Result<StageCounts, String> {
-    stage_counts_bounded(
-        state,
-        community,
-        supports_queued_stage,
-        COUNT_CONTACT_CAP,
-        COUNT_CHUNK,
-    )
-    .await
+    stage_counts_bounded(state, community, support, COUNT_CONTACT_CAP, COUNT_CHUNK).await
 }
 
 /// [`stage_counts`] with its bounds as arguments, so a test can cross a chunk edge and the cap
@@ -537,7 +578,7 @@ pub async fn stage_counts(
 pub(crate) async fn stage_counts_bounded(
     state: &Arc<AppState>,
     community: CommunityId,
-    supports_queued_stage: bool,
+    support: StageSupport,
     cap: u64,
     chunk: u64,
 ) -> Result<StageCounts, String> {
@@ -563,7 +604,7 @@ pub(crate) async fn stage_counts_bounded(
             let (facts, lead, record) = data.parts_of(contact, &default_facts);
             let stage = project_stage(
                 derive_stage(&stage_inputs(contact, facts, lead, record)).stage,
-                supports_queued_stage,
+                support,
             );
             counts.add(stage, facts.last_outcome_state.as_deref());
         }
@@ -617,7 +658,8 @@ mod tests {
             last_outcome_at: Some(t(3)),
             ..Default::default()
         };
-        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
+        let fields =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
         assert_eq!(fields["stage"], "not_on_whatsapp");
         // Another failure code, or a later success, is not.
         facts.last_outcome_code = Some("131049".into());
@@ -639,11 +681,13 @@ mod tests {
             label: Some("Plane Tree Hotel".into()),
             ..Default::default()
         };
-        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
+        let fields =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
         assert_eq!(fields["displayName"], "Plane Tree Hotel");
         assert_eq!(fields["profileName"], "Thabo");
         facts.label = None;
-        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
+        let fields =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
         assert_eq!(fields["displayName"], "Thabo");
         let mut dot = contact();
         dot.display_name = ".".into();
@@ -687,7 +731,8 @@ mod tests {
         let result = derive_stage(&inputs);
         assert_eq!(result.stage, WhatsappStage::CallBooked);
         assert_eq!(result.set_by, StageSetBy::Manual("ab".repeat(32)));
-        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
+        let fields =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
         assert_eq!(fields["stageSetBy"], "ab".repeat(32));
         assert_eq!(fields["stageChangedAt"], t(4).to_rfc3339());
     }
@@ -699,12 +744,14 @@ mod tests {
             queued_from: Some("Batch: Melville guesthouses".into()),
             ..Default::default()
         };
-        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
+        let fields =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
         assert_eq!(fields["stage"], "queued");
         assert_eq!(fields["queuedFrom"], "Batch: Melville guesthouses");
 
         facts.last_contacted_at = Some(t(3));
-        let fields = desk_fields_for_capability(&contact(), &facts, None, None, true);
+        let fields =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
         assert_eq!(fields["stage"], "contacted");
         assert_eq!(fields["queuedFrom"], Value::Null);
     }
@@ -753,20 +800,83 @@ mod tests {
     fn the_count_projection_is_the_list_projection() {
         // A queued contact reads `none` to a legacy caller and `queued` to a current one, in
         // the list and in the counts alike.
-        assert_eq!(project_stage(WhatsappStage::Queued, false), "none");
-        assert_eq!(project_stage(WhatsappStage::Queued, true), "queued");
+        assert_eq!(
+            project_stage(WhatsappStage::Queued, StageSupport::LEGACY),
+            "none"
+        );
+        assert_eq!(
+            project_stage(WhatsappStage::Queued, StageSupport::CURRENT),
+            "queued"
+        );
         let facts = DeskFacts {
             queued_at: Some(t(2)),
             ..Default::default()
         };
-        for supports in [false, true] {
-            let listed = desk_fields_for_capability(&contact(), &facts, None, None, supports);
+        for support in [StageSupport::LEGACY, StageSupport::CURRENT] {
+            let listed = desk_fields_for_capability(&contact(), &facts, None, None, support);
             let counted = project_stage(
                 derive_stage(&stage_inputs(&contact(), &facts, None, None)).stage,
-                supports,
+                support,
             );
             assert_eq!(listed["stage"], counted);
         }
+    }
+
+    #[test]
+    fn ready_to_call_reads_wants_call_to_an_app_that_did_not_ask_for_it() {
+        // GUARD: desktops up to v3.0.77 show an unfamiliar stage as "Not contacted". A lead
+        // that is ready for its call must stay visible there as "Wants a call", in the list
+        // and in the counts, whether or not the app already reads `queued`.
+        let facts = DeskFacts {
+            manual_stage: Some("ready_to_call".into()),
+            manual_stage_by: Some(vec![0xab; 32]),
+            manual_stage_at: Some(t(4)),
+            wants_call_at: Some(t(3)),
+            ..Default::default()
+        };
+        let queued_only = StageSupport {
+            queued: true,
+            ready_to_call: false,
+        };
+        for older in [StageSupport::LEGACY, queued_only] {
+            let fields = desk_fields_for_capability(&contact(), &facts, None, None, older);
+            assert_eq!(fields["stage"], "wants_call");
+            assert_eq!(
+                project_stage(WhatsappStage::ReadyToCall, older),
+                "wants_call"
+            );
+        }
+        assert_eq!(
+            desk_fields(&contact(), &facts, None, None)["stage"],
+            "wants_call"
+        );
+        let current =
+            desk_fields_for_capability(&contact(), &facts, None, None, StageSupport::CURRENT);
+        assert_eq!(current["stage"], "ready_to_call");
+        assert_eq!(current["stageSetBy"], "ab".repeat(32));
+    }
+
+    #[test]
+    fn the_call_brief_is_absent_until_something_is_set() {
+        let mut facts = DeskFacts::default();
+        let fields = desk_fields(&contact(), &facts, None, None);
+        assert_eq!(fields["callBrief"], Value::Null);
+
+        facts.call_brief_note = Some("Wants the booking page first.".into());
+        facts.call_brief_by = Some(vec![0xcd; 32]);
+        facts.call_brief_at = Some(t(6));
+        let fields = desk_fields(&contact(), &facts, None, None);
+        assert_eq!(fields["callBrief"]["note"], "Wants the booking page first.");
+        assert_eq!(fields["callBrief"]["link"], Value::Null);
+        assert_eq!(fields["callBrief"]["assigneePubkey"], Value::Null);
+        assert_eq!(fields["callBrief"]["updatedBy"], "cd".repeat(32));
+        assert_eq!(fields["callBrief"]["updatedAt"], t(6).to_rfc3339());
+
+        facts.call_brief_link = Some("https://preview.example/acme".into());
+        facts.call_assignee = Some(vec![0xef; 32]);
+        let fields = desk_fields(&contact(), &facts, None, None);
+        assert_eq!(fields["callBrief"]["link"], "https://preview.example/acme");
+        assert_eq!(fields["callBrief"]["assigneePubkey"], "ef".repeat(32));
     }
 
     #[test]
