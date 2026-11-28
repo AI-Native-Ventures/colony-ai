@@ -30,6 +30,7 @@ pub const DATA_DIR: &str = "/data";
 
 /// The MCP server `buzz-agent` runs for its shell, file and git tools. A name,
 /// resolved on the image's `PATH`.
+#[allow(dead_code)]
 const AGENT_MCP_COMMAND: &str = "buzz-dev-mcp";
 /// OpenCode's free model, the first stop of the free route.
 pub const OPENCODE_FREE_MODEL: &str = "opencode/deepseek-v4.1-flash-free";
@@ -340,7 +341,6 @@ pub fn build_env(inputs: &EnvInputs<'_>) -> BTreeMap<String, Zeroizing<String>> 
             // passes the same value (`discovery/catalog.rs`, `buzz-agent`).
             // Without it `build_mcp_servers` returns no servers and the cloud
             // agent can only talk.
-            put(&mut env, "BUZZ_ACP_MCP_COMMAND", AGENT_MCP_COMMAND);
         }
         (_, None) => {
             // `redeem` always opens a session for a gateway route. Without one
