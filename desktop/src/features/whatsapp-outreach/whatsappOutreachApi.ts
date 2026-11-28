@@ -52,7 +52,7 @@ const CONNECT_PATH = "/api/whatsapp/connect";
 const DISCONNECT_PATH = "/api/whatsapp/disconnect";
 /**
  * Opt in to the stage names introduced after desktop-v3.0.37 (`queued`) and after
- * desktop-v3.0.77 (`ready_to_call`). Older apps omit a marker and are answered with a stage
+ * desktop-v3.0.78 (`ready_to_call`). Older apps omit a marker and are answered with a stage
  * they can show.
  */
 const RELAY_CAPABILITIES = [
