@@ -177,3 +177,60 @@ test("without counts the loaded number stands", () => {
     );
   }
 });
+
+test("a lead that is ready to call needs the person it was given to", () => {
+  // GUARD: `contactAwaitsCallFrom` in `getWhatsAppNeedsYouItems`. Without it every person
+  // sees every ready lead as theirs, and the count on Needs you is wrong for the whole team.
+  const zaina = "ab".repeat(32);
+  const basheer = "cd".repeat(32);
+  const mine = contact({
+    waId: "27821230001",
+    e164: "+27821230001",
+    stage: "ready_to_call",
+    callBrief: { assigneePubkey: zaina, note: "Preview is ready." },
+  });
+  const nobodyYet = contact({
+    waId: "27821230002",
+    e164: "+27821230002",
+    stage: "ready_to_call",
+  });
+  const wantsCall = contact({
+    waId: "27821230003",
+    e164: "+27821230003",
+    stage: "wants_call",
+  });
+  const theirsWithReply = contact({
+    waId: "27821230004",
+    e164: "+27821230004",
+    stage: "ready_to_call",
+    unanswered: true,
+    callBrief: { assigneePubkey: zaina },
+  });
+  const sections = (pubkey, contacts) =>
+    getWhatsAppNeedsYouItems(contacts, [], pubkey).map((item) => [
+      item.contact.waId,
+      item.section,
+    ]);
+
+  // Zaina: her call first, then the unassigned one, then the call still to prepare.
+  assert.deepEqual(sections(zaina, [wantsCall, nobodyYet, mine]), [
+    [mine.waId, "ready-to-call"],
+    [nobodyYet.waId, "ready-to-call"],
+    [wantsCall.waId, "wants-call"],
+  ]);
+  // Basheer handed it over: it no longer needs him, until there is a reply to write.
+  assert.deepEqual(sections(basheer, [mine, nobodyYet, wantsCall]), [
+    [nobodyYet.waId, "ready-to-call"],
+    [wantsCall.waId, "wants-call"],
+  ]);
+  assert.deepEqual(sections(basheer, [theirsWithReply]), [
+    [theirsWithReply.waId, "waiting-for-reply"],
+  ]);
+  assert.deepEqual(sections(zaina, [theirsWithReply]), [
+    [theirsWithReply.waId, "ready-to-call"],
+  ]);
+  // Before the signed-in person is known, only an unassigned lead is offered.
+  assert.deepEqual(sections(undefined, [mine, nobodyYet]), [
+    [nobodyYet.waId, "ready-to-call"],
+  ]);
+});

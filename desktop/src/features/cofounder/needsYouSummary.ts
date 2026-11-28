@@ -10,6 +10,7 @@ import { FUNCTION_DETAILS, FUNCTION_ORDER } from "./functions";
 import type { FunctionId } from "./cofounderRecords";
 import type { NeedsYouItem, NeedsYouModel } from "./needsYou";
 import { useNeedsYouQuery } from "./needsYouHooks";
+import { contactAwaitsCallFrom } from "@/features/whatsapp-outreach/whatsappCallBrief";
 import type { WhatsAppContact } from "@/features/whatsapp-outreach/whatsappOutreachModels";
 
 export type NeedsYouSummary = {
@@ -24,6 +25,8 @@ export type NeedsYouSummarySources = {
   paymentLinks?: readonly MoneyLinkCard[];
   capabilityGaps?: readonly CapabilityGapHead[];
   whatsappContacts?: readonly WhatsAppContact[];
+  /** The signed-in person: a lead that is ready to call counts for who it was given to. */
+  myPubkey?: string | null;
 };
 
 /** Load status for every source counted by the Needs you summary. */
@@ -174,7 +177,12 @@ export function buildNeedsYouSummary(
 
   const callIds = new Set<string>();
   for (const contact of sources.whatsappContacts ?? []) {
-    if (contact.stage !== "wants_call" || callIds.has(contact.waId)) continue;
+    if (
+      !contactAwaitsCallFrom(contact, sources.myPubkey) ||
+      callIds.has(contact.waId)
+    ) {
+      continue;
+    }
     callIds.add(contact.waId);
     addItem(summary, { functionId: "sales", jobName: "Calls" });
   }
@@ -241,12 +249,14 @@ export function useNeedsYouSummary(): NeedsYouSummaryState {
             paymentLinks: moneyRails.paymentLinks,
             capabilityGaps: access.data?.gaps ?? [],
             whatsappContacts: needsYou.whatsappContacts,
+            myPubkey: needsYou.myPubkey,
           }),
     [
       access.data?.gaps,
       isPending,
       moneyRails.paymentLinks,
       needsYou.model,
+      needsYou.myPubkey,
       needsYou.whatsappContacts,
     ],
   );

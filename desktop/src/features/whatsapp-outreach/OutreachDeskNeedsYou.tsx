@@ -37,10 +37,18 @@ import {
   canManageWhatsAppContact,
 } from "./whatsappContactAccess";
 import { aiPlanReserveChipLabel, useAiPlanReserveQuery } from "./aiPlanUsage";
+import {
+  type CallBriefDialogTarget,
+  useCallAssigneeNames,
+  useMyPubkey,
+  WhatsAppCallBriefDialog,
+  WhatsAppCallBriefSummary,
+} from "./WhatsAppCallBriefDialog";
 import { WhatsAppMessagePreview } from "./WhatsAppMessageMedia";
 import {
   getWhatsAppNeedsYouItems,
   WHATSAPP_STAGE_LABELS,
+  type WhatsAppNeedsYouSection,
 } from "./whatsappOutreachStages";
 import {
   customerRecordForContact,
@@ -344,32 +352,69 @@ function BatchApprovalCard({
   );
 }
 
+/** The contact lists of Needs you, in the order they are shown. */
+const NEEDS_CONTACT_SECTIONS: readonly {
+  section: WhatsAppNeedsYouSection;
+  heading: string;
+  headingId: string;
+}[] = [
+  {
+    section: "ready-to-call",
+    heading: "Ready to call",
+    headingId: "outreach-ready-to-call-heading",
+  },
+  {
+    section: "waiting-for-reply",
+    heading: "Waiting for your reply",
+    headingId: "outreach-waiting-heading",
+  },
+  {
+    section: "wants-call",
+    heading: "Wants a call",
+    headingId: "outreach-wants-call-heading",
+  },
+];
+
 function NeedsContactCard({
+  assigneeName,
   canEdit,
   contact,
   hasDraft,
   draft,
   onBookCall,
+  onCallBrief,
   onOpenChat,
   onApproveDraft,
   busy,
   identity,
   previewEnabled,
+  section,
 }: {
+  /** Who has the call, when the contact has a call brief that names a person. */
+  assigneeName: string | null;
   canEdit: boolean;
   contact: WhatsAppContact;
   hasDraft: boolean;
   draft: WhatsAppDraft | null;
   onBookCall: (contact: WhatsAppContact) => void;
+  /** Open the call brief form: `ready` moves the lead to Ready to call, `edit` changes it. */
+  onCallBrief: (contact: WhatsAppContact, mode: "ready" | "edit") => void;
   onOpenChat: (waId: string) => void;
   onApproveDraft: (draft: WhatsAppDraft) => void;
   busy: boolean;
   identity: ReturnType<typeof resolveOutreachContactIdentity>;
   previewEnabled: boolean;
+  /** The list this card is in decides what it offers, not the stage alone. */
+  section: WhatsAppNeedsYouSection;
 }) {
-  const wantsCall = contact.stage === "wants_call";
+  const readyToCall = section === "ready-to-call";
+  // A call to prepare or to make: the card offers the call, not a reply.
+  const wantsCall = section === "wants-call" || readyToCall;
   const dateLabel = formatTime(contact.lastReplyAt ?? contact.lastInboundAt);
-  const threadQuery = useWhatsAppThreadQuery(contact.waId, previewEnabled);
+  const threadQuery = useWhatsAppThreadQuery(
+    contact.waId,
+    previewEnabled && !readyToCall,
+  );
   const lastInbound = [...(threadQuery.data?.messages ?? [])]
     .reverse()
     .find((message) => message.direction === "in");
@@ -394,8 +439,20 @@ function NeedsContactCard({
       <div className="c3wa-desk-contact-copy">
         <div className="c3wa-desk-contact-title">
           <h3>{identity.displayName}</h3>
-          <span className={wantsCall ? "is-call" : "is-reply"}>
-            {WHATSAPP_STAGE_LABELS[wantsCall ? "wants_call" : "replied"]}
+          <span
+            className={
+              readyToCall ? "is-ready" : wantsCall ? "is-call" : "is-reply"
+            }
+          >
+            {
+              WHATSAPP_STAGE_LABELS[
+                readyToCall
+                  ? "ready_to_call"
+                  : wantsCall
+                    ? "wants_call"
+                    : "replied"
+              ]
+            }
           </span>
         </div>
         <p className="c3wa-desk-contact-meta">
@@ -406,21 +463,29 @@ function NeedsContactCard({
             : ""}
           {dateLabel ? ` · ${dateLabel}` : ""}
         </p>
-        <p className="c3wa-desk-contact-preview">
-          {lastInbound ? (
-            <WhatsAppMessagePreview message={lastInbound} />
-          ) : previewEnabled && threadQuery.isError ? (
-            "Latest message unavailable"
-          ) : previewEnabled && threadQuery.isPending ? (
-            "Loading latest message…"
-          ) : wantsCall ? (
-            "They asked to speak with you"
-          ) : contact.lastInboundAt ? (
-            "They replied. Open chat to read their message."
-          ) : (
-            "Reply needed"
-          )}
-        </p>
+        {readyToCall ? (
+          <WhatsAppCallBriefSummary
+            assigneeName={assigneeName}
+            brief={contact.callBrief}
+            showUnassigned
+          />
+        ) : (
+          <p className="c3wa-desk-contact-preview">
+            {lastInbound ? (
+              <WhatsAppMessagePreview message={lastInbound} />
+            ) : previewEnabled && threadQuery.isError ? (
+              "Latest message unavailable"
+            ) : previewEnabled && threadQuery.isPending ? (
+              "Loading latest message…"
+            ) : wantsCall ? (
+              "They asked to speak with you"
+            ) : contact.lastInboundAt ? (
+              "They replied. Open chat to read their message."
+            ) : (
+              "Reply needed"
+            )}
+          </p>
+        )}
         {hasDraft && !wantsCall && draft ? (
           <div className="c3wa-desk-draft-preview">
             <span className="c3wa-desk-eyebrow">Scout drafted</span>
@@ -443,6 +508,18 @@ function NeedsContactCard({
             type="button"
           >
             {busy ? "Saving…" : "Mark call booked"}
+          </Button>
+        ) : null}
+        {wantsCall && canEdit ? (
+          <Button
+            data-testid={`outreach-call-brief-${contact.waId}`}
+            disabled={busy}
+            onClick={() => onCallBrief(contact, readyToCall ? "edit" : "ready")}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            {readyToCall ? "Edit brief" : "Ready to call"}
           </Button>
         ) : null}
         {hasDraft && !wantsCall && draft ? (
@@ -503,6 +580,9 @@ export function OutreachDeskNeedsYou({
   const command = useWhatsAppCommand();
   const [actionError, setActionError] = React.useState("");
   const [busyWaId, setBusyWaId] = React.useState<string | null>(null);
+  const [callBriefTarget, setCallBriefTarget] =
+    React.useState<CallBriefDialogTarget | null>(null);
+  const myPubkey = useMyPubkey();
   const role = membership.data?.membership?.role;
   const canManage =
     membership.data?.membershipRequired === false ||
@@ -524,7 +604,8 @@ export function OutreachDeskNeedsYou({
   const contacts = contactsQuery.data ?? [];
   const drafts = draftsQuery.data ?? [];
   const businessRecords = business.records;
-  const items = getWhatsAppNeedsYouItems(contacts, drafts);
+  const assigneeNameFor = useCallAssigneeNames(contacts);
+  const items = getWhatsAppNeedsYouItems(contacts, drafts, myPubkey);
   const previewWaIds = new Set(
     items.slice(0, NEEDS_THREAD_PREVIEW_LIMIT).map((item) => item.contact.waId),
   );
@@ -583,6 +664,17 @@ export function OutreachDeskNeedsYou({
     }
   }
 
+  function openCallBrief(contact: WhatsAppContact, mode: "ready" | "edit") {
+    if (!canEdit) return;
+    setActionError("");
+    setCallBriefTarget({
+      contact,
+      mode,
+      name: resolveOutreachContactIdentity(contact, businessRecords)
+        .displayName,
+    });
+  }
+
   async function sendDraft(draft: WhatsAppDraft) {
     if (!canManage) return;
     setActionError("");
@@ -600,6 +692,57 @@ export function OutreachDeskNeedsYou({
       );
     }
   }
+
+  /** One list of contact cards on Needs you, or nothing when the list is empty. */
+  const contactSection = ({
+    section,
+    heading,
+    headingId,
+  }: (typeof NEEDS_CONTACT_SECTIONS)[number]) => {
+    const sectionItems = items.filter((item) => item.section === section);
+    if (sectionItems.length === 0) return null;
+    return (
+      <section
+        aria-labelledby={headingId}
+        className="c3wa-desk-needs-section"
+        data-testid={`outreach-needs-${section}`}
+        key={section}
+      >
+        <div className="c3wa-desk-section-head">
+          <h2 id={headingId}>{heading}</h2>
+          <span>{sectionItems.length}</span>
+        </div>
+        {sectionItems.map((item) => (
+          <NeedsContactCard
+            assigneeName={assigneeNameFor(item.contact.callBrief)}
+            busy={
+              (section !== "waiting-for-reply" &&
+                busyWaId === item.contact.waId) ||
+              customerRecords.isPending ||
+              customerRecords.isError
+            }
+            canEdit={canEdit}
+            contact={item.contact}
+            draft={
+              drafts.find((draft) => draft.waId === item.contact.waId) ?? null
+            }
+            hasDraft={item.hasDraft}
+            identity={resolveOutreachContactIdentity(
+              item.contact,
+              businessRecords,
+            )}
+            key={item.contact.waId}
+            onApproveDraft={(draft) => void sendDraft(draft)}
+            onBookCall={(contact) => void bookCall(contact)}
+            onCallBrief={openCallBrief}
+            onOpenChat={onOpenChat}
+            previewEnabled={previewWaIds.has(item.contact.waId)}
+            section={section}
+          />
+        ))}
+      </section>
+    );
+  };
 
   const loadError = [statusQuery.error, contactsQuery.error].find(
     (error) => error && !isRelayHttpRateLimitError(error),
@@ -698,6 +841,9 @@ export function OutreachDeskNeedsYou({
             </div>
           </section>
         ) : null}
+        {NEEDS_CONTACT_SECTIONS.filter(
+          ({ section }) => section === "ready-to-call",
+        ).map(contactSection)}
         {unknownSends.length > 0 ? (
           <section
             aria-labelledby="outreach-unknown-sends-heading"
@@ -749,86 +895,9 @@ export function OutreachDeskNeedsYou({
           </section>
         ) : null}
 
-        {items.some((item) => item.section === "waiting-for-reply") ? (
-          <section
-            aria-labelledby="outreach-waiting-heading"
-            className="c3wa-desk-needs-section"
-          >
-            <div className="c3wa-desk-section-head">
-              <h2 id="outreach-waiting-heading">Waiting for your reply</h2>
-              <span>
-                {
-                  items.filter((item) => item.section === "waiting-for-reply")
-                    .length
-                }
-              </span>
-            </div>
-            {items
-              .filter((item) => item.section === "waiting-for-reply")
-              .map((item) => (
-                <NeedsContactCard
-                  busy={customerRecords.isPending || customerRecords.isError}
-                  canEdit={canEdit}
-                  contact={item.contact}
-                  draft={
-                    drafts.find((draft) => draft.waId === item.contact.waId) ??
-                    null
-                  }
-                  hasDraft={item.hasDraft}
-                  identity={resolveOutreachContactIdentity(
-                    item.contact,
-                    businessRecords,
-                  )}
-                  key={item.contact.waId}
-                  onBookCall={(contact) => void bookCall(contact)}
-                  onApproveDraft={(draft) => void sendDraft(draft)}
-                  onOpenChat={onOpenChat}
-                  previewEnabled={previewWaIds.has(item.contact.waId)}
-                />
-              ))}
-          </section>
-        ) : null}
-
-        {items.some((item) => item.section === "wants-call") ? (
-          <section
-            aria-labelledby="outreach-wants-call-heading"
-            className="c3wa-desk-needs-section"
-          >
-            <div className="c3wa-desk-section-head">
-              <h2 id="outreach-wants-call-heading">Wants a call</h2>
-              <span>
-                {items.filter((item) => item.section === "wants-call").length}
-              </span>
-            </div>
-            {items
-              .filter((item) => item.section === "wants-call")
-              .map((item) => (
-                <NeedsContactCard
-                  busy={
-                    busyWaId === item.contact.waId ||
-                    customerRecords.isPending ||
-                    customerRecords.isError
-                  }
-                  canEdit={canEdit}
-                  contact={item.contact}
-                  draft={
-                    drafts.find((draft) => draft.waId === item.contact.waId) ??
-                    null
-                  }
-                  hasDraft={item.hasDraft}
-                  identity={resolveOutreachContactIdentity(
-                    item.contact,
-                    businessRecords,
-                  )}
-                  key={item.contact.waId}
-                  onBookCall={(contact) => void bookCall(contact)}
-                  onApproveDraft={(draft) => void sendDraft(draft)}
-                  onOpenChat={onOpenChat}
-                  previewEnabled={previewWaIds.has(item.contact.waId)}
-                />
-              ))}
-          </section>
-        ) : null}
+        {NEEDS_CONTACT_SECTIONS.filter(
+          ({ section }) => section !== "ready-to-call",
+        ).map(contactSection)}
 
         {statusQuery.isPending ||
         contactsQuery.isPending ||
@@ -853,6 +922,10 @@ export function OutreachDeskNeedsYou({
           </section>
         ) : null}
       </div>
+      <WhatsAppCallBriefDialog
+        onClose={() => setCallBriefTarget(null)}
+        target={callBriefTarget}
+      />
     </main>
   );
 }

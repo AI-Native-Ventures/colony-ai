@@ -1206,7 +1206,7 @@ mod tests {
 
     #[test]
     fn ready_to_call_is_only_named_to_a_caller_that_asked_for_it() {
-        // GUARD: desktops from v3.0.38 through v3.0.77 send the `queued` marker alone and show
+        // GUARD: desktops from v3.0.38 through v3.0.78 send the `queued` marker alone and show
         // an unfamiliar stage as "Not contacted". Knowing `queued` must not imply knowing
         // `ready_to_call`. This is the request seam that feeds the contact, inbox, thread and
         // count projections.

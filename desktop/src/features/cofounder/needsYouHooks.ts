@@ -10,6 +10,7 @@ import {
   useWhatsAppStatusQuery,
 } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useIdentityQuery } from "@/shared/api/hooks";
 
 import { useCofounderSettingsQuery } from "./hooks";
 import { buildNeedsYou } from "./needsYou";
@@ -24,6 +25,7 @@ import { usePlaybooksQuery } from "./playbookHooks";
  */
 export function useNeedsYouQuery() {
   const { activeCommunity } = useCommunities();
+  const myPubkey = useIdentityQuery().data?.pubkey?.toLowerCase() ?? null;
   const needsMe = useNeedsMeQuery();
   const membership = useMyRelayMembershipQuery();
   const role = membership.data?.role;
@@ -105,6 +107,7 @@ export function useNeedsYouQuery() {
     whatsappOutreachChannelId: whatsappStatus.data?.outreachChannelId ?? null,
     whatsappBatchDetails: batchDetails.data ?? [],
     whatsappContacts: contacts.data ?? [],
+    myPubkey,
     whatsappDrafts: drafts.data ?? [],
     whatsappSummaryIsPending: whatsappPending,
     isPending: needsMe.isPending || plans.isPending || playbooks.isPending,

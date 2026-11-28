@@ -693,6 +693,64 @@ const goodCounts = {
   countsTruncated: false,
 };
 
+test("a lead that is ready to call keeps its stage and its call brief", () => {
+  const base = {
+    waId: "27821237135",
+    e164: "+27821237135",
+    displayName: "Plane Tree Guesthouse",
+    leadId: null,
+    ownerPubkey: null,
+    threadRootEventId: null,
+    lastInboundAt: null,
+    windowOpen: false,
+    windowClosesAt: null,
+    optedOut: false,
+    paused: false,
+    pauseReason: null,
+    unanswered: false,
+  };
+  const ready = parseWhatsAppContact({
+    ...base,
+    stage: "ready_to_call",
+    callBrief: {
+      link: "https://preview.example/plane-tree",
+      note: "Wants the booking page first.",
+      assigneePubkey: "ab".repeat(32),
+      updatedBy: "cd".repeat(32),
+      updatedAt: "2026-11-28T10:00:00+00:00",
+    },
+  });
+  assert.equal(ready.stage, "ready_to_call");
+  assert.deepEqual(ready.callBrief, {
+    link: "https://preview.example/plane-tree",
+    note: "Wants the booking page first.",
+    assigneePubkey: "ab".repeat(32),
+    updatedBy: "cd".repeat(32),
+    updatedAt: "2026-11-28T10:00:00+00:00",
+  });
+  // An older relay sends no brief, and a broken one never fails the contact.
+  assert.equal(parseWhatsAppContact(base).callBrief, null);
+  assert.equal(
+    parseWhatsAppContact({ ...base, callBrief: "not a brief" }).callBrief,
+    null,
+  );
+  // A stage this build does not know yet still reads as "none", not as an error.
+  assert.equal(
+    parseWhatsAppContact({ ...base, stage: "a_future_stage" }).stage,
+    "none",
+  );
+  // The relay counts the new stage like any other.
+  assert.equal(
+    parseWhatsAppStageCounts({
+      stageCounts: { ready_to_call: 4 },
+      failedNotContacted: 0,
+      totalContacts: 4,
+      countsTruncated: false,
+    }).stageCounts.ready_to_call,
+    4,
+  );
+});
+
 test("stage counts parse, ignore unknown stages and read a missing stage as absent", () => {
   const counts = parseWhatsAppStageCounts(goodCounts);
   assert.deepEqual(counts, {

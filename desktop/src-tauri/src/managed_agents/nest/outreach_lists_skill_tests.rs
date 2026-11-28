@@ -148,3 +148,40 @@ fn skill_written_by_the_previous_release_is_regenerated_with_the_queue_rule() {
         "adding the rule must bump NEST_SKILL_VERSION so existing nests pick it up"
     );
 }
+
+#[test]
+fn skill_teaches_handing_a_lead_over_for_its_call_to_a_person_only() {
+    let section = section();
+    assert!(section.contains("**Hand a lead over for its call.**"));
+    assert!(section.contains("colony whatsapp stage <number> ready_to_call --link"));
+    assert!(section.contains("--note \"<what they should know before the call>\""));
+    assert!(section.contains("--assign <pubkey>"));
+    assert!(section.contains("Only a person can be given a call, never an agent"));
+    assert!(section.contains("`colony whatsapp closers` lists who can take one"));
+    assert!(section.contains("ask once before assigning"));
+    assert!(section.contains("The person is told in Outreach by the relay"));
+}
+
+#[test]
+fn skill_written_by_the_previous_release_is_regenerated_with_the_handover_rule() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".colony");
+    ensure_nest_at(&root).unwrap();
+
+    // What the previous release left on disk: the skill without the rule, at version 27.
+    let skill_dir = root.join(CANONICAL_SKILL_DIR);
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "# old skill without the handover",
+    )
+    .unwrap();
+    fs::write(skill_dir.join(".skill-version"), "27\n").unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    let refreshed = fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
+    assert!(
+        refreshed.contains("colony whatsapp closers"),
+        "adding the rule must bump NEST_SKILL_VERSION so existing nests pick it up"
+    );
+}

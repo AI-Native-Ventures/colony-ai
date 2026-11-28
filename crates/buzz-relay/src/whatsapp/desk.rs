@@ -350,7 +350,7 @@ pub struct StageSupport {
     /// Reads `queued`. desktop-v3.0.37 validates the enum strictly and would reject the entire
     /// contact response if it saw the name.
     pub queued: bool,
-    /// Reads `ready_to_call`. Desktops up to v3.0.77 show an unfamiliar stage as "Not contacted",
+    /// Reads `ready_to_call`. Desktops up to v3.0.78 show an unfamiliar stage as "Not contacted",
     /// which would hide a lead that is one step from a call.
     pub ready_to_call: bool,
 }
@@ -824,7 +824,7 @@ mod tests {
 
     #[test]
     fn ready_to_call_reads_wants_call_to_an_app_that_did_not_ask_for_it() {
-        // GUARD: desktops up to v3.0.77 show an unfamiliar stage as "Not contacted". A lead
+        // GUARD: desktops up to v3.0.78 show an unfamiliar stage as "Not contacted". A lead
         // that is ready for its call must stay visible there as "Wants a call", in the list
         // and in the counts, whether or not the app already reads `queued`.
         let facts = DeskFacts {

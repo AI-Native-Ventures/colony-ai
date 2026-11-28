@@ -17,9 +17,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { KIND_WHATSAPP_CONTACT_UPDATE } from "@/shared/constants/kinds";
+import {
+  type CallBriefDialogTarget,
+  useCallAssigneeNames,
+  WhatsAppCallBriefDialog,
+  WhatsAppCallBriefSummary,
+} from "./WhatsAppCallBriefDialog";
 import type { WhatsAppContact, WhatsAppStage } from "./whatsappOutreachModels";
 import {
   useWhatsAppCommand,
@@ -81,7 +88,9 @@ function nextStep(
   if (contact.stage === "replied") {
     return hasDraft ? "Scout drafted a reply" : "Reply needed";
   }
-  if (contact.stage === "wants_call") return `Call ${personName}`;
+  if (contact.stage === "wants_call" || contact.stage === "ready_to_call") {
+    return `Call ${personName}`;
+  }
   return customerStep;
 }
 
@@ -113,22 +122,27 @@ function relativeContactDay(value: string | null): string | null {
 }
 
 function PipelineCard({
+  assigneeName,
   contact,
   canEdit,
   hasDraft,
   identity,
   customerStep,
   busy,
+  onEditCallBrief,
   onMove,
   onOpenChat,
   onOpenLead,
 }: {
+  /** Who has the call, when the contact has a call brief that names a person. */
+  assigneeName: string | null;
   contact: WhatsAppContact;
   canEdit: boolean;
   hasDraft: boolean;
   identity: ReturnType<typeof resolveOutreachContactIdentity>;
   customerStep: string | null;
   busy: boolean;
+  onEditCallBrief: (contact: WhatsAppContact) => void;
   onMove: (contact: WhatsAppContact, stage: WhatsAppStage) => void;
   onOpenChat: (waId: string) => void;
   onOpenLead: (leadId: string) => void;
@@ -151,6 +165,7 @@ function PipelineCard({
   );
   const contactedOn = relativeContactDay(contact.lastContactedAt);
   const queuedLeadId = isQueued ? identity.leadId : null;
+  const readyToCall = contact.stage === "ready_to_call";
   return (
     <article
       className="c3wa-pipeline-card"
@@ -205,6 +220,17 @@ function PipelineCard({
                   {WHATSAPP_STAGE_LABELS[stage]}
                 </DropdownMenuItem>
               ))}
+              {readyToCall || contact.callBrief ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={busy}
+                    onSelect={() => onEditCallBrief(contact)}
+                  >
+                    Edit call brief
+                  </DropdownMenuItem>
+                </>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
@@ -228,6 +254,13 @@ function PipelineCard({
           Not linked to a business
         </span>
       ) : null}
+      {readyToCall ? (
+        <WhatsAppCallBriefSummary
+          assigneeName={assigneeName}
+          brief={contact.callBrief}
+          showUnassigned
+        />
+      ) : null}
       <div className="c3wa-pipeline-card-foot">
         <span
           className={`c3wa-pipeline-stage-chip is-${
@@ -239,7 +272,7 @@ function PipelineCard({
           {stageLabel}
         </span>
         {step ? (
-          contact.stage === "wants_call" ? (
+          contact.stage === "wants_call" || readyToCall ? (
             <a
               className="c3wa-pipeline-next-step"
               href={`tel:+${contact.waId.replace(/\D/gu, "")}`}
@@ -306,6 +339,8 @@ export function OutreachPipeline({
   const [searchTerm, setSearchTerm] = React.useState("");
   const [busyWaId, setBusyWaId] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState("");
+  const [callBriefTarget, setCallBriefTarget] =
+    React.useState<CallBriefDialogTarget | null>(null);
   const role = membership.data?.membership?.role;
   const canManage =
     membership.data?.membershipRequired === false ||
@@ -318,6 +353,7 @@ export function OutreachPipeline({
     ownerPubkey: profile.data?.ownerPubkey,
   });
   const contacts = contactsQuery.data ?? [];
+  const assigneeNameFor = useCallAssigneeNames(contacts);
   const drafts = draftsQuery.data ?? [];
   const draftIds = new Set(drafts.map((draft) => draft.waId));
   const search = searchTerm.trim().toLocaleLowerCase();
@@ -356,12 +392,16 @@ export function OutreachPipeline({
     const record = customerRecordForContact(contact, businessIdentity, records);
     return (
       <PipelineCard
+        assigneeName={assigneeNameFor(contact.callBrief)}
         canEdit={canEdit}
         contact={contact}
         customerStep={customerRecordNextStep(record)}
         hasDraft={draftIds.has(contact.waId)}
         identity={businessIdentity}
         key={contact.waId}
+        onEditCallBrief={(selectedContact) =>
+          openCallBrief(selectedContact, "edit")
+        }
         onMove={(selectedContact, nextStage) =>
           void move(selectedContact, nextStage)
         }
@@ -372,8 +412,24 @@ export function OutreachPipeline({
     );
   };
 
+  /** Ready to call is never a bare move: the form asks for the link, description and person. */
+  function openCallBrief(contact: WhatsAppContact, mode: "ready" | "edit") {
+    if (!canEdit) return;
+    setActionError("");
+    setCallBriefTarget({
+      contact,
+      mode,
+      name: resolveOutreachContactIdentity(contact, business.records)
+        .displayName,
+    });
+  }
+
   async function move(contact: WhatsAppContact, stage: WhatsAppStage) {
     if (!canEdit || busyWaId) return;
+    if (stage === "ready_to_call") {
+      openCallBrief(contact, "ready");
+      return;
+    }
     setActionError("");
     setBusyWaId(contact.waId);
     try {
@@ -583,6 +639,7 @@ export function OutreachPipeline({
               >
                 {(contact) => (
                   <PipelineCard
+                    assigneeName={assigneeNameFor(contact.callBrief)}
                     canEdit={canEdit && stage === "no_thanks"}
                     contact={contact}
                     customerStep={null}
@@ -591,6 +648,9 @@ export function OutreachPipeline({
                       contact,
                       business.records,
                     )}
+                    onEditCallBrief={(selectedContact) =>
+                      openCallBrief(selectedContact, "edit")
+                    }
                     onMove={(selectedContact, nextStage) =>
                       void move(selectedContact, nextStage)
                     }
@@ -604,6 +664,10 @@ export function OutreachPipeline({
           );
         })}
       </div>
+      <WhatsAppCallBriefDialog
+        onClose={() => setCallBriefTarget(null)}
+        target={callBriefTarget}
+      />
     </main>
   );
 }
