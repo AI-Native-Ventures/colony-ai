@@ -7,6 +7,7 @@ export type ContactFilter =
   | "needs-reply"
   | "awaiting-reply"
   | "wants-call"
+  | "ready-to-call"
   | "in-pipeline";
 
 type WhatsAppOutreachContactFiltersProps = {
@@ -32,6 +33,7 @@ export function WhatsAppOutreachContactFilters({
           ["needs-reply", "Needs reply"],
           ["awaiting-reply", "Awaiting reply"],
           ["wants-call", "Wants a call"],
+          ["ready-to-call", "Ready to call"],
           ["opted-out", "Opted out"],
         ]
       : [

@@ -26,7 +26,8 @@ use super::graph::{GraphError, SendRequest};
 use super::inbound::{load_lead_phone_lookup, LeadPhoneLookup, LeadPhoneMatch};
 use super::policy::{
     account_retry_error_codes, classify_failure_code, decide_new_chat, decide_owner_send_now, e164,
-    normalize_wa_id, render_template, sast_day_start, window_open, FailureKind, NewChatDecision,
+    normalize_wa_id, render_template, sast_day_start, stored_template_params, window_open,
+    FailureKind, NewChatDecision,
 };
 use super::{channel, Access};
 use crate::state::AppState;
@@ -357,16 +358,7 @@ pub fn build_request(message: &WhatsappMessage) -> Result<SendRequest, String> {
             .template_language
             .clone()
             .ok_or_else(|| "template message has no language".to_string())?;
-        let params = message
-            .params
-            .as_array()
-            .map(|items| {
-                items
-                    .iter()
-                    .map(|item| item.as_str().unwrap_or("").to_string())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let params = stored_template_params(&message.params);
         Ok(SendRequest::Template {
             to: message.wa_id.clone(),
             name,

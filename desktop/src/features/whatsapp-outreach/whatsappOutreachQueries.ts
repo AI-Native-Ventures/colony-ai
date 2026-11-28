@@ -7,6 +7,7 @@ import {
   loadWhatsAppBatch,
   loadWhatsAppBatches,
   loadWhatsAppApprovedBatchDetails,
+  loadWhatsAppCallClosers,
   loadWhatsAppContacts,
   loadWhatsAppDrafts,
   loadWhatsAppPendingBatchDetails,
@@ -67,6 +68,8 @@ export const whatsappOutreachQueryKeys = {
     [...ROOT_QUERY_KEY, relayUrl, "safety-ledger"] as const,
   unknownSends: (relayUrl: string | null) =>
     [...ROOT_QUERY_KEY, relayUrl, "unknown-sends"] as const,
+  callClosers: (relayUrl: string | null) =>
+    [...ROOT_QUERY_KEY, relayUrl, "call-closers"] as const,
 };
 
 export function useWhatsAppRelayUrl(): string | null {
@@ -113,6 +116,24 @@ export function useWhatsAppContactsQuery(enabled = true, poll = false) {
     },
     staleTime: 45_000,
     ...outreachPolling(poll),
+  });
+}
+
+/**
+ * The people a lead can be given to for its call. Who they are changes rarely, so it is read
+ * when a surface that names them is open and kept for five minutes.
+ */
+export function useWhatsAppCallClosersQuery(enabled = true) {
+  const relayUrl = useWhatsAppRelayUrl();
+  return useQuery({
+    enabled: enabled && relayUrl !== null,
+    queryKey: whatsappOutreachQueryKeys.callClosers(relayUrl),
+    queryFn: async () => {
+      if (!relayUrl) throw new Error("The active community relay is missing.");
+      return loadWhatsAppCallClosers(relayUrl);
+    },
+    staleTime: 300_000,
+    ...PASSIVE_OUTREACH_QUERY,
   });
 }
 

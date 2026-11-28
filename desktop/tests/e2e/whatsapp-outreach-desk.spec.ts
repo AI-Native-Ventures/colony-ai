@@ -3,6 +3,8 @@ import path from "node:path";
 
 import {
   CORNER_COTTAGE_WA_ID,
+  E2E_CALL_CLOSER_NAME,
+  E2E_CALL_CLOSER_PUBKEY,
   GREEN_SHUTTER_WA_ID,
   JACARANDA_WA_ID,
   OAKLEAF_WA_ID,
@@ -725,6 +727,153 @@ test.describe("Outreach desk", () => {
         ),
       )
       .toBe(true);
+  });
+
+  test("hands a lead over as Ready to call with a link, a description and a person", async ({
+    page,
+  }) => {
+    await installWhatsAppMockBridge(page, "light", { deskFixture: true });
+    await installLogoPreview(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openOutreachFromHome(page);
+    const contactUpdates = () =>
+      page.evaluate(
+        (waId) =>
+          (window as WhatsAppEventWindow).__BUZZ_E2E_WHATSAPP_STATE__?.commands
+            .filter(({ kind, body }) => kind === 47052 && body.waId === waId)
+            .map(({ body }) => body) ?? [],
+        CORNER_COTTAGE_WA_ID,
+      );
+
+    // The lead that asked for a call offers the handover from Needs you.
+    const needs = page.getByTestId("outreach-desk-needs-you");
+    await needs
+      .getByTestId(`outreach-needs-contact-${CORNER_COTTAGE_WA_ID}`)
+      .getByRole("button", { name: "Ready to call" })
+      .click();
+    const dialog = page.getByTestId("whatsapp-call-brief-dialog");
+    await expect(
+      dialog.getByRole("heading", { name: "Ready to call" }),
+    ).toBeVisible();
+
+    // A link that is not a web address is refused in place, and nothing is sent.
+    await dialog.getByLabel("Link").fill("my preview");
+    await dialog.getByRole("button", { name: "Mark ready to call" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("full web address");
+    expect(await contactUpdates()).toEqual([]);
+
+    await dialog
+      .getByLabel("Link")
+      .fill("preview.signalstory.example/corner-cottage");
+    // Correcting the field takes the refusal away.
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    await dialog
+      .getByLabel("Description")
+      .fill("Preview site is ready.\nThey want the booking page first.");
+    await dialog
+      .getByLabel("Assign to")
+      .selectOption({ label: E2E_CALL_CLOSER_NAME });
+    await captureSafetyShot(page, "ready-to-call-form.png");
+    // The keyboard path: Enter in the link field saves the form.
+    await dialog.getByLabel("Link").press("Enter");
+    await expect(dialog).toBeHidden();
+    // One request carried the stage and the whole brief.
+    expect(await contactUpdates()).toEqual([
+      {
+        v: 1,
+        waId: CORNER_COTTAGE_WA_ID,
+        stage: "ready_to_call",
+        callBrief: {
+          link: "https://preview.signalstory.example/corner-cottage",
+          note: "Preview site is ready.\nThey want the booking page first.",
+          assignee: E2E_CALL_CLOSER_PUBKEY,
+        },
+      },
+    ]);
+
+    // Pipeline: the lead sits in its own column and says who has the call.
+    await page.getByTestId("channel-view-tab-pipeline").click();
+    const readyColumn = page.locator(
+      '.c3wa-pipeline-column[data-stage="ready_to_call"]',
+    );
+    await expect(
+      readyColumn.getByRole("heading", { name: "Ready to call" }),
+    ).toBeVisible();
+    const card = readyColumn.getByTestId(
+      `outreach-pipeline-card-${CORNER_COTTAGE_WA_ID}`,
+    );
+    await expect(card).toContainText(`Assigned to ${E2E_CALL_CLOSER_NAME}`);
+    await expect(card).toContainText("They want the booking page first.");
+    await expect(
+      card.getByRole("link", {
+        name: /preview\.signalstory\.example\/corner-cottage/u,
+      }),
+    ).toHaveAttribute(
+      "href",
+      "https://preview.signalstory.example/corner-cottage",
+    );
+    await expect(card.getByRole("link", { name: /^Call / })).toHaveAttribute(
+      "href",
+      `tel:+${CORNER_COTTAGE_WA_ID}`,
+    );
+    await captureSafetyShot(page, "ready-to-call-pipeline.png");
+
+    // The brief is changed from the card menu: only the changed field is sent.
+    // The card menu only shows on hover or focus, so it is opened with the keyboard.
+    const cardMenu = card.getByTestId(`outreach-move-${CORNER_COTTAGE_WA_ID}`);
+    await cardMenu.focus();
+    await expect(cardMenu).toBeFocused();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: "Edit call brief" }).click();
+    await expect(
+      dialog.getByRole("heading", { name: "Call brief" }),
+    ).toBeVisible();
+    await expect(dialog.getByLabel("Link")).toHaveValue(
+      "https://preview.signalstory.example/corner-cottage",
+    );
+    await dialog
+      .getByLabel("Assign to")
+      .selectOption({ label: "Basheer Phiri (you)" });
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toBeHidden();
+    expect((await contactUpdates()).at(-1)).toEqual({
+      v: 1,
+      waId: CORNER_COTTAGE_WA_ID,
+      callBrief: { assignee: "deadbeef".repeat(8) },
+    });
+    await expect(card).toContainText("Assigned to you");
+
+    // The contact record shows the same brief.
+    await card.getByRole("button", { name: "Open chat" }).click();
+    const recordBrief = page.getByTestId("whatsapp-record-call-brief");
+    await expect(recordBrief).toContainText("Assigned to you");
+    await expect(recordBrief).toContainText("Preview site is ready.");
+
+    // The person who has the call finds it first on Needs you and books the call from there.
+    await page.getByTestId("channel-view-tab-needs-you").click();
+    const readySection = page.getByTestId("outreach-needs-ready-to-call");
+    const readyCard = readySection.getByTestId(
+      `outreach-needs-contact-${CORNER_COTTAGE_WA_ID}`,
+    );
+    await expect(readyCard).toContainText("Ready to call");
+    await expect(readyCard).toContainText("Assigned to you");
+    await expect(
+      readyCard.getByRole("button", { name: "Edit brief" }),
+    ).toBeVisible();
+    // A call to make comes before anything waiting to be approved.
+    await expect(
+      needs.locator(".c3wa-desk-needs-section").first(),
+    ).toHaveAttribute("data-testid", "outreach-needs-ready-to-call");
+    await captureSafetyShot(page, "ready-to-call-needs-you.png");
+    const bookCall = readyCard.getByRole("button", {
+      name: "Mark call booked",
+    });
+    await expect(bookCall).toBeEnabled({ timeout: 15_000 });
+    await bookCall.click();
+    await expect
+      .poll(async () => (await contactUpdates()).at(-1))
+      .toEqual({ v: 1, waId: CORNER_COTTAGE_WA_ID, stage: "call_booked" });
+    await expect(readySection).toHaveCount(0);
   });
 
   test("plain members have no stage or rename controls", async ({ page }) => {

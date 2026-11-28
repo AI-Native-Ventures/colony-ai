@@ -481,6 +481,33 @@ test("the last settled count stays while a source loads again", () => {
   );
 });
 
+test("a lead that is ready to call counts for the person it was given to", () => {
+  // GUARD: `contactAwaitsCallFrom` in `buildNeedsYouSummary`. Without it a handed-over
+  // lead drops out of every count, and the person who should phone is never told here.
+  const zaina = "ab".repeat(32);
+  const basheer = "cd".repeat(32);
+  const contacts = [
+    {
+      waId: "27820000011",
+      stage: "ready_to_call",
+      callBrief: { assigneePubkey: zaina },
+    },
+    { waId: "27820000012", stage: "ready_to_call", callBrief: null },
+    { waId: "27820000013", stage: "wants_call" },
+    { waId: "27820000014", stage: "call_booked" },
+  ];
+  const total = (myPubkey) =>
+    buildNeedsYouSummary({
+      model: buildNeedsYou(NONE),
+      whatsappContacts: contacts,
+      myPubkey,
+    }).total;
+
+  assert.equal(total(zaina), 3, "hers, the unassigned one and the request");
+  assert.equal(total(basheer), 2, "the unassigned one and the request");
+  assert.equal(total(undefined), 2);
+});
+
 test("a fresh count replaces the one that was kept", () => {
   const kept = buildNeedsYouSummary({ model: buildNeedsYou(NONE) });
   const fresh = buildNeedsYouSummary({

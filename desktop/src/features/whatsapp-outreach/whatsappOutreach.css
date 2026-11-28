@@ -3675,11 +3675,140 @@
   color: var(--c3wa-need);
 }
 
+.c3wa-desk-contact-title > .is-ready,
+.c3wa-pipeline-stage-chip.is-ready_to_call {
+  background: var(--c3wa-accent-soft);
+  color: var(--c3wa-accent-ink);
+}
+
 .c3wa-desk-contact-title > .is-reply,
 .c3wa-pipeline-stage-chip.is-call_booked,
 .c3wa-pipeline-stage-chip.is-client {
   background: var(--c3wa-ok-bg);
   color: var(--c3wa-ok);
+}
+
+/* Call brief: who has the call, the link and the description of a lead ready to call. */
+.c3wa-call-brief {
+  display: grid;
+  min-width: 0;
+  gap: 0.375rem;
+  font-size: calc(12 * var(--colony-px));
+}
+
+.c3wa-desk-contact-copy > .c3wa-call-brief {
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
+  background: var(--c3wa-raised);
+}
+
+.c3wa-call-brief-assignee {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  color: var(--c3wa-ink);
+  font-weight: 700;
+}
+
+.c3wa-call-brief-assignee.is-open {
+  color: var(--c3wa-need);
+}
+
+.c3wa-call-brief-link {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-self: start;
+  gap: 0.25rem;
+  color: var(--c3wa-accent-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.c3wa-call-brief-link > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c3wa-call-brief-link:hover,
+.c3wa-call-brief-link:focus-visible {
+  text-decoration: underline;
+}
+
+.c3wa-call-brief-note {
+  margin: 0;
+  color: var(--c3wa-ink2);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.c3wa-pipeline-card > .c3wa-call-brief > .c3wa-call-brief-note {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.c3wa-call-brief-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.c3wa-call-brief-field {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.c3wa-call-brief-field > label {
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 700;
+}
+
+.c3wa-call-brief-field > input,
+.c3wa-call-brief-field > select,
+.c3wa-call-brief-field > textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--c3wa-line2);
+  border-radius: 0.625rem;
+  background: var(--c3wa-card);
+  color: var(--c3wa-ink);
+  font: inherit;
+  font-size: calc(13 * var(--colony-px));
+}
+
+.c3wa-call-brief-field > textarea {
+  min-height: 6rem;
+  padding: 0.5rem 0.75rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.c3wa-call-brief-field > p {
+  margin: 0;
+  color: var(--c3wa-muted);
+  font-size: calc(11.5 * var(--colony-px));
+}
+
+.c3wa-call-brief-form > .c3wa-desk-error {
+  margin: 0;
+}
+
+.c3wa-call-brief-retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c3wa-accent-ink);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .c3wa-desk-contact-copy > p,
@@ -3807,7 +3936,7 @@
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: repeat(7, minmax(14rem, 1fr));
+  grid-template-columns: repeat(8, minmax(14rem, 1fr));
   gap: 0.75rem;
   overflow: auto;
   padding: 1.125rem 1.5rem 1.5rem;

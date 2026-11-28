@@ -50,6 +50,9 @@ export const OAKLEAF_WA_ID = "27655551175";
 export const QUIET_OWL_WA_ID = "27684441106";
 export const QUEUED_LEAD_WA_ID = "27794441101";
 const E2E_SELF_PUBKEY = "deadbeef".repeat(8);
+/** A second person who can be given a call (an admin), beside the signed-in owner. */
+export const E2E_CALL_CLOSER_PUBKEY = "c0ffee11".repeat(8);
+export const E2E_CALL_CLOSER_NAME = "Zaina Ramadhani";
 
 function deskCustomerRecordMock() {
   const companyRelaySecret = generateSecretKey();
@@ -1128,6 +1131,7 @@ export async function installWhatsAppMockBridge(
       const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
       const {
         selfPubkey,
+        callClosers,
         canManageContacts,
         canManageSafety,
         activeLeadIds,
@@ -1929,6 +1933,8 @@ export async function installWhatsAppMockBridge(
               };
             case "contacts":
               return { contacts: clone(state.contacts) };
+            case "call_closers":
+              return { closers: clone(callClosers) };
             case "suppressions":
               if (outreachSafetyUnsupported) return {};
               return {
@@ -2182,6 +2188,7 @@ export async function installWhatsAppMockBridge(
               "contacted",
               "replied",
               "wants_call",
+              "ready_to_call",
               "call_booked",
               "quote_sent",
               "client",
@@ -2211,10 +2218,48 @@ export async function installWhatsAppMockBridge(
             ) {
               return { message: "invalid WhatsApp contact label" };
             }
+            // The call brief rides with the stage: a value sets, null clears, absent leaves.
+            const briefChange =
+              typeof body.callBrief === "object" && body.callBrief !== null
+                ? (body.callBrief as Record<string, unknown>)
+                : null;
+            if (
+              briefChange &&
+              typeof briefChange.assignee === "string" &&
+              !callClosers.some(
+                (closer) => closer.pubkey === briefChange.assignee,
+              )
+            ) {
+              return {
+                message:
+                  "callBrief.assignee must be a person who can open Outreach",
+              };
+            }
             if (typeof body.stage === "string") {
               contact.stage = body.stage;
               contact.stageSetBy = selfPubkey;
               contact.stageChangedAt = new Date().toISOString();
+            }
+            if (briefChange) {
+              const stored = (
+                contact as { callBrief?: Record<string, unknown> | null }
+              ).callBrief;
+              const next: Record<string, unknown> = {
+                link: stored?.link ?? null,
+                note: stored?.note ?? null,
+                assigneePubkey: stored?.assigneePubkey ?? null,
+                updatedBy: selfPubkey,
+                updatedAt: new Date().toISOString(),
+              };
+              if ("link" in briefChange) next.link = briefChange.link;
+              if ("note" in briefChange) next.note = briefChange.note;
+              if ("assignee" in briefChange) {
+                next.assigneePubkey = briefChange.assignee;
+              }
+              Object.assign(contact, {
+                callBrief:
+                  next.link || next.note || next.assigneePubkey ? next : null,
+              });
             }
             if (body.label === null || typeof body.label === "string") {
               contact.label = body.label;
@@ -2315,6 +2360,14 @@ export async function installWhatsAppMockBridge(
       ...fixture,
       initiallyConnected: actor.connected,
       selfPubkey: E2E_SELF_PUBKEY,
+      callClosers: [
+        { pubkey: E2E_SELF_PUBKEY, role: "owner", name: "Basheer Phiri" },
+        {
+          pubkey: E2E_CALL_CLOSER_PUBKEY,
+          role: "admin",
+          name: E2E_CALL_CLOSER_NAME,
+        },
+      ],
       canManageContacts,
       canManageSafety,
       activeLeadIds: Object.values(REFERENCE_PROSPECT_IDS),

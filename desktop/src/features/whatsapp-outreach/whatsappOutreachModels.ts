@@ -1,29 +1,11 @@
+import {
+  parseWhatsAppCallBrief,
+  type WhatsAppCallBrief,
+} from "./whatsappCallBrief";
+import { WHATSAPP_STAGES, type WhatsAppStage } from "./whatsappStageNames";
+
+export type { WhatsAppStage };
 export type WhatsAppQuality = "green" | "yellow" | "red";
-export type WhatsAppStage =
-  | "none"
-  | "queued"
-  | "contacted"
-  | "replied"
-  | "wants_call"
-  | "call_booked"
-  | "quote_sent"
-  | "client"
-  | "no_thanks"
-  | "stopped"
-  | "not_on_whatsapp";
-const WHATSAPP_STAGES: ReadonlySet<WhatsAppStage> = new Set<WhatsAppStage>([
-  "none",
-  "queued",
-  "contacted",
-  "replied",
-  "wants_call",
-  "call_booked",
-  "quote_sent",
-  "client",
-  "no_thanks",
-  "stopped",
-  "not_on_whatsapp",
-]);
 export type WhatsAppLeadStatus =
   | "not-contacted"
   | "in-batch"
@@ -162,6 +144,7 @@ export type WhatsAppContact = Readonly<{
   stage: WhatsAppStage;
   stageSetBy: "auto" | string | null;
   stageChangedAt: string | null;
+  callBrief: WhatsAppCallBrief | null;
   /** Batch note or direct queue label while this contact is queued. */
   queuedFrom: string | null;
   /** Additive relay queue state used as a compatibility fallback for older relays. */
@@ -637,6 +620,7 @@ export function parseWhatsAppContact(value: unknown): WhatsAppContact {
       contact.stageChangedAt,
       "stage changed time",
     ),
+    callBrief: parseWhatsAppCallBrief(contact.callBrief),
     queuedFrom: nullableString(contact.queuedFrom, "queue source"),
     outreachStatus,
     hasSentOutbound: contact.hasSentOutbound === true,

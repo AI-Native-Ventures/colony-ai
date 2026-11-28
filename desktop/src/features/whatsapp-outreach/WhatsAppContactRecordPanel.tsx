@@ -23,6 +23,12 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { KIND_WHATSAPP_CONTACT_UPDATE } from "@/shared/constants/kinds";
 import type { OutreachContactIdentity } from "./outreachDeskUtils";
+import {
+  type CallBriefDialogTarget,
+  useCallAssigneeNames,
+  WhatsAppCallBriefDialog,
+  WhatsAppCallBriefSummary,
+} from "./WhatsAppCallBriefDialog";
 import type { WhatsAppContact, WhatsAppStage } from "./whatsappOutreachModels";
 import { useWhatsAppCommand } from "./whatsappOutreachQueries";
 import {
@@ -71,11 +77,26 @@ export function WhatsAppContactRecordPanel({
   const [label, setLabel] = React.useState(contact.label ?? "");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [callBriefTarget, setCallBriefTarget] =
+    React.useState<CallBriefDialogTarget | null>(null);
+  const assigneeNameFor = useCallAssigneeNames([contact]);
+  const readyToCall = contact.stage === "ready_to_call";
 
   React.useEffect(() => setLabel(contact.label ?? ""), [contact.label]);
 
+  function openCallBrief(mode: "ready" | "edit") {
+    if (!canEdit) return;
+    setError("");
+    setCallBriefTarget({ contact, mode, name: identity.displayName });
+  }
+
   async function updateStage(stage: WhatsAppStage) {
     if (!canEdit || busy) return;
+    // Ready to call is never a bare move: the form asks for the link, description and person.
+    if (stage === "ready_to_call") {
+      openCallBrief("ready");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -264,6 +285,34 @@ export function WhatsAppContactRecordPanel({
           ) : null}
         </section>
 
+        {readyToCall || contact.callBrief ? (
+          <section
+            className="c3wa-record-section"
+            aria-labelledby="whatsapp-record-call-heading"
+            data-testid="whatsapp-record-call-brief"
+          >
+            <div className="c3wa-record-section-head">
+              <h3 id="whatsapp-record-call-heading">Call brief</h3>
+              {canEdit ? (
+                <Button
+                  data-testid="whatsapp-record-call-edit"
+                  onClick={() => openCallBrief("edit")}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Edit
+                </Button>
+              ) : null}
+            </div>
+            <WhatsAppCallBriefSummary
+              assigneeName={assigneeNameFor(contact.callBrief)}
+              brief={contact.callBrief}
+              showUnassigned
+            />
+          </section>
+        ) : null}
+
         <section
           className="c3wa-record-section"
           aria-labelledby="whatsapp-record-activity-heading"
@@ -418,6 +467,10 @@ export function WhatsAppContactRecordPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <WhatsAppCallBriefDialog
+        onClose={() => setCallBriefTarget(null)}
+        target={callBriefTarget}
+      />
     </aside>
   );
 }

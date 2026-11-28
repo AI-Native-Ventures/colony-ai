@@ -14,6 +14,7 @@ import {
   useWhatsAppStatusQuery,
 } from "./whatsappOutreachQueries";
 import { getWhatsAppNeedsYouItems } from "./whatsappOutreachStages";
+import { useMyPubkey } from "./WhatsAppCallBriefDialog";
 import { Button } from "@/shared/ui/button";
 import { WorkAreaChannelContext } from "@/features/workarea/dock/workAreaChannelContext";
 import { WorkAreaCanvasTab } from "@/features/workarea/dock/tabs/WorkAreaCanvasTab";
@@ -156,14 +157,18 @@ export function MapOutreachDeskHeader({
   const [moreOpen, setMoreOpen] = React.useState(false);
   const { href } = useLocation();
   const previousHref = React.useRef(href);
+  const myPubkey = useMyPubkey();
   const statusQuery = useWhatsAppStatusQuery(true, true);
   const connected = statusQuery.data?.connected === true;
   const contactsQuery = useWhatsAppContactsQuery(connected, true);
   const draftsQuery = useWhatsAppDraftsQuery(connected, true);
   const batchesQuery = useWhatsAppPendingBatchDetailsQuery(connected, true);
   const needsYouCount =
-    getWhatsAppNeedsYouItems(contactsQuery.data ?? [], draftsQuery.data ?? [])
-      .length + (batchesQuery.data?.length ?? 0);
+    getWhatsAppNeedsYouItems(
+      contactsQuery.data ?? [],
+      draftsQuery.data ?? [],
+      myPubkey,
+    ).length + (batchesQuery.data?.length ?? 0);
   const chatsNeedingReplyCount = new Set([
     ...(contactsQuery.data ?? [])
       .filter((contact) => contact.unanswered)

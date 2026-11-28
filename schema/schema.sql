@@ -821,16 +821,33 @@ CREATE TABLE whatsapp_contacts (
     label TEXT CHECK (label IS NULL OR char_length(label) BETWEEN 1 AND 120),
     manual_stage TEXT CHECK (
         manual_stage IS NULL OR manual_stage IN
-            ('contacted', 'replied', 'wants_call', 'call_booked', 'quote_sent', 'client', 'no_thanks')
+            ('contacted', 'replied', 'wants_call', 'ready_to_call', 'call_booked', 'quote_sent',
+             'client', 'no_thanks')
     ),
     manual_stage_by BYTEA CHECK (
         manual_stage_by IS NULL OR octet_length(manual_stage_by) = 32
     ),
     manual_stage_at TIMESTAMPTZ,
+    call_brief_link TEXT CHECK (
+        call_brief_link IS NULL OR char_length(call_brief_link) BETWEEN 1 AND 2000
+    ),
+    call_brief_note TEXT CHECK (
+        call_brief_note IS NULL OR char_length(call_brief_note) BETWEEN 1 AND 2000
+    ),
+    call_assignee BYTEA CHECK (
+        call_assignee IS NULL OR octet_length(call_assignee) = 32
+    ),
+    call_brief_by BYTEA CHECK (
+        call_brief_by IS NULL OR octet_length(call_brief_by) = 32
+    ),
+    call_brief_at TIMESTAMPTZ,
     PRIMARY KEY (community_id, wa_id),
     CONSTRAINT whatsapp_contacts_manual_stage_complete CHECK (
         (manual_stage IS NULL) = (manual_stage_by IS NULL)
         AND (manual_stage IS NULL) = (manual_stage_at IS NULL)
+    ),
+    CONSTRAINT whatsapp_contacts_call_brief_complete CHECK (
+        (call_brief_by IS NULL) = (call_brief_at IS NULL)
     )
 );
 

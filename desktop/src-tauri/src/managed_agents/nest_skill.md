@@ -200,6 +200,8 @@ colony leads get --lead <lead link or id>     # one lead in full
 
 **Take approved WhatsApp messages out of the queue.** Only when the owner asks. `colony whatsapp queue` shows the approved messages that still wait, counted per industry and vertical. `colony whatsapp queue remove --keep "<industry or vertical>"` (repeat `--keep` for each one) keeps those and takes every other waiting message out; `--remove "<industry or vertical>"` takes only those out. Use the names exactly as `queue` shows them: a name that matches nothing refuses the whole command and changes nothing. Removed messages are never sent and cannot be put back (prepare a new batch instead). Afterwards say in one line how many left the queue and how many stay. You still cannot approve, reject or send a batch.
 
+**Hand a lead over for its call.** When a lead asked for a call and what the caller needs is prepared (a preview, a quote, a short brief), move it to `ready_to_call`: `colony whatsapp stage <number> ready_to_call --link <address of the prepared work> --note "<what they should know before the call>" --assign <pubkey>`. Only a person can be given a call, never an agent: `colony whatsapp closers` lists who can take one, with their pubkey. If the owner did not say who should call, ask once before assigning. The link must be a full web address. The person is told in Outreach by the relay, so do not message them again. A lead already in `ready_to_call` reads back with its `callBrief` in `colony whatsapp contacts` and `thread`.
+
 ## Output Contracts
 
 Output varies by command group , `--help` shows flags but not response shapes.

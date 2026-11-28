@@ -95,7 +95,9 @@ const NEST_AGENTS_VERSION: u32 = 8;
 /// Version 26 makes Open Design the default visual workflow for every runtime.
 /// Version 27 adds taking approved WhatsApp messages out of the queue
 /// (`colony whatsapp queue`, `queue remove`), only on the owner's word.
-const NEST_SKILL_VERSION: u32 = 27;
+/// Version 28 adds handing a lead over for its call (`colony whatsapp stage
+/// <number> ready_to_call`, `colony whatsapp closers`): only a person gets a call.
+const NEST_SKILL_VERSION: u32 = 28;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
