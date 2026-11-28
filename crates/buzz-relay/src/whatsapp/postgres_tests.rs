@@ -6412,11 +6412,19 @@ async fn a_lead_ready_to_call_carries_its_brief_and_goes_only_to_a_person() {
     )
     .await
     .expect("give the call");
+    // Notices posted within one second have no order among themselves: find them by text.
+    let told = |notices: &[(String, Value)], wanted: &str| {
+        notices.iter().filter(|(text, _)| text == wanted).count()
+    };
     let notices = call_notices(&fx).await;
     assert_eq!(notices.len(), 2, "{notices:?}");
     assert_eq!(
-        notices[1].0,
-        "Lead given to you: +27821230402. Basheer gave you this call."
+        told(
+            &notices,
+            "Lead given to you: +27821230402. Basheer gave you this call."
+        ),
+        1,
+        "{notices:?}"
     );
     fx.command(
         &fx.owner,
@@ -6428,8 +6436,12 @@ async fn a_lead_ready_to_call_carries_its_brief_and_goes_only_to_a_person() {
     let notices = call_notices(&fx).await;
     assert_eq!(notices.len(), 3, "{notices:?}");
     assert_eq!(
-        notices[2].0,
-        "Ready to call: +27821230402. Basheer gave you this call."
+        told(
+            &notices,
+            "Ready to call: +27821230402. Basheer gave you this call."
+        ),
+        1,
+        "{notices:?}"
     );
 
     // Nobody is told about their own change.
