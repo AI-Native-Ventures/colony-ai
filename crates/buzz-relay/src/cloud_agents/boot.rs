@@ -27,6 +27,10 @@ pub const BOOT_TOKEN_TTL_SECS: i64 = 300;
 pub const IDLE_EXIT_SECS: u32 = 600;
 /// Where the machine's volume is mounted.
 pub const DATA_DIR: &str = "/data";
+
+/// The MCP server `buzz-agent` runs for its shell, file and git tools. A name,
+/// resolved on the image's `PATH`.
+const AGENT_MCP_COMMAND: &str = "buzz-dev-mcp";
 /// OpenCode's free model, the first stop of the free route.
 pub const OPENCODE_FREE_MODEL: &str = "opencode/deepseek-v4.1-flash-free";
 /// Hours the OpenRouter free route stays in force after OpenCode refuses.
@@ -296,6 +300,11 @@ pub fn build_env(inputs: &EnvInputs<'_>) -> BTreeMap<String, Zeroizing<String>> 
             // gateway session, no provider key: nothing here can spend credit.
             put(&mut env, "BUZZ_ACP_AGENT_COMMAND", "opencode");
             put(&mut env, "BUZZ_ACP_AGENT_ARGS", "acp");
+            // OpenCode brings its own shell, file and edit tools, so it gets no
+            // MCP server: the Mac's catalog gives it none either
+            // (`discovery/catalog.rs`, `opencode`, `mcp_command: None`). Set
+            // explicitly empty so a snapshot env var cannot inject one.
+            put(&mut env, "BUZZ_ACP_MCP_COMMAND", "");
             put(&mut env, "BUZZ_ACP_MODEL", OPENCODE_FREE_MODEL);
             put(
                 &mut env,
@@ -326,6 +335,12 @@ pub fn build_env(inputs: &EnvInputs<'_>) -> BTreeMap<String, Zeroizing<String>> 
                 put(&mut env, "BUZZ_ACP_MODEL", inputs.model);
             }
             put(&mut env, "BUZZ_ACP_AGENT_COMMAND", "buzz-agent");
+            // `buzz-agent` has no tools of its own: the shell, file and git
+            // tools come from `buzz-dev-mcp`, which the image ships. The Mac
+            // passes the same value (`discovery/catalog.rs`, `buzz-agent`).
+            // Without it `build_mcp_servers` returns no servers and the cloud
+            // agent can only talk.
+            put(&mut env, "BUZZ_ACP_MCP_COMMAND", AGENT_MCP_COMMAND);
         }
         (_, None) => {
             // `redeem` always opens a session for a gateway route. Without one
@@ -603,6 +618,53 @@ mod tests {
         }
     }
 
+    /// `buzz-agent` has no tools of its own. Without `BUZZ_ACP_MCP_COMMAND` the
+    /// harness starts it with no MCP servers (production, 28 Nov 2026: the log
+    /// read `mcp_cmd=`) and the cloud agent has no shell, files or git.
+    /// [red-proof] remove the `put` on the gateway arm and this fails.
+    #[test]
+    fn the_gateway_route_gives_buzz_agent_its_dev_mcp_tools() {
+        let env = env_for(&row(None), &snapshot());
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"].as_str(), "buzz-agent");
+        assert_eq!(env["BUZZ_ACP_MCP_COMMAND"].as_str(), "buzz-dev-mcp");
+    }
+
+    /// The free OpenRouter route also runs `buzz-agent`, so it needs the tools too.
+    #[test]
+    fn the_openrouter_free_route_gives_buzz_agent_its_dev_mcp_tools() {
+        let env = env_on(
+            &row(None),
+            &snapshot(),
+            Route::OpenrouterFree,
+            Some(Uuid::from_u128(7)),
+            "colony-free",
+        );
+        assert_eq!(env["BUZZ_ACP_AGENT_COMMAND"].as_str(), "buzz-agent");
+        assert_eq!(env["BUZZ_ACP_MCP_COMMAND"].as_str(), "buzz-dev-mcp");
+    }
+
+    /// OpenCode has its own shell and file tools and the Mac gives it no MCP
+    /// server, so the cloud does not either. The value is explicitly empty, and
+    /// an owner's snapshot env var cannot fill it in.
+    #[test]
+    fn opencode_gets_no_mcp_server_and_a_snapshot_cannot_add_one() {
+        let mut snap = snapshot();
+        snap.env_vars
+            .insert("BUZZ_ACP_MCP_COMMAND".to_owned(), "/bin/sh".to_owned());
+        let env = env_on(&row(None), &snap, Route::OpenCodeFree, None, "colony-free");
+        assert_eq!(env["BUZZ_ACP_MCP_COMMAND"].as_str(), "");
+    }
+
+    /// A snapshot env var cannot swap the MCP server `buzz-agent` runs.
+    #[test]
+    fn a_snapshot_cannot_replace_the_dev_mcp_command() {
+        let mut snap = snapshot();
+        snap.env_vars
+            .insert("BUZZ_ACP_MCP_COMMAND".to_owned(), "/bin/sh".to_owned());
+        let env = env_for(&row(None), &snap);
+        assert_eq!(env["BUZZ_ACP_MCP_COMMAND"].as_str(), "buzz-dev-mcp");
+    }
+
     /// The paid route is untouched and carries no route variable.
     #[test]
     fn the_paid_route_is_unchanged() {
@@ -641,6 +703,7 @@ mod tests {
             "BUZZ_ACP_MODEL",
             // Harness.
             "BUZZ_ACP_AGENT_COMMAND",
+            "BUZZ_ACP_MCP_COMMAND",
             "BUZZ_ACP_EXIT_AFTER_INACTIVITY",
             "COLONY_WAKE_LEDGER",
             "BUZZ_ACP_WAKE_LEDGER",
