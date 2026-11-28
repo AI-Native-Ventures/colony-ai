@@ -6,6 +6,7 @@ import {
   useWhatsAppPendingBatchDetailsQuery,
 } from "@/features/whatsapp-outreach/whatsappOutreachQueries";
 import { getWhatsAppNeedsYouItems } from "@/features/whatsapp-outreach/whatsappOutreachStages";
+import { useMyPubkey } from "@/features/whatsapp-outreach/WhatsAppCallBriefDialog";
 import { cn } from "@/shared/lib/cn";
 
 const TAB_CLASS =
@@ -32,6 +33,7 @@ export function ChannelWorkspaceTabs({
   outreachTab = "discussion",
   onOutreachTabChange,
 }: ChannelWorkspaceTabsProps) {
+  const myPubkey = useMyPubkey();
   const outreachSummaryVisible =
     isOutreach &&
     (outreachTab === "needs-you" ||
@@ -50,8 +52,11 @@ export function ChannelWorkspaceTabs({
     outreachSummaryVisible,
   );
   const needsYouCount =
-    getWhatsAppNeedsYouItems(contactsQuery.data ?? [], draftsQuery.data ?? [])
-      .length + (batchesQuery.data?.length ?? 0);
+    getWhatsAppNeedsYouItems(
+      contactsQuery.data ?? [],
+      draftsQuery.data ?? [],
+      myPubkey,
+    ).length + (batchesQuery.data?.length ?? 0);
   const chatsNeedingReplyCount = new Set([
     ...(contactsQuery.data ?? [])
       .filter((contact) => contact.unanswered)

@@ -96,7 +96,9 @@ test("authenticated POST uses the same exact URL and body for its signature", as
   assert.deepEqual(result, responseBody);
 });
 
-test("current desktop advertises the queued-stage capability on every query", async () => {
+test("current desktop advertises every stage name it reads on every query", async () => {
+  // GUARD: the relay answers `wants_call` for a lead in `ready_to_call`, and `none` for a
+  // queued one, to a caller that does not send these markers.
   let request = null;
   await queryWhatsApp(
     "wss://relay.example",
@@ -120,7 +122,10 @@ test("current desktop advertises the queued-stage capability on every query", as
   );
   assert.deepEqual(JSON.parse(request.body), {
     what: "contacts",
-    capabilities: ["whatsapp-outreach-stage-queued"],
+    capabilities: [
+      "whatsapp-outreach-stage-queued",
+      "whatsapp-outreach-stage-ready-to-call",
+    ],
   });
 });
 
@@ -266,7 +271,10 @@ test("thread review normalizes a phone locally and never sends an invalid waId",
       what: "thread",
       waId: "27821237135",
       limit: WHATSAPP_THREAD_VISIBLE_LIMIT,
-      capabilities: ["whatsapp-outreach-stage-queued"],
+      capabilities: [
+        "whatsapp-outreach-stage-queued",
+        "whatsapp-outreach-stage-ready-to-call",
+      ],
     },
   ]);
 });

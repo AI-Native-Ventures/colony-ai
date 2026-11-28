@@ -17,6 +17,10 @@ import {
   KIND_WHATSAPP_UNKNOWN_SEND_RECOVERY,
 } from "@/shared/constants/kinds";
 import {
+  parseWhatsAppCallClosers,
+  type WhatsAppCallCloser,
+} from "./whatsappCallBrief";
+import {
   parseWhatsAppBatchDetail,
   parseWhatsAppBatchSummary,
   parseWhatsAppContact,
@@ -46,8 +50,15 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const QUERY_PATH = "/api/whatsapp/query";
 const CONNECT_PATH = "/api/whatsapp/connect";
 const DISCONNECT_PATH = "/api/whatsapp/disconnect";
-/** Opt in to the stage enum introduced after desktop-v3.0.37. Older apps omit this marker. */
-const RELAY_CAPABILITIES = ["whatsapp-outreach-stage-queued"] as const;
+/**
+ * Opt in to the stage names introduced after desktop-v3.0.37 (`queued`) and after
+ * desktop-v3.0.77 (`ready_to_call`). Older apps omit a marker and are answered with a stage
+ * they can show.
+ */
+const RELAY_CAPABILITIES = [
+  "whatsapp-outreach-stage-queued",
+  "whatsapp-outreach-stage-ready-to-call",
+] as const;
 /** Current relay query cap. The drafting runtime has its own, separate context boundary. */
 export const WHATSAPP_THREAD_VISIBLE_LIMIT = 200;
 /** Contacts per page; the relay clamps a page to 200. */
@@ -82,6 +93,7 @@ type WhatsAppQuery =
   | { what: "drafts"; limit?: number }
   | { what: "contacts"; limit?: number; before?: string; counts?: boolean }
   | { what: "inbox"; limit?: number }
+  | { what: "call_closers" }
   | { what: "suppressions"; limit?: number }
   | { what: "unknown_sends"; limit?: number }
   | { what: "thread"; waId: string; limit?: number };
@@ -415,6 +427,16 @@ export function loadWhatsAppContacts(
 /** Clears relay-scoped in-flight contact ownership on a community switch. */
 export function resetWhatsAppContactLoads(): void {
   contactLoadOwners.delete(defaultContactLoadOwner);
+}
+
+/** The people a lead can be given to for its call. Never an agent. */
+export async function loadWhatsAppCallClosers(
+  relayUrl: string,
+  dependencies?: ApiDependencies,
+): Promise<WhatsAppCallCloser[]> {
+  return parseWhatsAppCallClosers(
+    await queryWhatsApp(relayUrl, { what: "call_closers" }, dependencies),
+  );
 }
 
 /**

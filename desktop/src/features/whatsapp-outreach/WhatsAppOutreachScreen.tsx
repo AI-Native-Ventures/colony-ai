@@ -265,15 +265,17 @@ export function WhatsAppOutreachScreen({
           ? isWhatsAppAwaitingReply(visibleContact)
           : mode === "desk" && activeFilter === "wants-call"
             ? contact.stage === "wants_call"
-            : activeFilter === "queued"
-              ? visibleContact.stage === "queued"
-              : activeFilter === "opted-out"
-                ? visibleStatus === "Opted out"
-                : activeFilter === "replied"
-                  ? visibleStatus === "Replied"
-                  : activeFilter === "sent"
-                    ? visibleStatus === "Sent"
-                    : true;
+            : mode === "desk" && activeFilter === "ready-to-call"
+              ? contact.stage === "ready_to_call"
+              : activeFilter === "queued"
+                ? visibleContact.stage === "queued"
+                : activeFilter === "opted-out"
+                  ? visibleStatus === "Opted out"
+                  : activeFilter === "replied"
+                    ? visibleStatus === "Replied"
+                    : activeFilter === "sent"
+                      ? visibleStatus === "Sent"
+                      : true;
     const search = searchTerm.trim().toLocaleLowerCase();
     const matchesSearch =
       !search ||

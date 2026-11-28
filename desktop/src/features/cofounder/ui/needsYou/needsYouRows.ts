@@ -9,6 +9,7 @@ import type {
   NeedsYouDetail,
 } from "../../needsYou";
 import { moneyLabel, type MoneyLinkCard } from "../../moneyRails";
+import { contactAwaitsCallFrom } from "@/features/whatsapp-outreach/whatsappCallBrief";
 import type {
   WhatsAppContact,
   WhatsAppDraft,
@@ -182,6 +183,8 @@ export function buildNeedsYouRows(input: {
   capabilityGapHeads: readonly CapabilityGapHead[];
   whatsappContacts: readonly WhatsAppContact[];
   whatsappDrafts: readonly WhatsAppDraft[];
+  /** The signed-in person: a lead that is ready to call is a row for who it was given to. */
+  myPubkey?: string | null;
 }): NeedsYouRow[] {
   const contacts = new Map(
     input.whatsappContacts.map((contact) => [contact.waId, contact]),
@@ -242,7 +245,10 @@ export function buildNeedsYouRows(input: {
 
   const seenCallIds = new Set<string>();
   for (const contact of input.whatsappContacts) {
-    if (contact.stage !== "wants_call" || seenCallIds.has(contact.waId))
+    if (
+      !contactAwaitsCallFrom(contact, input.myPubkey) ||
+      seenCallIds.has(contact.waId)
+    )
       continue;
     seenCallIds.add(contact.waId);
     rows.push({
@@ -330,10 +336,13 @@ export function needsYouRowCopy(row: NeedsYouRow): NeedsYouRowCopy {
 
   if (row.kind === "call_request") {
     const name = contactName(row.contact, "");
+    const ready = row.contact.stage === "ready_to_call";
     return {
       title: `Call ${name}`,
-      subtitle: "Asked for a call.",
-      yesLabel: "Pick a time",
+      subtitle: ready
+        ? "Ready to call. The brief is in Outreach."
+        : "Asked for a call.",
+      yesLabel: ready ? "Open chat" : "Pick a time",
       noLabel: null,
     };
   }

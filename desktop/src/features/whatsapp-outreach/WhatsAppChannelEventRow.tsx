@@ -107,16 +107,22 @@ function NoticeCard({
 }) {
   const isConnected = code === "connected";
   const isCompleted = code === "batch_completed";
+  // The relay mentions the person a lead was given to for its call.
+  const isCallAssigned = code === "call_assigned";
   const title = isConnected
     ? "WhatsApp number connected"
     : isCompleted
       ? "Batch sent"
-      : "WhatsApp update";
+      : isCallAssigned
+        ? "A call was handed over"
+        : "WhatsApp update";
   const testId = isConnected
     ? "whatsapp-channel-connected"
     : isCompleted
       ? "whatsapp-channel-batch-sent"
-      : "whatsapp-channel-notice";
+      : isCallAssigned
+        ? "whatsapp-channel-call-assigned"
+        : "whatsapp-channel-notice";
 
   return (
     <ChannelCard label={title} testId={testId}>

@@ -96,6 +96,43 @@ test("page rows expand each reply draft and deduplicate call requests", () => {
   assert.equal(needsYouRowCopy(rows[2]).noLabel, null);
 });
 
+test("a lead that is ready to call is a row for the person it was given to", () => {
+  const zaina = "ab".repeat(32);
+  const basheer = "cd".repeat(32);
+  const ready = {
+    waId: "wa-ready",
+    e164: "+27821230001",
+    displayName: "Thandeka",
+    profileName: null,
+    businessName: "Plane Tree Guesthouse",
+    ownerPubkey: null,
+    stage: "ready_to_call",
+    callBrief: { assigneePubkey: zaina },
+  };
+  const rowsFor = (myPubkey) =>
+    buildNeedsYouRows({
+      model: { approve: [], do: [], decide: [], total: 0 },
+      paymentLinks: [],
+      capabilityGaps: [],
+      capabilityGapHeads: [],
+      whatsappContacts: [ready],
+      whatsappDrafts: [],
+      myPubkey,
+    });
+
+  const hers = rowsFor(zaina);
+  assert.deepEqual(
+    hers.map((row) => row.kind),
+    ["call_request"],
+  );
+  const copy = needsYouRowCopy(hers[0]);
+  assert.equal(copy.subtitle, "Ready to call. The brief is in Outreach.");
+  assert.equal(copy.yesLabel, "Open chat");
+  assert.equal(copy.noLabel, null);
+  // Given to someone else: not a row for this person.
+  assert.deepEqual(rowsFor(basheer), []);
+});
+
 test("copy names each board action and preserves plain source details", () => {
   const rows = [
     {
